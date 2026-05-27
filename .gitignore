@@ -189,7 +189,8 @@ onelogger.*
 # voice agent
 node_modules/
 .vite/
-bot_server.*
+bot_server.log
+bot_server.*.log
 eval_results/
 audio_logs/
 audio_logs_user/

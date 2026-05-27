@@ -1,8 +1,10 @@
 [project]
-name = "nemo-voice-agent"
+name = "nemo_voice_agent"
 version = "0.1.0"
-description = "An open-source voice agent pipeline."
+description = "An open-source real-time voice agent pipeline built on Pipecat and NeMo speech models."
+readme = "README.md"
 requires-python = ">=3.12,<3.14"
+license = { text = "Apache-2.0" }
 dependencies = [
     # Deep learning core (CUDA 13.0 wheels; see [tool.uv.sources] below)
     "torch",
@@ -10,7 +12,7 @@ dependencies = [
     "torchaudio",
 
     # NeMo speech stack (ASR + TTS models)
-    "nemo-toolkit[asr,tts]",
+    "nemo-toolkit[asr,tts]>=2.7.3",
 
     # Real-time voice pipeline framework
     "pipecat-ai==0.0.98",
@@ -48,16 +50,50 @@ dev = [
     "black>=24",
     "isort>=5",
     "pytest>=8",
+    "pytest",
+    "pre-commit",
 ]
+
+[project.urls]
+Homepage = "https://github.com/NVIDIA-NeMo/Voice-Agent"
+Repository = "https://github.com/NVIDIA-NeMo/Voice-Agent"
+Issues = "https://github.com/NVIDIA-NeMo/Voice-Agent/issues"
+
+[tool.isort]
+profile = "black"  # black-compatible
+line_length = 119  # should match black parameters
+ignore_whitespace = true  # ignore whitespace for compatibility with the initial style
+py_version = 310  # python 3.10 as a target version
+known_first_party = ["nemo"]  # FIRSTPARTY section
+known_third_party = ["nemo_text_processing", "examples", "scripts"]  # THIRDPARTY section
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+default_section = "THIRDPARTY"
+extend_skip = ["setup.py", "docs/source/conf.py"]
+
+
+[tool.black]
+line_length = 119
+skip_string_normalization = true
+# major year version is stable, see details in
+# https://black.readthedocs.io/en/stable/the_black_code_style/index.html
+# `required_version` is necessary for consistency (other `black` versions will fail to reformat files)
+required_version = "24"
+target-version = ['py310', 'py311', 'py312', 'py313']
+# by default exclude Jupyter Notebooks (but can be reformated when passed directly)
+extend-exclude = '''
+(
+  \.ipynb
+  | \.ipynb_checkpoints
+)
+'''
 
 [build-system]
 requires = ["setuptools>=79"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-# This is a collection of example scripts, not a library package.
-# Only build wheels if explicitly requested.
-packages = []
+[tool.setuptools.packages.find]
+include = ["nemo_voice_agent*"]
+exclude = ["tests*", "evaluation*", "examples*", "client*"]
 
 # ---------------------------------------------------------------------------
 # uv configuration — pins PyTorch and vLLM wheels to the CUDA 13.0 index.
@@ -83,4 +119,6 @@ torch-backend = "cu130"
 override-dependencies = [
     "protobuf==5.29.6",
     "numba==0.65.0",
+    "transformers>=5.8.0",
+    "setuptools>=79.0.0"
 ]
