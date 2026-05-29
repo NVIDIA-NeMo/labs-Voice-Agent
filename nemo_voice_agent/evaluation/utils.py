@@ -15,7 +15,7 @@
 import json
 import os
 import re
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import numpy as np
 import requests
@@ -54,9 +54,7 @@ def match_str_and_float(
     if is_string:
         ref_value = str(ref_value)
         pred_value = str(pred_value)
-        logger.debug(
-            f"before processing: ref_value: {ref_value}, pred_value: {pred_value}"
-        )
+        logger.debug(f"before processing: ref_value: {ref_value}, pred_value: {pred_value}")
         if ignore_capitalization:
             ref_value = ref_value.lower()
             pred_value = pred_value.lower()
@@ -76,9 +74,7 @@ def match_str_and_float(
                 num_to_words=False,
                 lowercase=ignore_capitalization,
             )
-        logger.debug(
-            f"after processing: ref_value: {ref_value}, pred_value: {pred_value}"
-        )
+        logger.debug(f"after processing: ref_value: {ref_value}, pred_value: {pred_value}")
         return ref_value == pred_value
     else:
         try:
@@ -88,9 +84,7 @@ def match_str_and_float(
                 is_close = all(is_close)
             return bool(is_close)
         except Exception as e:
-            logger.error(
-                f"Error checking for np.isclose(ref_value: {ref_value}, pred_value: {pred_value}): {e}"
-            )
+            logger.error(f"Error checking for np.isclose(ref_value: {ref_value}, pred_value: {pred_value}): {e}")
             return False
 
 
@@ -291,6 +285,45 @@ def check_if_task_success(
     return result
 
 
+def _filtered_args(args: dict, compare_args: Optional[List[str]]) -> dict:
+    """Filter a tool-call arguments dict by tau2's ``compare_args`` semantics.
+
+    ``compare_args=None``  → return ``args`` verbatim (compare all).
+    ``compare_args=[]``    → return ``{}`` (name-only match — empty == empty).
+    ``compare_args=[k...]``→ return ``{k: args.get(k) for k in compare_args}``.
+
+    Pitfall: do NOT write ``compare_args or "all"``-style fallbacks — ``[]`` is
+    falsy and would silently collapse name-only matches into compare-all.
+    Tau2 stores ``compare_args: None`` explicitly (the key is present), so
+    ``ref.get("compare_args", "all")`` also doesn't fire the default. The
+    explicit ``is None`` check below is the only safe sentinel.
+    """
+    if compare_args is None:
+        return args
+    return {k: args.get(k) for k in compare_args}
+
+
+def _match_action(ref: dict, pred: dict) -> bool:
+    """Deterministic action-record match honoring tau2's ``compare_args`` field.
+
+    Name must always match. Argument comparison is delegated to ``_filtered_args``
+    which applies the ``compare_args`` filter to both sides before equality.
+
+    Reference records that omit ``compare_args`` (e.g. eva_airline records) get
+    the default ``None`` from ``ref.get("compare_args")``, which means "compare
+    all arguments" — preserving existing behavior for non-tau2 domains.
+
+    Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0
+        src/tau2/data_model/tasks.py:175-182
+    """
+    if ref.get("name") != pred.get("name"):
+        return False
+    compare_args = ref.get("compare_args")
+    return _filtered_args(ref.get("arguments", {}), compare_args) == _filtered_args(
+        pred.get("arguments", {}), compare_args
+    )
+
+
 class LLMJudge:
     """
     LLM-based judge for evaluating voice agent responses.
@@ -316,18 +349,20 @@ You MUST return ONLY a JSON object in the following format, with no other text:
 {"score": <score>, "reason": "<brief explanation>"}"""
 
     SCENARIO_PROMPT = """You are a judge that evaluates voice agent performance in a conversational scenario.
-You will be given:
-- A reference answer (the expected outcome)
-- A prediction (the actual agent output)
-- The full conversation transcript between the user and the agent
-- The LLM context history, which includes tool/function calls made by the agent
+You will be given some or all of the following XML-tagged inputs (only those available are included):
+- <reference>: The reference answer (the expected outcome).
+- <prediction>: The actual agent output (the "final response" the agent produced).
+- <conversation>: The transcribed conversation turns between the user and the agent.
+- <context_history>: The agent's LLM context history, including system prompt and tool/function calls with their arguments and results.
+- <nl_assertions>: A numbered list of natural-language assertions to consider when scoring.
 
 Evaluate how well the agent performed by considering:
-1. Whether the prediction matches the reference answer
-2. Whether the agent followed instructions correctly during the conversation
-3. Whether the agent called the correct tools with the correct arguments at the right time
-4. Whether the agent avoided unnecessary or incorrect tool calls
-5. Whether the agent handled the conversation naturally and helpfully
+1. Whether <prediction> matches <reference>.
+2. Whether the agent followed instructions correctly during the conversation.
+3. Whether the agent called the correct tools with the correct arguments at the right time (use <context_history> when present).
+4. Whether the agent avoided unnecessary or incorrect tool calls.
+5. Whether the agent handled the conversation naturally and helpfully.
+6. If <nl_assertions> is present, whether each numbered assertion holds given the conversation and tool-call evidence. The score should reflect the fraction of assertions that pass.
 
 Return a score between 0 and 1, where 0 means complete failure and 1 means perfect performance.
 You MUST return ONLY a JSON object in the following format, with no other text:
@@ -401,9 +436,7 @@ You MUST return ONLY a JSON object in the following format, with no other text:
 
         raise ValueError(f"Could not parse judgement JSON from LLM response: {content}")
 
-    def judge(
-        self, reference: str, prediction: str, prompt: Optional[str] = None
-    ) -> dict:
+    def judge(self, reference: str, prediction: str, prompt: Optional[str] = None) -> dict:
         """
         Judge the similarity between a reference and a prediction.
 
@@ -429,9 +462,7 @@ You MUST return ONLY a JSON object in the following format, with no other text:
             logger.error(f"LLMJudge error: {e}")
             return {"score": 0.0, "reason": f"Error: {e}"}
 
-    def judge_file(
-        self, reference: str, prediction: str, prompt: Optional[str] = None
-    ) -> dict:
+    def judge_file(self, reference: str, prediction: str, prompt: Optional[str] = None) -> dict:
         """
         Judge the similarity between a reference file and a prediction file.
 
@@ -465,6 +496,7 @@ You MUST return ONLY a JSON object in the following format, with no other text:
         prediction: str,
         conversation: Optional[list] = None,
         context_history: Optional[list] = None,
+        nl_assertions: Optional[List[str]] = None,
         prompt: Optional[str] = None,
     ) -> dict:
         """
@@ -475,6 +507,13 @@ You MUST return ONLY a JSON object in the following format, with no other text:
             prediction: The prediction answer string (or JSON string).
             conversation: List of conversation turns, each a dict with "role" and "text" keys.
             context_history: LLM context messages (from _retrieve_context_history).
+            nl_assertions: Optional natural-language assertions (tau2 retail). When provided,
+                each assertion is appended to the prompt; the per-assertion verdicts and
+                ``passed/total`` score will be wired in a later milestone (M3). For now,
+                presence of this argument is a pass-through (the prompt mentions the
+                assertions, but the parser still returns the existing ``{score, reason}``
+                shape). Default ``None`` preserves backward compatibility for eva /
+                restaurant / qa scenarios.
             prompt: Optional custom system prompt. Uses SCENARIO_PROMPT if not provided.
         Returns:
             A dict with "score" (float between 0 and 1) and "reason" (str).
@@ -488,16 +527,15 @@ You MUST return ONLY a JSON object in the following format, with no other text:
         ]
 
         if conversation:
-            turns_text = "\n".join(
-                f"[{turn.get('role', 'unknown')}]: {turn.get('text', '')}"
-                for turn in conversation
-            )
+            turns_text = "\n".join(f"[{turn.get('role', 'unknown')}]: {turn.get('text', '')}" for turn in conversation)
             sections.append(f"<conversation>\n{turns_text}\n</conversation>")
 
+        if nl_assertions:
+            numbered = "\n".join(f"{i+1}. {a}" for i, a in enumerate(nl_assertions))
+            sections.append(f"<nl_assertions>\n{numbered}\n</nl_assertions>")
+
         if context_history:
-            sections.append(
-                f"<context_history>\n{json.dumps(context_history, indent=2)}\n</context_history>"
-            )
+            sections.append(f"<context_history>\n{json.dumps(context_history, indent=2)}\n</context_history>")
 
         user_content = "\n\n".join(sections)
         payload = self._get_payload(user_content, prompt)

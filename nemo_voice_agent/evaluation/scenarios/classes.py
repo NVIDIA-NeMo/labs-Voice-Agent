@@ -59,6 +59,16 @@ class Persona:
         accent: The accent of the persona if any, e.g. "American", "British", "Australian", etc.
             Only used for TTS generation. If provided, the prompt will have additional information
             about the accent.
+        behavior_config: Pipeline-layer persona knobs that the LLM alone cannot realize —
+            e.g. interrupt_tendency, enable_interruptions, backchannel_min_threshold,
+            use_llm_backchannel. Currently parked: not consumed by ``to_prompt_section`` and
+            not wired into the turn-taking pipeline. Future work; preserved here as a
+            metric-slicing label and as a forward-compatible carrier for tau2-derived
+            persona configs.
+        voice_config: TTS-layer acoustic/voice knobs (persona_name voice binding,
+            channel/source/speech_effects, telephony_enabled, environment,
+            background_noise_file, etc.). Currently parked: not consumed by
+            ``to_prompt_section`` and not wired into TTS. Future work.
     """
 
     role: str
@@ -67,6 +77,8 @@ class Persona:
     personality: str
     language: Optional[str] = None
     accent: Optional[str] = None
+    behavior_config: Optional[Dict[str, Any]] = None
+    voice_config: Optional[Dict[str, Any]] = None
 
     def to_prompt_section(self) -> str:
         """Render this persona as a prompt section."""
@@ -111,17 +123,14 @@ class Resources:
         """Render this resource set as a prompt section."""
         sections = ["# Resources"]
         if self.documents:
-            doc_list = "\n".join(
-                f"- {name}: {path}" for name, path in self.documents.items()
-            )
+            doc_list = "\n".join(f"- {name}: {path}" for name, path in self.documents.items())
             sections.append(
                 f"## Available Documents\nYou can read the following documents by using tools:\n{doc_list}"
             )
         if self.information:
             info_list = "\n".join(f"- {info}" for info in self.information)
             sections.append(
-                "## Additional Information\n"
-                f"You can use the following information for reference:\n{info_list}"
+                "## Additional Information\n" f"You can use the following information for reference:\n{info_list}"
             )
         return "\n\n".join(sections)
 
@@ -204,9 +213,7 @@ class Actions:
                 "You must follow the following instructions step by step in the given order "
                 "to complete the task, do not perform multiple instructions in a single turn:\n"
             )
-            numbered = "\n".join(
-                f"Step {i+1}: {inst}" for i, inst in enumerate(self.instructions)
-            )
+            numbered = "\n".join(f"Step {i+1}: {inst}" for i, inst in enumerate(self.instructions))
             sections.append(f"## Instructions\n{header}{numbered}")
         if self.guidelines:
             header = "You must always comply with the following guidelines during the task:\n"
@@ -231,6 +238,10 @@ class Scenario:
         clean_text: Optional[bool] = False,
         disallow_extra_items: Optional[bool] = False,
         expected_scenario_db: Optional[Dict[str, Any]] = None,
+        nl_assertions: Optional[List[str]] = None,
+        env_assertions: Optional[List[Dict[str, Any]]] = None,
+        initialization_actions: Optional[List[Dict[str, Any]]] = None,
+        expected_user_db: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the scenario.
@@ -251,12 +262,28 @@ class Scenario:
             disallow_extra_items: When True, the list-of-dicts comparator requires
                 ``len(reference) == len(prediction)`` (exact bijection). Default False
                 preserves the existing lenient behavior where agent extras pass.
-            expected_scenario_db: Optional expected post-run DB state. When set,
+            expected_scenario_db: Optional expected post-run DB state from the agent side. When set,
                 the runner additionally scores the scenario by SHA-256-hashing this
                 against the bridge-pulled ``final_scenario_db.json`` (path-independent
                 end-state correctness — see ``evaluation/db_hash.py``). Subclasses
                 that derive the expected DB from a fixture file should expose this
                 as a ``cached_property`` instead of passing it through ``__init__``.
+            nl_assertions: Natural-language assertions evaluated by the LLM judge
+                (e.g., tau2-retail). Each string is judged independently against the conversation
+                transcript; aggregate score is ``passed / total``. Default ``None``
+                disables NL-assertion scoring.
+            env_assertions: Environment-state assertion records evaluated against the
+                pulled ``shared_state["user_db"]`` or ``shared_state["db"]`` post-run
+                (e.g., tau2-telecom). Each entry has shape
+                ``{"env_type": "user"|"assistant", "func_name": str, "arguments": dict,
+                "assert_value": Any}``. Default ``None`` disables env-assertion scoring.
+            initialization_actions: Action records replayed against shared_state before
+                the scenario starts (e.g., tau2-telecom). Each entry has shape
+                ``{"env_type": "user"|"assistant", "func_name": str, "arguments": dict}``.
+                Default ``None`` skips replay.
+            expected_user_db: Optional expected post-run user-side DB state (e.g., tau2-telecom).
+                Hashed against the bridge-pulled user-side DB. Default ``None`` disables
+                dual-DB scoring.
         """
         if not hasattr(self, "name"):
             self.name = name
@@ -281,6 +308,14 @@ class Scenario:
             self.disallow_extra_items = disallow_extra_items
         if not hasattr(self, "expected_scenario_db"):
             self.expected_scenario_db = expected_scenario_db
+        if not hasattr(self, "nl_assertions"):
+            self.nl_assertions = nl_assertions
+        if not hasattr(self, "env_assertions"):
+            self.env_assertions = env_assertions
+        if not hasattr(self, "initialization_actions"):
+            self.initialization_actions = initialization_actions
+        if not hasattr(self, "expected_user_db"):
+            self.expected_user_db = expected_user_db
 
     def setup_shared_state(self, state: dict, side: str) -> None:
         """Populate per-side ``shared_state`` before tools are instantiated.
@@ -367,58 +402,42 @@ class Scenario:
     @property
     def user_task(self) -> Task:
         """The Task for the simulated user. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the user task."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the user task.")
 
     @property
     def agent_task(self) -> Task:
         """The Task for the agent under test. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the agent task."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the agent task.")
 
     @property
     def user_resources(self) -> Resources:
         """Resources (tools, documents, information) available to the user. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the user resources."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the user resources.")
 
     @property
     def agent_resources(self) -> Resources:
         """Resources (tools, documents, information) available to the agent. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the agent resources."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the agent resources.")
 
     @property
     def user_actions(self) -> Actions:
         """Instructions and guidelines for the user. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the user actions."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the user actions.")
 
     @property
     def agent_actions(self) -> Actions:
         """Instructions and guidelines for the agent. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the agent actions."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the agent actions.")
 
     @property
     def user_persona(self) -> Persona:
         """Persona for the simulated user. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the user persona."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the user persona.")
 
     @property
     def agent_persona(self) -> Persona:
         """Persona for the agent under test. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the agent persona."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the agent persona.")
 
     def save(self, output_dir: str):
         """Save the scenario to a file."""

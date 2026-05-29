@@ -32,6 +32,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Scenario,
     Task,
 )
+from nemo_voice_agent.evaluation.voice_rules import VOICE_ALPHANUMERIC_RULE as _SHARED_VOICE_ALPHANUMERIC_RULE
 
 # ---------------------------------------------------------------------------
 # Module-level cached dataset index
@@ -89,36 +90,20 @@ class EvaAirlineBaseScenario(Scenario):
     # Subclasses must set ``eva_id``. Default is set so the base class is
     # introspectable; instantiating the base directly will fail at file IO.
     eva_id: str = ""
-    max_duration = (
-        900  # 15 minutes default — voice round-trips are ~10× slower than text;
-    )
+    max_duration = 900  # 15 minutes default — voice round-trips are ~10× slower than text;
     # observed live runs of voluntary_date_change take 12–14 turns even when the agent
     # operates efficiently. 600s leaves no headroom for the closing protocol.
 
-    # Shared voice-readability rule for both agent and user. Airport codes
-    # (LAX, AUS, JFK) and flight numbers (SK703) sound terrible when pronounced
-    # as words and round-trip poorly through ASR/TTS. Confirmation numbers
-    # need spelling regardless. Use this constant in both agent_actions.guidelines
-    # and user_actions.guidelines so the rule stays in sync across scenarios.
-    VOICE_ALPHANUMERIC_RULE = (
-        "When speaking confirmation numbers, flight numbers, or airport codes, "
-        "spell each character one at a time — letters as letters, digits as words. "
-        "Examples: 1A2BC4 (spelled out as one, A, two, B, C, four); "
-        "SK123 (spelled out as S, K, one, two, three); "
-        "LAX (spelled out as L, A, X); "
-        "AUS (spelled out as A, U, S). "
-        "Never pronounce these identifiers as words. In prompts and guidelines "
-        "you'll see codes written as 'CODE (spelled out as letter, letter, digit, ...)' — "
-        "the part in parentheses is how to speak it; the part before is the canonical identifier."
-    )
+    # Shared voice-readability rule re-exported from nemo_voice_agent.evaluation.voice_rules.
+    # Kept as a class attribute so existing references (EvaAirlineBaseScenario.VOICE_ALPHANUMERIC_RULE)
+    # continue to work; tau2 base scenarios import the same constant directly.
+    VOICE_ALPHANUMERIC_RULE = _SHARED_VOICE_ALPHANUMERIC_RULE
 
     @cached_property
     def _scenario_db(self) -> dict:
         """Load the bound eva scenario JSON. Bridge-side; cached after first read."""
         if not self.eva_id:
-            raise ValueError(
-                f"{type(self).__name__} must declare a class attribute eva_id"
-            )
+            raise ValueError(f"{type(self).__name__} must declare a class attribute eva_id")
         path = get_eval_data_root() / "eva_airline_scenarios" / f"{self.eva_id}.json"
         return json.loads(path.read_text())
 
@@ -145,9 +130,7 @@ class EvaAirlineBaseScenario(Scenario):
         Raises ``KeyError`` if the eva_id isn't in the dataset (e.g. a scenario
         we authored without a corresponding eva entry).
         """
-        return _load_eva_airline_dataset_index()[self.eva_id]["ground_truth"][
-            "expected_scenario_db"
-        ]
+        return _load_eva_airline_dataset_index()[self.eva_id]["ground_truth"]["expected_scenario_db"]
 
     def setup_shared_state(self, state: dict, side: str) -> None:
         """Seed the agent side with the scenario DB content (inline, not a path).

@@ -98,6 +98,12 @@ async def run_dynamic_evaluation(
     # DB-state match results (only collected for scenarios with `expected_scenario_db`).
     # Denominator is "scenarios that opted into DB-state scoring", not "all scenarios".
     db_state_results: List[bool] = []
+    # Per-domain buckets keyed by ``scenario.name.split('__')[0]`` so a mixed run
+    # (eva_airline + tau2_airline + retail + …) reports success rates per source.
+    # Scenarios without a ``__`` separator (e.g. "fastbite", "simple_qa_1") fall
+    # under the scenario name itself.
+    per_domain_success: dict = {}
+    per_domain_db_state: dict = {}
     for idx, scenario in enumerate(scenarios):
         logger.info(f"{'='*80}")
         logger.info(f"Starting Scenario {idx+1}/{len(scenarios)}: {scenario.name}")
@@ -135,38 +141,60 @@ async def run_dynamic_evaluation(
         await asyncio.sleep(pause_between_scenarios)
 
         # Run scenario
-        duration = (
-            duration_per_scenario
-            if duration_per_scenario is not None
-            else scenario.max_duration
-        )
-        assert (
-            duration > 0
-        ), f"Duration per scenario must be greater than 0, got {duration}"
+        duration = duration_per_scenario if duration_per_scenario is not None else scenario.max_duration
+        assert duration > 0, f"Duration per scenario must be greater than 0, got {duration}"
         logger.info(f"Running scenario for {duration} seconds...")
 
         scenario_start = datetime.now()
         await bridge.run_scenario(duration=duration)
         scenario_end = datetime.now()
 
+        # Domain prefix for per-domain aggregation. Scenarios named "<prefix>__<id>"
+        # bucket under <prefix>; scenarios without a "__" (e.g. "fastbite") bucket
+        # under the full name.
+        domain = scenario.name.split("__", 1)[0]
+
         # Check if the scenario is successful
         reference_file = os.path.join(scenario_config_dir, scenario.reference_file)
         prediction_file = os.path.join(scenario_dir, bridge.final_response_file)
         if not os.path.exists(reference_file):
-            logger.info(
-                f"Reference file {reference_file} not found, skipping checking for task success..."
-            )
+            logger.info(f"Reference file {reference_file} not found, skipping checking for task success...")
             is_successful = "N/A"
         elif not os.path.exists(prediction_file):
-            logger.info(
-                f"Prediction file {prediction_file} not found, setting task success to False..."
-            )
+            logger.info(f"Prediction file {prediction_file} not found, setting task success to False...")
             is_successful = False
             success_results.append(False)
+            per_domain_success.setdefault(domain, []).append(False)
         elif judge is not None:
-            result = judge.judge_file(
-                reference=reference_file,
-                prediction=prediction_file,
+            # M1: switched from judge_file to judge_scenario. Same output shape
+            # ({"score", "reason"}) when nl_assertions is None, so the runner's
+            # downstream scoring path is unchanged. Plumbing only — M3 (retail)
+            # populates nl_assertions and consumes per-assertion verdicts.
+            with open(reference_file, "r") as f:
+                ref_content = f.read()
+            with open(prediction_file, "r") as f:
+                pred_content = f.read()
+            # Load the agent's LLM context history written by
+            # bridge._save_user_agent_history at scenario end. Shape is a list
+            # of {role, content} dicts including tool calls — gives the judge
+            # visibility into what the agent actually did, not just its final
+            # response. None if the bridge didn't write the file (e.g. early
+            # crash before history was captured).
+            agent_context_file = os.path.join(scenario_dir, "bot_logs_agent", "llm_context.json")
+            agent_context_history = None
+            if os.path.exists(agent_context_file):
+                with open(agent_context_file, "r") as f:
+                    agent_context_history = json.load(f)
+            else:
+                logger.info(
+                    f"Agent context history file {agent_context_file} not found; "
+                    "calling judge_scenario without context_history."
+                )
+            result = judge.judge_scenario(
+                reference=ref_content,
+                prediction=pred_content,
+                context_history=agent_context_history,
+                nl_assertions=getattr(scenario, "nl_assertions", None),
             )
             with open(os.path.join(scenario_dir, "judge_result.json"), "w") as f:
                 json.dump(result, f, indent=2)
@@ -175,10 +203,9 @@ async def run_dynamic_evaluation(
             else:
                 is_successful = result["score"]
             success_results.append(is_successful)
+            per_domain_success.setdefault(domain, []).append(is_successful)
         else:
-            scenario_disallow_extra = strict_match or getattr(
-                scenario, "disallow_extra_items", False
-            )
+            scenario_disallow_extra = strict_match or getattr(scenario, "disallow_extra_items", False)
             is_successful = check_if_task_success(
                 reference=reference_file,
                 prediction=prediction_file,
@@ -188,6 +215,7 @@ async def run_dynamic_evaluation(
                 disallow_extra_items=scenario_disallow_extra,
             )
             success_results.append(is_successful)
+            per_domain_success.setdefault(domain, []).append(is_successful)
 
         # Collect metrics for this scenario
         metrics = bridge.get_metrics()
@@ -204,9 +232,7 @@ async def run_dynamic_evaluation(
         if expected_db is not None:
             db_path = os.path.join(scenario_dir, bridge.final_scenario_db_file)
             if not os.path.exists(db_path):
-                logger.info(
-                    f"Final scenario DB file {db_path} not found; skipping DB-state match."
-                )
+                logger.info(f"Final scenario DB file {db_path} not found; skipping DB-state match.")
                 metrics["db_state_match"] = "N/A"
             else:
                 with open(db_path, "r") as f:
@@ -217,10 +243,9 @@ async def run_dynamic_evaluation(
                 metrics["db_state_expected_hash"] = expected_hash
                 metrics["db_state_actual_hash"] = actual_hash
                 if not metrics["db_state_match"]:
-                    metrics["db_state_diff"] = compute_db_diff(
-                        expected_db=expected_db, actual_db=actual_db
-                    )
+                    metrics["db_state_diff"] = compute_db_diff(expected_db=expected_db, actual_db=actual_db)
                 db_state_results.append(metrics["db_state_match"])
+                per_domain_db_state.setdefault(domain, []).append(metrics["db_state_match"])
 
         # Save metrics to file
         metrics_file = os.path.join(scenario_dir, "metrics.json")
@@ -260,37 +285,23 @@ async def run_dynamic_evaluation(
             for latency in result["latencies"]:
                 user_text = latency["user_transcript"].replace('"', '""')
                 agent_text = latency["agent_transcript"].replace('"', '""')
-                f.write(
-                    f'"{scenario_name}","{user_text}","{agent_text}",{latency["latency_ms"]:.1f}\n'
-                )
+                f.write(f'"{scenario_name}","{user_text}","{agent_text}",{latency["latency_ms"]:.1f}\n')
 
     # Save summary
     summary_file = os.path.join(output_dir, "all_summary.txt")
-    success_rate = (
-        sum(success_results) / len(success_results) if len(success_results) > 0 else 0
-    )
+    success_rate = sum(success_results) / len(success_results) if len(success_results) > 0 else 0
     # Denominator is "scenarios with expected_scenario_db", not all scenarios.
     # None when no scenario in the run opted into DB-state scoring.
-    db_state_success_rate = (
-        sum(db_state_results) / len(db_state_results) if db_state_results else None
-    )
+    db_state_success_rate = sum(db_state_results) / len(db_state_results) if db_state_results else None
     all_latencies = []
     for result in all_results:
         all_latencies.extend([lat["latency_ms"] for lat in result["latencies"]])
     all_latencies.sort()
     overall_latency_stats = {
         "count": len(all_latencies),
-        "mean_ms": (
-            sum(all_latencies) / len(all_latencies) if len(all_latencies) > 0 else -1
-        ),
-        "p50_ms": (
-            all_latencies[len(all_latencies) // 2] if len(all_latencies) > 0 else -1
-        ),
-        "p95_ms": (
-            all_latencies[int(len(all_latencies) * 0.95)]
-            if len(all_latencies) > 0
-            else -1
-        ),
+        "mean_ms": (sum(all_latencies) / len(all_latencies) if len(all_latencies) > 0 else -1),
+        "p50_ms": (all_latencies[len(all_latencies) // 2] if len(all_latencies) > 0 else -1),
+        "p95_ms": (all_latencies[int(len(all_latencies) * 0.95)] if len(all_latencies) > 0 else -1),
         "min_ms": all_latencies[0] if len(all_latencies) > 0 else -1,
         "max_ms": all_latencies[-1] if len(all_latencies) > 0 else -1,
     }
@@ -316,9 +327,7 @@ async def run_dynamic_evaluation(
             f.write(f"  Turns: {result['total_turns']}\n")
             f.write(f"  Duration: {result['scenario_duration']:.1f}s\n")
             if result["scenario_duration"] > 0:
-                f.write(
-                    f"  Turns/min: {result['total_turns'] / (result['scenario_duration'] / 60):.1f}\n"
-                )
+                f.write(f"  Turns/min: {result['total_turns'] / (result['scenario_duration'] / 60):.1f}\n")
             f.write(f"  Latency Measurements: {stats['count']}\n")
             if stats["count"] > 0:
                 f.write(f"    Mean: {stats['mean_ms']:.1f}ms\n")
@@ -346,14 +355,29 @@ async def run_dynamic_evaluation(
                 f"({sum(success_results):g}/{len(success_results)} scenarios with reference_answer)\n"
             )
         else:
-            f.write(
-                "\n\nOverall Success Rate: N/A (no scenarios had reference_answer for action-list scoring)\n"
-            )
+            f.write("\n\nOverall Success Rate: N/A (no scenarios had reference_answer for action-list scoring)\n")
         if db_state_success_rate is not None:
             f.write(
                 f"DB-State Match Rate: {db_state_success_rate*100:.2f}% "
                 f"({sum(db_state_results)}/{len(db_state_results)} scenarios with expected_scenario_db)\n"
             )
+
+        # Per-domain breakdown — only printed when there's more than one domain in
+        # the run, since a single-domain breakdown duplicates the overall rate.
+        if len(per_domain_success) > 1:
+            f.write("\n\nPer-Domain Success Rate:\n")
+            f.write("-" * 80 + "\n")
+            for d in sorted(per_domain_success):
+                results = per_domain_success[d]
+                rate = sum(results) / len(results) if results else 0
+                f.write(f"  {d}: {rate*100:.2f}% ({sum(results):g}/{len(results)})\n")
+        if len(per_domain_db_state) > 1:
+            f.write("\nPer-Domain DB-State Match Rate:\n")
+            f.write("-" * 80 + "\n")
+            for d in sorted(per_domain_db_state):
+                results = per_domain_db_state[d]
+                rate = sum(results) / len(results) if results else 0
+                f.write(f"  {d}: {rate*100:.2f}% ({sum(results)}/{len(results)})\n")
 
     logger.info(f"{'='*80}")
     logger.info("Evaluation Complete!")
@@ -364,14 +388,22 @@ async def run_dynamic_evaluation(
             f"({sum(success_results):g}/{len(success_results)} scenarios with reference_answer)"
         )
     else:
-        logger.info(
-            "Overall Success Rate: N/A (no scenarios had reference_answer for action-list scoring)"
-        )
+        logger.info("Overall Success Rate: N/A (no scenarios had reference_answer for action-list scoring)")
     if db_state_success_rate is not None:
         logger.info(
             f"DB-State Match Rate: {db_state_success_rate*100:.2f}% "
             f"({sum(db_state_results)}/{len(db_state_results)} scenarios with expected_scenario_db)"
         )
+    if len(per_domain_success) > 1:
+        for d in sorted(per_domain_success):
+            results = per_domain_success[d]
+            rate = sum(results) / len(results) if results else 0
+            logger.info(f"  [{d}] Success Rate: {rate*100:.2f}% ({sum(results):g}/{len(results)})")
+    if len(per_domain_db_state) > 1:
+        for d in sorted(per_domain_db_state):
+            results = per_domain_db_state[d]
+            rate = sum(results) / len(results) if results else 0
+            logger.info(f"  [{d}] DB-State Match: {rate*100:.2f}% ({sum(results)}/{len(results)})")
     logger.info(f"Overall Latency P95: {overall_latency_stats['p95_ms']:.1f}ms")
     logger.info(f"Overall Latency P50: {overall_latency_stats['p50_ms']:.1f}ms")
     logger.info(f"Results saved to: {results_file}")
@@ -380,8 +412,6 @@ async def run_dynamic_evaluation(
     logger.info("\nScenario directories:")
     for result in all_results:
         logger.info(f"  {result['scenario_name']}: {result['scenario_directory']}")
-    logger.info(
-        f"\nTotal: {len(scenarios)} scenarios, {total_turns} turns, {total_duration:.1f}s"
-    )
+    logger.info(f"\nTotal: {len(scenarios)} scenarios, {total_turns} turns, {total_duration:.1f}s")
 
     return all_results
