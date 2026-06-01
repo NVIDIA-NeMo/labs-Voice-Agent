@@ -209,24 +209,24 @@ class EvaAirlineBaseScenario(Scenario):
         return Resources(
             tools={
                 # Read tools (4)
-                "GetReservationTool": {},
-                "GetFlightStatusTool": {},
-                "GetDisruptionInfoTool": {},
-                "SearchRebookingOptionsTool": {},
+                "EvaAirlineGetReservationTool": {},
+                "EvaAirlineGetFlightStatusTool": {},
+                "EvaAirlineGetDisruptionInfoTool": {},
+                "EvaAirlineSearchRebookingOptionsTool": {},
                 # Write tools (10)
-                "RebookFlightTool": {},
-                "CancelReservationTool": {},
-                "ProcessRefundTool": {},
-                "AssignSeatTool": {},
-                "AddBaggageAllowanceTool": {},
-                "AddMealRequestTool": {},
-                "AddToStandbyTool": {},
-                "IssueTravelCreditTool": {},
-                "IssueHotelVoucherTool": {},
-                "IssueMealVoucherTool": {},
+                "EvaAirlineRebookFlightTool": {},
+                "EvaAirlineCancelReservationTool": {},
+                "EvaAirlineProcessRefundTool": {},
+                "EvaAirlineAssignSeatTool": {},
+                "EvaAirlineAddBaggageAllowanceTool": {},
+                "EvaAirlineAddMealRequestTool": {},
+                "EvaAirlineAddToStandbyTool": {},
+                "EvaAirlineIssueTravelCreditTool": {},
+                "EvaAirlineIssueHotelVoucherTool": {},
+                "EvaAirlineIssueMealVoucherTool": {},
                 # System tool (1)
-                "TransferToAgentTool": {},
-                # Harness tool
+                "EvaAirlineTransferToAgentTool": {},
+                # Harness tool (generic, not domain-prefixed)
                 "EndConversationTool": {},
             },
             information=[

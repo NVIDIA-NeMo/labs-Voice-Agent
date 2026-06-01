@@ -52,6 +52,7 @@ from loguru import logger
 
 from nemo_voice_agent.evaluation import get_eval_data_root
 from nemo_voice_agent.evaluation.scenarios.classes import (
+    GENERAL_PROMPT,
     Actions,
     Persona,
     Resources,
@@ -216,6 +217,13 @@ class Tau2BaseScenario(Scenario):
         ``(final_db, final_user_db, recorded_actions)`` tuple. ``final_user_db``
         is ``None`` for single-side domains (airline / retail).
 
+        **DB seeding bypasses ``setup_shared_state`` for the agent side.**
+        ``setup_shared_state`` writes ``state["db_path"]`` (a small string)
+        which the **bot server's** rtvi_actions handler resolves into
+        ``state["db"]`` by loading from disk — that resolution only happens
+        in-process on the bot server, never in this code path. Gold replay
+        runs entirely in-process so we load ``self.db`` directly here.
+
         ``side`` tagging: tool code itself records ``{"type", "args", "result"}``
         with no side field — same ``WriteScenarioTool`` instance could be used
         in either bot. In the live run, the bridge stamps side based on which
@@ -228,9 +236,9 @@ class Tau2BaseScenario(Scenario):
         action just produces an empty/partial reference set, which the runner
         will then report as a mismatch.
         """
-        gold_state: Dict[str, Any] = {"actions": []}
-        self.setup_shared_state(gold_state, side="agent")
+        gold_state: Dict[str, Any] = {"actions": [], "db": copy.deepcopy(self.db)}
         if self.has_user_state:
+            # Telecom: let the subclass populate user-side state (e.g., user_db).
             self.setup_shared_state(gold_state, side="user")
         name_to_tool: Dict[str, Any] = self._build_tool_map(gold_state)
 
@@ -271,51 +279,88 @@ class Tau2BaseScenario(Scenario):
         return self._gold_replay[1]
 
     @cached_property
-    def reference_answer(self) -> List[Dict[str, Any]]:
-        """Recorded actions from the gold replay — secondary action-list signal.
+    def reference_answer(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Wrapped action list — ``{"actions": [...]}`` shape matching eva_airline.
 
-        Same record schema as ``WriteScenarioTool._record_action`` emits during
-        the live run, so the runner does apples-to-apples comparison without
-        schema translation. Tasks with ``evaluation_criteria.actions == []``
-        (e.g. policy-refusal tasks) get an empty list — the agent is expected
-        to make no mutations.
+        Wrapping makes eva and tau2 produce the same reference file shape so a
+        single comparator path handles both: the runner's ``check_if_task_success``
+        Situation 2 (dict ref + list-of-dict pred → match the pred's last dict
+        against the ref) consumes ``{"actions": [...]}`` references uniformly,
+        regardless of domain. The bridge's prediction file ``final_agent_response.json``
+        is shaped ``[{"actions": [...]}]`` (a list-of-1 dict carrying the same
+        actions key), so Situation 2 lines them up cleanly.
+
+        The underlying flat list (the gold-replay's recorded actions, including
+        the ``side`` field stamped by ``_gold_replay``) is identity-shared with
+        ``_gold_replay[2]``. Same record schema as ``WriteScenarioTool._record_action``
+        emits during the live run, so the runner does apples-to-apples comparison
+        without schema translation. Tasks with ``evaluation_criteria.actions == []``
+        (e.g. policy-refusal tasks) get ``{"actions": []}`` — the agent is
+        expected to make no mutations.
         """
-        return self._gold_replay[2]
+        return {"actions": self._gold_replay[2]}
 
     # ---- shared_state seeding ----
 
     def setup_shared_state(self, state: dict, side: str) -> None:
-        """Seed the agent side with a deep copy of the initial DB content.
+        """Seed the agent side with a ``db_path`` pointing at the domain's ``db.json``.
+
+        **Why path-based, not inline:** the runner JSON-serializes ``state``
+        into ``shared_state_init`` and the bridge sends it through the
+        WebSocket inside an ``update_system_prompt`` action. Tau2's airline
+        ``db.json`` is ~7 MB; serialized + protobuf-wrapped it exceeds
+        pipecat's default 1 MB WebSocket frame limit, which closes the
+        connection with code ``1009`` before the action ever reaches the
+        bot. Path-based seeding sends a short string instead; the bot
+        server's ``rtvi_actions.create_update_system_prompt_action`` handler
+        pops ``db_path`` and loads the file from disk on its side (relative
+        to ``EVAL_DATA_ROOT``).
+
+        Gold replay bypasses this entirely — it runs in-process so it loads
+        ``self.db`` directly without going through ``db_path`` resolution.
 
         Subclasses with dual-DB needs (telecom) should override to also handle
         ``side == "user"`` and populate ``state["user_db"]``.
         """
         if side == "agent":
-            state["db"] = copy.deepcopy(self.db)
+            state["db_path"] = f"tau2_{self.domain}/db.json"
 
     # ---- agent prompt ----
 
     def get_agent_prompt(self) -> str:
-        """Use the tau2 ``policy.md`` verbatim as the agent system prompt.
+        """Tau2 ``policy.md`` + a minimal voice-realization addendum.
 
-        **Deliberately bypasses the eva_airline-style Persona/Task/Actions/Resources
-        composition.** Tau2's ``policy.md`` is a single coherent agent system prompt
-        hand-authored by Sierra Research; their published voice-leaderboard numbers
-        assume it goes to the agent verbatim. Splitting it across our structured
-        fields (or letting ``Persona.to_prompt_section`` prepend "You are a {role}
-        named {name}." and append ``GENERAL_PROMPT``) would silently edit the
-        upstream prompt and break score comparability with tau2's paper.
+        **Body (policy.md) is verbatim from tau2.** Sierra Research's published
+        voice-leaderboard numbers assume the policy goes to the agent unchanged,
+        so we don't splice or paraphrase. The abstract ``agent_persona`` /
+        ``agent_task`` / ``agent_actions`` / ``agent_resources`` properties exist
+        as Scenario-contract stubs only — they do NOT participate in prompt
+        assembly (see ``agent_persona`` docstring).
 
-        The abstract ``agent_persona`` / ``agent_task`` / ``agent_actions`` /
-        ``agent_resources`` properties are still implemented below — as minimal
-        stubs that carry metric-slicing info (e.g., ``agent_persona.name`` holds
-        the tau2 persona_name label) but do **not** participate in prompt assembly.
+        **However**, two voice-specific addenda are appended after policy.md:
 
-        Subclasses may compose with a per-scenario suffix (e.g. the current date,
-        a task-specific instruction) by overriding this method and concatenating
-        ``self.policy + extra``.
+        - ``GENERAL_PROMPT``: "spoken aloud" guidance (concise, plain text, spell
+          numbers as words). Without this the LLM produces written-text style
+          replies that don't synthesize well.
+        - ``VOICE_ALPHANUMERIC_RULE``: how to spell confirmation numbers / IDs.
+          Tau2's text-mode agent never needed this — the data round-trips through
+          ASR/TTS in voice mode and benefits significantly.
+
+        These additions don't conflict with policy.md; they're realization
+        guidance, not policy content. They sit in a clearly-marked
+        ``## Voice Realization Notes`` section so a future reader can identify
+        what's verbatim-tau2 vs added.
+
+        Subclasses can further append (e.g. ``self.policy + extra``) by overriding,
+        but must call ``super().get_agent_prompt()`` if they want the addenda.
         """
-        return self.policy
+        return (
+            self.policy
+            + "\n\n## Voice Realization Notes\n\n"
+            + GENERAL_PROMPT.strip()
+            + "\n\n"
+            + VOICE_ALPHANUMERIC_RULE
+        )
 
     # ---- Scenario contract: minimal stubs that honor the interface ----
     # These exist so anything iterating Scenario subclasses (introspection, metric
@@ -374,12 +419,19 @@ class Tau2BaseScenario(Scenario):
 
         - ``known_info`` (who the user is, what they know) → ``background``.
         - ``task_instructions`` (behavioral guidance) → ``personality``.
-        - ``persona_name`` from ``tasks_voice.json`` → ``name`` (metric-slicing label).
+        - ``name`` is deliberately ``None`` — narrative identity (real reservation
+          holder name, user_id, or "you are a frequent flyer" framing) comes
+          entirely from tau2's hand-authored ``known_info``. Setting ``name`` to
+          tau2's ``persona_name`` (e.g. ``"lisa_brenner"``) would prepend an
+          inconsistent "Your name is lisa_brenner." line that contradicts the
+          ``known_info`` content (e.g. ``"Your user id is 'daiki_muller_1116'."``).
+          ``scenario.persona_name`` is still available on the class for
+          metric-slicing per plan §7 Q7; it just doesn't flow into the prompt.
         """
         instructions = self._user_scenario.get("instructions") or {}
         return Persona(
             role="human user calling customer support",
-            name=self.persona_name or "user",
+            name=None,
             background=instructions.get("known_info") or "",
             personality=instructions.get("task_instructions") or "",
         )

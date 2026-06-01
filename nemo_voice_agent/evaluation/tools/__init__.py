@@ -23,21 +23,40 @@ ALL_SCHEMA_TOOLS_FOR_EVAL: Dict[str, StandardSchemaTool] = {}
 
 
 def register_schema_tool_for_eval(cls):
-    """Class decorator that registers a tool class into ALL_STANDARD_SCHEMA_TOOLS.
+    """Class decorator that registers a tool class into ``ALL_SCHEMA_TOOLS_FOR_EVAL``.
 
-    Usage:
-        @register_standard_schema_tool
-        class MyTool:
-            name = "my_tool"
-            ...
+    Registry key is ``cls.name`` if set as a class attribute, otherwise ``cls.__name__``.
 
-    The tool is keyed by cls.name if it exists, otherwise cls.__name__.
+    **Naming convention** (enforced by the collision check below):
+
+    Tool classes must be prefixed with their data source + domain so the global
+    registry doesn't have ambiguous keys. Pattern: ``<SourceDomain><BaseToolName>``.
+
+    Examples:
+        - ``EvaAirlineGetReservationTool``      (source: eva, domain: airline)
+        - ``Tau2AirlineGetUserDetailsTool``     (source: tau2, domain: airline)
+        - ``Tau2RetailGetOrderDetailsTool``     (source: tau2, domain: retail)
+
+    Without the prefix, identically-named tools from different domains
+    (e.g., ``GetReservationTool`` in eva vs ``GetReservationDetailsTool`` in tau2)
+    would silently overwrite each other in this dict at import time, leaving
+    only the last-imported one usable.
+
+    Raises:
+        ValueError: if a tool with the same name is already registered.
     """
     if not issubclass(cls, StandardSchemaTool):
-        raise ValueError(
-            f"Class {cls.__name__} is not a subclass of StandardSchemaTool"
-        )
+        raise ValueError(f"Class {cls.__name__} is not a subclass of StandardSchemaTool")
     key = getattr(cls, "name", cls.__name__)
+    if key in ALL_SCHEMA_TOOLS_FOR_EVAL:
+        existing = ALL_SCHEMA_TOOLS_FOR_EVAL[key]
+        raise ValueError(
+            f"Tool name collision in ALL_SCHEMA_TOOLS_FOR_EVAL: '{key}' is already "
+            f"registered by {existing.__module__}.{existing.__name__}; cannot also "
+            f"register {cls.__module__}.{cls.__name__}. Per the naming convention, "
+            f"prefix tool classes with their data source + domain "
+            f"(e.g., 'Tau2AirlineGetUserDetailsTool', 'EvaAirlineGetReservationTool')."
+        )
     ALL_SCHEMA_TOOLS_FOR_EVAL[key] = cls
     return cls
 
@@ -84,6 +103,7 @@ import nemo_voice_agent.evaluation.tools.basic_tools
 import nemo_voice_agent.evaluation.tools.customer_service_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.eva_airline_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.restaurant_tools  # noqa: E402, F401
+import nemo_voice_agent.evaluation.tools.tau2_airline_tools  # noqa: E402, F401
 
 # Import subpackages to trigger @register_schema_tool_for_eval decorators.
 # Must be at the end to avoid circular imports (data modules import register_schema_tool_for_eval).

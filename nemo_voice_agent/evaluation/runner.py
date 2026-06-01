@@ -26,7 +26,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from nemo_voice_agent.evaluation.bridge import VoiceAgentEvaluationBridge
-from nemo_voice_agent.evaluation.db_hash import compute_db_diff, get_dict_hash
+from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario
 from nemo_voice_agent.evaluation.utils import LLMJudge, check_if_task_success
 from nemo_voice_agent.utils import FileLogger
@@ -226,24 +226,30 @@ async def run_dynamic_evaluation(
 
         # Optional DB-state hash matching — runs alongside action-list scoring as
         # an independent signal. Only fires for scenarios that expose
-        # `expected_scenario_db` (eva_airline). Path-independent: any sequence
-        # of agent actions that lands in the right end state passes.
+        # ``expected_scenario_db`` (eva_airline + every tau2 domain).
+        # Path-independent: any sequence of agent actions that lands in the
+        # right end state passes.
+        #
+        # Hash-only design: the bot server computes ``get_dict_hash(state["db"])``
+        # inside the get_scenario_summary RTVI action and returns the SHA-256
+        # only. The runner compares it to its own ``get_dict_hash(expected_db)``
+        # (computed in-process from gold replay). No inline DB ever crosses the
+        # WebSocket — tau2's 7MB DB would exceed pipecat's 1MB frame limit and
+        # close the connection. ``compute_db_diff`` is no longer invoked on
+        # mismatch since the runner never sees the actual DB. For diagnostics,
+        # rerun and inspect ``bot_logs_agent/`` or add a debug-only retrieval action.
         expected_db = getattr(scenario, "expected_scenario_db", None)
         if expected_db is not None:
-            db_path = os.path.join(scenario_dir, bridge.final_scenario_db_file)
-            if not os.path.exists(db_path):
-                logger.info(f"Final scenario DB file {db_path} not found; skipping DB-state match.")
+            summary = bridge.scenario_summary or {}
+            actual_hash = summary.get("db_hash") if isinstance(summary, dict) else None
+            if actual_hash is None:
+                logger.info("Bot did not report a db_hash in get_scenario_summary; skipping DB-state match.")
                 metrics["db_state_match"] = "N/A"
             else:
-                with open(db_path, "r") as f:
-                    actual_db = json.load(f)
                 expected_hash = get_dict_hash(expected_db)
-                actual_hash = get_dict_hash(actual_db)
                 metrics["db_state_match"] = expected_hash == actual_hash
                 metrics["db_state_expected_hash"] = expected_hash
                 metrics["db_state_actual_hash"] = actual_hash
-                if not metrics["db_state_match"]:
-                    metrics["db_state_diff"] = compute_db_diff(expected_db=expected_db, actual_db=actual_db)
                 db_state_results.append(metrics["db_state_match"])
                 per_domain_db_state.setdefault(domain, []).append(metrics["db_state_match"])
 

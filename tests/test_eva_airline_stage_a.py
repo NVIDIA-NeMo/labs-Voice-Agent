@@ -15,7 +15,7 @@
 """Integration tests for eva_airline Stage A.
 
 Without spinning up an LLM or bot server, exercise:
-    1. ``setup_shared_state`` → action-handler-style fixture load → GetReservationTool dispatch
+    1. ``setup_shared_state`` → action-handler-style fixture load → EvaAirlineGetReservationTool dispatch
        (success, wrong last name, missing reservation, malformed confirmation).
     2. ``WriteAirlineTool._record_action`` accumulates entries in
        ``shared_state["actions"]`` (the bridge pulls these at end-of-scenario;
@@ -32,7 +32,7 @@ from nemo_voice_agent.evaluation import get_eval_data_root
 from nemo_voice_agent.evaluation.scenarios import get_eval_scenario
 from nemo_voice_agent.evaluation.tools.eva_airline_tools import (
     AIRLINE_ACTION_TYPES,
-    GetReservationTool,
+    EvaAirlineGetReservationTool,
     WriteAirlineTool,
 )
 
@@ -84,7 +84,7 @@ def test_action_types_are_one_to_one_with_eva_tool_names():
 
 
 # ---------------------------------------------------------------------------
-# GetReservationTool against the real fixture
+# EvaAirlineGetReservationTool against the real fixture
 # ---------------------------------------------------------------------------
 
 
@@ -95,10 +95,8 @@ def state_1_1_2():
 
 
 def test_get_reservation_success(state_1_1_2):
-    tool = GetReservationTool(shared_state=state_1_1_2)
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"}
-    )
+    tool = EvaAirlineGetReservationTool(shared_state=state_1_1_2)
+    p = _FakeFunctionCallParams({"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "success"
     res = p.result["reservation"]
@@ -107,16 +105,14 @@ def test_get_reservation_success(state_1_1_2):
 
 
 def test_get_reservation_case_insensitive_confirmation(state_1_1_2):
-    tool = GetReservationTool(shared_state=state_1_1_2)
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "zk3ffw", "last_name": "Rodriguez"}
-    )
+    tool = EvaAirlineGetReservationTool(shared_state=state_1_1_2)
+    p = _FakeFunctionCallParams({"confirmation_number": "zk3ffw", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "success"
 
 
 def test_get_reservation_wrong_last_name(state_1_1_2):
-    tool = GetReservationTool(shared_state=state_1_1_2)
+    tool = EvaAirlineGetReservationTool(shared_state=state_1_1_2)
     p = _FakeFunctionCallParams({"confirmation_number": "ZK3FFW", "last_name": "Smith"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "error"
@@ -124,10 +120,8 @@ def test_get_reservation_wrong_last_name(state_1_1_2):
 
 
 def test_get_reservation_missing(state_1_1_2):
-    tool = GetReservationTool(shared_state=state_1_1_2)
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "AAAAAA", "last_name": "Rodriguez"}
-    )
+    tool = EvaAirlineGetReservationTool(shared_state=state_1_1_2)
+    p = _FakeFunctionCallParams({"confirmation_number": "AAAAAA", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "error"
     assert p.result["error_type"] == "not_found"
@@ -135,10 +129,8 @@ def test_get_reservation_missing(state_1_1_2):
 
 def test_get_reservation_malformed_confirmation(state_1_1_2):
     """5-char confirmation fails the Pydantic regex; loud validation error."""
-    tool = GetReservationTool(shared_state=state_1_1_2)
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "ABC12", "last_name": "Rodriguez"}
-    )
+    tool = EvaAirlineGetReservationTool(shared_state=state_1_1_2)
+    p = _FakeFunctionCallParams({"confirmation_number": "ABC12", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "error"
     assert p.result["error_type"] == "invalid_confirmation_number_format"
@@ -146,10 +138,8 @@ def test_get_reservation_malformed_confirmation(state_1_1_2):
 
 def test_get_reservation_db_not_loaded():
     """If shared_state has no db (fixture didn't seed), return a clear error."""
-    tool = GetReservationTool(shared_state={})
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"}
-    )
+    tool = EvaAirlineGetReservationTool(shared_state={})
+    p = _FakeFunctionCallParams({"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "error"
     assert p.result["error_type"] == "db_not_initialized"
@@ -181,12 +171,8 @@ def test_write_airline_tool_records_action():
 
     state: dict = {}
     tool = _Dummy(state)
-    tool._record_action(
-        {"action_type": "rebook_flight", "confirmation_number": "ZK3FFW"}
-    )
-    tool._record_action(
-        {"action_type": "issue_meal_voucher", "confirmation_number": "ZK3FFW"}
-    )
+    tool._record_action({"action_type": "rebook_flight", "confirmation_number": "ZK3FFW"})
+    tool._record_action({"action_type": "issue_meal_voucher", "confirmation_number": "ZK3FFW"})
     assert state["actions"] == [
         {"action_type": "rebook_flight", "confirmation_number": "ZK3FFW"},
         {"action_type": "issue_meal_voucher", "confirmation_number": "ZK3FFW"},

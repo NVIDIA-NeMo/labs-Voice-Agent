@@ -151,29 +151,52 @@ def test_shared_state_ref_default_empty():
     assert ref.state == {}
 
 
-def test_get_scenario_summary_action_returns_state_contents():
+def test_get_scenario_summary_action_returns_actions_and_hash():
+    """Handler returns the action list verbatim + the SHA-256 of the DB.
+
+    The DB itself does NOT travel through the response — only its hash —
+    so the response stays small regardless of DB size (tau2's 7MB DB
+    would exceed the 1MB WebSocket frame limit if sent inline).
+    """
+    from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+
+    db_contents = {"reservations": {"R1": {}}}
     ref = SharedStateRef()
     ref.state = {
         "actions": [{"action_type": "rebook_flight", "x": 1}],
-        "db": {"reservations": {"R1": {}}},
-        "_call_counts": {
-            "rebook_flight": 1
-        },  # internal marker not in returned dict's hash, but visible
+        "db": db_contents,
+        "_call_counts": {"rebook_flight": 1},  # internal marker, not in response
     }
     action = create_get_scenario_summary_action(ref)
     result = asyncio.run(action.handler(None, "context", {}))
     assert result["actions"] == [{"action_type": "rebook_flight", "x": 1}]
-    assert result["db"] == {"reservations": {"R1": {}}}
-    # The "_call_counts" internal marker isn't returned (handler only pulls actions+db)
+    assert result["db_hash"] == get_dict_hash(db_contents)
+    assert result["user_db_hash"] is None  # no user_db in single-side state
+    # Internal markers stay on the bot — not in the response payload.
+    assert "db" not in result
     assert "_call_counts" not in result
 
 
+def test_get_scenario_summary_action_returns_user_db_hash_when_present():
+    """Telecom-style dual-DB: both db_hash and user_db_hash are returned."""
+    from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+
+    db_contents = {"customers": {"C1": {}}}
+    user_db_contents = {"phone_state": {"airplane_mode": False}}
+    ref = SharedStateRef()
+    ref.state = {"actions": [], "db": db_contents, "user_db": user_db_contents}
+    action = create_get_scenario_summary_action(ref)
+    result = asyncio.run(action.handler(None, "context", {}))
+    assert result["db_hash"] == get_dict_hash(db_contents)
+    assert result["user_db_hash"] == get_dict_hash(user_db_contents)
+
+
 def test_get_scenario_summary_action_uninitialized_state():
-    """Empty state ref returns ``{"actions": [], "db": {}}``."""
+    """Empty state returns ``{actions: [], db_hash: None, user_db_hash: None}``."""
     ref = SharedStateRef()
     action = create_get_scenario_summary_action(ref)
     result = asyncio.run(action.handler(None, "context", {}))
-    assert result == {"actions": [], "db": {}}
+    assert result == {"actions": [], "db_hash": None, "user_db_hash": None}
 
 
 def test_get_scenario_summary_action_metadata():

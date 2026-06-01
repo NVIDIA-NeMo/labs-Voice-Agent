@@ -185,11 +185,13 @@ def test_gold_replay_returns_db_user_db_and_actions_consistent_with_replay():
 
 
 def test_expected_dbs_and_reference_answer_are_views_of_same_replay():
-    # Same execution, three cached_property views — must be byte-identical.
+    # Same execution, three cached_property views — DBs are identity-equal,
+    # reference_answer wraps in {"actions": [...]} for eva-compat (the inner
+    # list is still identity-shared with _gold_replay[2]).
     scenario = _FakeTau2Scenario()
     assert scenario.expected_scenario_db is scenario._gold_replay[0]
     assert scenario.expected_user_db is scenario._gold_replay[1]
-    assert scenario.reference_answer is scenario._gold_replay[2]
+    assert scenario.reference_answer["actions"] is scenario._gold_replay[2]
 
 
 def test_gold_replay_stamps_side_from_requestor():
@@ -289,22 +291,54 @@ def test_agent_stubs_dont_raise_notimplementederror():
     assert scenario.agent_resources.tools == {}
 
 
-def test_get_agent_prompt_returns_policy_verbatim_not_via_persona():
+def test_get_agent_prompt_starts_with_policy_md_verbatim():
+    """The agent prompt MUST begin with policy.md unchanged — no Persona prefix.
+
+    Persona.to_prompt_section would have prepended "You are a {role} named {name}."
+    which silently edits tau2's authored prompt and breaks score comparability
+    with their paper. The Persona stubs exist for introspection only.
+    """
     scenario = _FakeTau2Scenario()
     prompt = scenario.get_agent_prompt()
-    # The prompt is policy.md content as-is — no "You are a {role} named {name}." prefix
-    # that Persona.to_prompt_section would have added.
-    assert prompt == "fake policy"
+    # Policy body is verbatim — no "You are a ..." prefix.
+    assert prompt.startswith("fake policy")
     assert "You are a tau2" not in prompt
-    assert "Keep your responses concise" not in prompt  # the GENERAL_PROMPT suffix
+    # Body itself doesn't have "Keep your responses concise" injected mid-text.
+    body_only = prompt.split("## Voice Realization Notes", 1)[0]
+    assert body_only.rstrip() == "fake policy"
+
+
+def test_get_agent_prompt_appends_voice_realization_addenda():
+    """Voice rules (GENERAL_PROMPT + VOICE_ALPHANUMERIC_RULE) are appended after policy.md.
+
+    Without these, the LLM produces written-text style replies that synthesize
+    badly through TTS and don't spell alphanumeric IDs character-by-character.
+    Live run on tau2_airline__7 (2026-05-29) showed the agent reverting to eva-style
+    last-name auth without these rules.
+    """
+    scenario = _FakeTau2Scenario()
+    prompt = scenario.get_agent_prompt()
+    assert "## Voice Realization Notes" in prompt
+    assert "Keep your responses concise" in prompt  # from GENERAL_PROMPT
+    assert "spell each character one at a time" in prompt  # from VOICE_ALPHANUMERIC_RULE
+    # Addenda come AFTER the policy body, not before.
+    assert prompt.index("fake policy") < prompt.index("## Voice Realization Notes")
 
 
 def test_user_persona_pulled_from_user_scenario_instructions():
+    """``user_persona.name`` is intentionally None for tau2 — narrative identity
+    comes from ``known_info`` in ``background``. tau2's ``persona_name``
+    (e.g. ``"lisa_brenner"``) is an acoustic-slicing label, not a narrative name,
+    and lives on the scenario class via ``scenario.persona_name``.
+    """
     scenario = _StructuredUserScenario()
     persona = scenario.user_persona
-    assert persona.name == "emma_kim"
+    assert persona.name is None
     assert "Emma Kim" in persona.background
     assert "Insist on a refund" in persona.personality
+    # persona_name (class-level metric-slicing label) still available — just
+    # not flowed into the prompt.
+    assert scenario.persona_name == "emma_kim"
 
 
 def test_user_task_uses_reason_for_call():

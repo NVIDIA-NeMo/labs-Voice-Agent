@@ -62,9 +62,7 @@ from nemo_voice_agent.utils.audio import AudioStream, NoiseConfig
 # RTVI message type constants - automatically adapts to pipecat changes
 RTVI_BOT_STOPPED_SPEAKING = RTVIBotStoppedSpeakingMessage().type
 RTVI_BOT_STARTED_SPEAKING = RTVIBotStartedSpeakingMessage().type
-RTVI_BOT_TRANSCRIPTION = RTVIBotTranscriptionMessage(
-    data=RTVITextMessageData(text="")
-).type
+RTVI_BOT_TRANSCRIPTION = RTVIBotTranscriptionMessage(data=RTVITextMessageData(text="")).type
 RTVI_BOT_TTS_TEXT = RTVIBotTTSTextMessage(data=RTVITextMessageData(text="")).type
 RTVI_BOT_SERVER_MESSAGE = RTVIServerMessage(data=RTVITextMessageData(text="")).type
 
@@ -115,9 +113,7 @@ class EvaluationMetrics:
     user_current_transcript: str = ""
     agent_current_transcript: str = ""
 
-    thread_start_timestamp: Optional[float] = (
-        None  # When routing threads start (for conversation log timing)
-    )
+    thread_start_timestamp: Optional[float] = None  # When routing threads start (for conversation log timing)
 
     # Segment tracking for segLST output
     segments: List[SegmentEntry] = field(default_factory=list)
@@ -263,9 +259,7 @@ class VoiceAgentEvaluationBridge:
         # This maintains 16ms average per frame while varying the pattern
 
         # Grace period and timeout configuration for send loops
-        self.grace_period = (
-            grace_period  # Extra time to drain audio after main duration
-        )
+        self.grace_period = grace_period  # Extra time to drain audio after main duration
 
         self.turn_start_offset_secs = turn_start_offset_secs
         self.turn_end_offset_secs = turn_end_offset_secs
@@ -301,15 +295,9 @@ class VoiceAgentEvaluationBridge:
 
         # Bridge resamples at source (like browser client) for better quality
         # This avoids STT having to resample small chunks
-        logger.info(
-            "Bridge configured to resample audio at source (simulating browser behavior)"
-        )
-        logger.info(
-            f"  User: {self.user_output_sample_rate}Hz (TTS) → {self.agent_input_sample_rate}Hz (STT)"
-        )
-        logger.info(
-            f"  Agent: {self.agent_output_sample_rate}Hz (TTS) → {self.user_input_sample_rate}Hz (STT)"
-        )
+        logger.info("Bridge configured to resample audio at source (simulating browser behavior)")
+        logger.info(f"  User: {self.user_output_sample_rate}Hz (TTS) → {self.agent_input_sample_rate}Hz (STT)")
+        logger.info(f"  Agent: {self.agent_output_sample_rate}Hz (TTS) → {self.user_input_sample_rate}Hz (STT)")
 
         # Log burst mode configuration
         if self.use_burst_mode:
@@ -317,19 +305,15 @@ class VoiceAgentEvaluationBridge:
                 f"Random burst mode enabled: {self.burst_size_range[0]}-{self.burst_size_range[1]} "
                 f"frames per burst, {self.burst_delay_ms}ms between frames"
             )
-            min_pause = (
-                self.burst_size_range[0] * self.audio_chunk_in_seconds * 1000
-            ) - ((self.burst_size_range[0] - 1) * self.burst_delay_ms)
-            max_pause = (
-                self.burst_size_range[1] * self.audio_chunk_in_seconds * 1000
-            ) - ((self.burst_size_range[1] - 1) * self.burst_delay_ms)
-            logger.info(
-                f"  Pause range: {min_pause:.0f}-{max_pause:.0f}ms (calculated to maintain 16ms avg)"
+            min_pause = (self.burst_size_range[0] * self.audio_chunk_in_seconds * 1000) - (
+                (self.burst_size_range[0] - 1) * self.burst_delay_ms
             )
+            max_pause = (self.burst_size_range[1] * self.audio_chunk_in_seconds * 1000) - (
+                (self.burst_size_range[1] - 1) * self.burst_delay_ms
+            )
+            logger.info(f"  Pause range: {min_pause:.0f}-{max_pause:.0f}ms (calculated to maintain 16ms avg)")
         else:
-            logger.info(
-                f"Steady mode: sending at constant {self.audio_chunk_in_seconds * 1000:.0f}ms intervals"
-            )
+            logger.info(f"Steady mode: sending at constant {self.audio_chunk_in_seconds * 1000:.0f}ms intervals")
 
         # Initialize output directory and log files
         if output_dir:
@@ -338,11 +322,16 @@ class VoiceAgentEvaluationBridge:
         self.bridge_ready = False
         self.needs_reset = False
         self.final_response_file = "final_agent_response.json"
-        self.final_scenario_db_file = "final_scenario_db.json"
+        # Hash-only post-scenario record. The actual DB stays on the bot server;
+        # only the SHA-256 of the canonicalized DB travels through the WebSocket.
+        # Written to disk for traceability; the runner reads it via the
+        # ``scenario_summary["db_hash"]`` field in memory.
+        self.final_scenario_db_hash_file = "final_scenario_db_hash.txt"
         self.user_context_history = None
         self.agent_context_history = None
         # Pulled at end-of-scenario via the get_scenario_summary RTVI action.
-        # Shape: {"actions": [...], "db": {...}} or None if pull didn't happen.
+        # Shape: {"actions": [...], "db_hash": "<sha>"|None, "user_db_hash": "<sha>"|None}
+        # or None if pull didn't happen.
         self.scenario_summary: Optional[dict] = None
 
     def init_output_dir(
@@ -352,9 +341,7 @@ class VoiceAgentEvaluationBridge:
         log_level: str = "DEBUG",
     ):
         """Initialize the output directory and all derived log/audio file paths."""
-        logger.info(
-            f"Initializing output directory: {output_dir}, session name: {scenario_name}"
-        )
+        logger.info(f"Initializing output directory: {output_dir}, session name: {scenario_name}")
         self.output_dir = output_dir
         self.scenario_name = scenario_name
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -364,9 +351,7 @@ class VoiceAgentEvaluationBridge:
 
         # Initialize logging for this scenario
         bridge_log_file = str(Path(output_dir) / "bridge_log.txt")
-        setup_logging(
-            log_file=bridge_log_file, log_level=log_level
-        )  # Update logging to write to this file
+        setup_logging(log_file=bridge_log_file, log_level=log_level)  # Update logging to write to this file
 
         try:
             with open(self.log_file, "w") as f:
@@ -398,9 +383,7 @@ class VoiceAgentEvaluationBridge:
         """Prepare the bridge for a scenario"""
 
         # Initialize output directory for this scenario
-        self.init_output_dir(
-            output_dir, scenario_name=scenario["name"], log_level=log_level
-        )
+        self.init_output_dir(output_dir, scenario_name=scenario["name"], log_level=log_level)
 
         # Reset bridge before each scenario, and create connection to update the prompts
         await self.connect()
@@ -442,9 +425,7 @@ class VoiceAgentEvaluationBridge:
             return 0.0
         return timestamp - self.metrics.thread_start_timestamp
 
-    def _finalize_speaker_turn(
-        self, speaker: str, timestamp: float
-    ) -> Optional[SegmentEntry]:
+    def _finalize_speaker_turn(self, speaker: str, timestamp: float) -> Optional[SegmentEntry]:
         """
         Finalize the current in-progress turn for the given speaker.
 
@@ -530,9 +511,7 @@ class VoiceAgentEvaluationBridge:
             except (OSError, websockets.exceptions.WebSocketException) as e:
                 if attempt < max_retries - 1:
                     wait_time = retry_delay * (2**attempt)
-                    logger.warning(
-                        f"User connection failed (attempt {attempt + 1}/{max_retries}): {e}"
-                    )
+                    logger.warning(f"User connection failed (attempt {attempt + 1}/{max_retries}): {e}")
                     logger.info(f"Retrying in {wait_time:.1f}s...")
                     await asyncio.sleep(wait_time)
                 else:
@@ -551,15 +530,11 @@ class VoiceAgentEvaluationBridge:
             except (OSError, websockets.exceptions.WebSocketException) as e:
                 if attempt < max_retries - 1:
                     wait_time = retry_delay * (2**attempt)
-                    logger.warning(
-                        f"Agent connection failed (attempt {attempt + 1}/{max_retries}): {e}"
-                    )
+                    logger.warning(f"Agent connection failed (attempt {attempt + 1}/{max_retries}): {e}")
                     logger.info(f"Retrying in {wait_time:.1f}s...")
                     await asyncio.sleep(wait_time)
                 else:
-                    logger.error(
-                        f"Agent connection failed after {max_retries} attempts"
-                    )
+                    logger.error(f"Agent connection failed after {max_retries} attempts")
                     raise
 
         # Send RTVI client-ready handshake to both agents
@@ -686,9 +661,7 @@ class VoiceAgentEvaluationBridge:
                 bot server before tools are instantiated. Default ``"{}"`` (empty
                 dict) preserves prior behavior.
         """
-        logger.info(
-            f"Updating agent prompt: {prompt[:100]}..., tools: {tools[:100]}..."
-        )
+        logger.info(f"Updating agent prompt: {prompt[:100]}..., tools: {tools[:100]}...")
 
         # Create RTVI action message
         action_msg = {
@@ -729,9 +702,7 @@ class VoiceAgentEvaluationBridge:
             agent_name: Name of agent (for logging)
         """
         if not ws:
-            logger.info(
-                f"[{agent_name.capitalize()}] Websocket is not connected, skipping reset"
-            )
+            logger.info(f"[{agent_name.capitalize()}] Websocket is not connected, skipping reset")
             return
 
         reset_msg = {
@@ -840,10 +811,7 @@ class VoiceAgentEvaluationBridge:
                     if isinstance(msg, str):
                         data = json.loads(msg)
 
-                        if (
-                            data.get("data", {}).get("message_type")
-                            == "action-response"
-                        ):
+                        if data.get("data", {}).get("message_type") == "action-response":
                             result = data.get("data", {}).get("result", {})
                             return result.get("success", False) or result is True
                 except asyncio.TimeoutError:
@@ -943,9 +911,7 @@ class VoiceAgentEvaluationBridge:
 
         loop = asyncio.get_event_loop()
         start_time = loop.time()
-        target_time = (
-            start_time  # Track target time incrementally for numerical stability
-        )
+        target_time = start_time  # Track target time incrementally for numerical stability
 
         try:
             while not self.stop_event.is_set():
@@ -953,9 +919,7 @@ class VoiceAgentEvaluationBridge:
                 elapsed = current_time - start_time
                 in_grace_period = elapsed > duration
                 if elapsed > (duration + self.grace_period):
-                    logger.info(
-                        f"[{direction}] Grace period expired after {elapsed:.1f}s, stopping"
-                    )
+                    logger.info(f"[{direction}] Grace period expired after {elapsed:.1f}s, stopping")
                     break
 
                 # Empty all available audio from thread-safe queue (non-blocking)
@@ -980,9 +944,7 @@ class VoiceAgentEvaluationBridge:
                 # Burst sending: send N frames rapidly, then pause
                 # Steady mode is just burst_size=1 (send 1 frame, pause 16ms, repeat)
                 burst_size = (
-                    random.randint(self.burst_size_range[0], self.burst_size_range[1])
-                    if self.use_burst_mode
-                    else 1
+                    random.randint(self.burst_size_range[0], self.burst_size_range[1]) if self.use_burst_mode else 1
                 )
 
                 # Send burst frames
@@ -1019,9 +981,7 @@ class VoiceAgentEvaluationBridge:
                 wait_duration = max(0.001, target_time - current_time)
 
                 if wait_duration < 0.001:
-                    logger.debug(
-                        f"[{direction}] Behind schedule by {-wait_duration:.3f}s"
-                    )
+                    logger.debug(f"[{direction}] Behind schedule by {-wait_duration:.3f}s")
 
                 # if self.use_burst_mode:
                 #     logger.debug(
@@ -1066,9 +1026,7 @@ class VoiceAgentEvaluationBridge:
         async def user_loop():
             try:
                 # Connect to user WebSocket
-                async with websockets.connect(
-                    self.user_url, ping_timeout=None
-                ) as user_ws:
+                async with websockets.connect(self.user_url, ping_timeout=None) as user_ws:
                     self.user_ws = user_ws
                     logger.info(f"[USER THREAD] Connected to user: {self.user_url}")
 
@@ -1092,22 +1050,15 @@ class VoiceAgentEvaluationBridge:
                                 # Receive from user, put raw audio into queue
                                 self._receive_user_to_queue(user_ws, duration),
                                 # Get raw audio from queue, send to user (handles its own timeout)
-                                self._send_agent_to_user(
-                                    user_ws, agent_to_user_stream, duration
-                                ),
+                                self._send_agent_to_user(user_ws, agent_to_user_stream, duration),
                             ),
-                            timeout=duration
-                            + self.grace_period,  # Extra 1s buffer for cleanup
+                            timeout=duration + self.grace_period,  # Extra 1s buffer for cleanup
                         )
                     except asyncio.TimeoutError:
-                        logger.info(
-                            "[USER THREAD] Overall timeout reached, stopping receive loop"
-                        )
+                        logger.info("[USER THREAD] Overall timeout reached, stopping receive loop")
 
                     # at the end, send an RTVI message to the user to tell it to return the context history
-                    self.user_context_history = await self._retrieve_context_history(
-                        user_ws
-                    )
+                    self.user_context_history = await self._retrieve_context_history(user_ws)
 
             except Exception as e:
                 logger.error(f"[USER THREAD] Error: {e}", exc_info=True)
@@ -1141,9 +1092,7 @@ class VoiceAgentEvaluationBridge:
         async def agent_loop():
             try:
                 # Connect to agent WebSocket
-                async with websockets.connect(
-                    self.agent_url, ping_timeout=None
-                ) as agent_ws:
+                async with websockets.connect(self.agent_url, ping_timeout=None) as agent_ws:
                     self.agent_ws = agent_ws
                     logger.info(f"[AGENT THREAD] Connected to agent: {self.agent_url}")
 
@@ -1163,9 +1112,7 @@ class VoiceAgentEvaluationBridge:
                     # Send kickoff message after a delay
                     async def send_kickoff():
                         await asyncio.sleep(1)
-                        logger.info(
-                            "[AGENT THREAD] Sending kickoff message to agent..."
-                        )
+                        logger.info("[AGENT THREAD] Sending kickoff message to agent...")
                         await self.send_text_to_agent("Hello")
 
                     # Run bidirectional tasks (send loop manages timeout + grace period)
@@ -1174,9 +1121,7 @@ class VoiceAgentEvaluationBridge:
                         await asyncio.wait_for(
                             asyncio.gather(
                                 # Get raw audio from queue, send to agent (handles its own timeout)
-                                self._send_user_to_agent(
-                                    agent_ws, user_to_agent_stream, duration
-                                ),
+                                self._send_user_to_agent(agent_ws, user_to_agent_stream, duration),
                                 # Receive from agent, put raw audio into queue
                                 self._receive_agent_to_queue(agent_ws, duration),
                                 send_kickoff(),
@@ -1184,18 +1129,12 @@ class VoiceAgentEvaluationBridge:
                             timeout=duration + self.grace_period,
                         )
                     except asyncio.TimeoutError:
-                        logger.info(
-                            "[AGENT THREAD] Overall timeout reached, stopping receive loop"
-                        )
+                        logger.info("[AGENT THREAD] Overall timeout reached, stopping receive loop")
 
                     # at the end, send RTVI messages to the agent to fetch the
                     # context history and scenario summary (actions + final DB)
-                    self.agent_context_history = await self._retrieve_context_history(
-                        agent_ws
-                    )
-                    self.scenario_summary = await self._retrieve_scenario_summary(
-                        agent_ws
-                    )
+                    self.agent_context_history = await self._retrieve_context_history(agent_ws)
+                    self.scenario_summary = await self._retrieve_scenario_summary(agent_ws)
 
             except Exception as e:
                 logger.error(f"[AGENT THREAD] Error: {e}", exc_info=True)
@@ -1218,9 +1157,7 @@ class VoiceAgentEvaluationBridge:
                 where `context` the LLM context history, and `logs` is the bot server logs.
         """
         if not ws:
-            logger.warning(
-                "[CONTEXT HISTORY] WebSocket is not connected, skipping context history retrieval"
-            )
+            logger.warning("[CONTEXT HISTORY] WebSocket is not connected, skipping context history retrieval")
             return {}
 
         try:
@@ -1240,9 +1177,7 @@ class VoiceAgentEvaluationBridge:
             serialized = await self.serializer.serialize(msg_frame)
             await ws.send(serialized)
 
-            logger.info(
-                "[CONTEXT HISTORY] Sent get_context_history action, waiting for response..."
-            )
+            logger.info("[CONTEXT HISTORY] Sent get_context_history action, waiting for response...")
 
             # Wait for the action-response with a longer timeout since log content can be large
             timeout = 15.0
@@ -1260,11 +1195,7 @@ class VoiceAgentEvaluationBridge:
                     if not (hasattr(frame, "message") and frame.message):
                         continue
 
-                    data = (
-                        json.loads(frame.message)
-                        if isinstance(frame.message, str)
-                        else frame.message
-                    )
+                    data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
 
                     if data.get("type") == "action-response":
                         result = data.get("data", {}).get("result", {})
@@ -1277,9 +1208,7 @@ class VoiceAgentEvaluationBridge:
                 except asyncio.TimeoutError:
                     continue
 
-            logger.warning(
-                "[CONTEXT HISTORY] Timeout waiting for context history response"
-            )
+            logger.warning("[CONTEXT HISTORY] Timeout waiting for context history response")
             return {}
         except Exception as e:
             logger.warning(f"[CONTEXT HISTORY] Error retrieving context history: {e}")
@@ -1297,9 +1226,7 @@ class VoiceAgentEvaluationBridge:
             the bot didn't register the action (legacy bot) or timed out.
         """
         if not ws:
-            logger.warning(
-                "[SCENARIO SUMMARY] WebSocket is not connected, skipping scenario summary retrieval"
-            )
+            logger.warning("[SCENARIO SUMMARY] WebSocket is not connected, skipping scenario summary retrieval")
             return {}
 
         try:
@@ -1316,9 +1243,7 @@ class VoiceAgentEvaluationBridge:
             msg_frame = MessageFrame(data=json.dumps(action_msg))
             serialized = await self.serializer.serialize(msg_frame)
             await ws.send(serialized)
-            logger.info(
-                "[SCENARIO SUMMARY] Sent get_scenario_summary action, waiting for response..."
-            )
+            logger.info("[SCENARIO SUMMARY] Sent get_scenario_summary action, waiting for response...")
 
             timeout = 15.0
             start_time = asyncio.get_event_loop().time()
@@ -1330,11 +1255,7 @@ class VoiceAgentEvaluationBridge:
                         continue
                     if not (hasattr(frame, "message") and frame.message):
                         continue
-                    data = (
-                        json.loads(frame.message)
-                        if isinstance(frame.message, str)
-                        else frame.message
-                    )
+                    data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
                     if data.get("type") == "action-response":
                         result = data.get("data", {}).get("result", {})
                         actions = result.get("actions", [])
@@ -1347,9 +1268,7 @@ class VoiceAgentEvaluationBridge:
                 except asyncio.TimeoutError:
                     continue
 
-            logger.warning(
-                "[SCENARIO SUMMARY] Timeout waiting for scenario summary response"
-            )
+            logger.warning("[SCENARIO SUMMARY] Timeout waiting for scenario summary response")
             return {}
         except Exception as e:
             logger.warning(f"[SCENARIO SUMMARY] Error retrieving scenario summary: {e}")
@@ -1365,9 +1284,7 @@ class VoiceAgentEvaluationBridge:
             monitor_func=self._monitor_user_message,
         )
 
-    async def _send_agent_to_user(
-        self, user_ws, audio_stream: AudioStream, duration: int
-    ):
+    async def _send_agent_to_user(self, user_ws, audio_stream: AudioStream, duration: int):
         """Get audio from queue, process through AudioStream, send to user WebSocket."""
         return await self._send_audio_stream(
             audio_stream=audio_stream,
@@ -1378,9 +1295,7 @@ class VoiceAgentEvaluationBridge:
             sent_chunks_list=self.sent_to_user_chunks,
         )
 
-    async def _send_user_to_agent(
-        self, agent_ws, audio_stream: AudioStream, duration: int
-    ):
+    async def _send_user_to_agent(self, agent_ws, audio_stream: AudioStream, duration: int):
         """Get audio from queue, process through AudioStream, send to agent WebSocket."""
         return await self._send_audio_stream(
             audio_stream=audio_stream,
@@ -1410,9 +1325,7 @@ class VoiceAgentEvaluationBridge:
             duration: Duration of the evaluation in seconds
         """
         if not self.bridge_ready:
-            raise RuntimeError(
-                "[RUN SCENARIO] Bridge is not ready, please call `bridge.prepare_for_scenario()` first"
-            )
+            raise RuntimeError("[RUN SCENARIO] Bridge is not ready, please call `bridge.prepare_for_scenario()` first")
         if self.needs_reset:
             raise RuntimeError(
                 "Bridge needs reset before running a new scenario, "
@@ -1478,9 +1391,7 @@ class VoiceAgentEvaluationBridge:
         self._save_audio_log()
         self._save_seglst()
         self._save_user_agent_history()
-        logger.info(
-            f"[RUN SCENARIO] Saved audio and logs to: {Path(self.log_file).parent}"
-        )
+        logger.info(f"[RUN SCENARIO] Saved audio and logs to: {Path(self.log_file).parent}")
         self.needs_reset = True
         self.bridge_ready = False
 
@@ -1517,9 +1428,7 @@ class VoiceAgentEvaluationBridge:
                 else:
                     latency_ms = None
 
-            log_entry = self._format_turn_log(
-                seg.speaker, seg.transcript, start, end, latency_ms
-            )
+            log_entry = self._format_turn_log(seg.speaker, seg.transcript, start, end, latency_ms)
             self.metrics.log_entries.append((start, log_entry))
 
     def _save_conversation_log(self):
@@ -1539,9 +1448,7 @@ class VoiceAgentEvaluationBridge:
                 f.write(f"End time: {self.metrics.end_time.isoformat()}\n")
                 f.write(f"Stop reason: {self.stop_reason}\n")
                 f.write("=" * 80 + "\n")
-            logger.info(
-                f"[LOG] Wrote {len(sorted_entries)} conversation turns to log file (sorted by time)"
-            )
+            logger.info(f"[LOG] Wrote {len(sorted_entries)} conversation turns to log file (sorted by time)")
         except Exception as e:
             logger.error(f"[LOG] Error writing sorted log entries: {e}")
 
@@ -1583,12 +1490,8 @@ class VoiceAgentEvaluationBridge:
         # Resample both channels to output_sample_rate (typically 16kHz)
         target_rate = self.output_sample_rate
 
-        channel0 = self._resample_audio(
-            channel0, self.agent_input_sample_rate, target_rate
-        )
-        channel1 = self._resample_audio(
-            channel1, self.user_input_sample_rate, target_rate
-        )
+        channel0 = self._resample_audio(channel0, self.agent_input_sample_rate, target_rate)
+        channel1 = self._resample_audio(channel1, self.user_input_sample_rate, target_rate)
 
         # Pad shorter channel with silence to match longer one
         max_length = max(len(channel0), len(channel1))
@@ -1623,17 +1526,11 @@ class VoiceAgentEvaluationBridge:
 
         duration = max_length / target_rate
         logger.info(f"[DEBUG] Saved stereo bridge audio: {output_path}")
-        logger.info(
-            f"        Left (USER→AGENT): {len(self.sent_to_agent_chunks)} chunks"
-        )
-        logger.info(
-            f"        Right (AGENT→USER): {len(self.sent_to_user_chunks)} chunks"
-        )
+        logger.info(f"        Left (USER→AGENT): {len(self.sent_to_agent_chunks)} chunks")
+        logger.info(f"        Right (AGENT→USER): {len(self.sent_to_user_chunks)} chunks")
         logger.info(f"        Duration: {duration:.2f}s, Sample rate: {target_rate}Hz")
 
-    def _save_bot_server_history(
-        self, output_dir: Union[str, Path], context_history: dict, role: str = ""
-    ):
+    def _save_bot_server_history(self, output_dir: Union[str, Path], context_history: dict, role: str = ""):
         """Save the bot server context history to a JSON file under the output directory."""
         if not output_dir:
             return
@@ -1646,9 +1543,7 @@ class VoiceAgentEvaluationBridge:
             try:
                 context = json.loads(context)
             except Exception as e:
-                logger.error(
-                    f"Error loading context into json object: {e}. Context: {context}"
-                )
+                logger.error(f"Error loading context into json object: {e}. Context: {context}")
 
         file_name = f"llm_context_{role}.json" if role else "llm_context.json"
         context_file = output_dir / file_name
@@ -1687,11 +1582,7 @@ class VoiceAgentEvaluationBridge:
         if not (hasattr(frame, "message") and frame.message):
             return
 
-        data = (
-            json.loads(frame.message)
-            if isinstance(frame.message, str)
-            else frame.message
-        )
+        data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
         message_type = data.get("type", "")
 
         if message_type == RTVI_BOT_STARTED_SPEAKING:
@@ -1747,10 +1638,7 @@ class VoiceAgentEvaluationBridge:
 
         # Handle audio frames — measure latency on first agent audio after user stops
         if hasattr(frame, "audio") and frame.audio:
-            if (
-                self.metrics.waiting_for_agent_response
-                and self.metrics.user_last_audio_time
-            ):
+            if self.metrics.waiting_for_agent_response and self.metrics.user_last_audio_time:
                 latency_ms = (timestamp - self.metrics.user_last_audio_time) * 1000
                 latency = ResponseLatency(
                     user_stop_time=self.metrics.user_last_audio_time,
@@ -1769,11 +1657,7 @@ class VoiceAgentEvaluationBridge:
         if not (hasattr(frame, "message") and frame.message):
             return
 
-        data = (
-            json.loads(frame.message)
-            if isinstance(frame.message, str)
-            else frame.message
-        )
+        data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
         message_type = data.get("type", "")
 
         if message_type == RTVI_BOT_STARTED_SPEAKING:
@@ -1802,10 +1686,7 @@ class VoiceAgentEvaluationBridge:
             segment = self._finalize_speaker_turn("agent", timestamp)
             if segment:
                 # Update the last latency measurement with agent transcript
-                if (
-                    self.metrics.latencies
-                    and not self.metrics.latencies[-1].agent_transcript
-                ):
+                if self.metrics.latencies and not self.metrics.latencies[-1].agent_transcript:
                     self.metrics.latencies[-1].agent_transcript = segment.transcript
 
                 self.metrics.turns.append(
@@ -1820,25 +1701,15 @@ class VoiceAgentEvaluationBridge:
             text = str(data.get("data", {}).get("text", ""))
             if text:
                 logger.info(f"[AGENT SERVER MESSAGE] {text}")
-                if text.startswith(FINAL_RESPONSE_START_TAG) and text.endswith(
-                    FINAL_RESPONSE_END_TAG
-                ):
-                    final_response = text[
-                        len(FINAL_RESPONSE_START_TAG) : -len(FINAL_RESPONSE_END_TAG)
-                    ]
+                if text.startswith(FINAL_RESPONSE_START_TAG) and text.endswith(FINAL_RESPONSE_END_TAG):
+                    final_response = text[len(FINAL_RESPONSE_START_TAG) : -len(FINAL_RESPONSE_END_TAG)]
                     logger.info(f"[AGENT FINAL RESPONSE] {final_response}")
                     self.metrics.agent_final_response.append(final_response)
                     self.metrics.agent_final_response_time.append(timestamp)
                     logger.info("[AGENT] Final response saved")
-                if text.startswith(EXIT_MESSAGE_START_TAG) and text.endswith(
-                    EXIT_MESSAGE_END_TAG
-                ):
-                    exit_message = text[
-                        len(EXIT_MESSAGE_START_TAG) : -len(EXIT_MESSAGE_END_TAG)
-                    ]
-                    logger.info(
-                        f"[AGENT] Exit message received, signaling early stop. Exit message: {exit_message}"
-                    )
+                if text.startswith(EXIT_MESSAGE_START_TAG) and text.endswith(EXIT_MESSAGE_END_TAG):
+                    exit_message = text[len(EXIT_MESSAGE_START_TAG) : -len(EXIT_MESSAGE_END_TAG)]
+                    logger.info(f"[AGENT] Exit message received, signaling early stop. Exit message: {exit_message}")
                     self.stop_reason = STOP_REASON_EXIT
                     self.stop_event.set()
                     self.metrics.end_time = datetime.now()
@@ -1864,7 +1735,13 @@ class VoiceAgentEvaluationBridge:
 
         # Pull path
         if self.scenario_summary and self.scenario_summary.get("actions") is not None:
-            results = [{"actions": self.scenario_summary.get("actions", [])}]
+            # Stamp side="agent" on each pulled action. Plan §4.2: side-tagging
+            # happens at merge time in the bridge, since the bridge is the single
+            # point of truth for which WebSocket each record came from. Tool code
+            # has no notion of side. Telecom (M5) will add a symmetric pull from
+            # ws_user that stamps side="user" on user-side records before merging.
+            actions = [{**a, "side": "agent"} for a in self.scenario_summary.get("actions", [])]
+            results = [{"actions": actions}]
             source = "pull"
         else:
             # Push fallback
@@ -1886,29 +1763,40 @@ class VoiceAgentEvaluationBridge:
             logger.error(f"Error saving final agent response: {e}")
 
     def _save_scenario_db(self):
-        """Save the post-run scenario DB to ``final_scenario_db.json``.
+        """Save the post-run scenario DB hash(es) to ``final_scenario_db_hash.txt``.
 
-        Sourced from the bridge-pulled ``scenario_summary["db"]``. Skipped if
-        no pull happened (legacy bots) or the DB is empty. Used by the runner's
-        DB-state hash matching when ``scenario.expected_scenario_db`` is set.
+        Sourced from the bridge-pulled ``scenario_summary["db_hash"]`` (and
+        ``["user_db_hash"]`` for telecom). Skipped if no pull happened (legacy
+        bots) or the hash is None. Used by the runner's DB-state matching
+        when ``scenario.expected_scenario_db`` is set — the runner compares
+        the expected-DB hash (computed in-process from its own gold replay)
+        against the bot's reported hash.
+
+        Hash-only design: the full DB stays on the bot server. See
+        ``create_get_scenario_summary_action`` for the rationale (WebSocket
+        frame size limit; tau2's DB is 7 MB while pipecat's default frame
+        cap is 1 MB).
         """
         if not self.output_dir:
             return
         if not self.scenario_summary:
             return
-        db = self.scenario_summary.get("db")
-        if not db:
+        db_hash = self.scenario_summary.get("db_hash")
+        user_db_hash = self.scenario_summary.get("user_db_hash")
+        if db_hash is None and user_db_hash is None:
             return
 
-        output_path = Path(self.output_dir) / self.final_scenario_db_file
+        output_path = Path(self.output_dir) / self.final_scenario_db_hash_file
         try:
-            with open(output_path, "w") as f:
-                json.dump(db, f, indent=2)
-            logger.info(
-                f"Final scenario DB saved: {output_path} ({len(db)} top-level keys)"
-            )
+            lines = []
+            if db_hash is not None:
+                lines.append(f"db_hash: {db_hash}")
+            if user_db_hash is not None:
+                lines.append(f"user_db_hash: {user_db_hash}")
+            output_path.write_text("\n".join(lines) + "\n")
+            logger.info(f"Final scenario DB hash(es) saved: {output_path}")
         except Exception as e:
-            logger.error(f"Error saving final scenario DB: {e}")
+            logger.error(f"Error saving final scenario DB hash: {e}")
 
     def _save_seglst(self):
         """Save segLST transcript file with offset-adjusted timestamps."""
@@ -1940,9 +1828,7 @@ class VoiceAgentEvaluationBridge:
             with open(self.seglst_file, "w") as f:
                 json.dump(segments_json, f, indent=2)
 
-            logger.info(
-                f"segLST saved: {self.seglst_file} ({len(sorted_segments)} segments)"
-            )
+            logger.info(f"segLST saved: {self.seglst_file} ({len(sorted_segments)} segments)")
 
         except Exception as e:
             logger.error(f"Error saving segLST: {e}")

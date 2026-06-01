@@ -87,9 +87,7 @@ def create_reset_context_action(
     whatever ``update_system_prompt`` last wrote.
     """
 
-    async def handler(
-        rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]
-    ) -> bool:
+    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> bool:
         logger.info("Resetting conversation context...")
         try:
             await _maybe_end_task(task_ref)
@@ -152,9 +150,7 @@ def create_update_system_prompt_action(
     read the same dict. Only consumed when tool calling is enabled.
     """
 
-    async def handler(
-        rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]
-    ) -> bool:
+    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> bool:
         try:
             await _maybe_end_task(task_ref)
 
@@ -193,9 +189,7 @@ def create_update_system_prompt_action(
                 # content (state["db"]) is the primary path; path-based loading
                 # (state["db_path"]) is a fallback for fixtures too large to
                 # ship inline.
-                shared_state: dict = json.loads(
-                    arguments.get("shared_state_init", "{}")
-                )
+                shared_state: dict = json.loads(arguments.get("shared_state_init", "{}"))
                 if "db_path" in shared_state:
                     # Lazy import to avoid coupling rtvi_actions to evaluation/.
                     from nemo_voice_agent.evaluation import get_eval_data_root
@@ -208,9 +202,7 @@ def create_update_system_prompt_action(
                             f"Check EVAL_DATA_ROOT (currently resolves to {get_eval_data_root()})."
                         )
                     shared_state["db"] = json.loads(full_path.read_text())
-                    logger.info(
-                        f"Loaded scenario DB from {full_path} into shared_state['db']"
-                    )
+                    logger.info(f"Loaded scenario DB from {full_path} into shared_state['db']")
 
                 # Publish the dict so sibling action handlers (e.g. get_scenario_summary)
                 # can read the same shared_state without needing tool references.
@@ -218,9 +210,7 @@ def create_update_system_prompt_action(
                     shared_state_ref.state = shared_state
 
                 new_schema_tools = [
-                    tool_factory(
-                        tool_name, rtvi=rtvi, shared_state=shared_state, **tool_args
-                    )
+                    tool_factory(tool_name, rtvi=rtvi, shared_state=shared_state, **tool_args)
                     for tool_name, tool_args in new_tools.items()
                 ]
                 register_schema_tools(
@@ -236,9 +226,7 @@ def create_update_system_prompt_action(
                 )
 
             logger.debug(f"user context tools: {user_aggregator._context.tools}")
-            logger.debug(
-                f"assistant context tools: {assistant_aggregator._context.tools}"
-            )
+            logger.debug(f"assistant context tools: {assistant_aggregator._context.tools}")
 
             _reset_services(resettable_services)
 
@@ -277,9 +265,7 @@ def create_get_context_history_action(
     the shape evaluation clients expect.
     """
 
-    async def handler(
-        rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]
-    ) -> dict:
+    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
         await _maybe_end_task(task_ref)
         try:
             messages = assistant_aggregator._context.get_messages()
@@ -303,30 +289,55 @@ def create_get_scenario_summary_action(
 ) -> RTVIAction:
     """Build the ``context.get_scenario_summary`` action.
 
-    Returns ``{"actions": [...], "db": {...}}`` from the per-scenario shared
-    state. Auto-aggregating tools (e.g. ``WriteAirlineTool`` subclasses)
-    populate ``shared_state["actions"]`` on each successful mutation; the
-    fixture-loading flow populates ``shared_state["db"]``. The bridge calls
-    this action after ``<exit>`` (or scenario timeout) to retrieve the final
-    artifacts without depending on any LLM-callable summary tool.
+    Returns ``{"actions": [...], "db_hash": "<sha>", "user_db_hash": "<sha>"|None}``
+    from the per-scenario shared state. Auto-aggregating tools (e.g.
+    ``WriteScenarioTool`` subclasses) populate ``shared_state["actions"]`` on
+    each successful mutation; the inbound fixture-loading flow populates
+    ``shared_state["db"]`` (and, for telecom, ``shared_state["user_db"]``).
+    The bridge calls this action after ``<exit>`` (or scenario timeout) to
+    retrieve the final artifacts without depending on any LLM-callable
+    summary tool.
+
+    **Hash-only outbound (not inline DB).** The DB itself stays on the bot
+    server; only the SHA-256 of the canonicalized DB travels through the
+    WebSocket. This keeps the response payload under a few KB regardless of
+    DB size (tau2's airline DB is 7 MB inline; serialized via the previous
+    inline-DB scheme it exceeded pipecat's 1 MB WebSocket frame limit and
+    closed the connection with code 1009). Both the bot and the runner
+    import the same ``get_dict_hash`` from ``nemo_voice_agent.evaluation.db_hash``
+    so the canonical hashing rule (float normalization, order-independent
+    list fields, excluded keys) is identical on both sides.
+
+    Trade-off: the runner can no longer compute a per-field
+    ``compute_db_diff`` on mismatch (it never sees the actual DB). For
+    debugging mismatches, rerun with a future ``get_db_for_debug`` action
+    (TODO) that returns the inline DB only when explicitly requested.
 
     Mirrors how ``get_context_history`` is consumed by the bridge.
     """
+    # Lazy import to avoid coupling rtvi_actions (a pipecat-side module) to
+    # the evaluation/ subpackage at module-load time.
+    from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 
-    async def handler(
-        rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]
-    ) -> dict:
+    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
         try:
             actions = shared_state_ref.state.get("actions", [])
-            db = shared_state_ref.state.get("db", {})
+            db = shared_state_ref.state.get("db") or {}
+            user_db = shared_state_ref.state.get("user_db")  # telecom-only
+            db_hash = get_dict_hash(db) if db else None
+            user_db_hash = get_dict_hash(user_db) if user_db else None
             logger.debug(
                 f"Returning scenario summary: {len(actions)} action(s), "
-                f"db has {len(db)} top-level keys"
+                f"db_hash={db_hash}, user_db_hash={user_db_hash}"
             )
-            return {"actions": actions, "db": db}
+            return {
+                "actions": actions,
+                "db_hash": db_hash,
+                "user_db_hash": user_db_hash,
+            }
         except Exception as e:
             logger.error(f"Error getting scenario summary: {e}")
-            return {"actions": [], "db": {}}
+            return {"actions": [], "db_hash": None, "user_db_hash": None}
 
     return RTVIAction(
         service="context",

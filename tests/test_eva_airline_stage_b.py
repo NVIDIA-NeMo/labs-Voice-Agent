@@ -43,26 +43,24 @@ def _all_eva_airline_scenarios() -> list:
     by the parametrized tests below as soon as it's registered in
     ``scenarios/data/__init__.py``. No hardcoded list to maintain.
     """
-    return sorted(
-        name for name in list_eval_scenarios() if name.startswith("eva_airline__")
-    )
+    return sorted(name for name in list_eval_scenarios() if name.startswith("eva_airline__"))
 
 
 from nemo_voice_agent.evaluation.tools.eva_airline_tools import (
     AIRLINE_ACTION_TYPES,
-    AddBaggageAllowanceTool,
-    AddMealRequestTool,
-    AddToStandbyTool,
-    AssignSeatTool,
-    CancelReservationTool,
-    GetReservationTool,
-    IssueHotelVoucherTool,
-    IssueMealVoucherTool,
-    IssueTravelCreditTool,
-    ProcessRefundTool,
-    RebookFlightTool,
-    SearchRebookingOptionsTool,
-    TransferToAgentTool,
+    EvaAirlineAddBaggageAllowanceTool,
+    EvaAirlineAddMealRequestTool,
+    EvaAirlineAddToStandbyTool,
+    EvaAirlineAssignSeatTool,
+    EvaAirlineCancelReservationTool,
+    EvaAirlineGetReservationTool,
+    EvaAirlineIssueHotelVoucherTool,
+    EvaAirlineIssueMealVoucherTool,
+    EvaAirlineIssueTravelCreditTool,
+    EvaAirlineProcessRefundTool,
+    EvaAirlineRebookFlightTool,
+    EvaAirlineSearchRebookingOptionsTool,
+    EvaAirlineTransferToAgentTool,
 )
 from nemo_voice_agent.evaluation.utils import check_if_task_success
 
@@ -105,14 +103,14 @@ def test_voluntary_date_change_happy_path_matches_reference():
 
     # Auth
     auth_result = _run(
-        GetReservationTool(shared_state=state),
+        EvaAirlineGetReservationTool(shared_state=state),
         {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"},
     )
     assert auth_result["status"] == "success"
 
     # Search the constraint-meeting flight
     search_result = _run(
-        SearchRebookingOptionsTool(shared_state=state),
+        EvaAirlineSearchRebookingOptionsTool(shared_state=state),
         {
             "origin": "AUS",
             "destination": "LAX",
@@ -131,7 +129,7 @@ def test_voluntary_date_change_happy_path_matches_reference():
 
     # Rebook
     rebook_result = _run(
-        RebookFlightTool(shared_state=state),
+        EvaAirlineRebookFlightTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -145,7 +143,7 @@ def test_voluntary_date_change_happy_path_matches_reference():
 
     # Assign window seat
     seat_result = _run(
-        AssignSeatTool(shared_state=state),
+        EvaAirlineAssignSeatTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -196,7 +194,7 @@ def test_cancel_then_process_refund_records_two_actions():
 
     # Cancel under 24-hour rule (waives fee, refund eligible)
     cancel = _run(
-        CancelReservationTool(shared_state=state),
+        EvaAirlineCancelReservationTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -210,7 +208,7 @@ def test_cancel_then_process_refund_records_two_actions():
 
     # Refund (fare portion)
     refund = _run(
-        ProcessRefundTool(shared_state=state),
+        EvaAirlineProcessRefundTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "refund_amount": refund_eligible,
@@ -246,7 +244,7 @@ def test_cancel_then_process_refund_records_two_actions():
 def test_meal_voucher_amount_mapping(voucher_reason, expected_amount):
     state = _load_fixture_state("1.1.2")
     result = _run(
-        IssueMealVoucherTool(shared_state=state),
+        EvaAirlineIssueMealVoucherTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -263,7 +261,7 @@ def test_meal_voucher_amount_mapping(voucher_reason, expected_amount):
 def test_hotel_voucher_rejects_more_than_3_nights():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        IssueHotelVoucherTool(shared_state=state),
+        EvaAirlineIssueHotelVoucherTool(shared_state=state),
         {"confirmation_number": "ZK3FFW", "passenger_id": "PAX001", "num_nights": 4},
     )
     assert result["status"] == "error"
@@ -280,7 +278,7 @@ def test_hotel_voucher_rejects_more_than_3_nights():
 def test_transfer_to_agent_records_action():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        TransferToAgentTool(shared_state=state),
+        EvaAirlineTransferToAgentTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "transfer_reason": "passenger_requested",
@@ -334,7 +332,7 @@ def test_failed_validation_does_not_record_action():
     state = _load_fixture_state("1.1.2")
     # Malformed journey_id (doesn't match the FL_<flight>_<YYYYMMDD> pattern)
     result = _run(
-        CancelReservationTool(shared_state=state),
+        EvaAirlineCancelReservationTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "not-a-valid-journey-id",
@@ -348,7 +346,7 @@ def test_failed_validation_does_not_record_action():
 
 def test_db_not_loaded_does_not_record_action():
     """Without shared_state['db'], every tool returns db_not_initialized."""
-    tool = RebookFlightTool(shared_state={})
+    tool = EvaAirlineRebookFlightTool(shared_state={})
     result = _run(
         tool,
         {
@@ -371,7 +369,7 @@ def test_db_not_loaded_does_not_record_action():
 def test_add_baggage_allowance_records_action():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        AddBaggageAllowanceTool(shared_state=state),
+        EvaAirlineAddBaggageAllowanceTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -386,7 +384,7 @@ def test_add_baggage_allowance_records_action():
 def test_add_meal_request_records_action():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        AddMealRequestTool(shared_state=state),
+        EvaAirlineAddMealRequestTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -403,7 +401,7 @@ def test_add_to_standby_validates_passenger_ids():
     state = _load_fixture_state("1.1.2")
     # PAX999 doesn't exist on this reservation
     result = _run(
-        AddToStandbyTool(shared_state=state),
+        EvaAirlineAddToStandbyTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -417,7 +415,7 @@ def test_add_to_standby_validates_passenger_ids():
 def test_issue_travel_credit_records_action():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        IssueTravelCreditTool(shared_state=state),
+        EvaAirlineIssueTravelCreditTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -465,11 +463,11 @@ def test_voluntary_date_change_happy_path_db_state_match():
 
     # Execute the canonical happy path
     _run(
-        GetReservationTool(shared_state=state),
+        EvaAirlineGetReservationTool(shared_state=state),
         {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"},
     )
     _run(
-        RebookFlightTool(shared_state=state),
+        EvaAirlineRebookFlightTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -479,7 +477,7 @@ def test_voluntary_date_change_happy_path_db_state_match():
         },
     )
     _run(
-        AssignSeatTool(shared_state=state),
+        EvaAirlineAssignSeatTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -493,9 +491,7 @@ def test_voluntary_date_change_happy_path_db_state_match():
     expected_hash = get_dict_hash(scenario.expected_scenario_db)
     actual_hash = get_dict_hash(state["db"])
     if expected_hash != actual_hash:
-        diff = compute_db_diff(
-            expected_db=scenario.expected_scenario_db, actual_db=state["db"]
-        )
+        diff = compute_db_diff(expected_db=scenario.expected_scenario_db, actual_db=state["db"])
         pytest.fail(
             f"DB-state hash mismatch on canonical path. Diff: {json.dumps(diff, indent=2, default=str)[:2000]}"
         )
@@ -510,13 +506,13 @@ def test_messy_path_db_state_diverges_from_expected():
     """
     state = _load_fixture_state("1.1.2")
     _run(
-        GetReservationTool(shared_state=state),
+        EvaAirlineGetReservationTool(shared_state=state),
         {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"},
     )
 
     # First rebook
     _run(
-        RebookFlightTool(shared_state=state),
+        EvaAirlineRebookFlightTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -527,7 +523,7 @@ def test_messy_path_db_state_diverges_from_expected():
     )
     # Cancel that booking (now we have: original cancelled + rebook cancelled)
     _run(
-        CancelReservationTool(shared_state=state),
+        EvaAirlineCancelReservationTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK703_20260325",
@@ -536,7 +532,7 @@ def test_messy_path_db_state_diverges_from_expected():
     )
     # Rebook again (now: original cancelled + intermediate cancelled + new confirmed)
     _run(
-        RebookFlightTool(shared_state=state),
+        EvaAirlineRebookFlightTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK703_20260325",
@@ -546,7 +542,7 @@ def test_messy_path_db_state_diverges_from_expected():
         },
     )
     _run(
-        AssignSeatTool(shared_state=state),
+        EvaAirlineAssignSeatTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -558,17 +554,11 @@ def test_messy_path_db_state_diverges_from_expected():
     scenario = get_eval_scenario("eva_airline__voluntary_date_change")
     expected_hash = get_dict_hash(scenario.expected_scenario_db)
     actual_hash = get_dict_hash(state["db"])
-    assert (
-        expected_hash != actual_hash
-    ), "messy path should diverge from expected, but hashed identical"
+    assert expected_hash != actual_hash, "messy path should diverge from expected, but hashed identical"
 
     # The diff should specifically show extra/modified bookings on the reservation
-    diff = compute_db_diff(
-        expected_db=scenario.expected_scenario_db, actual_db=state["db"]
-    )
-    assert (
-        "reservations" in diff["tables_modified"]
-    ), f"expected reservations diff, got: {diff}"
+    diff = compute_db_diff(expected_db=scenario.expected_scenario_db, actual_db=state["db"])
+    assert "reservations" in diff["tables_modified"], f"expected reservations diff, got: {diff}"
 
 
 # ---------------------------------------------------------------------------
@@ -589,9 +579,7 @@ def test_eva_airline_scenarios_register_and_load(scenario_name):
     assert s is not None, f"{scenario_name} is not registered"
     assert s.eva_id, f"{scenario_name}: must declare a non-empty eva_id"
     expected = s.expected_scenario_db
-    assert isinstance(
-        expected, dict
-    ), f"{scenario_name}: expected_scenario_db is not a dict"
+    assert isinstance(expected, dict), f"{scenario_name}: expected_scenario_db is not a dict"
     for table in ("_current_date", "reservations", "journeys"):
         assert table in expected, f"{scenario_name}: expected_db missing {table!r}"
 
@@ -608,12 +596,8 @@ def test_eva_airline_scenarios_have_spell_out_rule_in_both_prompts(scenario_name
     user_prompt = s.get_user_prompt()
     # The literal example "L, A, X" from VOICE_ALPHANUMERIC_RULE — its presence
     # confirms the rule itself is included (no scenario uses "L, A, X" by accident).
-    assert (
-        "L, A, X" in agent_prompt
-    ), f"{scenario_name}: spell-out rule missing from agent prompt"
-    assert (
-        "L, A, X" in user_prompt
-    ), f"{scenario_name}: spell-out rule missing from user prompt"
+    assert "L, A, X" in agent_prompt, f"{scenario_name}: spell-out rule missing from agent prompt"
+    assert "L, A, X" in user_prompt, f"{scenario_name}: spell-out rule missing from user prompt"
 
 
 if __name__ == "__main__":

@@ -222,7 +222,7 @@ class WriteAirlineTool(WriteScenarioTool):
 
 
 @register_schema_tool_for_eval
-class GetReservationTool(StandardSchemaTool):
+class EvaAirlineGetReservationTool(StandardSchemaTool):
     """Retrieve flight reservation using confirmation number and passenger last name.
 
     Authentication entry point — typically the first tool called per scenario.
@@ -301,7 +301,7 @@ class GetReservationTool(StandardSchemaTool):
 
 
 @register_schema_tool_for_eval
-class GetFlightStatusTool(StandardSchemaTool):
+class EvaAirlineGetFlightStatusTool(StandardSchemaTool):
     """Get current status of a specific flight (delays, cancellations, gate)."""
 
     DESCRIPTION = (
@@ -375,7 +375,7 @@ class GetFlightStatusTool(StandardSchemaTool):
 
 
 @register_schema_tool_for_eval
-class GetDisruptionInfoTool(StandardSchemaTool):
+class EvaAirlineGetDisruptionInfoTool(StandardSchemaTool):
     """Get IRROPS disruption details (cause, fee waiver, refund eligibility)."""
 
     DESCRIPTION = (
@@ -444,7 +444,7 @@ class GetDisruptionInfoTool(StandardSchemaTool):
 
 
 @register_schema_tool_for_eval
-class SearchRebookingOptionsTool(StandardSchemaTool):
+class EvaAirlineSearchRebookingOptionsTool(StandardSchemaTool):
     """Search available flights (origin/destination/date) filtered by seat availability."""
 
     DESCRIPTION = (
@@ -581,7 +581,7 @@ class SearchRebookingOptionsTool(StandardSchemaTool):
 
 
 @register_schema_tool_for_eval
-class RebookFlightTool(WriteAirlineTool):
+class EvaAirlineRebookFlightTool(WriteAirlineTool):
     """Rebook passenger(s) to a new flight (voluntary, IRROPS, partial)."""
 
     DESCRIPTION = (
@@ -895,7 +895,7 @@ class RebookFlightTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class CancelReservationTool(WriteAirlineTool):
+class EvaAirlineCancelReservationTool(WriteAirlineTool):
     """Cancel a flight booking (single journey within a reservation)."""
 
     DESCRIPTION = (
@@ -1021,7 +1021,7 @@ class CancelReservationTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class ProcessRefundTool(WriteAirlineTool):
+class EvaAirlineProcessRefundTool(WriteAirlineTool):
     """Process a refund. Call once per refund type (fare and ancillary fees are separate)."""
 
     DESCRIPTION = (
@@ -1124,7 +1124,7 @@ class ProcessRefundTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class AssignSeatTool(WriteAirlineTool):
+class EvaAirlineAssignSeatTool(WriteAirlineTool):
     """Assign a seat (window/aisle/middle/no_preference) on a specific flight segment."""
 
     DESCRIPTION = (
@@ -1291,7 +1291,7 @@ class AssignSeatTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class AddBaggageAllowanceTool(WriteAirlineTool):
+class EvaAirlineAddBaggageAllowanceTool(WriteAirlineTool):
     """Add checked baggage (0-5 bags) to a flight segment."""
 
     DESCRIPTION = "Add checked baggage allowance to a flight segment. Specify the exact number of " "bags (0-5)."
@@ -1396,7 +1396,7 @@ class AddBaggageAllowanceTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class AddMealRequestTool(WriteAirlineTool):
+class EvaAirlineAddMealRequestTool(WriteAirlineTool):
     """Add or update a special meal request for a passenger on a flight segment."""
 
     DESCRIPTION = "Add or update special meal request for a passenger on a flight segment."
@@ -1501,7 +1501,7 @@ class AddMealRequestTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class AddToStandbyTool(WriteAirlineTool):
+class EvaAirlineAddToStandbyTool(WriteAirlineTool):
     """Add passenger(s) to standby list for a flight."""
 
     DESCRIPTION = "Add passenger(s) to the standby list for a flight."
@@ -1632,7 +1632,7 @@ class AddToStandbyTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class IssueTravelCreditTool(WriteAirlineTool):
+class EvaAirlineIssueTravelCreditTool(WriteAirlineTool):
     """Issue a travel credit (future-flight voucher) to a passenger."""
 
     DESCRIPTION = (
@@ -1730,7 +1730,7 @@ class IssueTravelCreditTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class IssueHotelVoucherTool(WriteAirlineTool):
+class EvaAirlineIssueHotelVoucherTool(WriteAirlineTool):
     """Issue a hotel voucher (1-3 nights) for IRROPS overnight situations."""
 
     DESCRIPTION = (
@@ -1825,7 +1825,7 @@ class IssueHotelVoucherTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class IssueMealVoucherTool(WriteAirlineTool):
+class EvaAirlineIssueMealVoucherTool(WriteAirlineTool):
     """Issue a meal voucher for delays/cancellations that qualify per policy."""
 
     DESCRIPTION = (
@@ -1934,7 +1934,7 @@ class IssueMealVoucherTool(WriteAirlineTool):
 
 
 @register_schema_tool_for_eval
-class TransferToAgentTool(WriteAirlineTool):
+class EvaAirlineTransferToAgentTool(WriteAirlineTool):
     """Transfer the call to a live human agent (recordable terminal action)."""
 
     DESCRIPTION = (

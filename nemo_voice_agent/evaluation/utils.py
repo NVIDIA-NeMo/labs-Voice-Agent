@@ -346,7 +346,7 @@ Judge how well the prediction matches the reference in terms of correctness and 
 is not present in the reference, it means that the field is not required to check and can be ignored. 
 Return a score between 0 and 1, where 0 means completely wrong and 1 means a perfect match.
 You MUST return ONLY a JSON object in the following format, with no other text:
-{"score": <score>, "reason": "<brief explanation>"}"""
+{"score": <score>, "reason": "<explanation of the score>"}"""
 
     SCENARIO_PROMPT = """You are a judge that evaluates voice agent performance in a conversational scenario.
 You will be given some or all of the following XML-tagged inputs (only those available are included):
@@ -366,7 +366,7 @@ Evaluate how well the agent performed by considering:
 
 Return a score between 0 and 1, where 0 means complete failure and 1 means perfect performance.
 You MUST return ONLY a JSON object in the following format, with no other text:
-{"score": <score>, "reason": "<brief explanation>"}"""
+{"score": <score>, "reason": "<explanation of the score>"}"""
 
     def __init__(
         self,

@@ -72,9 +72,9 @@ class Persona:
     """
 
     role: str
-    name: str
-    background: str
-    personality: str
+    name: Optional[str] = None
+    background: Optional[str] = None
+    personality: Optional[str] = None
     language: Optional[str] = None
     accent: Optional[str] = None
     behavior_config: Optional[Dict[str, Any]] = None
@@ -82,7 +82,9 @@ class Persona:
 
     def to_prompt_section(self) -> str:
         """Render this persona as a prompt section."""
-        lines = [f"You are a {self.role} named {self.name}."]
+        lines = [f"You are a {self.role}. "]
+        if self.name:
+            lines.append(f"Your name is {self.name}. ")
         general_prompt = (
             "You need to stick to your designated role and complete your task "
             f"by following the information below. {GENERAL_PROMPT}"
