@@ -108,15 +108,23 @@ def _db_not_initialized() -> dict:
 
 
 def _get_user_dict(db: dict, user_id: str) -> Optional[dict]:
-    return db.get("users", {}).get(user_id)
+    # tau2 user_ids are lowercase in db.json ("daiki_muller_1116"). Voice ASR
+    # can emit mixed/upper case ("Daiki_Muller_1116"); normalize so the lookup
+    # succeeds without wasting tool-call retries.
+    return db.get("users", {}).get(user_id.lower() if user_id else user_id)
 
 
 def _get_reservation_dict(db: dict, reservation_id: str) -> Optional[dict]:
-    return db.get("reservations", {}).get(reservation_id)
+    # tau2 reservation_ids are uppercase in db.json ("XEHM4B"). Voice ASR
+    # often emits lowercase ("xehm4b") after letter-by-letter spelling;
+    # normalize to avoid spurious "not found" responses.
+    return db.get("reservations", {}).get(reservation_id.upper() if reservation_id else reservation_id)
 
 
 def _get_flight_dict(db: dict, flight_number: str) -> Optional[dict]:
-    return db.get("flights", {}).get(flight_number)
+    # Flight numbers are uppercase in db.json ("HAT001"). Same ASR-casing
+    # concern as reservation_id.
+    return db.get("flights", {}).get(flight_number.upper() if flight_number else flight_number)
 
 
 def _get_flight_instance_dict(db: dict, flight_number: str, date: str) -> Optional[dict]:

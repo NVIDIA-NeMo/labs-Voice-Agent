@@ -128,11 +128,11 @@ The eval framework has evolved beyond a simple `<final_response>` capture. The p
 
 **Bridge-pull summary (not LLM-callable).** End-of-scenario state is **pulled** by the bridge after `<exit>`, not pushed by an LLM tool call. The bridge calls `_retrieve_scenario_summary(ws)` in `nemo_voice_agent/evaluation/bridge.py`, which sends an RTVI `get_scenario_summary` action; the handler (`create_get_scenario_summary_action`) returns `{"actions": [...], "db": {...}}` read straight from `shared_state`. This eliminates the previous double-emit / forgot-to-call / mid-conversation-call class of bugs. **Don't reintroduce a `SubmitTransactionSummaryTool`-style LLM-callable summary.**
 
-**DB-state hash matching (primary signal).** When a scenario sets `expected_scenario_db` (a `cached_property` on the class), the runner ignores the action-list comparator and instead hashes the agent's final `shared_state["db"]` via `get_dict_hash` (`nemo_voice_agent/evaluation/db_hash.py`, adapted from eva 0.1.3 / tau-2-bench style). The hash normalizes floats (`1.0 → 1`), `"none" → None`, and uses `ORDER_INDEPENDENT_LIST_FIELDS` for set-like fields; `HASH_EXCLUDED_KEYS = {"session"}` skips per-run noise. On mismatch the runner writes a structured `db_state_diff` (tables → records → fields) via `compute_db_diff` for debugging. The action-list (`reference_answer`) remains as a secondary signal. Aggregate: `db_state_success_rate` printed by the runner.
+**DB-state hash matching (primary signal).** When a scenario sets `expected_scenario_db` (a `cached_property` on the class), the runner compares **hashes** — the actual DB never crosses the WebSocket. The bot computes `get_dict_hash(shared_state["db"])` inside the `get_scenario_summary` RTVI handler and returns the SHA-256 string; the runner computes `get_dict_hash(scenario.expected_scenario_db)` from its in-process gold replay and compares strings. Same module on both sides (`nemo_voice_agent/evaluation/db_hash.py`), so the canonicalization (float `1.0 → 1`, `"none" → None`, `ORDER_INDEPENDENT_LIST_FIELDS`, `HASH_EXCLUDED_KEYS = {"session"}`) is identical. `compute_db_diff` is **no longer invoked on mismatch** — the runner has no actual DB to diff. The action-list (`reference_answer`) remains as a secondary signal. Aggregate: `db_state_success_rate` printed by the runner.
 
-**Auto-aggregated action records.** Each write tool extends `WriteAirlineTool` (in `nemo_voice_agent/evaluation/tools/eva_airline_tools.py`) and calls `self._record_action({...})` on success — the record is appended to `shared_state["actions"]` so the bridge picks it up via the pull. The action `type` must come from the locked `AIRLINE_ACTION_TYPES` vocabulary (1:1 with eva tool names). Read tools don't record.
+**Auto-aggregated action records.** Each write tool extends `WriteScenarioTool` (in `nemo_voice_agent/evaluation/tools/_write_tool_base.py`) and calls `self._record_action({...})` on success — the record is appended to `shared_state["actions"]` so the bridge picks it up via the pull. Each domain ships its own action-type vocabulary (`AIRLINE_ACTION_TYPES` for eva, `TAU2_AIRLINE_ACTION_TYPES` for tau2) and binds it via the subclass's `ACTION_TYPES` ClassVar. Read tools don't record. The bridge stamps `side="agent"` on each pulled record at write time (telecom M5 will add the symmetric `side="user"` stamp once user-side pull lands).
 
-**Symmetric DB transfer.** The bridge sends the full original DB content (not a path) to the agent via `shared_state_init`. The agent mutates its in-memory copy through tools; the bridge pulls the full mutated DB back at end-of-scenario. There is also a `db_path` fallback for legacy paths — see the `state["db_path"]` branch in the action handler.
+**DB transfer — path-in, hash-out.** Outbound to the bot: the bridge sends either inline DB content (small per-scenario fixtures, eva_airline) or a path string in `shared_state_init` (`state["db_path"]`, tau2 — its 7 MB shared DB exceeds pipecat's 1 MB WebSocket frame cap and triggers `ConnectionClosedError 1009` when inlined). The bot's `update_system_prompt` handler resolves `state["db_path"]` against `EVAL_DATA_ROOT` and replaces it with `state["db"]` before tools instantiate. Inbound from the bot: `get_scenario_summary` returns only `{actions, db_hash, user_db_hash}` — never the inline DB. Same `db_hash` module imported on both sides ensures byte-identical hashing.
 
 ### `eva_airline` domain layout
 
@@ -165,6 +165,42 @@ python <your-scratch-dir>/generate_eva_airline_scaffolds.py --major 4 \
 
 The generator emits one `@register_eval_scenario` class per dataset entry, applies the alphanumeric voice rule, and reads `must_have_criteria` / `negotiation_behavior` / `edge_cases` into guidelines. **The output is a starting point, not final** — hand-review prose and prune negotiation/edge-case bullets before committing.
 
+### Tool naming convention (registry collision prevention)
+
+All LLM-exposed tool classes are prefixed with `<DataSource><Domain>` (e.g., `EvaAirlineGetReservationTool`, `Tau2AirlineGetUserDetailsTool`, future `Tau2RetailGetOrderDetailsTool`). `register_schema_tool_for_eval` (`tools/__init__.py`) **raises `ValueError` on duplicate keys** — the global `ALL_SCHEMA_TOOLS_FOR_EVAL` registry is keyed by `cls.__name__`, so without prefixes, identically-named tools from different domains silently overwrote each other at import time. Generic harness tools in `basic_tools.py` / `rtvi_control.py` (`EndConversationTool`, `SendScenarioSummaryTool`) keep unprefixed names since they're shared across domains.
+
+The **action record's `name` field** stays as the upstream method name (`get_user_details`, `book_reservation`, …) for paper-comparable scoring. Class names exist for the registry; action names exist for action-list comparison. Domain base scenarios (e.g., `TAU2_AIRLINE_TOOL_NAME_TO_CLASS`) map between them.
+
+### `tau2_airline` domain layout
+
+```
+nemo_voice_agent/evaluation/
+├── scenarios/data/
+│   ├── tau2_common.py                  # Tau2BaseScenario + _load_tau2_voice_task_index
+│   └── tau2_airline/                   # package
+│       ├── __init__.py
+│       ├── base.py                     # Tau2AirlineBaseScenario
+│       └── group_{0..4}x.py            # 50 auto-scaffolded scenarios (10 each)
+├── tools/tau2_airline_tools.py         # 14 Tau2Airline*Tool ports under _Tau2InvokeMixin
+└── tools/tau2_airline_params.py        # Pydantic mirror of data_model.py + 14 tool-arg schemas
+```
+
+`Tau2AirlineBaseScenario` derives everything from a single `tau2_id` class attribute. Subclasses only declare `name` and `tau2_id`; `current_date` / `db` / `policy` / `tool_map` / `expected_scenario_db` / `reference_answer` / `user_persona` are all cached_property views on the upstream data.
+
+**get_agent_prompt is policy.md verbatim + a small "## Voice Realization Notes" appendage** (`GENERAL_PROMPT` + `VOICE_ALPHANUMERIC_RULE`). The Persona/Task/Actions stubs exist for Scenario-contract introspection only — they do NOT participate in agent-prompt assembly (would silently edit Sierra's authored prompt and break paper-comparable scores).
+
+**user_persona.name is None on purpose.** Identity is owned by `known_info` from `tasks.json["user_scenario"]["instructions"]`. The tau2 `persona_name` (e.g., `"lisa_brenner"`) lives on `scenario.persona_name` for metric slicing only; it's an acoustic-slicing label, not a narrative name.
+
+**reference_answer wraps in `{"actions": [...]}`** to match eva's existing reference shape, so a single `check_if_task_success` Situation 2 path handles both domains.
+
+`_Tau2InvokeMixin` provides both `invoke(**kwargs)` (sync, used by `Tau2BaseScenario._gold_replay`) and `_execute(params)` (async, used by pipecat at live LLM call time), both routing through `_do_work(p)`. New tau2 tools should subclass `_Tau2ReadTool` or `_Tau2WriteTool` (which already wire the mixin) and only implement `_do_work` + `properties` + `required_properties` + `DESCRIPTION`.
+
+DB-key casing in `tau2_airline_tools.py`: reservation IDs and flight numbers are uppercase in `db.json`; user IDs are lowercase. The helper functions `_get_user_dict` / `_get_reservation_dict` / `_get_flight_dict` apply `.lower()` / `.upper()` normalization on the lookup key — voice ASR after letter-by-letter spelling tends to emit case inconsistently.
+
+### Scaffolding more tau2 scenarios
+
+Same pattern as eva: a one-shot generator in `nemo_experiments/` (gitignored) that reads upstream `tasks.json` + `split_tasks.json[base]` + `tasks_voice.json` and emits one `@register_eval_scenario class Tau2<Domain><Id>` per task. For tau2_airline, see `nemo_experiments/generate_tau2_airline_scaffolds.py`. Re-run only when upstream schema changes.
+
 ### Running a single eva_airline scenario
 
 ```bash
@@ -178,9 +214,10 @@ Scenario names map from eva ids: `"1.1.2" → "eva_airline__1_1_2"`, class names
 
 ### Known limitations
 
-- **Parakeet STT misrecognizes spelled alphanumerics.** Letter sequences and digit-words (`"for"` vs `"four"`, `"B Z I W"`) frequently get mangled. Diagnose by checking `bot_logs_user/llm_context.json` to confirm the user simulator emitted the correct text before blaming the user-side LLM.
-- **Action list lookups are case-sensitive.** Tool action `type` strings must match `AIRLINE_ACTION_TYPES` exactly.
-- **DB diff isn't shown unless `expected_scenario_db` is set.** Scenarios without a ground-truth DB fall back to action-list comparison only.
+- **Parakeet STT misrecognizes spelled alphanumerics.** Letter sequences and digit-words (`"for"` vs `"four"`, `"B Z I W"`) frequently get mangled. Diagnose by checking `bot_logs_user/llm_context.json` to confirm the user simulator emitted the correct text before blaming the user-side LLM. Per the path/hash transport design, the user-simulator-side log is the source of truth for what was actually said.
+- **VAD can fragment one logical utterance into multiple ASR segments** when the user TTS introduces natural inter-sentence pauses ≥ `VAD_STOP_SECS` (default 1.0 s). The pipeline aggregator can then drop the early segments if the user resumes speaking within ~150 ms (treated as an interruption). Symptom: spelled-out long IDs land in the agent's context truncated or with parts missing. Mitigations: bump `VAD_STOP_SECS` to 2.0 s, or shorten the user simulator's turns so each utterance is a single self-contained statement.
+- **DB diff isn't shown on mismatch.** The runner only sees the SHA-256 hash, not the actual DB (path/hash transport). For diagnostics, inspect `bot_logs_agent/llm_context.json` (agent's tool-call trace) and `bot_logs_user/llm_context.json` (user simulator's reasoning) side-by-side — the discrepancy usually pinpoints which reference action the agent skipped or mangled.
+- **Action-list lookups are case-sensitive on the action `type`.** Tool action `type` strings must match the domain's `ACTION_TYPES` list (`AIRLINE_ACTION_TYPES`, `TAU2_AIRLINE_ACTION_TYPES`) exactly. The `WriteScenarioTool._record_action` validation logs a warning on mismatch but still appends (recoverable, but the recorded action won't match any reference).
 
 ## Code style
 
