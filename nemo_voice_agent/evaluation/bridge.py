@@ -388,16 +388,21 @@ class VoiceAgentEvaluationBridge:
         # Reset bridge before each scenario, and create connection to update the prompts
         await self.connect()
 
-        # Update prompts (handler will automatically reset)
+        # Update prompts (handler will automatically reset). ``tool_domain``
+        # tells each bot which registry namespace to look up tools in. Falls
+        # back to "default" per-tool for shared harness tools.
+        tool_domain = scenario.get("tool_domain", "default")
         await self.update_user_prompt(
             prompt=scenario["user_prompt"],
             tools=scenario["user_tools"],
             shared_state_init=scenario.get("user_shared_state_init", "{}"),
+            tool_domain=tool_domain,
         )
         await self.update_agent_prompt(
             prompt=scenario["agent_prompt"],
             tools=scenario["agent_tools"],
             shared_state_init=scenario.get("agent_shared_state_init", "{}"),
+            tool_domain=tool_domain,
         )
 
         if "noise_config" in scenario:
@@ -596,6 +601,7 @@ class VoiceAgentEvaluationBridge:
         auto_reset: bool = False,
         add_suffix: bool = False,
         shared_state_init: str = "{}",
+        tool_domain: str = "default",
     ):
         """
         Update user's system prompt via RTVI action.
@@ -609,7 +615,7 @@ class VoiceAgentEvaluationBridge:
                 bot server before tools are instantiated. Default ``"{}"`` (empty
                 dict) preserves prior behavior.
         """
-        logger.info(f"Updating user prompt: {prompt[:100]}..., tools: {tools[:100]}...")
+        logger.info(f"Updating user prompt: {prompt[:100]}..., tools: {tools[:100]}..., tool_domain={tool_domain!r}")
 
         # Create RTVI action message
         action_msg = {
@@ -624,6 +630,7 @@ class VoiceAgentEvaluationBridge:
                     {"name": "tools", "value": tools},
                     {"name": "add_suffix", "value": add_suffix},
                     {"name": "shared_state_init", "value": shared_state_init},
+                    {"name": "tool_domain", "value": tool_domain},
                 ],
             },
         }
@@ -648,6 +655,7 @@ class VoiceAgentEvaluationBridge:
         auto_reset: bool = False,
         add_suffix: bool = False,
         shared_state_init: str = "{}",
+        tool_domain: str = "default",
     ):
         """
         Update agent's system prompt via RTVI action.
@@ -660,8 +668,12 @@ class VoiceAgentEvaluationBridge:
             shared_state_init: JSON string used to initialize ``shared_state`` on the
                 bot server before tools are instantiated. Default ``"{}"`` (empty
                 dict) preserves prior behavior.
+            tool_domain: Registry namespace the bot server should use to look up
+                tools by name (e.g., ``"tau2_airline"``). Falls back to
+                ``"default"`` per-tool if the name isn't in the specified
+                domain (with a warning logged bot-side).
         """
-        logger.info(f"Updating agent prompt: {prompt[:100]}..., tools: {tools[:100]}...")
+        logger.info(f"Updating agent prompt: {prompt[:100]}..., tools: {tools[:100]}..., tool_domain={tool_domain!r}")
 
         # Create RTVI action message
         action_msg = {
@@ -676,6 +688,7 @@ class VoiceAgentEvaluationBridge:
                     {"name": "tools", "value": tools},
                     {"name": "add_suffix", "value": add_suffix},
                     {"name": "shared_state_init", "value": shared_state_init},
+                    {"name": "tool_domain", "value": tool_domain},
                 ],
             },
         }

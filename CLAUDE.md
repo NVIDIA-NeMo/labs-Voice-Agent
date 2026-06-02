@@ -165,11 +165,28 @@ python <your-scratch-dir>/generate_eva_airline_scaffolds.py --major 4 \
 
 The generator emits one `@register_eval_scenario` class per dataset entry, applies the alphanumeric voice rule, and reads `must_have_criteria` / `negotiation_behavior` / `edge_cases` into guidelines. **The output is a starting point, not final** — hand-review prose and prune negotiation/edge-case bullets before committing.
 
-### Tool naming convention (registry collision prevention)
+### Tool registry — per-domain namespaces
 
-All LLM-exposed tool classes are prefixed with `<DataSource><Domain>` (e.g., `EvaAirlineGetReservationTool`, `Tau2AirlineGetUserDetailsTool`, future `Tau2RetailGetOrderDetailsTool`). `register_schema_tool_for_eval` (`tools/__init__.py`) **raises `ValueError` on duplicate keys** — the global `ALL_SCHEMA_TOOLS_FOR_EVAL` registry is keyed by `cls.__name__`, so without prefixes, identically-named tools from different domains silently overwrote each other at import time. Generic harness tools in `basic_tools.py` / `rtvi_control.py` (`EndConversationTool`, `SendScenarioSummaryTool`) keep unprefixed names since they're shared across domains.
+The tool registry is **`Dict[domain → Dict[class_name → class]]`** (`ALL_SCHEMA_TOOLS_FOR_EVAL` in `tools/__init__.py`). Tool classes keep their natural short names (`CancelReservationTool`, `GetUserDetailsTool`, …); the same name in different domains coexists as distinct entries. Within a single domain, duplicate names raise `ValueError` at decoration time.
 
-The **action record's `name` field** stays as the upstream method name (`get_user_details`, `book_reservation`, …) for paper-comparable scoring. Class names exist for the registry; action names exist for action-list comparison. Domain base scenarios (e.g., `TAU2_AIRLINE_TOOL_NAME_TO_CLASS`) map between them.
+Decorator (factory-style, takes a `domain` arg):
+```python
+@register_schema_tool_for_eval(domain="tau2_airline")
+class CancelReservationTool(_Tau2WriteTool): ...
+```
+Also accepts `@register_schema_tool_for_eval("tau2_airline")` (positional shortcut) and bare `@register_schema_tool_for_eval` (back-compat, registers into `"default"`).
+
+Lookup (`get_schema_tool_for_eval(name, domain="default", ...)`): exact match in the specified domain first; falls back to `"default"` with a warning when a shared harness tool (`EndConversationTool`, `SendScenarioSummaryTool`, …) is invoked from a non-default scenario domain; raises `KeyError` if absent from both.
+
+**Domain assignments:**
+- `eva_airline_tools.py` → `"eva_airline"`
+- `tau2_airline_tools.py` → `"tau2_airline"`
+- (future) `tau2_retail_tools.py` → `"tau2_retail"`, `tau2_telecom_tools.py` → `"tau2_telecom"`
+- `basic_tools.py`, `customer_service_tools.py`, `restaurant_tools.py`, `rtvi_control.py`, `waitlist_tools.py` → `"default"` (no collisions today; split into per-domain namespaces if any emerge)
+
+**`Scenario.domain` is the namespace key** the bridge passes to the bots via `update_system_prompt`'s `tool_domain` argument. Set as a class attribute on each domain base: `EvaAirlineBaseScenario.domain = "eva_airline"`, `Tau2AirlineBaseScenario.domain = "tau2_airline"`, default `Scenario.domain = "default"`. For tau2, `domain` does dual duty — it's also the data subdir name (`evaluation/data/tau2_airline/`), so internal calls like `f"{self.domain}/db.json"` and `_load_tau2_voice_task_index(self.domain)` use it directly.
+
+**Action record's `name` field** (driven by `_record_action` inside each tool) stays as the upstream method name (`get_user_details`, `book_reservation`, …) — independent of class names. Class names exist for the registry; action names exist for paper-comparable action-list scoring. `TAU2_AIRLINE_TOOL_NAME_TO_CLASS` in `tau2_airline_tools.py` maps between them when needed.
 
 ### `tau2_airline` domain layout
 
@@ -181,7 +198,7 @@ nemo_voice_agent/evaluation/
 │       ├── __init__.py
 │       ├── base.py                     # Tau2AirlineBaseScenario
 │       └── group_{0..4}x.py            # 50 auto-scaffolded scenarios (10 each)
-├── tools/tau2_airline_tools.py         # 14 Tau2Airline*Tool ports under _Tau2InvokeMixin
+├── tools/tau2_airline_tools.py         # 14 short-named tool ports under _Tau2InvokeMixin
 └── tools/tau2_airline_params.py        # Pydantic mirror of data_model.py + 14 tool-arg schemas
 ```
 

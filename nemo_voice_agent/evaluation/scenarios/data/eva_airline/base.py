@@ -68,6 +68,8 @@ def _load_eva_airline_dataset_index() -> dict:
 
 
 class EvaAirlineBaseScenario(Scenario):
+    domain: str = "eva_airline"
+
     """Base class for airline scenarios ported from eva.
 
     Subclasses set only ``eva_id`` (e.g. ``"1.1.2"``) — everything else derives:
@@ -209,23 +211,23 @@ class EvaAirlineBaseScenario(Scenario):
         return Resources(
             tools={
                 # Read tools (4)
-                "EvaAirlineGetReservationTool": {},
-                "EvaAirlineGetFlightStatusTool": {},
-                "EvaAirlineGetDisruptionInfoTool": {},
-                "EvaAirlineSearchRebookingOptionsTool": {},
+                "GetReservationTool": {},
+                "GetFlightStatusTool": {},
+                "GetDisruptionInfoTool": {},
+                "SearchRebookingOptionsTool": {},
                 # Write tools (10)
-                "EvaAirlineRebookFlightTool": {},
-                "EvaAirlineCancelReservationTool": {},
-                "EvaAirlineProcessRefundTool": {},
-                "EvaAirlineAssignSeatTool": {},
-                "EvaAirlineAddBaggageAllowanceTool": {},
-                "EvaAirlineAddMealRequestTool": {},
-                "EvaAirlineAddToStandbyTool": {},
-                "EvaAirlineIssueTravelCreditTool": {},
-                "EvaAirlineIssueHotelVoucherTool": {},
-                "EvaAirlineIssueMealVoucherTool": {},
+                "RebookFlightTool": {},
+                "CancelReservationTool": {},
+                "ProcessRefundTool": {},
+                "AssignSeatTool": {},
+                "AddBaggageAllowanceTool": {},
+                "AddMealRequestTool": {},
+                "AddToStandbyTool": {},
+                "IssueTravelCreditTool": {},
+                "IssueHotelVoucherTool": {},
+                "IssueMealVoucherTool": {},
                 # System tool (1)
-                "EvaAirlineTransferToAgentTool": {},
+                "TransferToAgentTool": {},
                 # Harness tool (generic, not domain-prefixed)
                 "EndConversationTool": {},
             },
@@ -253,7 +255,7 @@ class EvaAirlineBaseScenario(Scenario):
 
 
 @register_eval_scenario
-class EvaAirlineVoluntaryDateChange(EvaAirlineBaseScenario):
+class VoluntaryDateChange(EvaAirlineBaseScenario):
     """Voluntary date change with cost cap and window-seat constraint."""
 
     name = "eva_airline__voluntary_date_change"
@@ -354,7 +356,7 @@ class EvaAirlineVoluntaryDateChange(EvaAirlineBaseScenario):
 
 
 @register_eval_scenario
-class EvaAirlineIrropsCancellation(EvaAirlineBaseScenario):
+class IrropsCancellation(EvaAirlineBaseScenario):
     """IRROPS rebooking after airline-canceled flight (mechanical)."""
 
     name = "eva_airline__irrops_cancellation"
@@ -429,7 +431,7 @@ class EvaAirlineIrropsCancellation(EvaAirlineBaseScenario):
 
 
 @register_eval_scenario
-class EvaAirlineMissedFlightStandby(EvaAirlineBaseScenario):
+class MissedFlightStandby(EvaAirlineBaseScenario):
     """Passenger missed morning flight; wants free standby (driving to airport)."""
 
     name = "eva_airline__missed_flight_standby"
@@ -497,7 +499,7 @@ class EvaAirlineMissedFlightStandby(EvaAirlineBaseScenario):
 
 
 @register_eval_scenario
-class EvaAirlineCancellationRefund(EvaAirlineBaseScenario):
+class CancellationRefund(EvaAirlineBaseScenario):
     """Voluntary cancellation with full refund to the original payment method."""
 
     name = "eva_airline__cancellation_refund"
@@ -563,7 +565,7 @@ class EvaAirlineCancellationRefund(EvaAirlineBaseScenario):
 
 
 @register_eval_scenario
-class EvaAirlineFabricatedDisruption(EvaAirlineBaseScenario):
+class FabricatedDisruption(EvaAirlineBaseScenario):
     """Edge case: passenger claims a flight was canceled when it departed on time.
 
     The agent should verify flight status before granting any IRROPS entitlements

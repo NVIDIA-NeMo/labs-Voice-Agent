@@ -186,6 +186,28 @@ def match_list(
     return True
 
 
+def normalize_scenario_payload(payload):
+    """Normalize a scenario payload (reference or prediction) to a canonical shape.
+
+    Rules:
+      - **List of exactly one dict** → unwrap to that single dict.
+      - **Single dict** → return as-is.
+      - **List of multiple dicts** → return as-is (legitimate push-path output:
+        each entry is a separate ``<final_response>`` emission).
+      - **Anything else** (scalar, ``None``, list of non-dicts) → return as-is.
+
+    Used by both the deterministic comparator (``check_if_task_success``) and
+    the LLM judge prep path (``runner.run_dynamic_evaluation``) so they apply
+    the same shape-equivalence rule. Without this, the LLM judge reads the raw
+    file text and deducts for cosmetic ``{...}`` vs. ``[{...}]`` differences
+    that the deterministic comparator already treats as equivalent (its old
+    "Situation 2" logic). One source of truth, applied to both scoring paths.
+    """
+    if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], dict):
+        return payload[0]
+    return payload
+
+
 def check_if_task_success(
     *,
     reference: str,
@@ -215,6 +237,10 @@ def check_if_task_success(
       - If ``disallow_extra_items`` is True, the lengths must also match exactly
         (exact bijection — no extra prediction items tolerated).
 
+    Both inputs are first passed through ``normalize_scenario_payload`` to
+    collapse the list-of-1-dict / single-dict shape difference. The remaining
+    situations 1-3 then handle the post-normalization shapes cleanly.
+
     Args:
         reference: The path to the reference json file.
         prediction: The path to the prediction json file.
@@ -233,6 +259,11 @@ def check_if_task_success(
         reference_answer = json.load(f)
     with open(prediction, "r") as f:
         prediction_answer = json.load(f)
+
+    # Apply the shape normalizer (list-of-1-dict → single dict) on both sides
+    # so cosmetic wrapping doesn't bias the comparison or the downstream judge.
+    reference_answer = normalize_scenario_payload(reference_answer)
+    prediction_answer = normalize_scenario_payload(prediction_answer)
 
     # Situation 1: If the reference is a dictionary, and the prediction is a dictionary,
     # Convert to Situation 3

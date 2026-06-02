@@ -309,8 +309,8 @@ class _Tau2WriteTool(_Tau2InvokeMixin, WriteScenarioTool):
 # =============================================================================
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineGetUserDetailsTool(_Tau2ReadTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class GetUserDetailsTool(_Tau2ReadTool):
     DESCRIPTION = "Get the details of a user, including their reservations."
     PARAMS_MODEL = GetUserDetailsParams
 
@@ -332,8 +332,8 @@ class Tau2AirlineGetUserDetailsTool(_Tau2ReadTool):
         return user
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineGetReservationDetailsTool(_Tau2ReadTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class GetReservationDetailsTool(_Tau2ReadTool):
     DESCRIPTION = "Get the details of a reservation."
     PARAMS_MODEL = GetReservationDetailsParams
 
@@ -359,8 +359,8 @@ class Tau2AirlineGetReservationDetailsTool(_Tau2ReadTool):
         return reservation
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineListAllAirportsTool(_Tau2ReadTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class ListAllAirportsTool(_Tau2ReadTool):
     DESCRIPTION = "Returns a list of all available airports as IATA-code + city pairs."
     PARAMS_MODEL = ListAllAirportsParams
 
@@ -376,8 +376,8 @@ class Tau2AirlineListAllAirportsTool(_Tau2ReadTool):
         return {"status": "success", "airports": copy.deepcopy(_ALL_AIRPORTS)}
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineSearchDirectFlightTool(_Tau2ReadTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class SearchDirectFlightTool(_Tau2ReadTool):
     DESCRIPTION = "Search for direct flights between two cities on a specific date."
     PARAMS_MODEL = SearchDirectFlightParams
 
@@ -407,8 +407,8 @@ class Tau2AirlineSearchDirectFlightTool(_Tau2ReadTool):
         return {"status": "success", "flights": results}
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineSearchOnestopFlightTool(_Tau2ReadTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class SearchOnestopFlightTool(_Tau2ReadTool):
     DESCRIPTION = "Search for one-stop flights between two cities on a specific date."
     PARAMS_MODEL = SearchOnestopFlightParams
 
@@ -456,8 +456,8 @@ class Tau2AirlineSearchOnestopFlightTool(_Tau2ReadTool):
         return {"status": "success", "onestop_flights": results}
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineGetFlightStatusTool(_Tau2ReadTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class GetFlightStatusTool(_Tau2ReadTool):
     DESCRIPTION = "Get the status of a flight on a given date."
     PARAMS_MODEL = GetFlightStatusParams
 
@@ -491,8 +491,8 @@ class Tau2AirlineGetFlightStatusTool(_Tau2ReadTool):
 # =============================================================================
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineBookReservationTool(_Tau2WriteTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class BookReservationTool(_Tau2WriteTool):
     DESCRIPTION = (
         "Book a new flight reservation under a user account. Reserves seats on each leg, "
         "validates payment methods cover the total price, and creates a reservation record."
@@ -723,8 +723,8 @@ class Tau2AirlineBookReservationTool(_Tau2WriteTool):
         return reservation
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineCancelReservationTool(_Tau2WriteTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class CancelReservationTool(_Tau2WriteTool):
     DESCRIPTION = "Cancel the whole reservation. Reverses payment history and marks status='cancelled'."
     PARAMS_MODEL = CancelReservationParams
 
@@ -769,8 +769,8 @@ class Tau2AirlineCancelReservationTool(_Tau2WriteTool):
         return reservation
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineSendCertificateTool(_Tau2WriteTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class SendCertificateTool(_Tau2WriteTool):
     DESCRIPTION = (
         "Send a certificate to a user (e.g., as compensation). Adds a new certificate "
         "payment method to the user's profile. Be careful — irreversible."
@@ -824,8 +824,8 @@ class Tau2AirlineSendCertificateTool(_Tau2WriteTool):
         return {"status": "error", "error_type": "value_error", "message": "Too many certificates"}
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineUpdateReservationBaggagesTool(_Tau2WriteTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class UpdateReservationBaggagesTool(_Tau2WriteTool):
     DESCRIPTION = "Update the baggage counts on a reservation. Charges $50 per additional non-free bag."
     PARAMS_MODEL = UpdateReservationBaggagesParams
 
@@ -894,8 +894,8 @@ class Tau2AirlineUpdateReservationBaggagesTool(_Tau2WriteTool):
         return reservation
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineUpdateReservationFlightsTool(_Tau2WriteTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class UpdateReservationFlightsTool(_Tau2WriteTool):
     DESCRIPTION = (
         "Update the flight legs on an existing reservation. The flights array must include "
         "the ENTIRE new itinerary — even unchanged legs. Charges the price difference (if positive)."
@@ -1038,8 +1038,8 @@ class Tau2AirlineUpdateReservationFlightsTool(_Tau2WriteTool):
         return reservation
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineUpdateReservationPassengersTool(_Tau2WriteTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class UpdateReservationPassengersTool(_Tau2WriteTool):
     DESCRIPTION = "Update the passenger list on a reservation. Number of passengers must match the existing count."
     PARAMS_MODEL = UpdateReservationPassengersParams
 
@@ -1102,8 +1102,8 @@ class Tau2AirlineUpdateReservationPassengersTool(_Tau2WriteTool):
 # =============================================================================
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineCalculateTool(_Tau2ReadTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class CalculateTool(_Tau2ReadTool):
     DESCRIPTION = (
         "Calculate the result of a mathematical expression. The expression can contain numbers, "
         "operators (+, -, *, /), parentheses, and spaces."
@@ -1137,8 +1137,8 @@ class Tau2AirlineCalculateTool(_Tau2ReadTool):
         return {"status": "success", "result": str(result)}
 
 
-@register_schema_tool_for_eval
-class Tau2AirlineTransferToHumanAgentsTool(_Tau2WriteTool):
+@register_schema_tool_for_eval(domain="tau2_airline")
+class TransferToHumanAgentsTool(_Tau2WriteTool):
     DESCRIPTION = (
         "Transfer the user to a human agent, with a summary of the user's issue. Only transfer if "
         "the user explicitly asks for a human or you cannot solve the issue with available tools."
@@ -1170,45 +1170,45 @@ class Tau2AirlineTransferToHumanAgentsTool(_Tau2WriteTool):
 
 
 # =============================================================================
-# Convenience: ordered tool list (used by Tau2AirlineBaseScenario._build_tool_map)
+# Convenience: ordered tool list (used by BaseScenario._build_tool_map)
 # =============================================================================
 
 
 TAU2_AIRLINE_TOOL_CLASSES: List[Type[StandardSchemaTool]] = [
     # reads
-    Tau2AirlineGetUserDetailsTool,
-    Tau2AirlineGetReservationDetailsTool,
-    Tau2AirlineListAllAirportsTool,
-    Tau2AirlineSearchDirectFlightTool,
-    Tau2AirlineSearchOnestopFlightTool,
-    Tau2AirlineGetFlightStatusTool,
+    GetUserDetailsTool,
+    GetReservationDetailsTool,
+    ListAllAirportsTool,
+    SearchDirectFlightTool,
+    SearchOnestopFlightTool,
+    GetFlightStatusTool,
     # writes
-    Tau2AirlineBookReservationTool,
-    Tau2AirlineCancelReservationTool,
-    Tau2AirlineSendCertificateTool,
-    Tau2AirlineUpdateReservationBaggagesTool,
-    Tau2AirlineUpdateReservationFlightsTool,
-    Tau2AirlineUpdateReservationPassengersTool,
+    BookReservationTool,
+    CancelReservationTool,
+    SendCertificateTool,
+    UpdateReservationBaggagesTool,
+    UpdateReservationFlightsTool,
+    UpdateReservationPassengersTool,
     # generics
-    Tau2AirlineCalculateTool,
-    Tau2AirlineTransferToHumanAgentsTool,
+    CalculateTool,
+    TransferToHumanAgentsTool,
 ]
 
 
 # Map from tau2 @is_tool method name → Tool class. Stable lookup for ``_build_tool_map``.
 TAU2_AIRLINE_TOOL_NAME_TO_CLASS: Dict[str, Type[StandardSchemaTool]] = {
-    "get_user_details": Tau2AirlineGetUserDetailsTool,
-    "get_reservation_details": Tau2AirlineGetReservationDetailsTool,
-    "list_all_airports": Tau2AirlineListAllAirportsTool,
-    "search_direct_flight": Tau2AirlineSearchDirectFlightTool,
-    "search_onestop_flight": Tau2AirlineSearchOnestopFlightTool,
-    "get_flight_status": Tau2AirlineGetFlightStatusTool,
-    "book_reservation": Tau2AirlineBookReservationTool,
-    "cancel_reservation": Tau2AirlineCancelReservationTool,
-    "send_certificate": Tau2AirlineSendCertificateTool,
-    "update_reservation_baggages": Tau2AirlineUpdateReservationBaggagesTool,
-    "update_reservation_flights": Tau2AirlineUpdateReservationFlightsTool,
-    "update_reservation_passengers": Tau2AirlineUpdateReservationPassengersTool,
-    "calculate": Tau2AirlineCalculateTool,
-    "transfer_to_human_agents": Tau2AirlineTransferToHumanAgentsTool,
+    "get_user_details": GetUserDetailsTool,
+    "get_reservation_details": GetReservationDetailsTool,
+    "list_all_airports": ListAllAirportsTool,
+    "search_direct_flight": SearchDirectFlightTool,
+    "search_onestop_flight": SearchOnestopFlightTool,
+    "get_flight_status": GetFlightStatusTool,
+    "book_reservation": BookReservationTool,
+    "cancel_reservation": CancelReservationTool,
+    "send_certificate": SendCertificateTool,
+    "update_reservation_baggages": UpdateReservationBaggagesTool,
+    "update_reservation_flights": UpdateReservationFlightsTool,
+    "update_reservation_passengers": UpdateReservationPassengersTool,
+    "calculate": CalculateTool,
+    "transfer_to_human_agents": TransferToHumanAgentsTool,
 }

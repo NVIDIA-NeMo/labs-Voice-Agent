@@ -60,7 +60,7 @@ class Tau2AirlineBaseScenario(Tau2BaseScenario):
     ``Tau2BaseScenario`` machinery.
     """
 
-    domain: str = "airline"
+    domain: str = "tau2_airline"
 
     # Tau2 airline tasks use a fixed scenario date — see tau2's `_get_datetime()`
     # (returns ``"2024-05-15T15:00:00"``) and the matching line at the top of
@@ -96,22 +96,29 @@ class Tau2AirlineBaseScenario(Tau2BaseScenario):
         return Resources(
             tools={
                 # Reads (6)
-                "Tau2AirlineGetUserDetailsTool": {},
-                "Tau2AirlineGetReservationDetailsTool": {},
-                "Tau2AirlineListAllAirportsTool": {},
-                "Tau2AirlineSearchDirectFlightTool": {},
-                "Tau2AirlineSearchOnestopFlightTool": {},
-                "Tau2AirlineGetFlightStatusTool": {},
+                "GetUserDetailsTool": {},
+                "GetReservationDetailsTool": {},
+                "ListAllAirportsTool": {},
+                "SearchDirectFlightTool": {},
+                "SearchOnestopFlightTool": {},
+                "GetFlightStatusTool": {},
                 # Writes (6)
-                "Tau2AirlineBookReservationTool": {},
-                "Tau2AirlineCancelReservationTool": {},
-                "Tau2AirlineSendCertificateTool": {},
-                "Tau2AirlineUpdateReservationBaggagesTool": {},
-                "Tau2AirlineUpdateReservationFlightsTool": {},
-                "Tau2AirlineUpdateReservationPassengersTool": {},
+                "BookReservationTool": {},
+                "CancelReservationTool": {},
+                "SendCertificateTool": {},
+                "UpdateReservationBaggagesTool": {},
+                "UpdateReservationFlightsTool": {},
+                "UpdateReservationPassengersTool": {},
                 # Generics (2)
-                "Tau2AirlineCalculateTool": {},
-                "Tau2AirlineTransferToHumanAgentsTool": {},
+                "CalculateTool": {},
+                "TransferToHumanAgentsTool": {},
+                # Harness tool — resolved via the registry's "default" namespace
+                # fallback (lives in basic_tools.py, not tau2_airline_tools.py).
+                # Tau2's policy.md is text-mode authored and never mentions an
+                # end-of-call signal; the voice harness needs one so the bridge
+                # can pull the summary. See ``_END_CONVERSATION_GUIDELINE`` in
+                # tau2_common.py for the prompt-side guidance that pairs with this.
+                "EndConversationTool": {},
             },
             information=[
                 f"Today's date is {self.current_date}.",

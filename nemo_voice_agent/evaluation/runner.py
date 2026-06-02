@@ -28,7 +28,7 @@ from typing import List, Optional
 from nemo_voice_agent.evaluation.bridge import VoiceAgentEvaluationBridge
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario
-from nemo_voice_agent.evaluation.utils import LLMJudge, check_if_task_success
+from nemo_voice_agent.evaluation.utils import LLMJudge, check_if_task_success, normalize_scenario_payload
 from nemo_voice_agent.utils import FileLogger
 
 
@@ -120,7 +120,9 @@ async def run_dynamic_evaluation(
         scenario.setup_shared_state(user_state, "user")
         scenario.setup_shared_state(agent_state, "agent")
 
-        # Build dict for bridge.prepare_for_scenario
+        # Build dict for bridge.prepare_for_scenario. ``tool_domain`` is the
+        # registry namespace the bots should use to look up tool classes by
+        # name; defaults to "default" for scenarios that don't override.
         scenario_dict = {
             "name": scenario.name,
             "user_prompt": scenario.get_user_prompt(),
@@ -129,6 +131,7 @@ async def run_dynamic_evaluation(
             "agent_tools": scenario.get_agent_tools(),
             "user_shared_state_init": json.dumps(user_state),
             "agent_shared_state_init": json.dumps(agent_state),
+            "tool_domain": getattr(scenario, "domain", "default"),
         }
         if scenario.noise_config:
             scenario_dict["noise_config"] = scenario.noise_config
@@ -170,10 +173,20 @@ async def run_dynamic_evaluation(
             # ({"score", "reason"}) when nl_assertions is None, so the runner's
             # downstream scoring path is unchanged. Plumbing only — M3 (retail)
             # populates nl_assertions and consumes per-assertion verdicts.
+            #
+            # Shape-normalize both files before handing to the judge: the
+            # deterministic comparator's "Situation 2" logic treats
+            # ``{...}`` and ``[{...}]`` as equivalent payloads, but the
+            # LLM judge reads raw text and would otherwise deduct for the
+            # cosmetic wrapping difference. ``normalize_scenario_payload``
+            # collapses list-of-1-dict → single dict on both sides so the
+            # judge sees identical shapes when the content matches.
             with open(reference_file, "r") as f:
-                ref_content = f.read()
+                ref_obj = normalize_scenario_payload(json.load(f))
             with open(prediction_file, "r") as f:
-                pred_content = f.read()
+                pred_obj = normalize_scenario_payload(json.load(f))
+            ref_content = json.dumps(ref_obj, indent=2)
+            pred_content = json.dumps(pred_obj, indent=2)
             # Load the agent's LLM context history written by
             # bridge._save_user_agent_history at scenario end. Shape is a list
             # of {role, content} dicts including tool calls — gives the judge

@@ -227,6 +227,14 @@ class Actions:
 class Scenario:
     """Base class for all evaluation scenarios."""
 
+    # Registry namespace the bot servers should consult when looking up tool
+    # classes by name (see ``nemo_voice_agent.evaluation.tools.get_schema_tool_for_eval``).
+    # Subclasses override (e.g. ``"eva_airline"``, ``"tau2_airline"``). The bot
+    # server falls back to ``"default"`` per-tool for shared harness tools
+    # (EndConversationTool, etc.) so a scenario in a specific domain still
+    # picks up the generic-namespace tools alongside its own.
+    domain: str = "default"
+
     def __init__(
         self,
         *,

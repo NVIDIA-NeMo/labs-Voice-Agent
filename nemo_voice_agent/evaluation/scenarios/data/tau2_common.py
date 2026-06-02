@@ -62,6 +62,24 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
 from nemo_voice_agent.evaluation.voice_rules import VOICE_ALPHANUMERIC_RULE
 
 
+# Voice-harness-specific guideline appended to every tau2 agent prompt. Tau2's
+# upstream policy.md is text-mode authored — conversations terminate when the
+# agent stops responding, no explicit "end the call" signal exists. The voice
+# harness needs an explicit termination tool so the bridge can detect end-of-
+# scenario and pull the summary. Adding this guideline tells the agent when to
+# call ``EndConversationTool`` (resolved via the registry's "default" namespace
+# fallback — the tool itself lives in ``basic_tools.py``).
+_END_CONVERSATION_GUIDELINE = (
+    "When the user has indicated they have no further requests and you have "
+    "exchanged goodbyes, call `EndConversationTool` to end the call. Do not "
+    "call it before the user has explicitly confirmed they are done — premature "
+    "termination is a failure mode. Typical flow: (a) confirm all actions are "
+    "complete, (b) ask 'is there anything else you need help with?', (c) wait "
+    "for the user's response, (d) if they say goodbye / no, say goodbye back "
+    "and then call `EndConversationTool`."
+)
+
+
 # ---------------------------------------------------------------------------
 # Voice-task index loader
 # ---------------------------------------------------------------------------
@@ -70,6 +88,10 @@ from nemo_voice_agent.evaluation.voice_rules import VOICE_ALPHANUMERIC_RULE
 @cache
 def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, Dict[str, Any]]:
     """Build ``id → {"task", "persona_name"}`` for one tau2 domain + split.
+
+    ``domain`` is the registry namespace string (``"tau2_airline"``, ``"tau2_retail"``,
+    ``"tau2_telecom"``) — it also serves as the data subdirectory name under
+    ``evaluation/data/``.
 
     Filtering pipeline (intersection):
       1. ids = ``tasks_voice.json["configs"].keys()``        (voice-eligible)
@@ -90,7 +112,7 @@ def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, D
     is populated in M2/M3/M5/M6 — until then this function will raise
     ``FileNotFoundError`` for that domain, which is the desired behavior.
     """
-    domain_dir = get_eval_data_root() / f"tau2_{domain}"
+    domain_dir = get_eval_data_root() / domain
 
     tasks_voice = json.loads((domain_dir / "tasks_voice.json").read_text())
     voice_ids = set(tasks_voice.get("configs", {}).keys())
@@ -99,9 +121,7 @@ def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, D
     if split_path.exists():
         splits = json.loads(split_path.read_text())
         if split not in splits:
-            raise KeyError(
-                f"tau2_{domain}/split_tasks.json has no '{split}' key; " f"available: {sorted(splits.keys())}"
-            )
+            raise KeyError(f"{domain}/split_tasks.json has no '{split}' key; " f"available: {sorted(splits.keys())}")
         voice_ids &= set(splits[split])
 
     tasks_by_id = {t["id"]: t for t in json.loads((domain_dir / "tasks.json").read_text())}
@@ -109,7 +129,7 @@ def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, D
     index: Dict[str, Dict[str, Any]] = {}
     for tid in voice_ids:
         if tid not in tasks_by_id:
-            logger.warning(f"tau2_{domain}: voice-eligible id {tid!r} not in tasks.json; skipping")
+            logger.warning(f"{domain}: voice-eligible id {tid!r} not in tasks.json; skipping")
             continue
         persona_name = tasks_voice["configs"][tid].get("configs", {}).get("control", {}).get("persona_name")
         index[tid] = {"task": tasks_by_id[tid], "persona_name": persona_name}
@@ -192,7 +212,7 @@ class Tau2BaseScenario(Scenario):
         multiple policy files (telecom: main_policy + tech_support_workflow +
         per-issue workflows) should override.
         """
-        return (get_eval_data_root() / f"tau2_{self.domain}" / "policy.md").read_text()
+        return (get_eval_data_root() / self.domain / "policy.md").read_text()
 
     @cached_property
     def db(self) -> Dict[str, Any]:
@@ -201,7 +221,7 @@ class Tau2BaseScenario(Scenario):
         Returns the raw parsed dict. ``setup_shared_state`` deep-copies this on
         every scenario instantiation so per-scenario mutations don't leak.
         """
-        return json.loads((get_eval_data_root() / f"tau2_{self.domain}" / "db.json").read_text())
+        return json.loads((get_eval_data_root() / self.domain / "db.json").read_text())
 
     # ---- gold-env replay (single source of truth for expected_db + reference_answer) ----
 
@@ -250,7 +270,7 @@ class Tau2BaseScenario(Scenario):
             if tool is None:
                 logger.warning(
                     f"Gold-replay: no tool named {action['name']!r} for "
-                    f"tau2_{self.domain}/{self.tau2_id}; skipping action {action.get('action_id')}"
+                    f"{self.domain}/{self.tau2_id}; skipping action {action.get('action_id')}"
                 )
                 continue
             try:
@@ -323,7 +343,7 @@ class Tau2BaseScenario(Scenario):
         ``side == "user"`` and populate ``state["user_db"]``.
         """
         if side == "agent":
-            state["db_path"] = f"tau2_{self.domain}/db.json"
+            state["db_path"] = f"{self.domain}/db.json"
 
     # ---- agent prompt ----
 
@@ -360,6 +380,8 @@ class Tau2BaseScenario(Scenario):
             + GENERAL_PROMPT.strip()
             + "\n\n"
             + VOICE_ALPHANUMERIC_RULE
+            + "\n\n"
+            + _END_CONVERSATION_GUIDELINE
         )
 
     # ---- Scenario contract: minimal stubs that honor the interface ----

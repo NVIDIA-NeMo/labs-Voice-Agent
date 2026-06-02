@@ -48,19 +48,19 @@ def _all_eva_airline_scenarios() -> list:
 
 from nemo_voice_agent.evaluation.tools.eva_airline_tools import (
     AIRLINE_ACTION_TYPES,
-    EvaAirlineAddBaggageAllowanceTool,
-    EvaAirlineAddMealRequestTool,
-    EvaAirlineAddToStandbyTool,
-    EvaAirlineAssignSeatTool,
-    EvaAirlineCancelReservationTool,
-    EvaAirlineGetReservationTool,
-    EvaAirlineIssueHotelVoucherTool,
-    EvaAirlineIssueMealVoucherTool,
-    EvaAirlineIssueTravelCreditTool,
-    EvaAirlineProcessRefundTool,
-    EvaAirlineRebookFlightTool,
-    EvaAirlineSearchRebookingOptionsTool,
-    EvaAirlineTransferToAgentTool,
+    AddBaggageAllowanceTool,
+    AddMealRequestTool,
+    AddToStandbyTool,
+    AssignSeatTool,
+    CancelReservationTool,
+    GetReservationTool,
+    IssueHotelVoucherTool,
+    IssueMealVoucherTool,
+    IssueTravelCreditTool,
+    ProcessRefundTool,
+    RebookFlightTool,
+    SearchRebookingOptionsTool,
+    TransferToAgentTool,
 )
 from nemo_voice_agent.evaluation.utils import check_if_task_success
 
@@ -103,14 +103,14 @@ def test_voluntary_date_change_happy_path_matches_reference():
 
     # Auth
     auth_result = _run(
-        EvaAirlineGetReservationTool(shared_state=state),
+        GetReservationTool(shared_state=state),
         {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"},
     )
     assert auth_result["status"] == "success"
 
     # Search the constraint-meeting flight
     search_result = _run(
-        EvaAirlineSearchRebookingOptionsTool(shared_state=state),
+        SearchRebookingOptionsTool(shared_state=state),
         {
             "origin": "AUS",
             "destination": "LAX",
@@ -129,7 +129,7 @@ def test_voluntary_date_change_happy_path_matches_reference():
 
     # Rebook
     rebook_result = _run(
-        EvaAirlineRebookFlightTool(shared_state=state),
+        RebookFlightTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -143,7 +143,7 @@ def test_voluntary_date_change_happy_path_matches_reference():
 
     # Assign window seat
     seat_result = _run(
-        EvaAirlineAssignSeatTool(shared_state=state),
+        AssignSeatTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -194,7 +194,7 @@ def test_cancel_then_process_refund_records_two_actions():
 
     # Cancel under 24-hour rule (waives fee, refund eligible)
     cancel = _run(
-        EvaAirlineCancelReservationTool(shared_state=state),
+        CancelReservationTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -208,7 +208,7 @@ def test_cancel_then_process_refund_records_two_actions():
 
     # Refund (fare portion)
     refund = _run(
-        EvaAirlineProcessRefundTool(shared_state=state),
+        ProcessRefundTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "refund_amount": refund_eligible,
@@ -244,7 +244,7 @@ def test_cancel_then_process_refund_records_two_actions():
 def test_meal_voucher_amount_mapping(voucher_reason, expected_amount):
     state = _load_fixture_state("1.1.2")
     result = _run(
-        EvaAirlineIssueMealVoucherTool(shared_state=state),
+        IssueMealVoucherTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -261,7 +261,7 @@ def test_meal_voucher_amount_mapping(voucher_reason, expected_amount):
 def test_hotel_voucher_rejects_more_than_3_nights():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        EvaAirlineIssueHotelVoucherTool(shared_state=state),
+        IssueHotelVoucherTool(shared_state=state),
         {"confirmation_number": "ZK3FFW", "passenger_id": "PAX001", "num_nights": 4},
     )
     assert result["status"] == "error"
@@ -278,7 +278,7 @@ def test_hotel_voucher_rejects_more_than_3_nights():
 def test_transfer_to_agent_records_action():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        EvaAirlineTransferToAgentTool(shared_state=state),
+        TransferToAgentTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "transfer_reason": "passenger_requested",
@@ -332,7 +332,7 @@ def test_failed_validation_does_not_record_action():
     state = _load_fixture_state("1.1.2")
     # Malformed journey_id (doesn't match the FL_<flight>_<YYYYMMDD> pattern)
     result = _run(
-        EvaAirlineCancelReservationTool(shared_state=state),
+        CancelReservationTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "not-a-valid-journey-id",
@@ -346,7 +346,7 @@ def test_failed_validation_does_not_record_action():
 
 def test_db_not_loaded_does_not_record_action():
     """Without shared_state['db'], every tool returns db_not_initialized."""
-    tool = EvaAirlineRebookFlightTool(shared_state={})
+    tool = RebookFlightTool(shared_state={})
     result = _run(
         tool,
         {
@@ -369,7 +369,7 @@ def test_db_not_loaded_does_not_record_action():
 def test_add_baggage_allowance_records_action():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        EvaAirlineAddBaggageAllowanceTool(shared_state=state),
+        AddBaggageAllowanceTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -384,7 +384,7 @@ def test_add_baggage_allowance_records_action():
 def test_add_meal_request_records_action():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        EvaAirlineAddMealRequestTool(shared_state=state),
+        AddMealRequestTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -401,7 +401,7 @@ def test_add_to_standby_validates_passenger_ids():
     state = _load_fixture_state("1.1.2")
     # PAX999 doesn't exist on this reservation
     result = _run(
-        EvaAirlineAddToStandbyTool(shared_state=state),
+        AddToStandbyTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -415,7 +415,7 @@ def test_add_to_standby_validates_passenger_ids():
 def test_issue_travel_credit_records_action():
     state = _load_fixture_state("1.1.2")
     result = _run(
-        EvaAirlineIssueTravelCreditTool(shared_state=state),
+        IssueTravelCreditTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -463,11 +463,11 @@ def test_voluntary_date_change_happy_path_db_state_match():
 
     # Execute the canonical happy path
     _run(
-        EvaAirlineGetReservationTool(shared_state=state),
+        GetReservationTool(shared_state=state),
         {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"},
     )
     _run(
-        EvaAirlineRebookFlightTool(shared_state=state),
+        RebookFlightTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -477,7 +477,7 @@ def test_voluntary_date_change_happy_path_db_state_match():
         },
     )
     _run(
-        EvaAirlineAssignSeatTool(shared_state=state),
+        AssignSeatTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",
@@ -506,13 +506,13 @@ def test_messy_path_db_state_diverges_from_expected():
     """
     state = _load_fixture_state("1.1.2")
     _run(
-        EvaAirlineGetReservationTool(shared_state=state),
+        GetReservationTool(shared_state=state),
         {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"},
     )
 
     # First rebook
     _run(
-        EvaAirlineRebookFlightTool(shared_state=state),
+        RebookFlightTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK621_20260320",
@@ -523,7 +523,7 @@ def test_messy_path_db_state_diverges_from_expected():
     )
     # Cancel that booking (now we have: original cancelled + rebook cancelled)
     _run(
-        EvaAirlineCancelReservationTool(shared_state=state),
+        CancelReservationTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK703_20260325",
@@ -532,7 +532,7 @@ def test_messy_path_db_state_diverges_from_expected():
     )
     # Rebook again (now: original cancelled + intermediate cancelled + new confirmed)
     _run(
-        EvaAirlineRebookFlightTool(shared_state=state),
+        RebookFlightTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "journey_id": "FL_SK703_20260325",
@@ -542,7 +542,7 @@ def test_messy_path_db_state_diverges_from_expected():
         },
     )
     _run(
-        EvaAirlineAssignSeatTool(shared_state=state),
+        AssignSeatTool(shared_state=state),
         {
             "confirmation_number": "ZK3FFW",
             "passenger_id": "PAX001",

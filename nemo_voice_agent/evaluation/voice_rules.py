@@ -24,6 +24,10 @@ Imported by every domain base scenario that involves spoken alphanumeric IDs.
 """
 
 VOICE_ALPHANUMERIC_RULE = (
+    "Keep your responses concise and conversational since they will be spoken aloud. "
+    "Avoid special characters, and avoid using emoji. Use only simple, plain text sentences. "
+    "Always punctuate your responses using standard sentence punctuation: commas, periods, "
+    "question marks, exclamation points, etc. "
     "When speaking confirmation numbers, flight numbers, airport codes, user IDs, "
     "phone numbers, email addresses, or any other alphanumeric identifier, spell "
     "each character one at a time — letters as letters, digits as words, "

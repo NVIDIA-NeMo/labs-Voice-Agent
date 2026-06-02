@@ -181,7 +181,12 @@ def create_update_system_prompt_action(
                 and tool_factory is not None
                 and register_schema_tools is not None
             ):
-                logger.info("Registering new tools...")
+                # Registry namespace the bot should look tools up in. Defaults
+                # to "default" (set by the bridge for non-tau2/eva scenarios).
+                # Per-tool fallback to "default" happens inside ``tool_factory``
+                # for shared harness tools (EndConversationTool, etc.).
+                tool_domain = arguments.get("tool_domain", "default")
+                logger.info(f"Registering new tools in domain={tool_domain!r}...")
                 new_tools = json.loads(new_tools_json)
 
                 # Initialize shared_state from the optional shared_state_init
@@ -210,7 +215,13 @@ def create_update_system_prompt_action(
                     shared_state_ref.state = shared_state
 
                 new_schema_tools = [
-                    tool_factory(tool_name, rtvi=rtvi, shared_state=shared_state, **tool_args)
+                    tool_factory(
+                        tool_name,
+                        domain=tool_domain,
+                        rtvi=rtvi,
+                        shared_state=shared_state,
+                        **tool_args,
+                    )
                     for tool_name, tool_args in new_tools.items()
                 ]
                 register_schema_tools(
