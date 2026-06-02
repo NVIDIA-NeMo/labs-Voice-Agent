@@ -40,6 +40,7 @@ from pydantic import BaseModel
 
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
 from nemo_voice_agent.pipecat.services.nemo.streaming_asr import NemoStreamingASRService
+from nemo_voice_agent.pipecat.services.riva_speech import NemotronASRService
 
 ASR_EOU_MODELS = ["nvidia/parakeet_realtime_eou_120m-v1"]
 
@@ -53,9 +54,7 @@ try:
 
 except ModuleNotFoundError as e:
     logger.error(f"Exception: {e}")
-    logger.error(
-        'In order to use NVIDIA NeMo STT, you need to `pip install "nemo_toolkit[all]"`.'
-    )
+    logger.error('In order to use NVIDIA NeMo STT, you need to `pip install "nemo_toolkit[all]"`.')
     raise Exception(f"Missing module: {e}")
 
 
@@ -80,9 +79,7 @@ class NemoSTTService(STTService):
         device: Optional[str] = "cuda:0",
         sample_rate: Optional[int] = 16000,
         params: Optional[NeMoSTTInputParams] = None,
-        has_turn_taking: Optional[
-            bool
-        ] = None,  # if None, it will be set by the model name
+        has_turn_taking: Optional[bool] = None,  # if None, it will be set by the model name
         backend: Optional[str] = "legacy",
         decoder_type: Optional[str] = "rnnt",
         audio_logger: Optional[AudioLogger] = None,
@@ -98,9 +95,7 @@ class NemoSTTService(STTService):
         self._input_sample_rate = None
         if has_turn_taking is None:
             has_turn_taking = True if model in ASR_EOU_MODELS else False
-            logger.info(
-                f"Setting has_turn_taking to `{has_turn_taking}` based on model name: `{model}`"
-            )
+            logger.info(f"Setting has_turn_taking to `{has_turn_taking}` based on model name: `{model}`")
         self._has_turn_taking = has_turn_taking and not self._ignore_eou_eob
         self._backend = backend
         self._decoder_type = decoder_type
@@ -113,19 +108,14 @@ class NemoSTTService(STTService):
         self._load_model()
 
         self._bytes_per_buffer = int(
-            self._params.buffer_size
-            * self._params.raw_audio_frame_len_in_secs
-            * sample_rate
-            * 2
+            self._params.buffer_size * self._params.raw_audio_frame_len_in_secs * sample_rate * 2
         )
         self._audio_buffer = bytearray()
         self.user_is_speaking = False
         self._has_logged_audio_chunk = False
         self._audio_timestamps = []
         self._has_generated_metrics = False
-        logger.info(
-            f"Initialized NeMo STT service with model `{model}` and params `{self._params}`"
-        )
+        logger.info(f"Initialized NeMo STT service with model `{model}` and params `{self._params}`")
 
     def _load_model(self):
         if self._backend == "legacy":
@@ -202,9 +192,7 @@ class NemoSTTService(STTService):
         self._reset_stt_state()
         logger.debug("STT service reset complete")
 
-    async def process_audio_frame(
-        self, frame: AudioRawFrame, direction: FrameDirection
-    ):
+    async def process_audio_frame(self, frame: AudioRawFrame, direction: FrameDirection):
         """Process an audio frame for speech recognition.
 
         If the service is muted, this method does nothing. Otherwise, it
@@ -228,16 +216,12 @@ class NemoSTTService(STTService):
 
         if not frame.audio:
             # Ignoring in case we don't have audio to transcribe.
-            logger.warning(
-                f"Empty audio frame received for STT service: {self.name} {frame.num_frames}"
-            )
+            logger.warning(f"Empty audio frame received for STT service: {self.name} {frame.num_frames}")
             return
 
         await self.process_generator(self.run_stt(frame.audio, frame))
 
-    async def run_stt(
-        self, audio: bytes, audio_frame: Optional[AudioRawFrame] = None
-    ) -> AsyncGenerator[Frame, None]:
+    async def run_stt(self, audio: bytes, audio_frame: Optional[AudioRawFrame] = None) -> AsyncGenerator[Frame, None]:
         """Process audio data and generate transcription frames.
 
         Args:
@@ -249,10 +233,7 @@ class NemoSTTService(STTService):
         timestamp_now = datetime.now()
         await self.start_ttfb_metrics()
         await self.start_processing_metrics()
-        if (
-            self._audio_logger is not None
-            and self._audio_logger.first_audio_timestamp is None
-        ):
+        if self._audio_logger is not None and self._audio_logger.first_audio_timestamp is None:
             self._audio_logger.first_audio_timestamp = timestamp_now
 
         try:
@@ -269,25 +250,17 @@ class NemoSTTService(STTService):
                 # convert bytes to seconds
                 import numpy as np
 
-                audio_array = (
-                    np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
-                )
+                audio_array = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
                 audio_seconds = len(audio_array) / self._sample_rate
-                logger.debug(
-                    f"Received audio chunk length: {len(audio)} bytes, seconds: {audio_seconds}"
-                )
+                logger.debug(f"Received audio chunk length: {len(audio)} bytes, seconds: {audio_seconds}")
                 self._has_logged_audio_chunk = True
 
             if len(self._audio_buffer) >= self._bytes_per_buffer:
                 audio_chunk_bytes = bytes(self._audio_buffer[: self._bytes_per_buffer])
                 self._audio_buffer = self._audio_buffer[self._bytes_per_buffer :]
 
-                last_audio_timestamp = self._audio_timestamps[
-                    : self._params.buffer_size
-                ][-1]
-                self._audio_timestamps = self._audio_timestamps[
-                    self._params.buffer_size :
-                ]
+                last_audio_timestamp = self._audio_timestamps[: self._params.buffer_size][-1]
+                self._audio_timestamps = self._audio_timestamps[self._params.buffer_size :]
 
                 # Append to continuous user audio buffer for stereo conversation recording
                 if self._audio_logger is not None:
@@ -314,9 +287,7 @@ class NemoSTTService(STTService):
                         self._audio_logger.turn_audio_buffer.append(audio_chunk_bytes)
                         # Accumulate transcriptions for turn-based logging
                         if transcription:
-                            self._audio_logger.turn_transcription_buffer.append(
-                                transcription
-                            )
+                            self._audio_logger.turn_transcription_buffer.append(transcription)
                             self._audio_logger.stage_turn_audio_and_transcription(
                                 timestamp_now=timestamp_now,
                                 is_first_frame=is_first_frame,
@@ -359,9 +330,7 @@ class NemoSTTService(STTService):
                     frame_type = InterimTranscriptionFrame
                 else:
                     # otherwise, we use the is_final flag to determine the frame type
-                    frame_type = (
-                        TranscriptionFrame if is_final else InterimTranscriptionFrame
-                    )
+                    frame_type = TranscriptionFrame if is_final else InterimTranscriptionFrame
 
                 # Yield the frame instead of pushing it to avoid blocking
                 yield frame_type(
@@ -404,16 +373,12 @@ class NemoSTTService(STTService):
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         """Process incoming frames and handle VAD events."""
-        if isinstance(frame, VADUserStoppedSpeakingFrame) and isinstance(
-            self._model, NemoStreamingASRService
-        ):
+        if isinstance(frame, VADUserStoppedSpeakingFrame) and isinstance(self._model, NemoStreamingASRService):
             if self.user_is_speaking:
                 logger.debug(
                     "[EOU missing] STT failed to detect end of utterance before VAD detected user stopped speaking"
                 )
-            logger.debug(
-                "Resetting state of the model due to VADUserStoppedSpeakingFrame"
-            )
+            logger.debug("Resetting state of the model due to VADUserStoppedSpeakingFrame")
             self._model.reset_state()
             self._is_vad_active = False
         elif isinstance(frame, VADUserStartedSpeakingFrame):
@@ -422,24 +387,170 @@ class NemoSTTService(STTService):
         await super().process_frame(frame, direction)
 
 
-def get_stt_service_from_config(
-    config: DictConfig, audio_logger: Optional[AudioLogger] = None
-) -> STTService:
+class ResilientNvidiaSTTService(NvidiaSTTService):
+    """``NvidiaSTTService`` with auto-recovery from transient streaming errors.
+
+    **Problem.** The Riva streaming ASR endpoint (NVCF-hosted
+    ``parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer`` and similar
+    sequence models) periodically fails mid-stream with one of two distinct
+    error classes that the upstream ``NvidiaSTTService`` doesn't recover from:
+
+    1. **Sequence-state error** (``StatusCode.INVALID_ARGUMENT``)::
+
+           "inference request for sequence X to model '...' must specify the
+            START flag on the first request of the sequence"
+
+       Occurs when the NVCF backend GCs an idle session (observed during long
+       agent LLM-thinking turns of 60-145s in tau2 scenarios) and the next
+       audio chunk arrives without a fresh START flag.
+
+    2. **Transient gRPC stream resets** (``StatusCode.INTERNAL``,
+       ``UNAVAILABLE``, ``DEADLINE_EXCEEDED``) — most commonly
+       ``RST_STREAM with error code 2`` (HTTP/2 ``INTERNAL_ERROR``), which
+       fires when the cloud-side endpoint abruptly closes the bidirectional
+       stream (pod restart, load-balancer reset, server-side timeout).
+
+    Both classes are recoverable by **opening a fresh streaming session**,
+    which is what ``streaming_response_generator(...)`` does on each call.
+
+    **Fix.** Override ``_thread_task_handler`` with a bounded retry loop
+    around ``_response_handler``. The retry policy is conservative:
+
+    - ``INVALID_ARGUMENT`` is retried only when the message matches
+      ``SEQUENCE_ERROR_FRAGMENT`` — we don't want to retry every
+      client-validation error (malformed audio, bad config, etc.).
+    - ``INTERNAL`` / ``UNAVAILABLE`` / ``DEADLINE_EXCEEDED`` are always retried
+      (within budget) — these are the canonical "transient cloud" status codes.
+    - Everything else propagates immediately (auth, permission, not_found,
+      pipeline-cancel) so real configuration issues fail fast.
+
+    ``self._thread_running`` stays ``True`` across retries so ``__next__``
+    continues to feed audio chunks from ``self._queue``; only explicit
+    ``cancel_task`` sets it to ``False`` (in the ``CancelledError`` branch).
+    Audio chunks already in flight when the stream errored may be lost, but the
+    next user utterance will be transcribed cleanly.
+
+    Borrows the "opening new streaming-ASR session" log line from
+    ``NemotronASRService._response_handler`` (in
+    ``nemo_voice_agent/pipecat/services/riva_speech.py``) so each retry is
+    visible in ``bot_logs_agent/``.
+    """
+
+    # Exact substring match for the sequence-state error. The full gRPC error
+    # message includes a server-generated sequence_id, so we can't match the
+    # whole thing — this fragment is the stable identifier.
+    SEQUENCE_ERROR_FRAGMENT = "must specify the START flag on the first request"
+
+    # gRPC ``StatusCode`` names treated as transient, retryable failures.
+    # Stored as strings (not enum values) so we don't need a hard import on
+    # ``grpc`` at class-definition time — duck-typed lookup via
+    # ``exc.code().name`` works against any grpc.RpcError subclass.
+    _RETRYABLE_GRPC_STATUS_NAMES = frozenset(
+        [
+            "INTERNAL",  # RST_STREAM with INTERNAL_ERROR — cloud pod restart / abrupt close
+            "UNAVAILABLE",  # transient endpoint unavailability
+            "DEADLINE_EXCEEDED",  # long-stream timeout
+        ]
+    )
+
+    MAX_RETRIES = 5
+
+    def _is_retryable_error(self, exc: BaseException) -> bool:
+        """Decide whether ``exc`` warrants restarting the streaming session.
+
+        Two retryable classes:
+
+        1. **Sequence-state errors** (Triton's "must specify START flag" message)
+           — match the canonical substring regardless of the wrapping exception
+           type so the rule works for both ``grpc.RpcError`` and plain
+           ``RuntimeError`` (the latter used in unit tests).
+
+        2. **Transient gRPC status codes** (``INTERNAL`` / ``UNAVAILABLE`` /
+           ``DEADLINE_EXCEEDED``) — duck-typed lookup via ``exc.code().name``
+           so we don't take a hard import on ``grpc`` at module level. Any
+           exception that exposes a ``code()`` method returning an object with
+           a ``name`` attribute matching the set qualifies.
+
+        Everything else returns ``False`` — propagate immediately.
+        """
+        if self.SEQUENCE_ERROR_FRAGMENT in str(exc):
+            return True
+        try:
+            status_name = exc.code().name  # type: ignore[attr-defined]
+        except (AttributeError, TypeError):
+            return False
+        return status_name in self._RETRYABLE_GRPC_STATUS_NAMES
+
+    def _response_handler(self):
+        """Mirror upstream behavior with an extra debug log at start of stream.
+
+        The base class's ``_response_handler`` opens the gRPC streaming generator
+        and pushes responses into ``self._response_queue``. Adding the log line
+        makes session restarts (driven by ``_thread_task_handler`` below) visible
+        in the bot log without having to subclass everything.
+        """
+        logger.debug(f"{self}: opening new streaming-ASR session")
+        super()._response_handler()
+
+    async def _thread_task_handler(self):
+        """Retry the streaming session on transient errors.
+
+        Loops up to ``MAX_RETRIES`` times. Each iteration:
+          - Runs ``_response_handler`` in a worker thread (same as upstream).
+          - On clean return (server closed the stream), exits normally.
+          - On a retryable exception (see ``_is_retryable_error``), logs a
+            warning and re-enters the loop — the next
+            ``streaming_response_generator`` call opens a fresh gRPC stream.
+          - On any other exception, propagates immediately so configuration
+            errors fail fast.
+
+        ``self._thread_running`` stays ``True`` across retries so ``__next__``
+        continues to feed audio chunks; only explicit ``cancel_task`` sets it
+        to ``False`` (in the ``CancelledError`` branch below).
+        """
+        attempts = 0
+        try:
+            self._thread_running = True
+            while True:
+                try:
+                    await asyncio.to_thread(self._response_handler)
+                    return  # Stream ended cleanly.
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    if self._is_retryable_error(e) and attempts < self.MAX_RETRIES:
+                        attempts += 1
+                        logger.warning(
+                            f"{self}: transient STT streaming error "
+                            f"(retry {attempts}/{self.MAX_RETRIES}); "
+                            f"restarting streaming session. Error: {str(e)[:300]}"
+                        )
+                        # Fall through to next loop iteration — the next call
+                        # to streaming_response_generator opens a fresh stream.
+                        continue
+                    logger.error(
+                        f"{self}: STT thread giving up after {attempts} retries "
+                        f"(non-retryable error or budget exhausted); will not "
+                        f"transcribe further. Error: {e!r}"
+                    )
+                    raise
+        except asyncio.CancelledError:
+            self._thread_running = False
+            raise
+
+
+def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[AudioLogger] = None) -> STTService:
     """Get the STT service from the config."""
     backend = config.type
-    assert backend in [
-        "nemo",
-        "nvidia",
-    ], f"Invalid STT backend: {backend}, only 'nemo' and 'nvidia' are supported"
+    available_backends = ["nemo", "nvidia", "nemotron"]
+    assert backend in available_backends, f"Invalid STT backend: {backend}, only {available_backends} are supported"
 
     if backend == "nemo":
         audio_chunk_size_in_secs = config.get("audio_chunk_size_in_secs", 0.08)
         raw_audio_frame_len_in_secs = config.get("raw_audio_frame_len_in_secs", 0.016)
         att_context_size = config.get("att_context_size", [70, 1])
         frame_len_in_secs = config.get("frame_len_in_secs", 0.08)
-        buffer_size = config.get(
-            "buffer_size", audio_chunk_size_in_secs // raw_audio_frame_len_in_secs
-        )
+        buffer_size = config.get("buffer_size", audio_chunk_size_in_secs // raw_audio_frame_len_in_secs)
         stt_params = NeMoSTTInputParams(
             att_context_size=att_context_size,
             frame_len_in_secs=frame_len_in_secs,
@@ -459,17 +570,31 @@ def get_stt_service_from_config(
         )
     elif backend == "nvidia":
         api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
-        model_name = config.get(
-            "model", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer"
-        )
+        model_name = config.get("model", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer")
         function_id = config.get("function_id", "1598d209-5e27-4d3c-8079-4751568b1081")
         language = config.get("language", "en-US")
-        return NvidiaSTTService(
+        # ResilientNvidiaSTTService is a drop-in subclass that auto-recovers
+        # from Triton "must specify START flag" sequence-state errors. See
+        # the class docstring for the rationale.
+        return ResilientNvidiaSTTService(
             api_key=api_key,
             server=config.get("server", "grpc.nvcf.nvidia.com:443"),
             model_function_map={"function_id": function_id, "model_name": model_name},
             language=language,
             sample_rate=config.get("sample_rate", 16000),
+        )
+    elif backend == "nemotron":
+        api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
+        model_name = config.get("model", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer")
+        function_id = config.get("function_id", "1598d209-5e27-4d3c-8079-4751568b1081")
+        language = config.get("language", "en-US")
+        return NemotronASRService(
+            api_key=api_key,
+            server=config.get("server", "grpc.nvcf.nvidia.com:443"),
+            model_function_map={"function_id": function_id, "model_name": model_name},
+            language=language,
+            sample_rate=config.get("sample_rate", 16000),
+            generate_interruptions=config.get("generate_interruptions", False),
         )
     else:
         raise ValueError(f"Invalid ASR backend: {backend}")
