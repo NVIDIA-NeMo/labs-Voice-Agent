@@ -589,7 +589,7 @@ def test_eva_airline_scenarios_have_spell_out_rule_in_both_prompts(scenario_name
     """``VOICE_ALPHANUMERIC_RULE`` must land in both agent and user prompts.
 
     Catches scenarios that overrode user_actions but forgot to include
-    ``self.VOICE_ALPHANUMERIC_RULE`` in ``user_actions.guidelines``.
+    ``VOICE_ALPHANUMERIC_RULE`` in ``user_actions.guidelines``.
     """
     s = get_eval_scenario(scenario_name)
     agent_prompt = s.get_agent_prompt()

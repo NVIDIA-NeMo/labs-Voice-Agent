@@ -23,6 +23,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import Actions, Persona, Task
 from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
     EvaAirlineBaseScenario,
 )
+from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
 # ---------------------------------------------------------------------------
 # eva 4.1.1: You want to move your existing ORD to LAX trip from the 6:00 PM flight to a confirmed seat on the 2:
@@ -70,7 +71,7 @@ class EvaAirline411(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is I810KI (spelled out as I, eight, one, zero, K, I). Your last name is Nelson. Your first name is Steven.",
                 "Your booking: ORD (spelled out as O, R, D) to LAX (spelled out as L, A, X) on 2026-05-14 departing at 18:00.",
                 "Must-have: You are rebooked onto a confirmed seat on the 2:00 PM flight today (2026-05-14) from ORD to LAX (not standby).",
@@ -136,7 +137,7 @@ class EvaAirline412(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is JL42CX (spelled out as J, L, four, two, C, X). Your last name is Hill.",
                 "Your booking: SEA (spelled out as S, E, A) to DFW (spelled out as D, F, W) on 2026-08-06 departing at 09:00.",
                 "Must-have: You must be moved onto a same-day 3:00 PM flight from SEA to DFW with a confirmed seat (not standby).",
@@ -201,7 +202,7 @@ class EvaAirline413(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is AZ3UM9 (spelled out as A, Z, three, U, M, nine). Your last name is Young. Your first name is Patrick.",
                 "Your booking: DEN (spelled out as D, E, N) to SEA (spelled out as S, E, A) on 2026-06-23 departing at 16:00.",
                 "Must-have: You are rebooked onto the 1:00 PM departure today (2026-06-23) for the same origin and destination as currently booked.",
@@ -267,7 +268,7 @@ class EvaAirline415(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is 240QJE (spelled out as two, four, zero, Q, J, E). Your last name is Scott. Your first name is Joseph.",
                 "Your booking: BOS (spelled out as B, O, S) to RDU (spelled out as R, D, U) on 2026-04-21 departing at 18:10.",
                 "Must-have: You are rebooked onto a flight that departs in approximately 45 minutes from the time of the call (current time 2026-04-21 14:15 ET), i.e., a departure time around 15:00 ET the same day.",
@@ -332,7 +333,7 @@ class EvaAirline421(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is W19LAE (spelled out as W, one, nine, L, A, E). Your last name is Baker.",
                 "Your booking: SFO (spelled out as S, F, O) to LAX (spelled out as L, A, X) on 2026-07-08 departing at 17:00.",
                 "Must-have: You are added to the standby list for the 12:00 PM flight (same route as your current trip) and the agent explicitly confirms you are now on the standby list.",
@@ -398,7 +399,7 @@ class EvaAirline424(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is CR27HC (spelled out as C, R, two, seven, H, C). Your last name is Robinson. Your first name is Timothy.",
                 "Your booking: SFO (spelled out as S, F, O) to LAX (spelled out as L, A, X) on 2026-11-19 departing at 17:00.",
                 "Must-have: You are added to the standby list for the 11:00 AM departure (same origin and destination as your current booking).",
@@ -464,7 +465,7 @@ class EvaAirline425(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is NTJBNE (spelled out as N, T, J, B, N, E). Your last name is Walker. Your first name is Rebecca.",
                 "Your booking: ATL (spelled out as A, T, L) to DCA (spelled out as D, C, A) on 2026-06-02 departing at 13:30.",
                 "Must-have: You are successfully added to standby specifically for the 10:00 AM flight, and the agent confirms your Gold-elite priority standby list position as #2 (position 2 on the list).",

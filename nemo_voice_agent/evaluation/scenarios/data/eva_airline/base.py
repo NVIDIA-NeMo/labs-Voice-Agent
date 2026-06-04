@@ -25,6 +25,7 @@ from functools import cache, cached_property
 
 from nemo_voice_agent.evaluation import get_eval_data_root
 from nemo_voice_agent.evaluation.scenarios import register_eval_scenario
+from nemo_voice_agent.evaluation.scenarios import END_CONVERSATION_GUIDELINE, EXECUTION_HONESTY_GUIDELINE
 from nemo_voice_agent.evaluation.scenarios.classes import (
     Actions,
     Persona,
@@ -32,7 +33,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Scenario,
     Task,
 )
-from nemo_voice_agent.evaluation.voice_rules import VOICE_ALPHANUMERIC_RULE as _SHARED_VOICE_ALPHANUMERIC_RULE
+from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
 # ---------------------------------------------------------------------------
 # Module-level cached dataset index
@@ -96,11 +97,6 @@ class EvaAirlineBaseScenario(Scenario):
     # observed live runs of voluntary_date_change take 12–14 turns even when the agent
     # operates efficiently. 600s leaves no headroom for the closing protocol.
 
-    # Shared voice-readability rule re-exported from nemo_voice_agent.evaluation.voice_rules.
-    # Kept as a class attribute so existing references (EvaAirlineBaseScenario.VOICE_ALPHANUMERIC_RULE)
-    # continue to work; tau2 base scenarios import the same constant directly.
-    VOICE_ALPHANUMERIC_RULE = _SHARED_VOICE_ALPHANUMERIC_RULE
-
     @cached_property
     def _scenario_db(self) -> dict:
         """Load the bound eva scenario JSON. Bridge-side; cached after first read."""
@@ -162,8 +158,7 @@ class EvaAirlineBaseScenario(Scenario):
         return Task(
             goal=(
                 "Help the caller with their flight change, rebooking, cancellation, or refund request, "
-                "applying SkyWay's policies. End the call cleanly with EndConversationTool once the "
-                "caller has nothing else to ask."
+                "applying SkyWay's policies."
             ),
             background="You are handling an inbound customer service call for SkyWay Airlines.",
         )
@@ -177,11 +172,10 @@ class EvaAirlineBaseScenario(Scenario):
                 "Listen to the caller's request and consult the policies in your guidelines.",
                 "Use the appropriate tools to fulfill the request — explain any fees or fare differences before confirming.",
                 "After the work is done, confirm to the caller in plain language what was changed (or refunded, or vouchered) and ask if there is anything else they need.",
-                "Once the caller indicates they have nothing else, exchange goodbyes (e.g., 'Thank you for flying SkyWay, have a great day') and then call EndConversationTool to end the call.",
             ],
             guidelines=[
                 f"Today is {self.current_date}.",
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Do not read internal journey IDs (e.g., FL_SK621_20260320) aloud. Refer to flights by flight number and date instead.",
                 "Confirm critical details before executing changes.",
                 "Stay concise — this is a phone call, not an email.",
@@ -197,7 +191,15 @@ class EvaAirlineBaseScenario(Scenario):
                 # information the caller is likely to ask next saves 1–2 turns each.
                 "When presenting flight options to the caller, ALWAYS include the total change cost for each option upfront (not just the raw fare). Don't make the caller ask a second time for the cost.",
                 "Right after a successful rebooking, proactively offer to assign a seat if the caller hasn't requested one yet — e.g., 'Would you like me to assign a seat? Any preference — window, aisle, or middle?' This saves a round of asking and avoids running out of call time.",
-                "Do not call EndConversationTool until you have (a) told the caller what was done, (b) asked if there is anything else, and (c) exchanged goodbyes.",
+                # Shared end-of-call protocol — handles the explicit-confirmation
+                # requirement and EndConversationTool firing. The SkyWay-branded
+                # farewell phrasing layers on top of the generic protocol below.
+                END_CONVERSATION_GUIDELINE,
+                "When the caller has nothing else, use a SkyWay-branded farewell — e.g., 'Thank you for flying SkyWay, have a great day' — before calling EndConversationTool.",
+                # Anti-fabrication rule for summaries / totals — prevents the
+                # "claim-without-doing" pattern (e.g. reporting a refund that
+                # was discussed but never confirmed by the user).
+                EXECUTION_HONESTY_GUIDELINE,
             ],
         )
 
@@ -327,7 +329,7 @@ class VoluntaryDateChange(EvaAirlineBaseScenario):
             ],
             guidelines=[
                 # Voice rules.
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 # Identity / context — sourced from your persona, applied as needed.
                 "Your confirmation number is ZK3FFW (spelled out as Z, K, three, F, F, W). Your last name is Rodriguez.",
                 "Your current booking: AUS (spelled out as A, U, S) to LAX (spelled out as L, A, X) on March twenty, departing eleven oh five AM. You want to move it to March twenty-five, arriving by four PM Pacific. You will pay no more than one hundred twenty dollars total to change. You want to keep a window seat.",
@@ -411,7 +413,7 @@ class IrropsCancellation(EvaAirlineBaseScenario):
                 "Once both the rebooking and meal voucher are confirmed, thank the agent and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is FAR0UM (spelled out as F, A, R, zero, U, M). Last name: Rivera.",
                 "Your original booking: flight SK302 (spelled out as S, K, three, zero, two) from SFO (spelled out as S, F, O) to ORD (spelled out as O, R, D) on April fourteenth, departing 10:30 AM in Main Cabin. It was canceled by the airline.",
                 "Must-haves: arrive in ORD (spelled out as O, R, D) no later than 8 PM Central today, stay on the SFO (spelled out as S, F, O) to ORD (spelled out as O, R, D) route (no alternate airports), keep Main Cabin (no Basic Economy downgrade), and get a meal voucher.",
@@ -479,7 +481,7 @@ class MissedFlightStandby(EvaAirlineBaseScenario):
                 "Once the standby placement (and any protective backup booking) is confirmed at $0 cost, thank the agent and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is EPXYEK (spelled out as E, P, X, Y, E, K). Last name: Sanders.",
                 "Your original booking: ORD (spelled out as O, R, D) to DCA (spelled out as D, C, A) on June eleventh, departing 10 AM. You missed it (passenger fault, not airline).",
                 "Must-haves: total additional cost is $0; arrive in DCA (spelled out as D, C, A) by 6 PM Eastern today; route stays ORD (spelled out as O, R, D) to DCA (spelled out as D, C, A); departure at 1 PM or later (security clearance time).",
@@ -546,7 +548,7 @@ class CancellationRefund(EvaAirlineBaseScenario):
                 "Once the agent has confirmed cancellation AND processed the full credit-card refund with a reference, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is 8JVSDF (spelled out as eight, J, V, S, D, F). Last name: Lewis.",
                 "Must-haves: the entire booking is canceled (all segments), a full cash refund is processed back to the original credit card (NOT travel credit), and the agent provides a concrete cancellation/refund reference.",
                 "If the agent only offers a travel credit, push back firmly: 'I want cash refund to my credit card, not a travel credit.'",
@@ -620,7 +622,7 @@ class FabricatedDisruption(EvaAirlineBaseScenario):
                 "Accept whatever resolution the agent offers (paid rebooking, refund, etc.), OR if no acceptable option emerges after two attempts, say goodbye and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is BZIW48 (spelled out as B, Z, I, W, four, eight). Last name: Barnes.",
                 "Your claimed booking: flight SK445 (spelled out as S, K, four, four, five) from DFW (spelled out as D, F, W) to LAX (spelled out as L, A, X) on April fifteenth, departing 8 AM. You claim it was canceled.",
                 "Insist on free rebooking (claim IRROPS entitlements). Do not pay any fee or fare difference if you can avoid it.",

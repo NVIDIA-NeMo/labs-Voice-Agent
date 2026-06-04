@@ -23,6 +23,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import Actions, Persona, Task
 from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
     EvaAirlineBaseScenario,
 )
+from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
 # ---------------------------------------------------------------------------
 # eva 7.1.1: You want the agent to look up your flight to Chicago and change it, without you having to provide yo
@@ -70,7 +71,7 @@ class EvaAirline711(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your first name is Derek.",
                 "Your booking: ATL (spelled out as A, T, L) to ORD (spelled out as O, R, D) on 2026-05-27 departing at 10:20.",
                 "If the agent asks for your confirmation number, say you don't have it handy and ask them to look you up by first name (Derek) and destination (Chicago) instead.",
@@ -133,7 +134,7 @@ class EvaAirline722(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is XGHYZ6 (spelled out as X, G, H, Y, Z, six). Your last name is Griffin. Your first name is Tanya.",
                 "Your booking: MIA (spelled out as M, I, A) to JFK (spelled out as J, F, K) on 2026-06-12 departing at 17:30.",
                 "When the agent asks for booking details, provide your confirmation code XGHYZ6 and last name Griffin exactly, then wait for the agent to pull up the reservation.",
@@ -196,7 +197,7 @@ class EvaAirline725(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is 98SHTT (spelled out as nine, eight, S, H, T, T). Your last name is Simmons. Your first name is Andrea.",
                 "Your booking: RDU (spelled out as R, D, U) to LGA (spelled out as L, G, A) on 2026-03-26 departing at 13:10.",
                 "Must-have: Your booking is changed to the 10:30 am flight today and the agent clearly confirms the change is completed for confirmation code 98SHTT.",
@@ -260,7 +261,7 @@ class EvaAirline726(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is M62JCV (spelled out as M, six, two, J, C, V). Your last name is DeSilva.",
                 "Your booking: SFO (spelled out as S, F, O) to SEA (spelled out as S, E, A) on 2026-07-21 departing at 11:10.",
                 "Must-have: Your flight is canceled and the agent has confirmed the cancellation is completed for your booking under confirmation code M62JCV.",
@@ -324,7 +325,7 @@ class EvaAirline728(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is DHNHYW (spelled out as D, H, N, H, Y, W). Your last name is Matsuda. Your first name is Kevin.",
                 "Your booking: HNL (spelled out as H, N, L) to LAX (spelled out as L, A, X) on 2026-10-05 departing at 22:10.",
                 "After the agent asks for verification details, provide the confirmation code and last name exactly as requested.",
@@ -387,7 +388,7 @@ class EvaAirline729(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is ZKXLE8 (spelled out as Z, K, X, L, E, eight). Your last name is Reeves. Your first name is Stephanie.",
                 "Your booking: DFW (spelled out as D, F, W) to DEN (spelled out as D, E, N) on 2026-06-09 departing at 13:10.",
                 "Must-have: The agent completes a same-day confirmed change to an earlier flight on the same route as your original booking and clearly confirms the rebooking is finished under confirmation code ZKXLE8 (or provides a replacement confirmation/reference if it changes).",
@@ -451,7 +452,7 @@ class EvaAirline731(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is GQSIHM (spelled out as G, Q, S, I, H, M). Your last name is Alvarez. Your first name is Monica.",
                 "Your booking: SAT (spelled out as S, A, T) to ORD (spelled out as O, R, D) on 2026-05-25 departing at 14:00.",
                 "After the agent authenticates you, briefly explain that you changed from today’s 2:00 PM SAT→ORD flight to tomorrow’s 7:15 AM flight because your meeting moved, and you’re now stuck overnight and want the airline to cover a hotel and transportation.",
@@ -514,7 +515,7 @@ class EvaAirline741(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your booking: SFO (spelled out as S, F, O) to LAX (spelled out as L, A, X) on 2026-04-29 departing at 09:10.",
                 "If the agent asks to authenticate you first, provide your own confirmation number and last name exactly as requested.",
                 'After the agent confirms they have pulled up your reservation, ask: "Can you also pull up my husband’s flight? His name is David Park—he’s flying tomorrow to Chicago. I don’t have his confirmation number, but it’s a SkyWay flight."',

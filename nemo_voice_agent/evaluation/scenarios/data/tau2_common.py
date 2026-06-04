@@ -51,33 +51,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from loguru import logger
 
 from nemo_voice_agent.evaluation import get_eval_data_root
+from nemo_voice_agent.evaluation.scenarios import END_CONVERSATION_GUIDELINE, EXECUTION_HONESTY_GUIDELINE
 from nemo_voice_agent.evaluation.scenarios.classes import (
-    GENERAL_PROMPT,
     Actions,
     Persona,
     Resources,
     Scenario,
     Task,
 )
-from nemo_voice_agent.evaluation.voice_rules import VOICE_ALPHANUMERIC_RULE
-
-
-# Voice-harness-specific guideline appended to every tau2 agent prompt. Tau2's
-# upstream policy.md is text-mode authored — conversations terminate when the
-# agent stops responding, no explicit "end the call" signal exists. The voice
-# harness needs an explicit termination tool so the bridge can detect end-of-
-# scenario and pull the summary. Adding this guideline tells the agent when to
-# call ``EndConversationTool`` (resolved via the registry's "default" namespace
-# fallback — the tool itself lives in ``basic_tools.py``).
-_END_CONVERSATION_GUIDELINE = (
-    "When the user has indicated they have no further requests and you have "
-    "exchanged goodbyes, call `EndConversationTool` to end the call. Do not "
-    "call it before the user has explicitly confirmed they are done — premature "
-    "termination is a failure mode. Typical flow: (a) confirm all actions are "
-    "complete, (b) ask 'is there anything else you need help with?', (c) wait "
-    "for the user's response, (d) if they say goodbye / no, say goodbye back "
-    "and then call `EndConversationTool`."
-)
+from nemo_voice_agent.utils.voice_prompts import GENERAL_PROMPT, VOICE_ALPHANUMERIC_RULE
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +350,7 @@ class Tau2BaseScenario(Scenario):
 
         These additions don't conflict with policy.md; they're realization
         guidance, not policy content. They sit in a clearly-marked
-        ``## Voice Realization Notes`` section so a future reader can identify
+        ``## Additional Notes`` section so a future reader can identify
         what's verbatim-tau2 vs added.
 
         Subclasses can further append (e.g. ``self.policy + extra``) by overriding,
@@ -376,12 +358,14 @@ class Tau2BaseScenario(Scenario):
         """
         return (
             self.policy
-            + "\n\n## Voice Realization Notes\n\n"
+            + "\n\n## Additional Notes to Follow\n\n"
             + GENERAL_PROMPT.strip()
             + "\n\n"
             + VOICE_ALPHANUMERIC_RULE
             + "\n\n"
-            + _END_CONVERSATION_GUIDELINE
+            + END_CONVERSATION_GUIDELINE
+            + "\n\n"
+            + EXECUTION_HONESTY_GUIDELINE
         )
 
     # ---- Scenario contract: minimal stubs that honor the interface ----
@@ -439,7 +423,6 @@ class Tau2BaseScenario(Scenario):
     def user_persona(self) -> Persona:
         """Simulated-user persona derived from ``user_scenario.instructions``.
 
-        - ``known_info`` (who the user is, what they know) → ``background``.
         - ``task_instructions`` (behavioral guidance) → ``personality``.
         - ``name`` is deliberately ``None`` — narrative identity (real reservation
           holder name, user_id, or "you are a frequent flyer" framing) comes
@@ -449,12 +432,19 @@ class Tau2BaseScenario(Scenario):
           ``known_info`` content (e.g. ``"Your user id is 'daiki_muller_1116'."``).
           ``scenario.persona_name`` is still available on the class for
           metric-slicing per plan §7 Q7; it just doesn't flow into the prompt.
+
+        ``known_info`` and ``unknown_info`` are NOT placed in ``background``.
+        They live in ``user_resources.info_sections`` as ``Things you know`` /
+        ``Things you don't know`` subsections. Reason: Persona is identity + style;
+        these are facts. Separating them lets the prompt clearly signal which
+        details the simulator should NOT invent (anything not in known_info,
+        and especially anything explicitly in unknown_info). See M3.7a fix.
         """
         instructions = self._user_scenario.get("instructions") or {}
         return Persona(
             role="human user calling customer support",
             name=None,
-            background=instructions.get("known_info") or "",
+            background="",
             personality=instructions.get("task_instructions") or "",
         )
 
@@ -479,12 +469,47 @@ class Tau2BaseScenario(Scenario):
 
     @cached_property
     def user_resources(self) -> Resources:
-        """Default user-side resources — empty.
+        """User-side resources — ``known_info`` + ``unknown_info`` as info_sections.
 
-        Telecom subclasses override to register user-side tools (see plan §3
-        ``User-simulator tools`` row + M5).
+        Renders into the user-sim prompt as::
+
+            ## Additional Information
+
+            ### Things you know
+            <known_info content>
+
+            ### Things you don't know
+            <unknown_info content>
+
+        Telecom subclasses override to also register user-side tools (see plan
+        §3 ``User-simulator tools`` row + M5).
+
+        Why both subsections (M3.7a): the user simulator otherwise fabricates
+        identifiers it doesn't have (e.g. tau2_retail__16 simulator invented
+        ``PEND456`` / ``WATCH001`` instead of saying "I don't have my order
+        IDs"). ``unknown_info`` is tau2's authored hint about what the user
+        *explicitly does not know* — for task 16 it's "You do not remember your
+        email address". Exposing it tells the simulator both what to share AND
+        what to admit ignorance about. Combined with ``GENERAL_PROMPT``'s
+        anti-fabrication rule, this prevents the invent-plausible-IDs failure
+        mode while preserving the agent's discovery path (the agent must still
+        call ``find_user_id_by_name_zip`` → ``get_user_details`` →
+        ``get_order_details`` to locate the actual orders).
         """
-        return Resources(tools={}, documents={}, information=[])
+        instructions = self._user_scenario.get("instructions") or {}
+        info_sections: Dict[str, str] = {}
+        known = instructions.get("known_info")
+        if known:
+            info_sections["Things you know"] = known
+        unknown = instructions.get("unknown_info")
+        if unknown:
+            info_sections["Things you don't know"] = unknown
+        return Resources(
+            tools={},
+            documents={},
+            information=[],
+            info_sections=info_sections or None,
+        )
 
     # ---- abstract ----
 

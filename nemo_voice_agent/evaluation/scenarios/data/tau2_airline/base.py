@@ -116,8 +116,9 @@ class Tau2AirlineBaseScenario(Tau2BaseScenario):
                 # fallback (lives in basic_tools.py, not tau2_airline_tools.py).
                 # Tau2's policy.md is text-mode authored and never mentions an
                 # end-of-call signal; the voice harness needs one so the bridge
-                # can pull the summary. See ``_END_CONVERSATION_GUIDELINE`` in
-                # tau2_common.py for the prompt-side guidance that pairs with this.
+                # can pull the summary. See ``END_CONVERSATION_GUIDELINE`` in
+                # ``nemo_voice_agent.evaluation.scenarios`` for the prompt-side
+                # guidance that pairs with this.
                 "EndConversationTool": {},
             },
             information=[

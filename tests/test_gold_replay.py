@@ -304,7 +304,7 @@ def test_get_agent_prompt_starts_with_policy_md_verbatim():
     assert prompt.startswith("fake policy")
     assert "You are a tau2" not in prompt
     # Body itself doesn't have "Keep your responses concise" injected mid-text.
-    body_only = prompt.split("## Voice Realization Notes", 1)[0]
+    body_only = prompt.split("## Additional Notes to Follow", 1)[0]
     assert body_only.rstrip() == "fake policy"
 
 
@@ -318,27 +318,105 @@ def test_get_agent_prompt_appends_voice_realization_addenda():
     """
     scenario = _FakeTau2Scenario()
     prompt = scenario.get_agent_prompt()
-    assert "## Voice Realization Notes" in prompt
+    assert "## Additional Notes to Follow" in prompt
     assert "Keep your responses concise" in prompt  # from GENERAL_PROMPT
     assert "spell each character one at a time" in prompt  # from VOICE_ALPHANUMERIC_RULE
     # Addenda come AFTER the policy body, not before.
-    assert prompt.index("fake policy") < prompt.index("## Voice Realization Notes")
+    assert prompt.index("fake policy") < prompt.index("## Additional Notes to Follow")
 
 
 def test_user_persona_pulled_from_user_scenario_instructions():
     """``user_persona.name`` is intentionally None for tau2 — narrative identity
-    comes from ``known_info`` in ``background``. tau2's ``persona_name``
-    (e.g. ``"lisa_brenner"``) is an acoustic-slicing label, not a narrative name,
-    and lives on the scenario class via ``scenario.persona_name``.
+    comes from ``known_info``, which (M3.7a) now lives in
+    ``user_resources.info_sections["Things you know"]`` rather than
+    ``Persona.background``. tau2's ``persona_name`` (e.g. ``"lisa_brenner"``)
+    is an acoustic-slicing label, not a narrative name, and lives on the
+    scenario class via ``scenario.persona_name``.
     """
     scenario = _StructuredUserScenario()
     persona = scenario.user_persona
     assert persona.name is None
-    assert "Emma Kim" in persona.background
+    # known_info is NOT in background anymore — it moved to user_resources.info_sections.
+    assert persona.background == ""
+    # task_instructions still flows into personality.
     assert "Insist on a refund" in persona.personality
     # persona_name (class-level metric-slicing label) still available — just
     # not flowed into the prompt.
     assert scenario.persona_name == "emma_kim"
+
+
+def test_user_resources_carries_known_info_as_info_section():
+    """M3.7a: ``known_info`` lands in ``user_resources.info_sections['Things you know']``.
+
+    Previous design (M2) put it in ``Persona.background`` as narrative prose.
+    That conflated identity (persona) with facts (resources). The current design
+    separates them so the user-sim prompt has a clearly-labeled "Things you know"
+    subsection, which (paired with ``GENERAL_PROMPT``'s anti-fabrication rule)
+    helps the simulator avoid inventing identifiers it doesn't have.
+    """
+    scenario = _StructuredUserScenario()
+    info = scenario.user_resources.info_sections or {}
+    assert "Things you know" in info
+    assert "Emma Kim" in info["Things you know"]
+    # The fixture has unknown_info=None, so that subsection should NOT appear.
+    assert "Things you don't know" not in info
+
+
+def test_user_resources_carries_unknown_info_when_present():
+    """tau2's ``unknown_info`` field (M3.7a) renders as the ``Things you don't know``
+    subsection. Was silently dropped pre-M3.7a — see eval_20260603_072747 audit
+    where tau2_retail__16's "You do not remember your email address" never
+    reached the user-sim, contributing to the simulator fabricating IDs.
+    """
+
+    class _ScenarioWithUnknown(_StructuredUserScenario):
+        @property
+        def _index_entry(self):
+            entry = super()._index_entry
+            entry["task"]["user_scenario"]["instructions"]["unknown_info"] = (
+                "You do not remember your email address."
+            )
+            return entry
+
+    scenario = _ScenarioWithUnknown()
+    info = scenario.user_resources.info_sections or {}
+    assert info.get("Things you know", "").startswith("You are Emma Kim")
+    assert "email" in info.get("Things you don't know", "").lower()
+
+
+def test_user_resources_info_sections_none_when_both_missing():
+    """If neither known_info nor unknown_info is set, ``info_sections`` is None
+    (not an empty dict) so ``Resources.to_prompt_section()`` skips rendering
+    the ``## Additional Information`` block entirely.
+    """
+
+    class _ScenarioNoInfo(_StructuredUserScenario):
+        @property
+        def _index_entry(self):
+            entry = super()._index_entry
+            entry["task"]["user_scenario"]["instructions"]["known_info"] = None
+            entry["task"]["user_scenario"]["instructions"]["unknown_info"] = None
+            return entry
+
+    scenario = _ScenarioNoInfo()
+    assert scenario.user_resources.info_sections is None
+
+
+def test_general_prompt_includes_anti_fabrication_rule():
+    """M3.7a: ``GENERAL_PROMPT`` carries an anti-fabrication clause that flows into
+    BOTH the user-sim prompt (via ``Persona.to_prompt_section``) and the tau2
+    agent prompt (via ``Tau2BaseScenario.get_agent_prompt`` → ``## Additional
+    Notes to Follow``). Single source of truth for "don't make stuff up."
+
+    Symptoms this guards against:
+    - User-sim inventing order IDs that aren't in known_info (tau2_retail__16
+      simulator made up PEND456 / WATCH001 in eval_20260603_072747).
+    - Agent claiming to have called tools when it hasn't ("I've verified your
+      identity" with zero tool_calls emitted, eval_20260603_084724).
+    """
+    from nemo_voice_agent.utils.voice_prompts import GENERAL_PROMPT
+
+    assert "fabricate" in GENERAL_PROMPT.lower()
 
 
 def test_user_task_uses_reason_for_call():
@@ -347,7 +425,7 @@ def test_user_task_uses_reason_for_call():
 
 
 def test_user_actions_include_voice_alphanumeric_rule():
-    from nemo_voice_agent.evaluation.voice_rules import VOICE_ALPHANUMERIC_RULE
+    from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
     scenario = _StructuredUserScenario()
     assert VOICE_ALPHANUMERIC_RULE in scenario.user_actions.guidelines

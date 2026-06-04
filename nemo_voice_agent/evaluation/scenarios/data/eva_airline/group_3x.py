@@ -23,6 +23,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import Actions, Persona, Task
 from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
     EvaAirlineBaseScenario,
 )
+from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
 # ---------------------------------------------------------------------------
 # eva 3.1.5: You need to recover your itinerary after missing your ATL to ORD flight this morning and still arriv
@@ -70,7 +71,7 @@ class EvaAirline315(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is M9M6FJ (spelled out as M, nine, M, six, F, J). Your last name is Price. Your first name is Jason.",
                 "Your booking: ATL (spelled out as A, T, L) to MSP (spelled out as M, S, P) on 2026-09-08 departing at 08:00.",
                 "Must-have: You must arrive in MSP by 6:00 PM Central Time on 2026-09-08.",
@@ -136,7 +137,7 @@ class EvaAirline334(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is 1QTFVX (spelled out as one, Q, T, F, V, X). Your last name is Adams. Your first name is Sarah.",
                 "Your booking: JFK (spelled out as J, F, K) to LHR (spelled out as L, H, R) on 2026-12-05 departing at 19:30.",
                 "Must-have: The new departure date must be on or after 2026-12-26 (about 3 weeks from today, after passport renewal).",

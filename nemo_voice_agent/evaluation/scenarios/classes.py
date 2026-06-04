@@ -19,13 +19,12 @@ from typing import Any, Dict, List, Optional, Union
 
 from nemo_voice_agent.utils.audio import NoiseConfig
 
-GENERAL_PROMPT = (
-    "Keep your responses concise and conversational since they will be spoken aloud. "
-    "Avoid special characters. Use only simple, plain text sentences. "
-    "Always punctuate your responses using standard sentence punctuation: "
-    "commas, periods, question marks, exclamation points, etc. "
-    "Always spell out numbers as words. Avoid using emojis. "
-)
+# Re-export ``GENERAL_PROMPT`` from its canonical home so existing imports
+# (``from nemo_voice_agent.evaluation.scenarios.classes import GENERAL_PROMPT``)
+# keep working after the constant moved to ``utils.voice_prompts`` for cross-
+# layer reusability. New code should import directly from
+# ``nemo_voice_agent.utils.voice_prompts``.
+from nemo_voice_agent.utils.voice_prompts import GENERAL_PROMPT  # noqa: F401
 
 
 @dataclass
@@ -115,11 +114,20 @@ class Resources:
             the value is a file path. The file can be read by using a `read_file` tool.
         information: A list of additional information strings. For example, the agent will have
             some FAQs or other information that is relevant to the scenario.
+        info_sections: Optional structured info, rendered as ``### <key>`` blocks
+            under ``## Additional Information``. Used by tau2 to expose
+            ``known_info`` / ``unknown_info`` as separate ``Things you know`` /
+            ``Things you don't know`` subsections so the simulator stops
+            fabricating facts it doesn't have (see eval_20260603_072747 audit:
+            user-sim invented order IDs because ``unknown_info`` was being
+            silently dropped). ``None`` (default) preserves existing flat-list
+            rendering for eva/customer_service/restaurant/qa/etc.
     """
 
     tools: Dict[str, Dict[str, str]] = field(default_factory=dict)
     documents: Dict[str, str] = field(default_factory=dict)
     information: List[str] = field(default_factory=list)
+    info_sections: Optional[Dict[str, str]] = None
 
     def to_prompt_section(self) -> str:
         """Render this resource set as a prompt section."""
@@ -129,11 +137,18 @@ class Resources:
             sections.append(
                 f"## Available Documents\nYou can read the following documents by using tools:\n{doc_list}"
             )
-        if self.information:
-            info_list = "\n".join(f"- {info}" for info in self.information)
-            sections.append(
-                "## Additional Information\n" f"You can use the following information for reference:\n{info_list}"
-            )
+        if self.information or self.info_sections:
+            block_lines: List[str] = ["## Additional Information"]
+            if self.information:
+                info_list = "\n".join(f"- {info}" for info in self.information)
+                block_lines.append("You can use the following information for reference:")
+                block_lines.append(info_list)
+            if self.info_sections:
+                for heading, body in self.info_sections.items():
+                    if not body:
+                        continue
+                    block_lines.append(f"\n### {heading}\n{body}")
+            sections.append("\n".join(block_lines))
         return "\n\n".join(sections)
 
     def to_tools_json_string(self) -> str:
