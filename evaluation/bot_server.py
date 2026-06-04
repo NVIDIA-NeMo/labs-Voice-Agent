@@ -176,7 +176,7 @@ async def run_bot_websocket(
         )
     )
     rtvi.register_action(create_get_context_history_action(task_ref, assistant_agg))
-    rtvi.register_action(create_get_scenario_summary_action(shared_state_ref))
+    rtvi.register_action(create_get_scenario_summary_action(task_ref, shared_state_ref))
 
     task = PipelineTask(
         pipeline,

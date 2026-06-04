@@ -66,6 +66,15 @@ RTVI_BOT_TRANSCRIPTION = RTVIBotTranscriptionMessage(data=RTVITextMessageData(te
 RTVI_BOT_TTS_TEXT = RTVIBotTTSTextMessage(data=RTVITextMessageData(text="")).type
 RTVI_BOT_SERVER_MESSAGE = RTVIServerMessage(data=RTVITextMessageData(text="")).type
 
+# Message types whose per-event side context is already conveyed by an
+# existing dedicated log line in the monitors below (e.g. ``[AGENT TTS] ...``,
+# ``[AGENT STARTED SPEAKING]``). The uniform ``[SIDE EVENT] type=<X>`` tag
+# emitted by ``_log_rtvi_event`` is skipped for these types so the bridge log
+# doesn't double up.
+_RTVI_TYPES_ALREADY_TAGGED = frozenset(
+    {RTVI_BOT_STARTED_SPEAKING, RTVI_BOT_TTS_TEXT, RTVI_BOT_STOPPED_SPEAKING}
+)
+
 STOP_REASON_TIMEOUT = "[TIMEOUT]"
 STOP_REASON_EXIT = "[EXIT]"
 
@@ -1573,6 +1582,56 @@ class VoiceAgentEvaluationBridge:
         self._save_bot_server_history(output_dir_user, self.user_context_history)
         self._save_bot_server_history(output_dir_agent, self.agent_context_history)
 
+    def _log_rtvi_event(self, side: str, message_type: str, data: dict) -> None:
+        """Emit a uniform side-tagged DEBUG log line for an RTVI event.
+
+        Each monitor (``_monitor_user_message`` / ``_monitor_agent_message``) is
+        bound to one side by construction, so we know which side emitted the
+        event without time-correlation. This helper writes a one-line tag plus
+        expanded payload lines for the message types that carry analytically
+        useful structured data (TTFB values, token counts, transcription text,
+        RTVI action names).
+
+        Skipped types (``_RTVI_TYPES_ALREADY_TAGGED``): the monitors already
+        emit dedicated side-tagged lines like ``[AGENT TTS] <text>`` for these,
+        so adding ``[AGENT EVENT] type=bot-tts-text`` on top would just
+        duplicate. Their expanded payload (the TTS text) is already in the
+        existing line.
+
+        Skipping is by *event-tag emission only* — the underlying RTVI message
+        still flows through pipecat's ``ProtobufFrameSerializer:deserialize``
+        DEBUG log, so nothing is lost from the bridge log.
+        """
+        if message_type not in _RTVI_TYPES_ALREADY_TAGGED:
+            logger.debug(f"[{side} EVENT] type={message_type}")
+
+        body = data.get("data") or {}
+        if message_type == "metrics":
+            for ttfb in body.get("ttfb") or []:
+                try:
+                    value_str = f"{float(ttfb.get('value', 0)):.3f}s"
+                except (TypeError, ValueError):
+                    value_str = str(ttfb.get("value"))
+                logger.debug(
+                    f"[{side} METRICS] ttfb processor={ttfb.get('processor')} value={value_str}"
+                )
+            for tok in body.get("tokens") or []:
+                logger.debug(
+                    f"[{side} METRICS] tokens prompt={tok.get('prompt_tokens')} "
+                    f"completion={tok.get('completion_tokens')}"
+                )
+        elif message_type == "user-transcription":
+            # tau2 retail run on 2026-06-03 showed STT collapsing spelled-out
+            # digits back to numerals; final transcripts let us diff against
+            # bot_logs_user/llm_context.json without reading both files.
+            # Partials surface STT instability / mid-utterance corrections.
+            text = body.get("text", "")
+            kind = "final" if body.get("final") else "partial"
+            logger.debug(f"[{side} STT {kind}] {text!r}")
+        elif message_type == "action":
+            action = body.get("action") or data.get("action")
+            logger.debug(f"[{side} ACTION] {action}")
+
     async def _monitor_user_message(self, frame):
         """
         Monitor user messages for timing and transcripts.
@@ -1597,6 +1656,7 @@ class VoiceAgentEvaluationBridge:
 
         data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
         message_type = data.get("type", "")
+        self._log_rtvi_event("USER", message_type, data)
 
         if message_type == RTVI_BOT_STARTED_SPEAKING:
             # Defensive: close previous turn if it wasn't properly stopped
@@ -1672,6 +1732,7 @@ class VoiceAgentEvaluationBridge:
 
         data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
         message_type = data.get("type", "")
+        self._log_rtvi_event("AGENT", message_type, data)
 
         if message_type == RTVI_BOT_STARTED_SPEAKING:
             logger.debug("[AGENT STARTED SPEAKING]")

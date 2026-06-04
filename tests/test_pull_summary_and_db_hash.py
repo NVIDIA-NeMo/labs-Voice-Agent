@@ -167,7 +167,7 @@ def test_get_scenario_summary_action_returns_actions_and_hash():
         "db": db_contents,
         "_call_counts": {"rebook_flight": 1},  # internal marker, not in response
     }
-    action = create_get_scenario_summary_action(ref)
+    action = create_get_scenario_summary_action(None, ref)
     result = asyncio.run(action.handler(None, "context", {}))
     assert result["actions"] == [{"action_type": "rebook_flight", "x": 1}]
     assert result["db_hash"] == get_dict_hash(db_contents)
@@ -185,7 +185,7 @@ def test_get_scenario_summary_action_returns_user_db_hash_when_present():
     user_db_contents = {"phone_state": {"airplane_mode": False}}
     ref = SharedStateRef()
     ref.state = {"actions": [], "db": db_contents, "user_db": user_db_contents}
-    action = create_get_scenario_summary_action(ref)
+    action = create_get_scenario_summary_action(None, ref)
     result = asyncio.run(action.handler(None, "context", {}))
     assert result["db_hash"] == get_dict_hash(db_contents)
     assert result["user_db_hash"] == get_dict_hash(user_db_contents)
@@ -194,7 +194,7 @@ def test_get_scenario_summary_action_returns_user_db_hash_when_present():
 def test_get_scenario_summary_action_uninitialized_state():
     """Empty state returns ``{actions: [], db_hash: None, user_db_hash: None}``."""
     ref = SharedStateRef()
-    action = create_get_scenario_summary_action(ref)
+    action = create_get_scenario_summary_action(None, ref)
     result = asyncio.run(action.handler(None, "context", {}))
     assert result == {"actions": [], "db_hash": None, "user_db_hash": None}
 
@@ -202,7 +202,7 @@ def test_get_scenario_summary_action_uninitialized_state():
 def test_get_scenario_summary_action_metadata():
     """Action declares the correct service / action / no-args schema."""
     ref = SharedStateRef()
-    action = create_get_scenario_summary_action(ref)
+    action = create_get_scenario_summary_action(None, ref)
     assert action.service == "context"
     assert action.action == "get_scenario_summary"
     assert action.arguments == []

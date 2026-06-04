@@ -47,7 +47,7 @@ from nemo_voice_agent.pipecat.transports.network.websocket_server import (
 
 def _reset_services(services: Optional[List[Any]]) -> None:
     for service in services or []:
-        if service is not None:
+        if service is not None and hasattr(service, "reset"):
             service.reset()
 
 

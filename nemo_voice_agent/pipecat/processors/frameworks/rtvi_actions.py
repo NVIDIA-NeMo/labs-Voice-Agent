@@ -24,6 +24,7 @@ the task needs ``rtvi`` in its observer list). ``TaskRef`` is a tiny holder the
 bot sets after constructing the task.
 """
 
+import asyncio
 import copy
 import dataclasses
 import json
@@ -64,7 +65,7 @@ class SharedStateRef:
 
 
 async def _maybe_end_task(task_ref: TaskRef) -> None:
-    if task_ref.running and task_ref.task is not None:
+    if task_ref is not None and task_ref.running:
         await task_ref.task.queue_frames([EndTaskFrame()])
 
 
@@ -274,10 +275,46 @@ def create_get_context_history_action(
 
     Returns the assistant aggregator's full message list, stringified to match
     the shape evaluation clients expect.
+
+    **Race-safety against in-flight function calls.** When the bridge fetches
+    the context immediately after receiving the ``<exit>`` server message (the
+    `SendExitMessageTool` / `EndConversationTool` flow), the agent's final
+    ``tool_call`` may still be in-flight in the aggregator's pipeline — the
+    exit message arrives via the ``bot_server_message`` channel while the
+    tool_call frame is still being committed via the
+    ``FunctionCallInProgressFrame`` → ``FunctionCallResultFrame`` cycle. If we
+    read the context before those frames commit, the captured message list is
+    missing the final assistant turn. The judge then sees a stale context
+    that doesn't contain the EndConversationTool tool_call and (incorrectly)
+    deducts points for "didn't call EndConversationTool". 
+
+    Fix: poll the aggregator until its in-progress map drains, with a hard
+    deadline so a stuck tool can never deadlock scenario cleanup. The common
+    case (no pending calls) returns immediately — zero added latency.
+
     """
 
     async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
-        await _maybe_end_task(task_ref)
+        # Wait for any in-flight function calls to commit to the context before
+        # snapshotting. ``has_function_calls_in_progress`` is pipecat's
+        # public @property on ``LLMResponseAggregator`` (NOT a method —
+        # access as an attribute, no parens, or it raises
+        # ``'bool' object is not callable`` at runtime); the bounded 3 s
+        # deadline ensures we always return — a stuck tool downgrades to a
+        # warning, not a deadlock. 
+        if hasattr(assistant_aggregator, "has_function_calls_in_progress"):
+            deadline = asyncio.get_event_loop().time() + 3.0
+            waited_initial = assistant_aggregator.has_function_calls_in_progress
+            while assistant_aggregator.has_function_calls_in_progress:
+                if asyncio.get_event_loop().time() >= deadline:
+                    logger.warning(
+                        "get_context_history: function calls still in progress after 3s; "
+                        "returning context anyway (may be stale)"
+                    )
+                    break
+                await asyncio.sleep(0.05)
+            if waited_initial:
+                logger.debug("get_context_history: aggregator drained, snapshotting context")
         try:
             messages = assistant_aggregator._context.get_messages()
             logger.debug(f"Returning context history: {len(messages)} messages")
@@ -296,6 +333,7 @@ def create_get_context_history_action(
 
 
 def create_get_scenario_summary_action(
+    task_ref: TaskRef,
     shared_state_ref: SharedStateRef,
 ) -> RTVIAction:
     """Build the ``context.get_scenario_summary`` action.
@@ -341,6 +379,7 @@ def create_get_scenario_summary_action(
                 f"Returning scenario summary: {len(actions)} action(s), "
                 f"db_hash={db_hash}, user_db_hash={user_db_hash}"
             )
+            await _maybe_end_task(task_ref)
             return {
                 "actions": actions,
                 "db_hash": db_hash,
