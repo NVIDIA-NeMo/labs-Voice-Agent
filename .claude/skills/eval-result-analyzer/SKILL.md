@@ -164,18 +164,22 @@ from pathlib import Path
 from statistics import mean, median
 
 SCEN = Path('<scenario_dir>')
-line_re = re.compile(
-    r'\[(AGENT|USER) METRICS\] ttfb processor=(\S+) value=([\d.]+)s'
-)
-events = []
+ttfb_re = re.compile(r'\[(AGENT|USER) METRICS\] ttfb processor=(\S+) value=([\d.]+)s')
+tok_re = re.compile(r'\[(AGENT|USER) METRICS\] tokens prompt=(\d+) completion=(\d+)')
+ttfb_events = []
+token_events = []
 for line in (SCEN / 'bridge_log.txt').read_text().splitlines():
-    m = line_re.search(line)
+    m = ttfb_re.search(line)
     if m:
-        events.append({"side": m.group(1).lower(), "processor": m.group(2), "value": float(m.group(3))})
+        ttfb_events.append({"side": m.group(1).lower(), "processor": m.group(2), "value": float(m.group(3))})
+    m = tok_re.search(line)
+    if m:
+        token_events.append({"side": m.group(1).lower(),
+                             "prompt": int(m.group(2)), "completion": int(m.group(3))})
 
-buckets = {}
-for ev in events:
-    buckets.setdefault((ev["side"], ev["processor"]), []).append(ev["value"])
+ttfb_buckets = {}
+for ev in ttfb_events:
+    ttfb_buckets.setdefault((ev["side"], ev["processor"]), []).append(ev["value"])
 
 def stats(vs):
     vs = sorted(vs)
@@ -185,9 +189,29 @@ def stats(vs):
             "p50": round(median(vs),2), "p90": pct(0.90), "p95": pct(0.95),
             "max": round(max(vs),2)}
 
-print(f"Total side-tagged TTFB events: {len(events)}")
-for (side, proc), vs in sorted(buckets.items()):
+print(f"Total side-tagged TTFB events: {len(ttfb_events)}")
+for (side, proc), vs in sorted(ttfb_buckets.items()):
     print(f'  {side:>6} | {proc:<26} | {stats(vs)}')
+
+# Token usage per side (prompt + completion separately; ints not floats)
+def int_stats(vs):
+    vs = sorted(vs)
+    def pct(p):
+        return vs[min(len(vs)-1, int(len(vs)*p))] if vs else 0
+    return {"n": len(vs), "sum": sum(vs), "mean": sum(vs)//len(vs) if vs else 0,
+            "p50": vs[len(vs)//2] if vs else 0, "p90": pct(0.90), "p95": pct(0.95),
+            "max": max(vs) if vs else 0}
+
+token_buckets = {}
+for ev in token_events:
+    token_buckets.setdefault(ev["side"], []).append(ev)
+print(f"\nTotal token events: {len(token_events)}")
+for side in sorted(token_buckets):
+    prompts = [e["prompt"] for e in token_buckets[side]]
+    completions = [e["completion"] for e in token_buckets[side]]
+    print(f'  {side:>6} | n={len(token_buckets[side])}  prompt={int_stats(prompts)}')
+    print(f'         |          completion={int_stats(completions)}')
+    print(f'         |          total tokens = {sum(prompts) + sum(completions):,}')
 PY
 ```
 
@@ -273,6 +297,14 @@ Output structure:
 | agent | NemotronTTSService#0 | … | … | … | … | … | … | … |
 | user | NvidiaLLMService#0 | … | … | … | … | … | … | … |
 | user | NemotronTTSService#0 | … | … | … | … | … | … | … |
+
+**Token usage per side** (from `[AGENT METRICS] tokens prompt=N completion=N` events; one event per LLM call):
+| side  | n calls | prompt sum | prompt mean | prompt p90 | prompt max | completion sum | completion mean | completion p90 | completion max | total tokens |
+|-------|---------|------------|-------------|------------|------------|----------------|-----------------|----------------|----------------|--------------|
+| agent | …       | …          | …           | …          | …          | …              | …               | …              | …              | …            |
+| user  | …       | …          | …           | …          | …          | …              | …               | …              | …              | …            |
+
+**Largest single LLM call**: side at t=NNNs with prompt=N completion=N total=N — cross-reference with the slowest-turns block; verbose completions typically correlate with the slowest turns.
 
 **Slowest 3 agent turns:** list with timestamp, latency, and snippet
 **Slowest 3 user turns:**  list with timestamp, latency, and snippet
@@ -461,6 +493,15 @@ Run-level report uses the **structure below** (in this exact order):
 | User-sim response latency | …       | …                                  |
 | Other                     | …       | …                                  |
 
+**Token usage rollup (concatenated across all scenarios):**
+
+| side  | n calls | prompt sum | prompt mean | prompt p90 | prompt max | completion sum | completion mean | completion p90 | completion max | total tokens |
+|-------|---------|------------|-------------|------------|------------|----------------|-----------------|----------------|----------------|--------------|
+| agent | …       | …          | …           | …          | …          | …              | …               | …              | …              | …            |
+| user  | …       | …          | …           | …          | …          | …              | …               | …              | …              | …            |
+
+**Run-level token total:** N agent + N user-sim = **N total tokens** consumed across N scenarios. Useful for cost / quota tracking when running batches against metered endpoints.
+
 ## Next steps
 
 - <Pending failure investigations, recommended re-runs, framework fixes worth prioritizing>
@@ -530,6 +571,9 @@ This template is for single-scenario `analysis_report.md`s. The run-level struct
 - **Don't trust `scenario_config/reference_answer.json` alone** — re-derive from the scenario class when DB hashes disagree, since the reference file is written at runtime from in-process state and may reflect older code if generated by a stale process.
 - **When the agent emits zero tool calls**, this is almost always the root cause of every other failure in the scenario. Lead with it.
 - **Token counts correlate with TTFB on the agent side.** A 10K-prompt-token turn with 2K completion tokens regularly produces 30-60 s TTFB on the Nemotron 120B model. Note this when calling out slow turns; don't blame the policy prompt size unless you have data.
+- **Agent prompt size grows linearly across a conversation** as tool-call history accumulates. A retail run typically starts at ~5K prompt tokens and ends at ~10–11K by the last turn. If the agent's max prompt is >15K, investigate context bloat (verbose tool results, unconsolidated history). User-sim prompts stay flat (~1–2K) because the user-sim doesn't carry tool-call history. The Phase 2 token-usage table per side surfaces this; flag it in the report when prompt-mean is much higher than expected for the conversation length.
+- **No canonical source for token totals.** Unlike judge/DB/nl-assertion rates, the runner does not currently aggregate token usage in `all_summary.txt` — the skill computes totals fresh from `bridge_log.txt`. If you ever see a token-related discrepancy worth reproducing, note that the source is bridge-log-only.
+- **Overwrite existing `analysis_report.md` without prompting.** When the skill is re-invoked on a directory that already has a report (e.g. after applying a fix and wanting fresh analysis), write the new content straight over the old file — do NOT skip the run, do NOT append, do NOT merge. Reports are point-in-time snapshots; the latest invocation always reflects current understanding. If the caller wants to preserve a historical version, they're responsible for renaming/archiving it before re-running.
 - **Stop reason `[EXIT]` means the agent called `EndConversationTool` voluntarily.** `[TIMEOUT]` means the scenario duration cap was hit. Always report this — many failure modes hide behind a `[TIMEOUT]` because the conversation looped instead of progressing.
 - **When restarting bots solves a bug**, that's a framework-class root cause (stale process), not a fix in itself. Flag it so the user knows what to verify.
 - **Detect log "generation" by grepping for `[AGENT METRICS] ttfb`.** Logs from bots that include the `_log_rtvi_event` helper have side-tagged metrics lines; older logs don't. A single `grep -c '[AGENT METRICS] ttfb'` of `bridge_log.txt` tells you which extraction path to use. If the count is 0, fall back to the time-correlation path; if it's >0, prefer the side-tagged path (deterministic, no heuristics) and note that the report was generated against the new log format. This forward-compatibility matters when re-analyzing historical eval runs.
