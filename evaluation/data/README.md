@@ -70,6 +70,43 @@ that scenarios from different upstream libraries don't collide.
   `# Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0`
   attribution.
 
+### tau2-bench (`tau2_retail/`)
+
+- **Upstream**: [github.com/sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench)
+- **Version**: tag `voice-user-sim-v1.0` → commit `17e07b1` (same pin as
+  `tau2_airline/` — see that section for the tag-object/commit distinction).
+- **License**: MIT (Sierra Research, 2025)
+- **Contents** (verbatim copy, no local modifications):
+  - `tau2_retail/db.json` (~2.8 MB) — the full shared retail DB
+    (`products`, `users`, `orders`). Used as the seeded state for every
+    retail scenario; mutations land in a per-scenario deep copy. Source:
+    `data/tau2/domains/retail/db.json`.
+  - `tau2_retail/tasks.json` (114 tasks) — task definitions
+    (`description`, `user_scenario`, `initial_state`, `evaluation_criteria`
+    including `nl_assertions`, `annotations`). 73 tasks are actions-only,
+    39 carry both `actions` and `nl_assertions`, 1 is nl-only, 1 is a
+    chitchat scenario with neither (task 57). Source:
+    `data/tau2/domains/retail/tasks.json`.
+  - `tau2_retail/tasks_voice.json` — voice-eligible id list + per-task
+    `persona_name` (control preset). Source:
+    `data/tau2/domains/retail/tasks_voice.json`.
+  - `tau2_retail/split_tasks.json` — split membership; `base` (114 ids =
+    train 74 ∪ test 40) is the default eval surface for retail. Source:
+    `data/tau2/domains/retail/split_tasks.json`.
+  - `tau2_retail/policy.md` — agent system prompt (full markdown). Loaded
+    once per process by `Tau2RetailBaseScenario.policy`. Source:
+    `data/tau2/domains/retail/policy.md`.
+  - `tau2_retail/audio_difficulty.json` — kept for traceability;
+    **not consumed** by the eval pipeline.
+  - `tau2_retail/task_issues/` — upstream task-level annotations
+    (3 files). Kept for traceability; not consumed by the pipeline today.
+- **Bound code**: `nemo_voice_agent/evaluation/scenarios/data/tau2_retail/`
+  (`base.py` + `group_Nx.py` modules) +
+  `nemo_voice_agent/evaluation/tools/tau2_retail_tools.py` +
+  `tau2_retail_params.py`. Each ported code file carries an inline
+  `# Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0`
+  attribution.
+
 ## Adding a new source
 
 Add a new section above using the same fields. If the new source overlaps a

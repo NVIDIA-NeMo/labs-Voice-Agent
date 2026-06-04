@@ -204,7 +204,7 @@ nemo_voice_agent/evaluation/
 
 `Tau2AirlineBaseScenario` derives everything from a single `tau2_id` class attribute. Subclasses only declare `name` and `tau2_id`; `current_date` / `db` / `policy` / `tool_map` / `expected_scenario_db` / `reference_answer` / `user_persona` are all cached_property views on the upstream data.
 
-**get_agent_prompt is policy.md verbatim + a small "## Voice Realization Notes" appendage** (`GENERAL_PROMPT` + `VOICE_ALPHANUMERIC_RULE`). The Persona/Task/Actions stubs exist for Scenario-contract introspection only — they do NOT participate in agent-prompt assembly (would silently edit Sierra's authored prompt and break paper-comparable scores).
+**get_agent_prompt is policy.md verbatim + a small "## Additional Notes to Follow" appendage** (`GENERAL_PROMPT` + `VOICE_ALPHANUMERIC_RULE` from `nemo_voice_agent.utils.voice_prompts`, plus `END_CONVERSATION_GUIDELINE` from `nemo_voice_agent.evaluation.scenarios`). The Persona/Task/Actions stubs exist for Scenario-contract introspection only — they do NOT participate in agent-prompt assembly (would silently edit Sierra's authored prompt and break paper-comparable scores).
 
 **user_persona.name is None on purpose.** Identity is owned by `known_info` from `tasks.json["user_scenario"]["instructions"]`. The tau2 `persona_name` (e.g., `"lisa_brenner"`) lives on `scenario.persona_name` for metric slicing only; it's an acoustic-slicing label, not a narrative name.
 
@@ -214,9 +214,27 @@ nemo_voice_agent/evaluation/
 
 DB-key casing in `tau2_airline_tools.py`: reservation IDs and flight numbers are uppercase in `db.json`; user IDs are lowercase. The helper functions `_get_user_dict` / `_get_reservation_dict` / `_get_flight_dict` apply `.lower()` / `.upper()` normalization on the lookup key — voice ASR after letter-by-letter spelling tends to emit case inconsistently.
 
+### `tau2_retail` domain layout
+
+```
+nemo_voice_agent/evaluation/
+├── scenarios/data/tau2_retail/         # package
+│   ├── __init__.py
+│   ├── base.py                         # Tau2RetailBaseScenario
+│   └── group_{0..11}x.py               # 114 auto-scaffolded scenarios (10 each, last group has 4)
+├── tools/tau2_retail_tools.py          # 16 short-named tool ports under _Tau2InvokeMixin
+└── tools/tau2_retail_params.py         # Pydantic mirror of data_model.py + 16 tool-arg schemas
+```
+
+`Tau2RetailBaseScenario` mirrors the airline base — derives `db` / `policy` / `tool_map` / `expected_scenario_db` / `reference_answer` from `tau2_id` via `Tau2BaseScenario` machinery. Adds **one new property: `nl_assertions`** (cached, read from `evaluation_criteria.nl_assertions`). 40 of 114 retail tasks carry these natural-language claims (e.g. *"Agent should tell the user that there are 10 t-shirt options available."*); 73 are action-only; 1 is nl-only; 1 (task 57) is chitchat with neither signal. Empty/null upstream lists are normalized to `None` so the runner's truthy check correctly skips verdict aggregation.
+
+**nl_assertions LLM-judge integration.** When a scenario has `nl_assertions`, `LLMJudge.judge_scenario` extends its response to include `nl_assertion_verdicts` (one entry per assertion, `{index, passed, reason}`) and `nl_assertion_pass_rate`. The runner aggregates these into a new run-level `nl_assertion_success_rate` and per-domain breakdown alongside the existing `db_state_success_rate`. Malformed verdicts (missing entries, out-of-range indices, non-bool `passed`) get filled as `passed=False` with explanatory reason text — see `tests/test_llm_judge_nl_assertions.py` for the normalization edge cases.
+
+DB-key casing in `tau2_retail_tools.py`: order IDs are uppercase with a leading `#` (`#W0000000`), user IDs are lowercase, product/item IDs are case-sensitive integers (no normalization needed). `_get_order_dict` normalizes to uppercase + prepends `#` if dropped — speakers often omit the `#` when reading an order id aloud.
+
 ### Scaffolding more tau2 scenarios
 
-Same pattern as eva: a one-shot generator in `nemo_experiments/` (gitignored) that reads upstream `tasks.json` + `split_tasks.json[base]` + `tasks_voice.json` and emits one `@register_eval_scenario class Tau2<Domain><Id>` per task. For tau2_airline, see `nemo_experiments/generate_tau2_airline_scaffolds.py`. Re-run only when upstream schema changes.
+Same pattern as eva: a one-shot generator in `nemo_experiments/` (gitignored) that reads upstream `tasks.json` + `split_tasks.json[base]` + `tasks_voice.json` and emits one `@register_eval_scenario class Tau2<Domain><Id>` per task. Existing generators: `generate_tau2_airline_scaffolds.py`, `generate_tau2_retail_scaffolds.py`. Re-run only when upstream schema changes.
 
 ### Running a single eva_airline scenario
 
