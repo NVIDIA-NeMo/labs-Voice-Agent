@@ -138,12 +138,96 @@ class StandardSchemaTool:
         )
 
 
+def _current_context_tool_names(context: Any) -> List[str]:
+    """Extract the tool names the LLM actually sees in its current schema.
+
+    ``context._tools`` (set by ``OpenAILLMContext.set_tools``) is the LLM's
+    canonical view; ``llm._functions`` is the Python-side registry which
+    accumulates entries across bootstrap + per-scenario RTVI re-registrations.
+    The two diverge whenever ``register_schema_tools_to_llm`` is called with
+    ``keep_existing_tools=False`` (the per-scenario path in
+    ``rtvi_actions.create_update_system_prompt_action``): ``context._tools``
+    gets fully replaced, but Python-side ``llm._functions`` still has the
+    bootstrap entries hanging around. For an "unknown tool" message that
+    actually helps the LLM self-correct, we need the LLM's view.
+
+    Handles both shapes ``context._tools`` can take:
+    - ``ToolsSchema(standard_tools=[FunctionSchema, ...])`` — set by our
+      ``register_schema_tools_to_llm``.
+    - ``List[ChatCompletionToolParam]`` — raw OpenAI dicts when the caller
+      bypasses ``ToolsSchema``.
+
+    Returns an empty list (NOT a fallback to the registry) when the context
+    has no tools — the LLM was told it has no tools, so that's what we report.
+    """
+    tools = getattr(context, "_tools", None)
+    if tools is None:
+        return []
+    standard_tools = getattr(tools, "standard_tools", None)
+    if standard_tools:
+        return [t.name for t in standard_tools if getattr(t, "name", None)]
+    if isinstance(tools, list):
+        names: List[str] = []
+        for entry in tools:
+            if isinstance(entry, dict):
+                # OpenAI shape: {"type": "function", "function": {"name": "...", ...}}
+                fn = entry.get("function") if "function" in entry else entry
+                if isinstance(fn, dict) and "name" in fn:
+                    names.append(fn["name"])
+        return names
+    return []
+
+
+async def _unknown_tool_handler(params: FunctionCallParams) -> None:
+    """Catch-all handler for tool names the LLM hallucinated.
+
+    Pipecat's ``LLMService.run_function_calls`` broadcasts a
+    ``FunctionCallsStartedFrame`` listing every call the LLM made — including
+    ones whose names aren't registered. The downstream aggregator stuffs each
+    ``tool_call_id`` into ``_function_calls_in_progress`` on receipt of that
+    frame. The service then loops and ``continue``\\s past the unregistered call
+    without producing a ``FunctionCallResultFrame``, so the aggregator's
+    in-progress set stays non-empty forever — ``run_llm = not bool(...)``
+    evaluates ``False`` for every subsequent message and the pipeline wedges.
+
+    The escape hatch pipecat designed for this is to register a function with
+    ``function_name=None`` — the service routes any unmatched name to it
+    (``llm_service.py:449``). We give the LLM a structured error listing the
+    **actual context-visible tools** so it can self-correct on the next turn.
+
+    Why we read from ``context._tools`` and not ``llm._functions``: see the
+    ``_current_context_tool_names`` docstring. Surfaced live on 2026-06-03
+    during tau2_retail bring-up — the first iteration of this handler read
+    ``llm._functions``, which still contained the bootstrap
+    ``GetCityWeatherTool``. The agent then announced "My available tools are
+    limited to functions like checking city weather", confusing the user
+    instead of redirecting to the actual retail toolset.
+    """
+    available = sorted(_current_context_tool_names(params.context))
+    logger.warning(
+        f"Unknown tool '{params.function_name}' called by LLM; returning structured error. "
+        f"Context-visible tools: {available}"
+    )
+    await params.result_callback(
+        {
+            "status": "error",
+            "error_type": "unknown_tool",
+            "message": (
+                f"There is no tool named '{params.function_name}'. Use one of the "
+                f"available tools instead."
+            ),
+            "available_tools": available,
+        }
+    )
+
+
 def register_schema_tools_to_llm(
     llm: OpenAILLMService,
     context: OpenAILLMContext,
     tools: List[StandardSchemaTool],
     cancel_on_interruption: bool = True,
     keep_existing_tools: bool = True,
+    register_unknown_tool_handler: bool = True,
 ) -> None:
     """
     Register standard schema tools to the LLM.
@@ -153,6 +237,12 @@ def register_schema_tools_to_llm(
         tools: The list of tools to register.
         cancel_on_interruption: Whether to cancel the LLM call on interruption.
         keep_existing_tools: Whether to keep the existing tools in the context.
+        register_unknown_tool_handler: When True (default), registers a catch-all
+            handler under ``function_name=None`` so any hallucinated tool call
+            gets a structured error result instead of wedging the aggregator.
+            See ``_unknown_tool_handler`` docstring for the deadlock chain this
+            avoids. Disable only if you've already registered a custom catch-all
+            via ``llm.register_function(function_name=None, ...)``.
     """
     all_schemas = []
     for tool in tools:
@@ -170,6 +260,13 @@ def register_schema_tools_to_llm(
             handler=tool,
             cancel_on_interruption=cancel_on_interruption,
         )
+    if register_unknown_tool_handler and None not in llm._functions:
+        llm.register_function(
+            function_name=None,
+            handler=_unknown_tool_handler,
+            cancel_on_interruption=cancel_on_interruption,
+        )
+        logger.info("Registered catch-all handler for unknown tool names (pipecat deadlock guard).")
     if keep_existing_tools:
         existing_tools = context.tools
         if not isinstance(existing_tools, list):

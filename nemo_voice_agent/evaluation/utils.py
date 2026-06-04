@@ -15,7 +15,7 @@
 import json
 import os
 import re
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import requests
@@ -393,11 +393,18 @@ Evaluate how well the agent performed by considering:
 3. Whether the agent called the correct tools with the correct arguments at the right time (use <context_history> when present).
 4. Whether the agent avoided unnecessary or incorrect tool calls.
 5. Whether the agent handled the conversation naturally and helpfully.
-6. If <nl_assertions> is present, whether each numbered assertion holds given the conversation and tool-call evidence. The score should reflect the fraction of assertions that pass.
+6. If <nl_assertions> is present, judge EACH numbered assertion independently against <conversation> and <context_history>. Emit a per-assertion verdict for each one.
+
+Note on `EndConversationTool`: this is a voice-harness termination signal, NOT a domain policy requirement. The framework tracks call termination separately via the conversation's stop reason. Do NOT treat a missing `EndConversationTool` call as a significant failure. At most, a missing `EndConversationTool` is a minor presentation issue worth at most a 0.05 deduction; never deduct more than that for it alone. 
 
 Return a score between 0 and 1, where 0 means complete failure and 1 means perfect performance.
-You MUST return ONLY a JSON object in the following format, with no other text:
-{"score": <score>, "reason": "<explanation of the score>"}"""
+
+When <nl_assertions> is NOT present, return ONLY a JSON object with no other text:
+{"score": <score>, "reason": "<explanation of the score>"}
+
+When <nl_assertions> IS present, return ONLY a JSON object with no other text in this extended format:
+{"score": <score>, "reason": "<explanation of the score>", "nl_assertion_verdicts": [{"index": <1-based assertion index>, "passed": <true|false>, "reason": "<per-assertion explanation>"}, ...]}
+The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion, with ``index`` matching the assertion's numbered position. ``passed`` is a strict boolean — only ``true`` if the assertion clearly holds given the evidence."""
 
     def __init__(
         self,
@@ -539,15 +546,17 @@ You MUST return ONLY a JSON object in the following format, with no other text:
             conversation: List of conversation turns, each a dict with "role" and "text" keys.
             context_history: LLM context messages (from _retrieve_context_history).
             nl_assertions: Optional natural-language assertions (tau2 retail). When provided,
-                each assertion is appended to the prompt; the per-assertion verdicts and
-                ``passed/total`` score will be wired in a later milestone (M3). For now,
-                presence of this argument is a pass-through (the prompt mentions the
-                assertions, but the parser still returns the existing ``{score, reason}``
-                shape). Default ``None`` preserves backward compatibility for eva /
-                restaurant / qa scenarios.
+                each assertion is appended to the prompt and the LLM is instructed to emit
+                a per-assertion verdict list. The returned dict gains a
+                ``nl_assertion_verdicts`` field (one entry per assertion, ``{index, passed,
+                reason}``) plus ``nl_assertion_pass_rate``. Missing/malformed verdicts are
+                filled with ``passed=False`` so the runner can still aggregate cleanly.
+                When ``None`` (or empty), behavior is unchanged from M1.
             prompt: Optional custom system prompt. Uses SCENARIO_PROMPT if not provided.
         Returns:
-            A dict with "score" (float between 0 and 1) and "reason" (str).
+            A dict with "score" (float between 0 and 1) and "reason" (str). When
+            ``nl_assertions`` is non-empty, also includes ``nl_assertion_verdicts``
+            (list of ``{index, passed, reason}``) and ``nl_assertion_pass_rate`` (float).
         """
         if not prompt:
             prompt = self.SCENARIO_PROMPT
@@ -575,7 +584,39 @@ You MUST return ONLY a JSON object in the following format, with no other text:
             result = self._parse_response(response)
             result["score"] = float(result["score"])
             result.setdefault("reason", "")
+            if nl_assertions:
+                # Normalize per-assertion verdicts: ensure exactly len(nl_assertions)
+                # entries, in numbered order, with passed=False for any missing or
+                # malformed entries (so the runner can aggregate without surprises).
+                raw_verdicts = result.get("nl_assertion_verdicts") or []
+                normalized: List[dict] = []
+                by_index: Dict[int, dict] = {}
+                for v in raw_verdicts:
+                    if not isinstance(v, dict):
+                        continue
+                    try:
+                        idx = int(v.get("index"))
+                    except (TypeError, ValueError):
+                        continue
+                    if 1 <= idx <= len(nl_assertions):
+                        by_index[idx] = v
+                passes = 0
+                for i in range(1, len(nl_assertions) + 1):
+                    v = by_index.get(i)
+                    passed = bool(v and v.get("passed") is True)
+                    reason_text = (v or {}).get("reason", "") if v else "Missing verdict; treated as failed."
+                    normalized.append({"index": i, "passed": passed, "reason": reason_text})
+                    if passed:
+                        passes += 1
+                result["nl_assertion_verdicts"] = normalized
+                result["nl_assertion_pass_rate"] = passes / len(nl_assertions)
             return result
         except Exception as e:
             logger.error(f"LLMJudge error: {e}")
-            return {"score": 0.0, "reason": f"Error: {e}"}
+            err_result = {"score": 0.0, "reason": f"Error: {e}"}
+            if nl_assertions:
+                err_result["nl_assertion_verdicts"] = [
+                    {"index": i + 1, "passed": False, "reason": f"Judge error: {e}"} for i in range(len(nl_assertions))
+                ]
+                err_result["nl_assertion_pass_rate"] = 0.0
+            return err_result

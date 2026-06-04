@@ -237,7 +237,7 @@ Examples:
             model=args.judge_model,
             api_key=args.judge_api_key,
             max_tokens=2048,
-            temperature=0.7,
+            temperature=1.0,
             top_p=0.95,
             seed=42,
             chat_template_kwargs={"enable_thinking": True},
