@@ -348,6 +348,22 @@ class VoiceAgentEvaluationBridge:
         #    "user_db": {...}|None}                  # only when include_db=True
         # ``None`` overall if the pull didn't happen.
         self.scenario_summary: Optional[dict] = None
+        # Per-scenario token usage, accumulated from RTVI ``metrics`` events as
+        # they arrive. Reset by ``prepare_for_scenario``. Shape:
+        #   {"agent": {"n_calls": int, "prompt": int, "completion": int},
+        #    "user":  {"n_calls": int, "prompt": int, "completion": int}}
+        # The runner snapshots this into ``metrics.json["token_usage"]`` so the
+        # canonical numbers live next to the run output, not just in the
+        # bridge log. The eval-result-analyzer skill prefers this source when
+        # present; falls back to bridge_log.txt parsing for older runs.
+        self.token_usage: dict = self._fresh_token_usage()
+
+    @staticmethod
+    def _fresh_token_usage() -> dict:
+        return {
+            "agent": {"n_calls": 0, "prompt": 0, "completion": 0},
+            "user": {"n_calls": 0, "prompt": 0, "completion": 0},
+        }
 
     def init_output_dir(
         self,
@@ -1551,6 +1567,7 @@ class VoiceAgentEvaluationBridge:
         self.user_context_history = None
         self.agent_context_history = None
         self.scenario_summary = None
+        self.token_usage = self._fresh_token_usage()
 
         # Clear thread-safe queues
         self.user_to_agent_queue = queue.Queue()
@@ -1802,10 +1819,22 @@ class VoiceAgentEvaluationBridge:
                     f"[{side} METRICS] ttfb processor={ttfb.get('processor')} value={value_str}"
                 )
             for tok in body.get("tokens") or []:
+                prompt_n = int(tok.get("prompt_tokens") or 0)
+                completion_n = int(tok.get("completion_tokens") or 0)
                 logger.debug(
                     f"[{side} METRICS] tokens prompt={tok.get('prompt_tokens')} "
                     f"completion={tok.get('completion_tokens')}"
                 )
+                # Accumulate per-side counters so the runner can pull a
+                # canonical total into metrics.json after the scenario ends.
+                # The side label here ("AGENT"/"USER") was already established
+                # by the caller of _log_rtvi_event from which monitor produced
+                # it, so the bucket lookup can't get crossed.
+                bucket = self.token_usage.get(side.lower())
+                if bucket is not None:
+                    bucket["n_calls"] += 1
+                    bucket["prompt"] += prompt_n
+                    bucket["completion"] += completion_n
         elif message_type == "user-transcription":
             # tau2 retail run on 2026-06-03 showed STT collapsing spelled-out
             # digits back to numerals; final transcripts let us diff against

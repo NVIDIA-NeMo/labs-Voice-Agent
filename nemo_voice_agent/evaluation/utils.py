@@ -377,7 +377,7 @@ Judge how well the prediction matches the reference in terms of correctness and 
 is not present in the reference, it means that the field is not required to check and can be ignored. 
 Return a score between 0 and 1, where 0 means completely wrong and 1 means a perfect match.
 You MUST return ONLY a JSON object in the following format, with no other text:
-{"score": <score>, "reason": "<explanation of the score>"}"""
+{"score": <score>, "reason": "<explanation of the score, also concrete with quoted evidence>"}"""
 
     SCENARIO_PROMPT = """You are a judge that evaluates voice agent performance in a conversational scenario.
 You will be given some or all of the following XML-tagged inputs (only those available are included):
@@ -395,16 +395,26 @@ Evaluate how well the agent performed by considering:
 5. Whether the agent handled the conversation naturally and helpfully.
 6. If <nl_assertions> is present, judge EACH numbered assertion independently against <conversation> and <context_history>. Emit a per-assertion verdict for each one.
 
-Note on `EndConversationTool`: this is a voice-harness termination signal, NOT a domain policy requirement. The framework tracks call termination separately via the conversation's stop reason. Do NOT treat a missing `EndConversationTool` call as a significant failure. At most, a missing `EndConversationTool` is a minor presentation issue worth at most a 0.05 deduction; never deduct more than that for it alone. 
+Presentation-issue deduction cap. The following are "presentation issues" — they affect how the agent speaks, not whether the agent did the right thing:
+- Missing or skipped `EndConversationTool` call. This is a voice-harness termination signal, not a domain policy requirement; the framework tracks termination separately via the conversation's stop reason.
+- Voice-realization violations: not spelling alphanumeric identifiers character-by-character (e.g. flight numbers, confirmation numbers, user IDs spoken as ordinary words instead of "S, K, seven, zero, three"), missing brand-specific farewells, prosody/formatting nits, etc.
+
+When the agent successfully completed the task (reference actions matched, DB state correct, nl_assertions satisfied), **all presentation issues combined must not deduct more than 0.05 from the score**. Treat them as a single category capped at 0.05 total, regardless of how many individual presentation issues you find. The minimum score after only presentation issues is 0.95.
+
+Reason field requirements. The `reason` field MUST be concrete and debuggable:
+- For each deduction, quote the specific phrase from <conversation> or <prediction> that was wrong (e.g. *Agent said "Flight SK703" instead of spelling it as "S, K, seven, zero, three"*).
+- Cite the expected form alongside (e.g. *expected: "S, K, seven, zero, three"*).
+- Group multiple instances of the same class of issue (e.g. "spelled 3 flight numbers and 2 confirmation numbers as ordinary words") instead of listing each individually, then quote 1-2 representative examples.
+- Do NOT use vague phrases like "minor presentation issues" or "did not follow guidelines" without naming the specific guideline and the specific phrase that violated it.
 
 Return a score between 0 and 1, where 0 means complete failure and 1 means perfect performance.
 
 When <nl_assertions> is NOT present, return ONLY a JSON object with no other text:
-{"score": <score>, "reason": "<explanation of the score>"}
+{"score": <score>, "reason": "<explanation of the score, also concrete with quoted evidence>"}
 
 When <nl_assertions> IS present, return ONLY a JSON object with no other text in this extended format:
-{"score": <score>, "reason": "<explanation of the score>", "nl_assertion_verdicts": [{"index": <1-based assertion index>, "passed": <true|false>, "reason": "<per-assertion explanation>"}, ...]}
-The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion, with ``index`` matching the assertion's numbered position. ``passed`` is a strict boolean — only ``true`` if the assertion clearly holds given the evidence."""
+{"score": <score>, "reason": "<explanation of the score, also concrete with quoted evidence>", "nl_assertion_verdicts": [{"index": <1-based assertion index>, "passed": <true|false>, "reason": "<per-assertion explanation, also concrete with quoted evidence>"}, ...]}
+The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion, with ``index`` matching the assertion's numbered position. ``passed`` is a strict boolean — only ``true`` if the assertion clearly holds given the evidence. Per-assertion ``reason`` follows the same concreteness rule: quote the specific evidence from the conversation, don't paraphrase."""
 
     def __init__(
         self,

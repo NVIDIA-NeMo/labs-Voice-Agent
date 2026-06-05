@@ -110,6 +110,14 @@ async def run_dynamic_evaluation(
     # emitted in this run", not "scenarios". Empty when no scenario opts into
     # DB-state-assertion scoring (currently only tau2-telecom in M5+).
     db_state_assertion_results: List[bool] = []
+    # Per-side token usage accumulated across scenarios. Populated from each
+    # scenario's ``bridge.token_usage`` snapshot. The eval-result-analyzer skill
+    # used to recompute this from bridge_log.txt; this canonical source lets
+    # the runner print totals in all_summary.txt without log re-parsing.
+    run_token_usage: dict = {
+        "agent": {"n_calls": 0, "prompt": 0, "completion": 0},
+        "user": {"n_calls": 0, "prompt": 0, "completion": 0},
+    }
     # Per-domain buckets keyed by ``scenario.name.split('__')[0]`` so a mixed run
     # (eva_airline + tau2_airline + retail + …) reports success rates per source.
     # Scenarios without a ``__`` separator (e.g. "fastbite", "simple_qa_1") fall
@@ -280,6 +288,15 @@ async def run_dynamic_evaluation(
         metrics["scenario_directory"] = scenario_dir
         metrics["scenario_duration"] = (scenario_end - scenario_start).total_seconds()
         metrics["is_successful"] = is_successful
+        # Snapshot per-side token usage accumulated by the bridge during the
+        # scenario. Shape mirrors ``run_token_usage``: each side has n_calls,
+        # prompt sum, completion sum. Roll into the run-level accumulator for
+        # the summary that goes into ``all_summary.txt``.
+        scenario_token_usage = bridge.token_usage
+        metrics["token_usage"] = scenario_token_usage
+        for side in ("agent", "user"):
+            for key in ("n_calls", "prompt", "completion"):
+                run_token_usage[side][key] += scenario_token_usage[side][key]
 
         # Optional DB-state hash matching — runs alongside action-list scoring as
         # an independent signal. Only fires for scenarios that expose
@@ -514,6 +531,28 @@ async def run_dynamic_evaluation(
                 f"predicates across scenarios)\n"
             )
 
+        # Token usage rollup — only printed when there's at least one
+        # token-emitting call across the run. Bots that don't emit RTVI
+        # ``metrics`` token events (e.g. very old bot versions) end up here
+        # with zeros; suppress the block in that case to keep the summary
+        # clean. Numbers come from each scenario's bridge.token_usage
+        # snapshot accumulated into run_token_usage.
+        total_calls = run_token_usage["agent"]["n_calls"] + run_token_usage["user"]["n_calls"]
+        if total_calls > 0:
+            f.write("\n\nToken Usage:\n")
+            f.write("-" * 80 + "\n")
+            grand_total = 0
+            for side in ("agent", "user"):
+                b = run_token_usage[side]
+                side_total = b["prompt"] + b["completion"]
+                grand_total += side_total
+                f.write(
+                    f"  {side}: {b['n_calls']} call(s), "
+                    f"prompt={b['prompt']:,}, completion={b['completion']:,}, "
+                    f"total={side_total:,}\n"
+                )
+            f.write(f"  Run total: {grand_total:,} tokens\n")
+
         # Per-domain breakdown — only printed when there's more than one domain in
         # the run, since a single-domain breakdown duplicates the overall rate.
         if len(per_domain_success) > 1:
@@ -570,6 +609,16 @@ async def run_dynamic_evaluation(
             f"DB-State-Assertion Pass Rate: {db_state_assertion_success_rate*100:.2f}% "
             f"({sum(db_state_assertion_results)}/{len(db_state_assertion_results)} "
             f"predicates across scenarios)"
+        )
+    run_token_total = (
+        run_token_usage["agent"]["prompt"] + run_token_usage["agent"]["completion"]
+        + run_token_usage["user"]["prompt"] + run_token_usage["user"]["completion"]
+    )
+    if run_token_total > 0:
+        logger.info(
+            f"Token Usage: agent={run_token_usage['agent']['prompt'] + run_token_usage['agent']['completion']:,}"
+            f" + user={run_token_usage['user']['prompt'] + run_token_usage['user']['completion']:,}"
+            f" = {run_token_total:,} total"
         )
     if len(per_domain_success) > 1:
         for d in sorted(per_domain_success):

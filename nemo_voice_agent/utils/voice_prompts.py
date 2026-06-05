@@ -35,7 +35,7 @@ GENERAL_PROMPT = (
     "Avoid special characters. Use only simple, plain text sentences. "
     "Always punctuate your responses using standard sentence punctuation: "
     "commas, periods, question marks, exclamation points, etc. "
-    "Always spell out numbers as words. Avoid using emojis. "
+    "Avoid using emojis. "
     "Do not fabricate anything you don't know of. If you don't have a piece of "
     "information or haven't observed a result, say so honestly rather than invent it. "
 )

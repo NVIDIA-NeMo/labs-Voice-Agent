@@ -133,7 +133,7 @@ Examples:
     parser.add_argument(
         "--judge-threshold",
         type=float,
-        default=0.95,
+        default=0.9,
         help="Threshold for the LLM judge if binary result is desired",
     )
     parser.add_argument(

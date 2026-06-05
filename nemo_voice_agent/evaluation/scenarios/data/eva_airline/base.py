@@ -266,24 +266,26 @@ class VoluntaryDateChange(EvaAirlineBaseScenario):
         "Passenger wants to move AUS→LAX from March 20 to March 25, arriving by 4:00 PM Pacific, "
         "for ≤$120 total, keeping a window seat."
     )
-    reference_answer = {
-        "actions": [
-            {
-                "action_type": "rebook_flight",
-                "confirmation_number": "ZK3FFW",
-                "old_journey_id": "FL_SK621_20260320",
-                "new_journey_id": "FL_SK703_20260325",
-                "rebooking_type": "voluntary",
-                "total_collected": 115,
-            },
-            {
-                "action_type": "assign_seat",
-                "confirmation_number": "ZK3FFW",
-                "passenger_id": "PAX001",
-                "seat_preference": "window",
-            },
-        ]
-    }
+    
+    # commented out to use DB-state matching instead, kept here for reference
+    # reference_answer = {
+    #     "actions": [
+    #         {
+    #             "action_type": "rebook_flight",
+    #             "confirmation_number": "ZK3FFW",
+    #             "old_journey_id": "FL_SK621_20260320",
+    #             "new_journey_id": "FL_SK703_20260325",
+    #             "rebooking_type": "voluntary",
+    #             "total_collected": 115,
+    #         },
+    #         {
+    #             "action_type": "assign_seat",
+    #             "confirmation_number": "ZK3FFW",
+    #             "passenger_id": "PAX001",
+    #             "seat_preference": "window",
+    #         },
+    #     ]
+    # }
 
     @property
     def user_persona(self) -> Persona:

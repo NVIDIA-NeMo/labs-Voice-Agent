@@ -141,6 +141,13 @@ class Tau2BaseScenario(Scenario):
 
     - ``has_user_state``: when True (telecom), ``setup_shared_state`` is called
       with ``side="user"`` during gold replay to seed ``state["user_db"]``.
+      Note: gold replay runs **in-process** so the same ``state`` dict holds
+      both ``db`` (agent side) and ``user_db`` (user side) at the same time.
+      In a **live** run each bot's shared_state holds only its own DB at
+      ``state["db"]``; the agent-vs-user labeling lives at the bridge
+      boundary. See ``create_get_scenario_summary_action`` for the live
+      shape; gold replay deliberately diverges to keep the replay
+      single-pass.
 
     Everything else (``tau2_task``, ``persona_name``, ``policy``, ``db``,
     ``expected_scenario_db``, ``reference_answer``) is derived via cached
