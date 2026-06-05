@@ -19,10 +19,16 @@ Reads upstream tau2-bench's ``data/tau2/domains/telecom/`` and writes a
 normalized copy under ``evaluation/data/tau2_telecom/``. Three transformations:
 
 1. ``db.toml`` and ``user_db.toml`` are parsed via ``tomllib`` (stdlib in
-   Python 3.11+) and re-serialized as JSON so the bot-side loader in
+   Python 3.11+), validated through the ``TelecomDB`` / ``TelecomUserDB``
+   Pydantic models in ``nemo_voice_agent.evaluation.tools.tau2_telecom_params``
+   (which materializes default fields the raw TOML doesn't carry — e.g.
+   ``UserSurroundings`` defaults like ``signal_strength`` per-network
+   table, ``Customer.payment_methods=[]``, ``Bill.line_items=[]``), and
+   re-serialized as JSON so the bot-side loader in
    ``rtvi_actions.create_update_system_prompt_action`` can use the same
    ``json.load`` path as airline / retail. Avoids adding a TOML branch on
-   the bot side.
+   the bot side AND avoids defensive ``.get(..., default)`` calls in
+   predicate / init function code.
 2. ``tasks.json`` is filtered to only the 114 entries whose ``id`` is in
    ``split_tasks.json["base"]`` (14 MB → ~660 KB). The 2171 non-base task
    definitions are dead weight in our repo; the base-split eval surface
@@ -70,11 +76,15 @@ PINNED_COMMIT = "17e07b1da2bbc0cadfddeea36412686e0604127b"
 # Default upstream checkout location. Override via --source.
 DEFAULT_SOURCE = Path("/home/heh/github/tau2-bench")
 
-# Files to convert (TOML → JSON). Keys are source filenames; values are
-# destination filenames (extension swapped to .json).
+# Files to convert (TOML → Pydantic round-trip → JSON). Keys are source
+# filenames; values are (destination filename, Pydantic model name in
+# ``tau2_telecom_params``). The model is loaded lazily inside the convert
+# function so this script stays importable without the eval package on
+# PYTHONPATH (the convert step itself fails-fast if the import isn't
+# resolvable).
 TOML_TO_JSON = {
-    "db.toml": "db.json",
-    "user_db.toml": "user_db.json",
+    "db.toml": ("db.json", "TelecomDB"),
+    "user_db.toml": ("user_db.json", "TelecomUserDB"),
 }
 
 # Files to copy verbatim. Includes both data (.json) and policy text (.md).
@@ -119,18 +129,39 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()[:12]
 
 
-def _convert_toml_to_json(src: Path, dst: Path) -> None:
-    """Parse a TOML file and re-serialize as indented JSON.
+def _convert_toml_to_json(src: Path, dst: Path, model_name: str) -> None:
+    """Parse a TOML file, validate through a Pydantic model, write JSON.
 
-    Indent=2 + sort_keys=False to keep the output diff-readable. We avoid
-    sort_keys because tomllib already returns a dict in document order;
-    re-sorting would mask upstream re-orderings during re-sync diffs.
+    The Pydantic round-trip is what materializes defaults the raw TOML
+    doesn't carry (e.g. ``TelecomUserDB.surroundings`` block, per-network
+    ``signal_strength`` table, ``MockPhoneAttributes.app_statuses`` defaults).
+
+    ``model_name`` is resolved lazily from
+    ``nemo_voice_agent.evaluation.tools.tau2_telecom_params`` so this script
+    fails-fast with a clear message if the package isn't importable
+    (instead of a generic ImportError at module-load time).
+
+    Indent=2 + sort_keys=False on the output to keep diffs readable; Pydantic
+    preserves declaration order in ``model_dump``.
     """
+    try:
+        import nemo_voice_agent.evaluation.tools.tau2_telecom_params as params_module
+    except ImportError as e:
+        raise RuntimeError(
+            f"Cannot import tau2_telecom_params for Pydantic round-trip: {e}. "
+            f"Run this script from a `uv sync`-ed venv where nemo_voice_agent "
+            f"is importable."
+        ) from e
+    model_cls = getattr(params_module, model_name)
+
     with src.open("rb") as f:
-        data = tomllib.load(f)
+        raw = tomllib.load(f)
+    validated = model_cls.model_validate(raw)
+    dumped = validated.model_dump(mode="json")
+
     dst.parent.mkdir(parents=True, exist_ok=True)
     with dst.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, sort_keys=False)
+        json.dump(dumped, f, indent=2, sort_keys=False)
         f.write("\n")
 
 
@@ -256,15 +287,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"Dest:   {dest}")
     print()
 
-    # 1. TOML → JSON conversions
-    for src_name, dst_name in TOML_TO_JSON.items():
+    # 1. TOML → Pydantic round-trip → JSON
+    for src_name, (dst_name, model_name) in TOML_TO_JSON.items():
         src = source_telecom / src_name
         dst = dest / dst_name
         if not src.exists():
             print(f"ERROR: required source missing: {src}", file=sys.stderr)
             return 1
-        _convert_toml_to_json(src, dst)
-        print(f"  convert  {src_name:<32} → {dst_name:<32} ({_sha256(dst)})")
+        _convert_toml_to_json(src, dst, model_name)
+        print(f"  convert  {src_name:<32} → {dst_name:<32} ({_sha256(dst)})  [via {model_name}]")
 
     # 2. Verbatim files
     for name in VERBATIM_FILES:
