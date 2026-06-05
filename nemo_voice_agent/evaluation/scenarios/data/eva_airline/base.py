@@ -313,7 +313,9 @@ class VoluntaryDateChange(EvaAirlineBaseScenario):
             goal=(
                 "Move your March 20 AUS→LAX flight to March 25, arriving by 4:00 PM Pacific, for "
                 "$120 or less total, with a window seat assigned. If no option meets all four "
-                "criteria after two rounds of search, keep the original booking and end the call."
+                "criteria after two rounds of search, keep the original booking and end the call. "
+                "You will not accept a downgrade from Main Cabin to Basic Economy; "
+                "the new flight must be the same cabin class as your original flight."
             ),
         )
 
