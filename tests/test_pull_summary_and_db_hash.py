@@ -171,41 +171,41 @@ def test_get_scenario_summary_action_returns_actions_and_hash():
     result = asyncio.run(action.handler(None, "context", {}))
     assert result["actions"] == [{"action_type": "rebook_flight", "x": 1}]
     assert result["db_hash"] == get_dict_hash(db_contents)
-    assert result["user_db_hash"] is None  # no user_db in single-side state
+    # Each bot returns only its own db; user_db labeling happens at the
+    # bridge boundary (M5+ when the bridge dual-pulls). No `user_db_hash`
+    # in the per-bot response.
+    assert "user_db_hash" not in result
     # Internal markers stay on the bot — not in the response payload.
     assert "db" not in result
     assert "_call_counts" not in result
 
 
-def test_get_scenario_summary_action_returns_user_db_hash_when_present():
-    """Telecom-style dual-DB: both db_hash and user_db_hash are returned."""
-    from nemo_voice_agent.evaluation.db_hash import get_dict_hash
-
-    db_contents = {"customers": {"C1": {}}}
-    user_db_contents = {"phone_state": {"airplane_mode": False}}
-    ref = SharedStateRef()
-    ref.state = {"actions": [], "db": db_contents, "user_db": user_db_contents}
-    action = create_get_scenario_summary_action(None, ref)
-    result = asyncio.run(action.handler(None, "context", {}))
-    assert result["db_hash"] == get_dict_hash(db_contents)
-    assert result["user_db_hash"] == get_dict_hash(user_db_contents)
-
-
 def test_get_scenario_summary_action_uninitialized_state():
-    """Empty state returns ``{actions: [], db_hash: None, user_db_hash: None}``."""
+    """Empty state returns ``{actions: [], db_hash: None}`` — minimal shape."""
     ref = SharedStateRef()
     action = create_get_scenario_summary_action(None, ref)
     result = asyncio.run(action.handler(None, "context", {}))
-    assert result == {"actions": [], "db_hash": None, "user_db_hash": None}
+    assert result == {"actions": [], "db_hash": None}
 
 
 def test_get_scenario_summary_action_metadata():
-    """Action declares the correct service / action / no-args schema."""
+    """Action declares the correct service / action / argument schema.
+
+    The single optional ``include_db: bool`` argument (default ``False``) was
+    added in M4 so the runner can ask the bot to inline this bot's ``db``
+    dict (not just the hash) when a scenario carries ``db_state_assertions``.
+    Each bot returns only its own DB; the bridge labels them by source.
+    """
     ref = SharedStateRef()
     action = create_get_scenario_summary_action(None, ref)
     assert action.service == "context"
     assert action.action == "get_scenario_summary"
-    assert action.arguments == []
+    assert len(action.arguments) == 1
+    arg = action.arguments[0]
+    assert arg.name == "include_db"
+    assert arg.type == "bool"
+    # Default ``include_db=False`` preserves retail's hash-out behavior; only
+    # opt-in domains (telecom in M5+) ask for the inline DB.
 
 
 # ---------------------------------------------------------------------------

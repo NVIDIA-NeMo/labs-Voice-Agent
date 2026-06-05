@@ -27,6 +27,7 @@ from typing import List, Optional
 
 from nemo_voice_agent.evaluation.bridge import VoiceAgentEvaluationBridge
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+from nemo_voice_agent.evaluation.db_state_predicates import evaluate_db_state_assertion
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario
 from nemo_voice_agent.evaluation.utils import LLMJudge, check_if_task_success, normalize_scenario_payload
 from nemo_voice_agent.utils import FileLogger
@@ -103,6 +104,12 @@ async def run_dynamic_evaluation(
     # nl_assertions emitted in this run", not "scenarios". Empty when no scenario
     # opts into nl-assertion scoring.
     nl_assertion_results: List[bool] = []
+    # Per-predicate verdicts flattened across scenarios with db_state_assertions.
+    # Same shape as ``nl_assertion_results`` — each entry is True/False for one
+    # predicate in one scenario; denominator is "total db_state_assertions
+    # emitted in this run", not "scenarios". Empty when no scenario opts into
+    # DB-state-assertion scoring (currently only tau2-telecom in M5+).
+    db_state_assertion_results: List[bool] = []
     # Per-domain buckets keyed by ``scenario.name.split('__')[0]`` so a mixed run
     # (eva_airline + tau2_airline + retail + …) reports success rates per source.
     # Scenarios without a ``__`` separator (e.g. "fastbite", "simple_qa_1") fall
@@ -110,6 +117,7 @@ async def run_dynamic_evaluation(
     per_domain_success: dict = {}
     per_domain_db_state: dict = {}
     per_domain_nl_assertion: dict = {}
+    per_domain_db_state_assertion: dict = {}
     for idx, scenario in enumerate(scenarios):
         logger.info(f"{'='*80}")
         logger.info(f"Starting Scenario {idx+1}/{len(scenarios)}: {scenario.name}")
@@ -138,6 +146,18 @@ async def run_dynamic_evaluation(
             "user_shared_state_init": json.dumps(user_state),
             "agent_shared_state_init": json.dumps(agent_state),
             "tool_domain": getattr(scenario, "domain", "default"),
+            # When set, the bridge asks the bot for the inline DB dict in
+            # ``get_scenario_summary`` (not just the hash) so the runner can
+            # evaluate ``db_state_assertions`` predicates against it. Off
+            # for retail (7MB DB exceeds the WS frame cap); on for telecom
+            # (~5KB user_db). See ``Scenario.db_state_assertions``.
+            "include_db_in_summary": bool(getattr(scenario, "db_state_assertions", None)),
+            # Initialization actions replayed bot-side via the new
+            # ``apply_initialization_actions`` RTVI action before the
+            # conversation starts. ``None`` (default) skips the replay step
+            # entirely — eva/airline/retail won't hit this path. Telecom (M5+)
+            # populates this from ``task["initial_state"]["initialization_actions"]``.
+            "initialization_actions": getattr(scenario, "initialization_actions", None),
         }
         if scenario.noise_config:
             scenario_dict["noise_config"] = scenario.noise_config
@@ -297,6 +317,50 @@ async def run_dynamic_evaluation(
         if scenario_nl_pass_rate is not None:
             metrics["nl_assertion_pass_rate"] = scenario_nl_pass_rate
 
+        # Optional db_state_assertions evaluation — third scoring signal alongside
+        # ``db_state_match`` (whole-DB hash) and ``nl_assertions`` (LLM-judged).
+        # Predicates are pure functions over the pulled DB dicts; dispatched via
+        # ``evaluate_db_state_assertion`` from ``db_state_predicates.py``. Only
+        # fires for scenarios that expose ``db_state_assertions`` (tau2-telecom
+        # in M5+). Per-predicate verdict shape mirrors ``nl_assertion_verdicts``
+        # so downstream aggregation uses the same pattern.
+        #
+        # The runner needs inline ``db`` / ``user_db`` dicts here, not the
+        # SHA-256 hashes used for ``db_state_match``. The bot returns them via
+        # the ``include_db=True`` payload flag on ``get_scenario_summary``
+        # (extension added in M4a step 4); the bridge sets that flag when
+        # ``scenario.db_state_assertions`` is truthy. Predicate calls fall back
+        # to ``passed=False`` with an explanatory ``error`` if the DB is missing,
+        # so we surface the misconfiguration in the verdicts instead of crashing.
+        scenario_db_state_assertion_pass_rate = None
+        scenario_db_state_assertions = getattr(scenario, "db_state_assertions", None)
+        if scenario_db_state_assertions:
+            summary = bridge.scenario_summary or {}
+            pulled_db = summary.get("db") if isinstance(summary, dict) else None
+            pulled_user_db = summary.get("user_db") if isinstance(summary, dict) else None
+            db_state_verdicts = [
+                evaluate_db_state_assertion(
+                    domain=scenario.domain,
+                    assertion=a,
+                    db=pulled_db,
+                    user_db=pulled_user_db,
+                )
+                for a in scenario_db_state_assertions
+            ]
+            metrics["db_state_assertion_verdicts"] = db_state_verdicts
+            scenario_db_passes = sum(1 for v in db_state_verdicts if v.get("passed"))
+            scenario_db_state_assertion_pass_rate = (
+                scenario_db_passes / len(db_state_verdicts) if db_state_verdicts else None
+            )
+            metrics["db_state_assertion_pass_rate"] = scenario_db_state_assertion_pass_rate
+            # Roll per-predicate verdicts into the run-wide + per-domain buckets.
+            # Denominator is total predicates, not scenarios — matches the
+            # nl_assertion convention so the two rates are comparable.
+            for v in db_state_verdicts:
+                passed = bool(v.get("passed"))
+                db_state_assertion_results.append(passed)
+                per_domain_db_state_assertion.setdefault(domain, []).append(passed)
+
         # Save metrics to file
         metrics_file = os.path.join(scenario_dir, "metrics.json")
         with open(metrics_file, "w") as f:
@@ -315,6 +379,10 @@ async def run_dynamic_evaluation(
             logger.info(f"  DB-state match: {metrics['db_state_match']}")
         if "nl_assertion_pass_rate" in metrics:
             logger.info(f"  NL-assertion pass rate: {metrics['nl_assertion_pass_rate']*100:.2f}%")
+        if "db_state_assertion_pass_rate" in metrics:
+            logger.info(
+                f"  DB-state-assertion pass rate: {metrics['db_state_assertion_pass_rate']*100:.2f}%"
+            )
         logger.info(f"  Total turns: {metrics['total_turns']}")
         logger.info(f"  Duration: {metrics['scenario_duration']:.1f}s")
         logger.info(f"  Latency measurements: {latency_stats['count']}")
@@ -351,6 +419,14 @@ async def run_dynamic_evaluation(
     nl_assertion_success_rate = (
         sum(nl_assertion_results) / len(nl_assertion_results) if nl_assertion_results else None
     )
+    # Denominator is "db_state_assertions emitted in this run", not scenarios.
+    # None when no scenario carried db_state_assertions (currently only
+    # tau2-telecom does, M5+).
+    db_state_assertion_success_rate = (
+        sum(db_state_assertion_results) / len(db_state_assertion_results)
+        if db_state_assertion_results
+        else None
+    )
     all_latencies = []
     for result in all_results:
         all_latencies.extend([lat["latency_ms"] for lat in result["latencies"]])
@@ -384,6 +460,11 @@ async def run_dynamic_evaluation(
                 f.write(f"  DB-state match: {result['db_state_match']}\n")
             if "nl_assertion_pass_rate" in result:
                 f.write(f"  NL-assertion pass rate: {result['nl_assertion_pass_rate']*100:.2f}%\n")
+            if "db_state_assertion_pass_rate" in result:
+                f.write(
+                    f"  DB-state-assertion pass rate: "
+                    f"{result['db_state_assertion_pass_rate']*100:.2f}%\n"
+                )
             f.write(f"  Turns: {result['total_turns']}\n")
             f.write(f"  Duration: {result['scenario_duration']:.1f}s\n")
             if result["scenario_duration"] > 0:
@@ -426,6 +507,12 @@ async def run_dynamic_evaluation(
                 f"NL-Assertion Pass Rate: {nl_assertion_success_rate*100:.2f}% "
                 f"({sum(nl_assertion_results)}/{len(nl_assertion_results)} assertions across scenarios)\n"
             )
+        if db_state_assertion_success_rate is not None:
+            f.write(
+                f"DB-State-Assertion Pass Rate: {db_state_assertion_success_rate*100:.2f}% "
+                f"({sum(db_state_assertion_results)}/{len(db_state_assertion_results)} "
+                f"predicates across scenarios)\n"
+            )
 
         # Per-domain breakdown — only printed when there's more than one domain in
         # the run, since a single-domain breakdown duplicates the overall rate.
@@ -450,6 +537,13 @@ async def run_dynamic_evaluation(
                 results = per_domain_nl_assertion[d]
                 rate = sum(results) / len(results) if results else 0
                 f.write(f"  {d}: {rate*100:.2f}% ({sum(results)}/{len(results)})\n")
+        if len(per_domain_db_state_assertion) > 1:
+            f.write("\nPer-Domain DB-State-Assertion Pass Rate:\n")
+            f.write("-" * 80 + "\n")
+            for d in sorted(per_domain_db_state_assertion):
+                results = per_domain_db_state_assertion[d]
+                rate = sum(results) / len(results) if results else 0
+                f.write(f"  {d}: {rate*100:.2f}% ({sum(results)}/{len(results)})\n")
 
     logger.info(f"{'='*80}")
     logger.info("Evaluation Complete!")
@@ -471,6 +565,12 @@ async def run_dynamic_evaluation(
             f"NL-Assertion Pass Rate: {nl_assertion_success_rate*100:.2f}% "
             f"({sum(nl_assertion_results)}/{len(nl_assertion_results)} assertions across scenarios)"
         )
+    if db_state_assertion_success_rate is not None:
+        logger.info(
+            f"DB-State-Assertion Pass Rate: {db_state_assertion_success_rate*100:.2f}% "
+            f"({sum(db_state_assertion_results)}/{len(db_state_assertion_results)} "
+            f"predicates across scenarios)"
+        )
     if len(per_domain_success) > 1:
         for d in sorted(per_domain_success):
             results = per_domain_success[d]
@@ -486,6 +586,13 @@ async def run_dynamic_evaluation(
             results = per_domain_nl_assertion[d]
             rate = sum(results) / len(results) if results else 0
             logger.info(f"  [{d}] NL-Assertion: {rate*100:.2f}% ({sum(results)}/{len(results)})")
+    if len(per_domain_db_state_assertion) > 1:
+        for d in sorted(per_domain_db_state_assertion):
+            results = per_domain_db_state_assertion[d]
+            rate = sum(results) / len(results) if results else 0
+            logger.info(
+                f"  [{d}] DB-State-Assertion: {rate*100:.2f}% ({sum(results)}/{len(results)})"
+            )
     logger.info(f"Overall Latency P95: {overall_latency_stats['p95_ms']:.1f}ms")
     logger.info(f"Overall Latency P50: {overall_latency_stats['p50_ms']:.1f}ms")
     logger.info(f"Results saved to: {results_file}")

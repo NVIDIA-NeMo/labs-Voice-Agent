@@ -338,29 +338,48 @@ def create_get_scenario_summary_action(
 ) -> RTVIAction:
     """Build the ``context.get_scenario_summary`` action.
 
-    Returns ``{"actions": [...], "db_hash": "<sha>", "user_db_hash": "<sha>"|None}``
-    from the per-scenario shared state. Auto-aggregating tools (e.g.
+    Returns ``{"actions": [...], "db_hash": "<sha>"}`` from the per-scenario
+    shared state by default. With ``include_db=true`` in the request payload,
+    also returns the inline ``db`` dict alongside the hash — used by the
+    runner's ``db_state_assertions`` aggregation (predicates need the actual
+    DB values, not just the hash). Auto-aggregating tools (e.g.
     ``WriteScenarioTool`` subclasses) populate ``shared_state["actions"]`` on
     each successful mutation; the inbound fixture-loading flow populates
-    ``shared_state["db"]`` (and, for telecom, ``shared_state["user_db"]``).
-    The bridge calls this action after ``<exit>`` (or scenario timeout) to
-    retrieve the final artifacts without depending on any LLM-callable
-    summary tool.
+    ``shared_state["db"]``. The bridge calls this action after ``<exit>``
+    (or scenario timeout) to retrieve the final artifacts without depending
+    on any LLM-callable summary tool.
 
-    **Hash-only outbound (not inline DB).** The DB itself stays on the bot
-    server; only the SHA-256 of the canonicalized DB travels through the
-    WebSocket. This keeps the response payload under a few KB regardless of
-    DB size (tau2's airline DB is 7 MB inline; serialized via the previous
+    **One DB per bot.** Each bot's ``shared_state["db"]`` IS this bot's DB —
+    the agent bot's ``db`` is the agent-facing DB; the user bot's ``db`` is
+    the user-facing DB. The naming distinction (``db`` vs ``user_db``) lives
+    at the bridge/runner boundary: the bridge calls ``get_scenario_summary``
+    once per bot and labels the responses by which WS it pulled from (M5
+    adds the user-side pull for telecom). The bot itself doesn't know its
+    own side and doesn't need to.
+
+    **Hash-only outbound by default (not inline DB).** The DB itself stays on
+    the bot server; only the SHA-256 of the canonicalized DB travels through
+    the WebSocket. This keeps the response payload under a few KB regardless
+    of DB size (tau2's airline DB is 7 MB inline; serialized via the previous
     inline-DB scheme it exceeded pipecat's 1 MB WebSocket frame limit and
     closed the connection with code 1009). Both the bot and the runner
     import the same ``get_dict_hash`` from ``nemo_voice_agent.evaluation.db_hash``
     so the canonical hashing rule (float normalization, order-independent
     list fields, excluded keys) is identical on both sides.
 
-    Trade-off: the runner can no longer compute a per-field
-    ``compute_db_diff`` on mismatch (it never sees the actual DB). For
-    debugging mismatches, rerun with a future ``get_db_for_debug`` action
-    (TODO) that returns the inline DB only when explicitly requested.
+    **Inline DB opt-in (``include_db=true``).** Telecom's ``db_state_assertions``
+    surface needs the runner to invoke predicate functions on the actual DB
+    state, not just compare hashes. The bridge sets ``include_db=True`` when
+    ``scenario.db_state_assertions`` is truthy. Telecom's per-bot DBs are
+    small (~5 KB MockPhone state on the user side, modest customer/line data
+    on the agent side) so the WS frame limit is not a concern; for retail
+    (7 MB DB) the bridge leaves the flag at the default ``false`` and the
+    existing hash-out behavior is preserved.
+
+    Trade-off (when ``include_db=false``): the runner can no longer compute a
+    per-field ``compute_db_diff`` on mismatch since it never sees the actual
+    DB. For debugging hash mismatches in non-telecom domains, set
+    ``include_db=true`` temporarily on the bridge call.
 
     Mirrors how ``get_context_history`` is consumed by the bridge.
     """
@@ -370,29 +389,149 @@ def create_get_scenario_summary_action(
 
     async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
         try:
+            include_db = bool(arguments.get("include_db", False))
             actions = shared_state_ref.state.get("actions", [])
             db = shared_state_ref.state.get("db") or {}
-            user_db = shared_state_ref.state.get("user_db")  # telecom-only
             db_hash = get_dict_hash(db) if db else None
-            user_db_hash = get_dict_hash(user_db) if user_db else None
             logger.debug(
                 f"Returning scenario summary: {len(actions)} action(s), "
-                f"db_hash={db_hash}, user_db_hash={user_db_hash}"
+                f"db_hash={db_hash}, include_db={include_db}"
             )
             await _maybe_end_task(task_ref)
-            return {
+            response: dict[str, Any] = {
                 "actions": actions,
                 "db_hash": db_hash,
-                "user_db_hash": user_db_hash,
             }
+            if include_db:
+                # Telecom-only path. Inline DB is needed when the runner
+                # evaluates db_state_assertions — predicates take
+                # ``(db: dict, **arguments) -> bool``, so the hash is
+                # insufficient. The caller (bridge) is responsible for
+                # only requesting this for domains where the DB is small
+                # enough to safely cross the 1 MB pipecat WS frame limit.
+                response["db"] = db or None
+            return response
         except Exception as e:
             logger.error(f"Error getting scenario summary: {e}")
-            return {"actions": [], "db_hash": None, "user_db_hash": None}
+            return {"actions": [], "db_hash": None}
 
     return RTVIAction(
         service="context",
         action="get_scenario_summary",
         result="object",
-        arguments=[],
+        arguments=[
+            {
+                "name": "include_db",
+                "type": "bool",
+                "required": False,
+                "default": False,
+            },
+        ],
+        handler=handler,
+    )
+
+
+def create_apply_initialization_actions_action(
+    shared_state_ref: SharedStateRef,
+) -> RTVIAction:
+    """Build the ``context.apply_initialization_actions`` action.
+
+    Symmetric pre-scenario counterpart to ``get_scenario_summary``: takes a
+    list of state-mutation steps and applies them to the bot's live
+    ``shared_state["db"]`` / ``shared_state["user_db"]`` before the conversation
+    starts. Used by telecom scenarios to seed device state (e.g.
+    ``set_user_info``, ``turn_roaming_off``) and customer records
+    (``enable_roaming``) so the agent talks to a meaningful starting state.
+
+    **Bot-side dispatch (vs runner-side for ``db_state_assertions``).** Init
+    actions mutate live DB dicts; the mutations have to land in the same dict
+    instance the live LLM tools will read/write during the conversation —
+    that's the bot's ``shared_state``, not a snapshot in the runner. Mirrors
+    upstream tau2-bench's ``Environment.run_env_function_call`` which
+    dispatches against live toolkit instances.
+
+    **Payload shape:**
+
+    .. code-block:: json
+
+        {
+          "domain": "tau2_telecom",
+          "actions": [
+            {"side": "user",  "func_name": "set_user_info",
+             "arguments": {"name": "John Smith", "phone_number": "555-..."}},
+            {"side": "agent", "func_name": "enable_roaming",
+             "arguments": {"customer_id": "C1001", "line_id": "L1002"}}
+          ]
+        }
+
+    The bridge splits the upstream ``initialization_actions`` list by ``side``
+    and sends each subset to the matching bot (agent bot gets ``"agent"`` entries,
+    user bot gets ``"user"`` entries). Per-bot calls therefore typically carry
+    only one side's actions, but the dispatcher tolerates mixed lists for
+    flexibility (e.g. when the same bot owns both DBs in a single-process
+    test setup).
+
+    **Returns** ``{"success": bool, "errors": list[str]}``. ``success`` is
+    ``True`` only when every action dispatched cleanly. The bridge treats any
+    ``success=False`` as a framework-class failure and aborts the scenario
+    without scoring it — partial seeding produces noise, not signal.
+    """
+    # Lazy import to avoid coupling rtvi_actions (a pipecat-side module) to
+    # the evaluation/ subpackage at module-load time. Same pattern as the
+    # ``get_dict_hash`` import in ``create_get_scenario_summary_action``.
+    from nemo_voice_agent.evaluation.initialization_functions import (
+        apply_initialization_actions as _apply,
+    )
+
+    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
+        try:
+            domain = arguments.get("domain", "default")
+            actions = arguments.get("actions") or []
+            if not isinstance(actions, list):
+                return {
+                    "success": False,
+                    "errors": [f"`actions` payload must be a list, got {type(actions).__name__}."],
+                }
+            # Each bot owns exactly one DB at ``shared_state["db"]``. The
+            # agent bot's ``db`` is the agent-facing DB; the user bot's
+            # ``db`` is the user-facing DB. The bridge already filtered the
+            # upstream action list to only the entries that belong to this
+            # bot before sending — so all actions in the payload apply to
+            # this single ``db``. The handler is side-agnostic.
+            db = shared_state_ref.state.get("db") if shared_state_ref.state else None
+            logger.info(
+                f"[APPLY INIT] domain={domain!r}, actions={len(actions)}, "
+                f"db_present={db is not None}"
+            )
+            if db is None:
+                return {
+                    "success": False,
+                    "errors": [
+                        f"No shared_state['db'] available; cannot apply "
+                        f"{len(actions)} initialization action(s). "
+                        f"update_system_prompt didn't seed the DB on this bot."
+                    ],
+                }
+            result = _apply(domain=domain, actions=actions, db=db)
+            if result["success"]:
+                logger.info(f"[APPLY INIT] success ({len(actions)} action(s) applied)")
+            else:
+                logger.warning(
+                    f"[APPLY INIT] failure with {len(result['errors'])} error(s): "
+                    f"{result['errors']}"
+                )
+            return result
+        except Exception as e:
+            logger.error(f"Error applying initialization actions: {e}")
+            return {"success": False, "errors": [f"{type(e).__name__}: {e}"]}
+
+    return RTVIAction(
+        service="context",
+        action="apply_initialization_actions",
+        result="object",
+        arguments=[
+            {"name": "domain", "type": "string", "required": False, "default": "default"},
+            {"name": "actions", "type": "array", "required": True},
+        ],
         handler=handler,
     )

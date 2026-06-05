@@ -339,8 +339,14 @@ class VoiceAgentEvaluationBridge:
         self.user_context_history = None
         self.agent_context_history = None
         # Pulled at end-of-scenario via the get_scenario_summary RTVI action.
-        # Shape: {"actions": [...], "db_hash": "<sha>"|None, "user_db_hash": "<sha>"|None}
-        # or None if pull didn't happen.
+        # Each bot returns its own {"actions", "db_hash", "db"?}; the bridge
+        # merges the per-bot pulls into this dict, labeling by source:
+        #   {"actions": [...],
+        #    "db_hash": "<agent's hash>"|None,
+        #    "user_db_hash": "<user's hash>"|None,  # M5+ when user-side pull lands
+        #    "db": {...}|None,                       # only when include_db=True
+        #    "user_db": {...}|None}                  # only when include_db=True
+        # ``None`` overall if the pull didn't happen.
         self.scenario_summary: Optional[dict] = None
 
     def init_output_dir(
@@ -401,6 +407,11 @@ class VoiceAgentEvaluationBridge:
         # tells each bot which registry namespace to look up tools in. Falls
         # back to "default" per-tool for shared harness tools.
         tool_domain = scenario.get("tool_domain", "default")
+        # Bridge-side bit: when True, ``_retrieve_scenario_summary`` asks the
+        # bot to inline the ``db`` / ``user_db`` dicts (not just hashes) so
+        # the runner can evaluate ``db_state_assertions`` predicates. Set by
+        # the runner from ``bool(scenario.db_state_assertions)``.
+        self.include_db_in_summary = bool(scenario.get("include_db_in_summary", False))
         await self.update_user_prompt(
             prompt=scenario["user_prompt"],
             tools=scenario["user_tools"],
@@ -413,6 +424,15 @@ class VoiceAgentEvaluationBridge:
             shared_state_init=scenario.get("agent_shared_state_init", "{}"),
             tool_domain=tool_domain,
         )
+
+        # Telecom-only path: replay any ``initialization_actions`` against the
+        # bots' live ``shared_state`` before the conversation starts. Bot-side
+        # dispatch via the ``apply_initialization_actions`` RTVI action; bridge
+        # splits the action list by ``side`` (agent → agent_ws, user →
+        # user_ws). A no-op when ``scenario["initialization_actions"]`` is
+        # falsy, which is the common case for eva/airline/retail. See
+        # ``Scenario.initialization_actions`` docstring + the M4 plan.
+        await self._apply_initialization_actions(scenario)
 
         if "noise_config" in scenario:
             self.set_noise_config(scenario["noise_config"])
@@ -1156,7 +1176,9 @@ class VoiceAgentEvaluationBridge:
                     # at the end, send RTVI messages to the agent to fetch the
                     # context history and scenario summary (actions + final DB)
                     self.agent_context_history = await self._retrieve_context_history(agent_ws)
-                    self.scenario_summary = await self._retrieve_scenario_summary(agent_ws)
+                    self.scenario_summary = await self._retrieve_scenario_summary(
+                        agent_ws, include_db=self.include_db_in_summary
+                    )
 
             except Exception as e:
                 logger.error(f"[AGENT THREAD] Error: {e}", exc_info=True)
@@ -1236,16 +1258,31 @@ class VoiceAgentEvaluationBridge:
             logger.warning(f"[CONTEXT HISTORY] Error retrieving context history: {e}")
             return {}
 
-    async def _retrieve_scenario_summary(self, ws) -> dict:
-        """Retrieve ``{"actions": [...], "db": {...}}`` from the bot via the
+    async def _retrieve_scenario_summary(self, ws, include_db: bool = False) -> dict:
+        """Retrieve the scenario summary from the bot via the
         ``get_scenario_summary`` RTVI action. Mirrors ``_retrieve_context_history``.
 
         Args:
             ws: WebSocket connection to the agent bot.
+            include_db: When ``True``, ask the bot to inline the ``db``
+                dict alongside the hash. Set by the runner via
+                ``Scenario.db_state_assertions`` (predicate evaluation needs
+                the actual DB, not just a hash). Off by default to preserve
+                the existing hash-out behavior for retail (whose 7 MB DB
+                would exceed pipecat's 1 MB WS frame cap).
 
         Returns:
-            ``{"actions": list, "db": dict}`` if the bot responded; ``{}`` if
-            the bot didn't register the action (legacy bot) or timed out.
+            Dict with at minimum ``{"actions": list, "db_hash": str|None}``.
+            When ``include_db=True``, also includes ``"db": dict|None``.
+            Empty ``{}`` if the bot didn't register the action (legacy bot)
+            or timed out.
+
+            **One DB per pull.** This pull returns *this bot's* DB only.
+            For telecom dual-state (M5+), the bridge calls this method
+            separately for ``agent_ws`` and ``user_ws`` and merges the two
+            results into ``self.scenario_summary`` under the ``db_hash``
+            and ``user_db_hash`` keys respectively. M4 only pulls from the
+            agent bot; user-side pull lands in M5.
         """
         if not ws:
             logger.warning("[SCENARIO SUMMARY] WebSocket is not connected, skipping scenario summary retrieval")
@@ -1259,7 +1296,9 @@ class VoiceAgentEvaluationBridge:
                 "data": {
                     "service": "context",
                     "action": "get_scenario_summary",
-                    "arguments": [],
+                    "arguments": [
+                        {"name": "include_db", "value": include_db},
+                    ],
                 },
             }
             msg_frame = MessageFrame(data=json.dumps(action_msg))
@@ -1281,11 +1320,21 @@ class VoiceAgentEvaluationBridge:
                     if data.get("type") == "action-response":
                         result = data.get("data", {}).get("result", {})
                         actions = result.get("actions", [])
-                        db = result.get("db", {})
-                        logger.info(
-                            f"[SCENARIO SUMMARY] Received summary "
-                            f"(actions: {len(actions)}, db top-level keys: {len(db)})"
-                        )
+                        # ``db`` is only inlined when the bot received
+                        # ``include_db=True``. Log dict size when present;
+                        # the hash-out default keeps the response tiny.
+                        inline_db = result.get("db")
+                        if include_db:
+                            db_keys = len(inline_db) if isinstance(inline_db, dict) else 0
+                            logger.info(
+                                f"[SCENARIO SUMMARY] Received summary "
+                                f"(actions: {len(actions)}, inline db top-level keys: {db_keys})"
+                            )
+                        else:
+                            logger.info(
+                                f"[SCENARIO SUMMARY] Received summary "
+                                f"(actions: {len(actions)}, db_hash: {result.get('db_hash')})"
+                            )
                         return result
                 except asyncio.TimeoutError:
                     continue
@@ -1295,6 +1344,143 @@ class VoiceAgentEvaluationBridge:
         except Exception as e:
             logger.warning(f"[SCENARIO SUMMARY] Error retrieving scenario summary: {e}")
             return {}
+
+    async def _apply_initialization_actions(self, scenario: dict) -> None:
+        """Dispatch ``scenario["initialization_actions"]`` to the bots before kickoff.
+
+        Bot-side dispatch via the ``apply_initialization_actions`` RTVI action.
+        The bridge splits the action list by ``side``:
+
+          - ``side == "agent"`` → ``self.agent_ws``
+          - ``side == "user"``  → ``self.user_ws``
+
+        Each bot's dispatcher mutates its local ``shared_state["db"]`` /
+        ``shared_state["user_db"]`` in place, so by the time the conversation
+        starts, the live LLM tools see the seeded state.
+
+        **No-op cases** (skipped silently — common path for eva/airline/retail):
+
+          - ``initialization_actions`` is missing, ``None``, or an empty list.
+          - All actions on one side: only that side's bot is contacted.
+
+        **Failure handling:** any per-bot ``success: false`` response (missing
+        function in the bot's registry, side mismatch, dispatcher exception)
+        raises ``RuntimeError`` so the calling ``prepare_for_scenario`` aborts
+        before the conversation starts. Partial seeding produces noisy /
+        unscoreable runs, so we'd rather fail loud than silently degrade.
+        """
+        actions = scenario.get("initialization_actions") or []
+        if not actions:
+            return  # No-op for scenarios without init actions
+
+        domain = scenario.get("tool_domain", "default")
+        agent_actions = [a for a in actions if a.get("side") == "agent"]
+        user_actions = [a for a in actions if a.get("side") == "user"]
+        unsided = [a for a in actions if a.get("side") not in ("agent", "user")]
+        if unsided:
+            raise RuntimeError(
+                f"initialization_actions contains entries with unknown side "
+                f"(expected 'user' or 'agent'): {unsided}. Check the scenario "
+                f"translation boundary — upstream tau2 uses env_type ∈ "
+                f"{{'user', 'assistant'}}, which must be renamed to "
+                f"side ∈ {{'user', 'agent'}} before the dict reaches the bridge."
+            )
+
+        logger.info(
+            f"[APPLY INIT] domain={domain!r}, total={len(actions)} action(s) "
+            f"(agent_side={len(agent_actions)}, user_side={len(user_actions)})"
+        )
+
+        if agent_actions:
+            await self._send_apply_initialization_actions(
+                self.agent_ws, "agent", domain, agent_actions
+            )
+        if user_actions:
+            await self._send_apply_initialization_actions(
+                self.user_ws, "user", domain, user_actions
+            )
+
+    async def _send_apply_initialization_actions(
+        self, ws, side_label: str, domain: str, actions: List[dict]
+    ) -> None:
+        """Send one ``apply_initialization_actions`` action and wait for the result.
+
+        ``side_label`` is the bot label (``"agent"`` or ``"user"``) used only
+        in log lines and error messages — the bot itself doesn't need to know
+        which side it is, since each action in the payload already carries
+        its own ``side`` field that the dispatcher routes by.
+
+        Raises:
+            RuntimeError: if the bot returns ``success: false`` or the request
+                times out. The caller (``_apply_initialization_actions``)
+                propagates this up so ``prepare_for_scenario`` aborts cleanly.
+        """
+        if not ws:
+            raise RuntimeError(
+                f"[APPLY INIT] {side_label}_ws is not connected; cannot "
+                f"replay {len(actions)} initialization action(s)."
+            )
+
+        action_msg = {
+            "label": "rtvi-ai",
+            "type": "action",
+            "id": f"apply_init_{side_label}_{datetime.now().timestamp()}",
+            "data": {
+                "service": "context",
+                "action": "apply_initialization_actions",
+                "arguments": [
+                    {"name": "domain", "value": domain},
+                    # No ``side`` in the payload: each bot owns exactly one
+                    # DB at ``shared_state["db"]``, and the bridge has
+                    # already filtered the upstream action list to only the
+                    # entries belonging to this bot before calling. The
+                    # ``side_label`` is bridge-internal — used here for the
+                    # action ID + log lines, not sent to the bot.
+                    {"name": "actions", "value": actions},
+                ],
+            },
+        }
+        msg_frame = MessageFrame(data=json.dumps(action_msg))
+        serialized = await self.serializer.serialize(msg_frame)
+        await ws.send(serialized)
+        logger.info(
+            f"[APPLY INIT] Sent apply_initialization_actions to {side_label} bot "
+            f"({len(actions)} action(s)); waiting for response..."
+        )
+
+        # Wait pattern mirrors ``_retrieve_scenario_summary``. 15s budget is
+        # generous since init dispatch is a pure-Python dict-mutation loop
+        # (no LLM, no I/O).
+        timeout = 15.0
+        start_time = asyncio.get_event_loop().time()
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            try:
+                msg = await asyncio.wait_for(ws.recv(), timeout=1.0)
+                frame = await self.serializer.deserialize(msg)
+                if frame is None:
+                    continue
+                if not (hasattr(frame, "message") and frame.message):
+                    continue
+                data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
+                if data.get("type") == "action-response":
+                    result = data.get("data", {}).get("result", {})
+                    if result.get("success"):
+                        logger.info(
+                            f"[APPLY INIT] {side_label} bot applied "
+                            f"{len(actions)} action(s) successfully"
+                        )
+                        return
+                    raise RuntimeError(
+                        f"[APPLY INIT] {side_label} bot reported failure on "
+                        f"{len(actions)} action(s): {result.get('errors')}"
+                    )
+            except asyncio.TimeoutError:
+                continue
+
+        raise RuntimeError(
+            f"[APPLY INIT] Timeout ({timeout}s) waiting for {side_label} bot "
+            f"to apply {len(actions)} initialization action(s)."
+        )
 
     async def _receive_user_to_queue(self, user_ws, duration: float):
         """Receive audio from user WebSocket and put into queue for agent thread."""

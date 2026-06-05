@@ -264,7 +264,7 @@ class Scenario:
         disallow_extra_items: Optional[bool] = False,
         expected_scenario_db: Optional[Dict[str, Any]] = None,
         nl_assertions: Optional[List[str]] = None,
-        env_assertions: Optional[List[Dict[str, Any]]] = None,
+        db_state_assertions: Optional[List[Dict[str, Any]]] = None,
         initialization_actions: Optional[List[Dict[str, Any]]] = None,
         expected_user_db: Optional[Dict[str, Any]] = None,
     ):
@@ -297,15 +297,28 @@ class Scenario:
                 (e.g., tau2-retail). Each string is judged independently against the conversation
                 transcript; aggregate score is ``passed / total``. Default ``None``
                 disables NL-assertion scoring.
-            env_assertions: Environment-state assertion records evaluated against the
-                pulled ``shared_state["user_db"]`` or ``shared_state["db"]`` post-run
-                (e.g., tau2-telecom). Each entry has shape
-                ``{"env_type": "user"|"assistant", "func_name": str, "arguments": dict,
-                "assert_value": Any}``. Default ``None`` disables env-assertion scoring.
-            initialization_actions: Action records replayed against shared_state before
-                the scenario starts (e.g., tau2-telecom). Each entry has shape
-                ``{"env_type": "user"|"assistant", "func_name": str, "arguments": dict}``.
-                Default ``None`` skips replay.
+            db_state_assertions: Per-predicate DB-state assertion records evaluated
+                runner-side against the bridge-pulled ``shared_state["user_db"]`` or
+                ``shared_state["db"]`` post-run (e.g., tau2-telecom). Each entry has
+                shape ``{"side": "user"|"agent", "func_name": str, "arguments": dict,
+                "assert_value": Any, "message": Optional[str]}`` and dispatches through
+                ``nemo_voice_agent.evaluation.db_state_predicates.evaluate_db_state_assertion``.
+                Sibling to ``db_state_match`` (whole-DB hash) and ``nl_assertions``
+                (LLM-judged transcript predicates); per-predicate verdict shape mirrors
+                ``nl_assertion_verdicts`` from M3. Default ``None`` disables
+                DB-state-assertion scoring. **Upstream tau2-bench calls this surface
+                ``env_assertions`` and uses ``env_type`` ∈ {"user", "assistant"};
+                we rename to ``side`` ∈ {"user", "agent"} at the scenario translation
+                boundary (e.g., ``Tau2TelecomBaseScenario._gold_replay``) for
+                consistency with the bridge's existing side-tagging of action
+                records.**
+            initialization_actions: Action records replayed against shared_state
+                before the scenario starts (e.g., tau2-telecom). Each entry has
+                shape ``{"side": "user"|"agent", "func_name": str, "arguments":
+                dict}``. Dispatched bot-side via the ``apply_initialization_actions`` RTVI
+                action (M4). Default ``None`` skips replay. Same renames as
+                ``db_state_assertions``: upstream key ``env_type`` → ``side``,
+                value ``"assistant"`` → ``"agent"``.
             expected_user_db: Optional expected post-run user-side DB state (e.g., tau2-telecom).
                 Hashed against the bridge-pulled user-side DB. Default ``None`` disables
                 dual-DB scoring.
@@ -335,8 +348,8 @@ class Scenario:
             self.expected_scenario_db = expected_scenario_db
         if not hasattr(self, "nl_assertions"):
             self.nl_assertions = nl_assertions
-        if not hasattr(self, "env_assertions"):
-            self.env_assertions = env_assertions
+        if not hasattr(self, "db_state_assertions"):
+            self.db_state_assertions = db_state_assertions
         if not hasattr(self, "initialization_actions"):
             self.initialization_actions = initialization_actions
         if not hasattr(self, "expected_user_db"):
