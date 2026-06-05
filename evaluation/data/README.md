@@ -107,6 +107,63 @@ that scenarios from different upstream libraries don't collide.
   `# Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0`
   attribution.
 
+### tau2_telecom (`tau2_telecom__*`)
+
+- **Upstream**: [github.com/sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench)
+- **Tag**: `voice-user-sim-v1.0` (commit
+  [`17e07b1`](https://github.com/sierra-research/tau2-bench/commit/17e07b1da2bbc0cadfddeea36412686e0604127b))
+- **License**: MIT (Sierra Research, 2025)
+- **Imported via**: `scripts/prepare_tau2_data/prepare_telecom.py` — see that
+  directory's README for re-import instructions. This script handles the
+  TOML → JSON conversion for `db.toml` / `user_db.toml` (upstream telecom
+  diverges from airline / retail's `.json`-only convention). Other files
+  are copied verbatim.
+- **Contents** (under `tau2_telecom/`):
+  - `db.json` — agent-facing telecom DB (plans, devices, lines, customers,
+    bills). Loaded once per process by `Tau2TelecomBaseScenario.db`. Source:
+    `data/tau2/domains/telecom/db.toml` (converted via `tomllib` →
+    re-serialized as indent=2 JSON).
+  - `user_db.json` — user-facing telecom DB (mock phone device state +
+    user surroundings). Loaded once per process by
+    `Tau2TelecomBaseScenario.user_db`. Source:
+    `data/tau2/domains/telecom/user_db.toml` (converted as above).
+    **Known follow-up:** the TOML default doesn't materialize all
+    Pydantic-default fields (e.g. `surroundings.signal_strength` per-network
+    technology defaults). M5a will round-trip the converted JSON through
+    the ported `TelecomUserDB` Pydantic model in the prepare script to fill
+    these defaults before downstream code reads it.
+  - `tasks.json` — task definitions. **Filtered to the 114 base-split ids
+    at import time** by `prepare_telecom.py` (~660 KB after filtering vs.
+    ~14 MB upstream verbatim — 4.7% kept). The 2171 non-base task
+    definitions are dead weight because our eval surface never references
+    them. Hard-fails on import if any base id has no upstream definition.
+  - `tasks_voice.json` — voice-eligibility entries (acoustic config +
+    persona name per task). **Filtered to the 114 base-split ids at
+    import time** by `prepare_telecom.py` (~3 MB after filtering, vs.
+    ~62 MB upstream verbatim). Other splits (`small`, `train`, `test`,
+    `full`) are stripped — the eval surface ships only `base`, so the
+    other ~2171 entries are dead weight. Re-imports preserve this
+    filter; the script hard-fails if any base id is missing from
+    upstream.
+  - `split_tasks.json` — base/small/train/test/full split-id lists
+    (verbatim — small file, useful for debugging which scenario IDs
+    upstream considered "curated"). We ship the `base` (114 ids) eval
+    surface; `small` (20 ids, disjoint from base) is upstream-debug-only.
+  - `audio_difficulty.json` — upstream-emitted audio difficulty annotations
+    (verbatim). Kept for traceability; **not consumed** by the eval pipeline.
+  - `main_policy.md`, `tech_support_workflow.md`, `tech_support_manual.md`
+    — agent prompt sources (verbatim). `Tau2TelecomBaseScenario.get_agent_prompt`
+    concatenates these (TBD in M5).
+  - `workflows/` — 10 per-issue workflow markdown files referenced by
+    `tech_support_workflow.md`.
+- **Bound code**: `nemo_voice_agent/evaluation/scenarios/data/tau2_telecom/`
+  (M5e+) + `nemo_voice_agent/evaluation/tools/tau2_telecom_tools.py`,
+  `tau2_telecom_params.py`, `tau2_telecom_predicates.py`,
+  `tau2_telecom_init_functions.py` (M5a–M5e). Each ported code file
+  carries an inline
+  `# Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0`
+  attribution.
+
 ## Adding a new source
 
 Add a new section above using the same fields. If the new source overlaps a
