@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the M4 ``db_state_assertions`` framework.
+"""Tests for the ``db_state_assertions`` framework.
 
-Synthetic-only — no real telecom port yet. We register fake predicates against
-a fake domain and exercise the full registration + dispatch + verdict chain.
-Real telecom predicates land in M5; that port should re-run this suite to
-confirm nothing structural changed.
+Synthetic-only — uses fake predicates registered against a fake domain to
+exercise the full registration + dispatch + verdict chain without
+depending on any real domain port. Real ported predicates should re-run
+this suite to confirm nothing structural changed.
 
 The registry is keyed by ``(domain, func_name)`` only — predicates are
 side-agnostic; ``side`` is caller-side routing metadata used by the dispatcher
@@ -36,7 +36,7 @@ Coverage:
   ``passed=False`` with explanatory ``error``.
 - Predicate raises an exception: ``passed=False`` with ``error`` capturing the
   exception type and message.
-- Verdict shape mirrors ``nl_assertion_verdicts`` from M3 (same keys: ``passed``,
+- Verdict shape mirrors ``nl_assertion_verdicts`` (same keys: ``passed``,
   per-record verdict, ``message`` optional) so the runner aggregation code
   path is uniform.
 """
@@ -51,8 +51,8 @@ from nemo_voice_agent.evaluation.db_state_predicates import (
 )
 
 
-# Use a synthetic domain so this test doesn't collide with real M5 telecom
-# registrations when both are loaded.
+# Use a synthetic domain so this test doesn't collide with real domain
+# registrations (e.g. tau2_telecom) when both are loaded.
 _TEST_DOMAIN = "_test_db_state_assertions_synthetic_domain"
 
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Per-domain aggregation conventions used by ``run_dynamic_evaluation`` (M1.F).
+"""Per-domain aggregation conventions used by ``run_dynamic_evaluation``.
 
 The runner is async and tightly coupled to ``VoiceAgentEvaluationBridge``; rather
 than mock the entire pipeline, these tests exercise the two pure-function

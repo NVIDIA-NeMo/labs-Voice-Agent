@@ -42,7 +42,7 @@ Why bot-side dispatch (and not runner-side like ``db_state_assertions``):
 
 Upstream tau2-bench's initialization functions are **methods on toolkit
 classes** (``TelecomUserTools.set_user_info``, etc.), not module-level
-functions. M5's telecom port extracts them as module-level functions taking a
+functions. The telecom port extracts them as module-level functions taking a
 plain dict — same approach as the predicate port — so the registry stays
 language-agnostic and testable.
 """

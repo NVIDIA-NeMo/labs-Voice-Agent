@@ -12,17 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests that the M4 ``Scenario`` field additions don't regress existing scenarios.
+"""Tests that the optional ``Scenario`` fields don't regress existing scenarios.
 
-Three optional fields landed in M4 (``db_state_assertions``,
+Three optional fields exist on ``Scenario`` (``db_state_assertions``,
 ``initialization_actions``, ``expected_user_db``), all defaulting to ``None``
 so eva_airline / tau2_airline / tau2_retail scenarios continue to work
 without modification. This suite locks that invariant: instantiate one
 scenario from each domain and assert every new field is ``None``.
 
-If telecom (M5+) adds scenarios that opt into these fields, those scenarios
-should NOT show up here — only the three pre-M4 domains. Add a separate test
-file for telecom-specific field assertions when M5 lands.
+When a future domain (e.g. tau2_telecom) adds scenarios that opt into
+these fields, those scenarios should NOT show up here — only the
+single-side domains. Add a separate domain-specific test file for that
+domain's field assertions.
 """
 
 import nemo_voice_agent.evaluation.scenarios.data  # noqa: F401 — triggers registration
@@ -31,8 +32,8 @@ from nemo_voice_agent.evaluation.scenarios.classes import Scenario
 
 
 def test_scenario_base_class_defaults_to_none_for_new_fields():
-    """The optional M4 fields default to ``None`` on the bare ``Scenario`` base
-    so any pre-M4 caller that didn't pass these kwargs is unaffected."""
+    """The optional fields default to ``None`` on the bare ``Scenario`` base
+    so any existing caller that didn't pass these kwargs is unaffected."""
     s = Scenario(name="dummy", description="d")
     assert s.db_state_assertions is None
     assert s.initialization_actions is None
@@ -64,10 +65,14 @@ def test_tau2_retail_scenario_has_no_new_fields_populated():
     assert inst.expected_user_db is None
 
 
-def test_no_pre_m5_scenario_carries_db_state_assertions():
-    """Scan every registered scenario; none of them should opt in until M5
-    ports telecom. This catches accidental field assignments during M4
-    implementation. (When M5 lands, add a ``tau2_telecom`` allowlist here.)"""
+def test_no_single_side_scenario_carries_db_state_assertions():
+    """Scan every registered scenario; only telecom (dual-side) scenarios
+    should opt into ``db_state_assertions`` / ``initialization_actions`` /
+    ``expected_user_db``. This catches accidental field assignments on
+    single-side domains (eva / tau2_airline / tau2_retail).
+
+    Currently no domain opts in. When ``tau2_telecom`` scenarios land,
+    update this test to allowlist them."""
     offenders = []
     for name, cls in ALL_EVAL_SCENARIOS.items():
         try:
@@ -83,6 +88,6 @@ def test_no_pre_m5_scenario_carries_db_state_assertions():
         ):
             offenders.append(name)
     assert offenders == [], (
-        "Scenarios opted into M4 fields before M5 telecom port: "
+        "Single-side scenarios accidentally opted into dual-side fields: "
         f"{offenders}"
     )

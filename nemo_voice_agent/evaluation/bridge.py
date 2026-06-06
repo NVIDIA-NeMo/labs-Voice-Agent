@@ -343,7 +343,7 @@ class VoiceAgentEvaluationBridge:
         # merges the per-bot pulls into this dict, labeling by source:
         #   {"actions": [...],
         #    "db_hash": "<agent's hash>"|None,
-        #    "user_db_hash": "<user's hash>"|None,  # M5+ when user-side pull lands
+        #    "user_db_hash": "<user's hash>"|None,  # populated when user-side pull is wired
         #    "db": {...}|None,                       # only when include_db=True
         #    "user_db": {...}|None}                  # only when include_db=True
         # ``None`` overall if the pull didn't happen.
@@ -447,7 +447,7 @@ class VoiceAgentEvaluationBridge:
         # splits the action list by ``side`` (agent → agent_ws, user →
         # user_ws). A no-op when ``scenario["initialization_actions"]`` is
         # falsy, which is the common case for eva/airline/retail. See
-        # ``Scenario.initialization_actions`` docstring + the M4 plan.
+        # ``Scenario.initialization_actions`` docstring.
         await self._apply_initialization_actions(scenario)
 
         if "noise_config" in scenario:
@@ -1294,11 +1294,12 @@ class VoiceAgentEvaluationBridge:
             or timed out.
 
             **One DB per pull.** This pull returns *this bot's* DB only.
-            For telecom dual-state (M5+), the bridge calls this method
+            For telecom dual-state, the bridge calls this method
             separately for ``agent_ws`` and ``user_ws`` and merges the two
             results into ``self.scenario_summary`` under the ``db_hash``
-            and ``user_db_hash`` keys respectively. M4 only pulls from the
-            agent bot; user-side pull lands in M5.
+            and ``user_db_hash`` keys respectively. Currently only the
+            agent-side pull is wired; user-side pull is added when the
+            first telecom scenario is ported.
         """
         if not ws:
             logger.warning("[SCENARIO SUMMARY] WebSocket is not connected, skipping scenario summary retrieval")
@@ -2024,11 +2025,12 @@ class VoiceAgentEvaluationBridge:
 
         # Pull path
         if self.scenario_summary and self.scenario_summary.get("actions") is not None:
-            # Stamp side="agent" on each pulled action. Plan §4.2: side-tagging
-            # happens at merge time in the bridge, since the bridge is the single
-            # point of truth for which WebSocket each record came from. Tool code
-            # has no notion of side. Telecom (M5) will add a symmetric pull from
-            # ws_user that stamps side="user" on user-side records before merging.
+            # Stamp side="agent" on each pulled action. Side-tagging happens
+            # at merge time in the bridge, since the bridge is the single
+            # point of truth for which WebSocket each record came from. Tool
+            # code has no notion of side. Telecom will add a symmetric pull
+            # from ws_user that stamps side="user" on user-side records
+            # before merging.
             actions = [{**a, "side": "agent"} for a in self.scenario_summary.get("actions", [])]
             results = [{"actions": actions}]
             source = "pull"

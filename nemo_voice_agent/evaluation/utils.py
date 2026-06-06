@@ -561,7 +561,8 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
                 ``nl_assertion_verdicts`` field (one entry per assertion, ``{index, passed,
                 reason}``) plus ``nl_assertion_pass_rate``. Missing/malformed verdicts are
                 filled with ``passed=False`` so the runner can still aggregate cleanly.
-                When ``None`` (or empty), behavior is unchanged from M1.
+                When ``None`` (or empty), the returned shape is the basic
+                ``{score, reason}`` dict — no per-assertion fields.
             prompt: Optional custom system prompt. Uses SCENARIO_PROMPT if not provided.
         Returns:
             A dict with "score" (float between 0 and 1) and "reason" (str). When

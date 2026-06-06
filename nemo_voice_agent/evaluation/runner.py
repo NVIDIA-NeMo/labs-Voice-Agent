@@ -108,7 +108,7 @@ async def run_dynamic_evaluation(
     # Same shape as ``nl_assertion_results`` — each entry is True/False for one
     # predicate in one scenario; denominator is "total db_state_assertions
     # emitted in this run", not "scenarios". Empty when no scenario opts into
-    # DB-state-assertion scoring (currently only tau2-telecom in M5+).
+    # DB-state-assertion scoring (currently only tau2-telecom).
     db_state_assertion_results: List[bool] = []
     # Per-side token usage accumulated across scenarios. Populated from each
     # scenario's ``bridge.token_usage`` snapshot. The eval-result-analyzer skill
@@ -163,7 +163,7 @@ async def run_dynamic_evaluation(
             # Initialization actions replayed bot-side via the new
             # ``apply_initialization_actions`` RTVI action before the
             # conversation starts. ``None`` (default) skips the replay step
-            # entirely — eva/airline/retail won't hit this path. Telecom (M5+)
+            # entirely — eva/airline/retail won't hit this path. Telecom
             # populates this from ``task["initial_state"]["initialization_actions"]``.
             "initialization_actions": getattr(scenario, "initialization_actions", None),
         }
@@ -207,10 +207,11 @@ async def run_dynamic_evaluation(
             success_results.append(False)
             per_domain_success.setdefault(domain, []).append(False)
         elif judge is not None:
-            # M1: switched from judge_file to judge_scenario. Same output shape
-            # ({"score", "reason"}) when nl_assertions is None, so the runner's
-            # downstream scoring path is unchanged. Plumbing only — M3 (retail)
-            # populates nl_assertions and consumes per-assertion verdicts.
+            # Wire through judge_scenario (not judge_file). Same output shape
+            # ({"score", "reason"}) when nl_assertions is None, so the
+            # downstream scoring path is unchanged. tau2_retail (and any
+            # other domain with nl_assertions) gets per-assertion verdicts
+            # in the response.
             #
             # Shape-normalize both files before handing to the judge: the
             # deterministic comparator's "Situation 2" logic treats
@@ -338,14 +339,14 @@ async def run_dynamic_evaluation(
         # ``db_state_match`` (whole-DB hash) and ``nl_assertions`` (LLM-judged).
         # Predicates are pure functions over the pulled DB dicts; dispatched via
         # ``evaluate_db_state_assertion`` from ``db_state_predicates.py``. Only
-        # fires for scenarios that expose ``db_state_assertions`` (tau2-telecom
-        # in M5+). Per-predicate verdict shape mirrors ``nl_assertion_verdicts``
-        # so downstream aggregation uses the same pattern.
+        # fires for scenarios that expose ``db_state_assertions`` (tau2-telecom).
+        # Per-predicate verdict shape mirrors ``nl_assertion_verdicts`` so
+        # downstream aggregation uses the same pattern.
         #
         # The runner needs inline ``db`` / ``user_db`` dicts here, not the
         # SHA-256 hashes used for ``db_state_match``. The bot returns them via
-        # the ``include_db=True`` payload flag on ``get_scenario_summary``
-        # (extension added in M4a step 4); the bridge sets that flag when
+        # the ``include_db=True`` payload flag on ``get_scenario_summary``;
+        # the bridge sets that flag when
         # ``scenario.db_state_assertions`` is truthy. Predicate calls fall back
         # to ``passed=False`` with an explanatory ``error`` if the DB is missing,
         # so we surface the misconfiguration in the verdicts instead of crashing.
@@ -438,7 +439,7 @@ async def run_dynamic_evaluation(
     )
     # Denominator is "db_state_assertions emitted in this run", not scenarios.
     # None when no scenario carried db_state_assertions (currently only
-    # tau2-telecom does, M5+).
+    # tau2-telecom does).
     db_state_assertion_success_rate = (
         sum(db_state_assertion_results) / len(db_state_assertion_results)
         if db_state_assertion_results

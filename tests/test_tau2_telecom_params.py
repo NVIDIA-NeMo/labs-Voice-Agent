@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the M5a tau2 telecom Pydantic data model port.
+"""Tests for the tau2 telecom Pydantic data model port.
 
 Verifies:
 
@@ -22,7 +22,7 @@ Verifies:
    defaults (the whole reason for the Pydantic round-trip in
    ``prepare_telecom.py``).
 3. ``extra="forbid"`` rejects unknown fields at validation time.
-4. Specific enum values that the M5b predicates rely on are present.
+4. Specific enum values that the predicate code relies on are present.
 
 These tests run against the **imported** JSON files (the output of
 ``prepare_telecom.py``), not raw upstream TOML — that way they fail
@@ -104,7 +104,7 @@ def test_user_db_json_has_surroundings_block():
     assert surroundings["is_abroad"] is False
     assert surroundings["roaming_allowed"] is False
     assert surroundings["line_active"] is True
-    # Per-network signal_strength default table (used by _run_speed_test in M5b):
+    # Per-network signal_strength default table (used by _run_speed_test):
     assert surroundings["signal_strength"] == {
         "2G": "poor",
         "3G": "fair",
@@ -116,7 +116,7 @@ def test_user_db_json_has_surroundings_block():
 def test_user_db_json_has_app_statuses_with_messaging_and_browser():
     """``MockPhoneAttributes.app_statuses`` has a default_factory that seeds
     ``messaging`` + ``browser`` entries. The MMS-related predicates
-    (``assert_can_send_mms`` in M5b) depend on the ``messaging`` app's SMS
+    (``assert_can_send_mms``) depend on the ``messaging`` app's SMS
     permission being present."""
     with (_telecom_data_dir() / "user_db.json").open() as f:
         raw = json.load(f)
@@ -149,7 +149,7 @@ def test_UserSurroundings_rejects_unknown_field():
 
 
 # ---------------------------------------------------------------------------
-# 4. Enum values M5b predicates depend on
+# 4. Enum values the predicate code depends on
 # ---------------------------------------------------------------------------
 
 

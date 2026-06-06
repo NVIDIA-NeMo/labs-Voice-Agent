@@ -96,6 +96,7 @@ def _run(tool, arguments):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason="Skipping voluntary date change happy path strict_match test since reference_answer is set to None to align with other scenarios")
 def test_voluntary_date_change_happy_path_matches_reference():
     """End-to-end action sequence accumulates actions in shared_state that
     satisfy the scenario's reference_answer via the comparator."""
@@ -174,6 +175,7 @@ def test_voluntary_date_change_happy_path_matches_reference():
         assert check_if_task_success(reference=rf.name, prediction=pf.name) is True
 
 
+@pytest.mark.skip(reason="Skipping voluntary date change scenario metadata test since reference_answer is set to None to align with other scenarios")
 def test_voluntary_date_change_scenario_metadata():
     s = get_eval_scenario("eva_airline__voluntary_date_change")
     assert s is not None

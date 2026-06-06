@@ -305,7 +305,7 @@ class Scenario:
                 ``nemo_voice_agent.evaluation.db_state_predicates.evaluate_db_state_assertion``.
                 Sibling to ``db_state_match`` (whole-DB hash) and ``nl_assertions``
                 (LLM-judged transcript predicates); per-predicate verdict shape mirrors
-                ``nl_assertion_verdicts`` from M3. Default ``None`` disables
+                ``nl_assertion_verdicts``. Default ``None`` disables
                 DB-state-assertion scoring. **Upstream tau2-bench calls this surface
                 ``env_assertions`` and uses ``env_type`` ∈ {"user", "assistant"};
                 we rename to ``side`` ∈ {"user", "agent"} at the scenario translation
@@ -315,8 +315,8 @@ class Scenario:
             initialization_actions: Action records replayed against shared_state
                 before the scenario starts (e.g., tau2-telecom). Each entry has
                 shape ``{"side": "user"|"agent", "func_name": str, "arguments":
-                dict}``. Dispatched bot-side via the ``apply_initialization_actions`` RTVI
-                action (M4). Default ``None`` skips replay. Same renames as
+                dict}``. Dispatched bot-side via the ``apply_initialization_actions``
+                RTVI action. Default ``None`` skips replay. Same renames as
                 ``db_state_assertions``: upstream key ``env_type`` → ``side``,
                 value ``"assistant"`` → ``"agent"``.
             expected_user_db: Optional expected post-run user-side DB state (e.g., tau2-telecom).

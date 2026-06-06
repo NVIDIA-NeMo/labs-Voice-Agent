@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for Tau2BaseScenario._gold_replay (M1.G).
+"""Unit tests for ``Tau2BaseScenario._gold_replay``.
 
-Uses a hand-crafted fake subclass that bypasses the data-file loader, so the test
-runs without any tau2_* data files on disk (those land in M2/M3/M5).
+Uses a hand-crafted fake subclass that bypasses the data-file loader, so the
+test runs without any tau2_* data files on disk.
 """
 
 from typing import Any, Dict
@@ -327,7 +327,7 @@ def test_get_agent_prompt_appends_voice_realization_addenda():
 
 def test_user_persona_pulled_from_user_scenario_instructions():
     """``user_persona.name`` is intentionally None for tau2 — narrative identity
-    comes from ``known_info``, which (M3.7a) now lives in
+    comes from ``known_info``, which lives in
     ``user_resources.info_sections["Things you know"]`` rather than
     ``Persona.background``. tau2's ``persona_name`` (e.g. ``"lisa_brenner"``)
     is an acoustic-slicing label, not a narrative name, and lives on the
@@ -346,13 +346,14 @@ def test_user_persona_pulled_from_user_scenario_instructions():
 
 
 def test_user_resources_carries_known_info_as_info_section():
-    """M3.7a: ``known_info`` lands in ``user_resources.info_sections['Things you know']``.
+    """``known_info`` lands in ``user_resources.info_sections['Things you know']``.
 
-    Previous design (M2) put it in ``Persona.background`` as narrative prose.
-    That conflated identity (persona) with facts (resources). The current design
-    separates them so the user-sim prompt has a clearly-labeled "Things you know"
-    subsection, which (paired with ``GENERAL_PROMPT``'s anti-fabrication rule)
-    helps the simulator avoid inventing identifiers it doesn't have.
+    An earlier design put it in ``Persona.background`` as narrative prose,
+    which conflated identity (persona) with facts (resources). The current
+    design separates them so the user-sim prompt has a clearly-labeled
+    "Things you know" subsection, which (paired with ``GENERAL_PROMPT``'s
+    anti-fabrication rule) helps the simulator avoid inventing identifiers
+    it doesn't have.
     """
     scenario = _StructuredUserScenario()
     info = scenario.user_resources.info_sections or {}
@@ -363,10 +364,11 @@ def test_user_resources_carries_known_info_as_info_section():
 
 
 def test_user_resources_carries_unknown_info_when_present():
-    """tau2's ``unknown_info`` field (M3.7a) renders as the ``Things you don't know``
-    subsection. Was silently dropped pre-M3.7a — see eval_20260603_072747 audit
-    where tau2_retail__16's "You do not remember your email address" never
-    reached the user-sim, contributing to the simulator fabricating IDs.
+    """tau2's ``unknown_info`` field renders as the ``Things you don't know``
+    subsection. An earlier design silently dropped it; live evidence showed
+    user-sim fabrication of IDs the task explicitly said the user didn't
+    know (e.g. tau2_retail__16's "You do not remember your email address"
+    never reaching the user-sim).
     """
 
     class _ScenarioWithUnknown(_StructuredUserScenario):
@@ -403,7 +405,7 @@ def test_user_resources_info_sections_none_when_both_missing():
 
 
 def test_general_prompt_includes_anti_fabrication_rule():
-    """M3.7a: ``GENERAL_PROMPT`` carries an anti-fabrication clause that flows into
+    """``GENERAL_PROMPT`` carries an anti-fabrication clause that flows into
     BOTH the user-sim prompt (via ``Persona.to_prompt_section``) and the tau2
     agent prompt (via ``Tau2BaseScenario.get_agent_prompt`` → ``## Additional
     Notes to Follow``). Single source of truth for "don't make stuff up."

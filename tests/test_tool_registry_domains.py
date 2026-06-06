@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the per-domain tool registry (M2.7).
+"""Tests for the per-domain tool registry.
 
 Covers the four invariants of ``register_schema_tool_for_eval`` /
 ``get_schema_tool_for_eval``:

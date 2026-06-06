@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the M4 ``initialization_actions`` framework.
+"""Tests for the ``initialization_actions`` framework.
 
-Synthetic — no real telecom toolkit yet. Covers the registration + dispatcher
-(``initialization_functions.py``) and the bot-side RTVI handler
-(``create_apply_initialization_actions_action``). The bridge-side helper is
-exercised at integration time in M5; here we stop at the bot's handler since
-the bridge talks to it over WebSocket and that's not in unit scope.
+Synthetic — uses fake init functions registered against a fake domain.
+Covers the registration + dispatcher (``initialization_functions.py``)
+and the bot-side RTVI handler
+(``create_apply_initialization_actions_action``). The bridge-side helper
+that talks to the bot over WebSocket is exercised at integration time
+with a real domain port; here we stop at the bot's handler.
 
 Key invariants under test:
 

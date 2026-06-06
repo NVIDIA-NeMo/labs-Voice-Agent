@@ -91,8 +91,9 @@ def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, D
 
     Cached via ``functools.cache`` so the join runs at most once per
     (domain, split) per process. The data dir (``evaluation/data/tau2_<domain>/``)
-    is populated in M2/M3/M5/M6 — until then this function will raise
-    ``FileNotFoundError`` for that domain, which is the desired behavior.
+    must exist for the requested domain — until it's populated, this
+    function raises ``FileNotFoundError``, which is the desired behavior
+    for not-yet-ported domains.
     """
     domain_dir = get_eval_data_root() / domain
 
@@ -445,7 +446,7 @@ class Tau2BaseScenario(Scenario):
         ``Things you don't know`` subsections. Reason: Persona is identity + style;
         these are facts. Separating them lets the prompt clearly signal which
         details the simulator should NOT invent (anything not in known_info,
-        and especially anything explicitly in unknown_info). See M3.7a fix.
+        and especially anything explicitly in unknown_info).
         """
         instructions = self._user_scenario.get("instructions") or {}
         return Persona(
@@ -488,10 +489,9 @@ class Tau2BaseScenario(Scenario):
             ### Things you don't know
             <unknown_info content>
 
-        Telecom subclasses override to also register user-side tools (see plan
-        §3 ``User-simulator tools`` row + M5).
+        Telecom subclasses override to also register user-side tools.
 
-        Why both subsections (M3.7a): the user simulator otherwise fabricates
+        Why both subsections: the user simulator otherwise fabricates
         identifiers it doesn't have (e.g. tau2_retail__16 simulator invented
         ``PEND456`` / ``WATCH001`` instead of saying "I don't have my order
         IDs"). ``unknown_info`` is tau2's authored hint about what the user

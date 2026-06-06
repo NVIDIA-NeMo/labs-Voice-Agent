@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Integration tests for the tau2_retail scenario port (M3.6).
+"""Integration tests for the tau2_retail scenario port.
 
 These tests touch the real ``evaluation/data/tau2_retail/`` fixtures and
 exercise the full chain: data-file load → ``Tau2RetailBaseScenario`` →

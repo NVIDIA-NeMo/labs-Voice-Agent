@@ -127,7 +127,7 @@ def test_retries_on_grpc_internal_rst_stream():
 
     Observed live on 2026-06-02 as a fresh failure mode after the sequence-state
     retry shipped. The resilient service must treat this as transient too and
-    open a new streaming session (the wider retry policy added in M2.7).
+    open a new streaming session under the resilient retry policy.
     """
     stt = _bare_resilient_stt()
     call_count = {"n": 0}

@@ -25,8 +25,9 @@
 #     plain dicts, sidestepping Pydantic). The two DB-level models below
 #     inherit from a local ``BaseModelNoExtra`` only.
 #   - No ``update_device`` / ``update_pydantic_model_with_dict`` helpers —
-#     our init functions operate on plain dicts via the M4
-#     ``apply_initialization_actions`` path, not through Pydantic mutation.
+#     our init functions operate on plain dicts via the
+#     ``apply_initialization_actions`` RTVI dispatch path, not through
+#     Pydantic mutation.
 #   - The ``StatusBar`` model is dropped from the live runtime — upstream
 #     only uses it as a derived view in ``check_status_bar`` (a user-side
 #     LLM tool), and our predicate/init paths read raw device fields
@@ -43,8 +44,8 @@ the raw TOML. After round-trip the converted JSON is shape-complete and
 downstream predicate / init function code can read fields via dict access
 without defensive ``.get(..., default)`` everywhere.
 
-Per-tool ``*Params`` argument-schema classes will be added incrementally
-in M5e+ as each tool is ported (same pattern as ``tau2_airline_params.py`` /
+Per-tool ``*Params`` argument-schema classes are added incrementally as each
+LLM-callable tool is ported (same pattern as ``tau2_airline_params.py`` /
 ``tau2_retail_params.py``).
 """
 

@@ -69,8 +69,8 @@ class _FakeAggregator:
 def _build_handler(aggregator, task_ref=None):
     """Extract the inner async handler from the RTVIAction wrapper.
 
-    The handler no longer calls ``_maybe_end_task`` (M3.7c fix — read-only
-    handlers shouldn't end the pipeline task), but the factory function
+    The handler no longer calls ``_maybe_end_task`` (read-only handlers
+    shouldn't end the pipeline task), but the factory function
     still requires a ``task_ref`` parameter for signature compatibility
     with its siblings.
     """

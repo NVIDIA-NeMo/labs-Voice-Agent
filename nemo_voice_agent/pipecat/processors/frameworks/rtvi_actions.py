@@ -353,9 +353,9 @@ def create_get_scenario_summary_action(
     the agent bot's ``db`` is the agent-facing DB; the user bot's ``db`` is
     the user-facing DB. The naming distinction (``db`` vs ``user_db``) lives
     at the bridge/runner boundary: the bridge calls ``get_scenario_summary``
-    once per bot and labels the responses by which WS it pulled from (M5
-    adds the user-side pull for telecom). The bot itself doesn't know its
-    own side and doesn't need to.
+    once per bot and labels the responses by which WS it pulled from
+    (the user-side pull is added when the first telecom scenario is
+    ported). The bot itself doesn't know its own side and doesn't need to.
 
     **Hash-only outbound by default (not inline DB).** The DB itself stays on
     the bot server; only the SHA-256 of the canonicalized DB travels through
