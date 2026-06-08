@@ -240,13 +240,25 @@ async def run_dynamic_evaluation(
             else:
                 logger.info(
                     f"Agent context history file {agent_context_file} not found; "
-                    "calling judge_scenario without context_history."
+                    "calling judge_scenario without agent_context_history."
                 )
+            # User-sim context: essential for dual-side domains (telecom)
+            # where reference actions with ``side="user"`` are executed
+            # by the user-sim itself, not the agent. The judge needs
+            # this to confirm those actions actually happened. For
+            # single-side domains (eva / airline / retail) the file
+            # still exists but contributes mostly chitchat — harmless.
+            user_context_file = os.path.join(scenario_dir, "bot_logs_user", "llm_context.json")
+            user_context_history = None
+            if os.path.exists(user_context_file):
+                with open(user_context_file, "r") as f:
+                    user_context_history = json.load(f)
             scenario_nl_assertions = getattr(scenario, "nl_assertions", None)
             result = judge.judge_scenario(
                 reference=ref_content,
                 prediction=pred_content,
-                context_history=agent_context_history,
+                agent_context_history=agent_context_history,
+                user_context_history=user_context_history,
                 nl_assertions=scenario_nl_assertions,
             )
             with open(os.path.join(scenario_dir, "judge_result.json"), "w") as f:

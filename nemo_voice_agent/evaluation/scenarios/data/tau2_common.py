@@ -63,6 +63,33 @@ from nemo_voice_agent.utils.voice_prompts import GENERAL_PROMPT, VOICE_ALPHANUME
 
 
 # ---------------------------------------------------------------------------
+# Upstream env-record translation
+# ---------------------------------------------------------------------------
+
+
+def _normalize_env_record(rec: Dict[str, Any]) -> Dict[str, Any]:
+    """Translate upstream tau2 ``env_type``-keyed records into our ``side`` shape.
+
+    Upstream task JSON uses ``env_type ∈ {"user", "assistant"}`` on both
+    ``initial_state.initialization_actions[]`` and
+    ``evaluation_criteria.env_assertions[]``. Our framework uses
+    ``side ∈ {"user", "agent"}`` (matches the bridge's existing side-tagging
+    on action records). This helper applies the paired rename — key
+    ``env_type → side``, value ``"assistant" → "agent"`` — at the scenario
+    translation boundary so the runner, bridge, predicate registry, and
+    init-function registry all see a uniform shape.
+
+    Returns a new dict; doesn't mutate the input. Other fields pass through
+    unchanged.
+    """
+    out = dict(rec)
+    if "env_type" in out:
+        v = out.pop("env_type")
+        out["side"] = "agent" if v == "assistant" else v
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Voice-task index loader
 # ---------------------------------------------------------------------------
 
@@ -248,9 +275,61 @@ class Tau2BaseScenario(Scenario):
         """
         gold_state: Dict[str, Any] = {"actions": [], "db": copy.deepcopy(self.db)}
         if self.has_user_state:
-            # Telecom: let the subclass populate user-side state (e.g., user_db).
-            self.setup_shared_state(gold_state, side="user")
+            # Dual-state domains (telecom): load the user-side DB into
+            # ``gold_state["user_db"]``. Two paths supported:
+            #   1. Subclass exposes ``user_db`` as a cached_property
+            #      (canonical path; ``Tau2TelecomBaseScenario`` uses this).
+            #      We deliberately bypass ``setup_shared_state(side="user")``
+            #      in this path because that method's job is to emit
+            #      ``db_path`` for the bot's path-resolver (live runtime).
+            #      Gold replay runs in-process and just needs the dict —
+            #      mirrors how the agent-side ``self.db`` is loaded one
+            #      line above.
+            #   2. Subclass populates ``state["user_db"]`` from inside
+            #      ``setup_shared_state(side="user")`` (legacy path,
+            #      used by some test fixtures). We fall back to this
+            #      when the subclass doesn't expose ``user_db``.
+            user_db = getattr(self, "user_db", None)
+            if user_db is not None:
+                gold_state["user_db"] = copy.deepcopy(user_db)
+            else:
+                self.setup_shared_state(gold_state, side="user")
         name_to_tool: Dict[str, Any] = self._build_tool_map(gold_state)
+
+        # Apply ``initialization_actions`` BEFORE reference actions when
+        # present. Mirrors the live-runtime sequence: the bridge dispatches
+        # init actions to the bots before kickoff, then the conversation
+        # runs the reference actions. Skipping init in gold replay would
+        # leave the DB in its default state, and reference actions
+        # (designed to transition broken-state → fixed-state) would produce
+        # a different end-state than live runtime.
+        # Airline / retail have ``initialization_actions = None`` so this
+        # branch is a no-op for them. Dual-state domains (telecom) populate
+        # it from upstream's ``initial_state.initialization_actions``.
+        init_actions = getattr(self, "initialization_actions", None) or []
+        if init_actions:
+            from nemo_voice_agent.evaluation.initialization_functions import (
+                apply_initialization_actions,
+            )
+            # Init actions mutate either ``gold_state["db"]`` (agent side)
+            # or ``gold_state["user_db"]`` (user side) by ``side``. The
+            # dispatcher takes a single ``db`` arg, so dispatch each side's
+            # subset against the matching dict.
+            for side in ("agent", "user"):
+                subset = [a for a in init_actions if a.get("side") == side]
+                if not subset:
+                    continue
+                target_db = gold_state["db"] if side == "agent" else gold_state.get("user_db")
+                if target_db is None:
+                    continue
+                result = apply_initialization_actions(
+                    domain=self.domain, actions=subset, db=target_db
+                )
+                if not result["success"]:
+                    logger.warning(
+                        f"Gold-replay init-action failure for {self.domain}/{self.tau2_id}: "
+                        f"{result['errors']}"
+                    )
 
         actions = (self.tau2_task.get("evaluation_criteria") or {}).get("actions") or []
         for action in actions:

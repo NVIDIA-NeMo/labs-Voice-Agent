@@ -176,6 +176,36 @@ def create_update_system_prompt_action(
             user_aggregator.set_messages(copy.deepcopy(new_messages))
             assistant_aggregator.set_messages(copy.deepcopy(new_messages))
 
+            # Initialize shared_state from the optional shared_state_init
+            # payload produced by Scenario.setup_shared_state(). Must run
+            # regardless of tool-calling, because sibling action handlers
+            # (``get_scenario_summary``, ``apply_initialization_actions``)
+            # consume ``shared_state["db"]`` even when the bot has no
+            # LLM-callable tools (e.g. user-sim with tool calling off).
+            #
+            # Inline DB content (state["db"]) is the primary path;
+            # path-based loading (state["db_path"]) is a fallback for
+            # fixtures too large to ship inline.
+            shared_state: dict = json.loads(arguments.get("shared_state_init", "{}"))
+            if "db_path" in shared_state:
+                # Lazy import to avoid coupling rtvi_actions to evaluation/.
+                from nemo_voice_agent.evaluation import get_eval_data_root
+
+                db_path = shared_state.pop("db_path")
+                full_path = get_eval_data_root() / db_path
+                if not full_path.exists():
+                    raise FileNotFoundError(
+                        f"Scenario DB not found at {full_path} (from db_path={db_path!r}). "
+                        f"Check EVAL_DATA_ROOT (currently resolves to {get_eval_data_root()})."
+                    )
+                shared_state["db"] = json.loads(full_path.read_text())
+                logger.info(f"Loaded scenario DB from {full_path} into shared_state['db']")
+
+            # Publish the dict so sibling action handlers (e.g. get_scenario_summary,
+            # apply_initialization_actions) can read the same shared_state.
+            if shared_state_ref is not None:
+                shared_state_ref.state = shared_state
+
             if (
                 enable_tool_calling
                 and new_tools_json
@@ -189,31 +219,6 @@ def create_update_system_prompt_action(
                 tool_domain = arguments.get("tool_domain", "default")
                 logger.info(f"Registering new tools in domain={tool_domain!r}...")
                 new_tools = json.loads(new_tools_json)
-
-                # Initialize shared_state from the optional shared_state_init
-                # payload produced by Scenario.setup_shared_state(). Inline DB
-                # content (state["db"]) is the primary path; path-based loading
-                # (state["db_path"]) is a fallback for fixtures too large to
-                # ship inline.
-                shared_state: dict = json.loads(arguments.get("shared_state_init", "{}"))
-                if "db_path" in shared_state:
-                    # Lazy import to avoid coupling rtvi_actions to evaluation/.
-                    from nemo_voice_agent.evaluation import get_eval_data_root
-
-                    db_path = shared_state.pop("db_path")
-                    full_path = get_eval_data_root() / db_path
-                    if not full_path.exists():
-                        raise FileNotFoundError(
-                            f"Scenario DB not found at {full_path} (from db_path={db_path!r}). "
-                            f"Check EVAL_DATA_ROOT (currently resolves to {get_eval_data_root()})."
-                        )
-                    shared_state["db"] = json.loads(full_path.read_text())
-                    logger.info(f"Loaded scenario DB from {full_path} into shared_state['db']")
-
-                # Publish the dict so sibling action handlers (e.g. get_scenario_summary)
-                # can read the same shared_state without needing tool references.
-                if shared_state_ref is not None:
-                    shared_state_ref.state = shared_state
 
                 new_schema_tools = [
                     tool_factory(

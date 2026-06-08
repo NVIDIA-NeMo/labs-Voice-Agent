@@ -269,6 +269,15 @@ class VoiceAgentEvaluationBridge:
 
         # Grace period and timeout configuration for send loops
         self.grace_period = grace_period  # Extra time to drain audio after main duration
+        # Settle delay after receiving ``<exit>`` from the agent and before
+        # flipping ``stop_event``. Lets the bots commit any in-flight
+        # function-call cycle to their LLM contexts and
+        # ``shared_state["actions"]`` before the bridge pulls
+        # end-of-scenario state. 500 ms is comfortably above the observed
+        # commit time (~3 s in the worst case, but ~50 ms in the common
+        # case once the source-side fix in ``SendExitMessageTool._execute``
+        # is applied — this remains as belt-and-braces).
+        self.exit_settle_delay = 0.5
 
         self.turn_start_offset_secs = turn_start_offset_secs
         self.turn_end_offset_secs = turn_end_offset_secs
@@ -277,6 +286,7 @@ class VoiceAgentEvaluationBridge:
         self.noise_config = noise_config
 
         self.user_ws = None
+        self.user_scenario_summary = None
         self.agent_ws = None
 
         self.metrics = EvaluationMetrics()
@@ -1117,6 +1127,18 @@ class VoiceAgentEvaluationBridge:
 
                     # at the end, send an RTVI message to the user to tell it to return the context history
                     self.user_context_history = await self._retrieve_context_history(user_ws)
+                    # Pull the user-side scenario summary HERE (in the user
+                    # thread), not from the agent thread. ``user_ws`` is owned
+                    # by this event loop / thread via ``async with``; once we
+                    # exit the ``with`` block the connection closes, so
+                    # cross-thread access from ``agent_loop`` would race the
+                    # close and fail with ``ConnectionClosedOK(1000)``. We
+                    # stash the result on ``self.user_scenario_summary`` and
+                    # ``run_scenario`` merges it into ``self.scenario_summary``
+                    # after both threads join.
+                    self.user_scenario_summary = await self._retrieve_scenario_summary(
+                        user_ws, include_db=self.include_db_in_summary
+                    )
 
             except Exception as e:
                 logger.error(f"[USER THREAD] Error: {e}", exc_info=True)
@@ -1195,6 +1217,10 @@ class VoiceAgentEvaluationBridge:
                     self.scenario_summary = await self._retrieve_scenario_summary(
                         agent_ws, include_db=self.include_db_in_summary
                     )
+                    # The user-side pull happens in ``user_websocket_thread``
+                    # (each bot's WS is owned by its own thread / event
+                    # loop). The merge into ``self.scenario_summary`` is
+                    # done in ``run_scenario`` after both threads join.
 
             except Exception as e:
                 logger.error(f"[AGENT THREAD] Error: {e}", exc_info=True)
@@ -1438,10 +1464,11 @@ class VoiceAgentEvaluationBridge:
                 f"replay {len(actions)} initialization action(s)."
             )
 
+        action_id = f"apply_init_{side_label}_{datetime.now().timestamp()}"
         action_msg = {
             "label": "rtvi-ai",
             "type": "action",
-            "id": f"apply_init_{side_label}_{datetime.now().timestamp()}",
+            "id": action_id,
             "data": {
                 "service": "context",
                 "action": "apply_initialization_actions",
@@ -1462,12 +1489,19 @@ class VoiceAgentEvaluationBridge:
         await ws.send(serialized)
         logger.info(
             f"[APPLY INIT] Sent apply_initialization_actions to {side_label} bot "
-            f"({len(actions)} action(s)); waiting for response..."
+            f"({len(actions)} action(s)); waiting for response (id={action_id!r})..."
         )
 
         # Wait pattern mirrors ``_retrieve_scenario_summary``. 15s budget is
         # generous since init dispatch is a pure-Python dict-mutation loop
         # (no LLM, no I/O).
+        #
+        # ID-match required: this call happens right after
+        # ``update_system_prompt`` which has ``result="bool"``. Without
+        # ID-matching, we'd grab the update_system_prompt response (bool
+        # truthy) instead of ours (dict {"success", "errors"}) and the
+        # ``result.get("success")`` access below would raise
+        # ``AttributeError: 'bool' object has no attribute 'get'``.
         timeout = 15.0
         start_time = asyncio.get_event_loop().time()
         while asyncio.get_event_loop().time() - start_time < timeout:
@@ -1479,18 +1513,28 @@ class VoiceAgentEvaluationBridge:
                 if not (hasattr(frame, "message") and frame.message):
                     continue
                 data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
-                if data.get("type") == "action-response":
-                    result = data.get("data", {}).get("result", {})
-                    if result.get("success"):
-                        logger.info(
-                            f"[APPLY INIT] {side_label} bot applied "
-                            f"{len(actions)} action(s) successfully"
-                        )
-                        return
-                    raise RuntimeError(
-                        f"[APPLY INIT] {side_label} bot reported failure on "
-                        f"{len(actions)} action(s): {result.get('errors')}"
+                if data.get("type") != "action-response":
+                    continue
+                # Only consume responses whose id matches the request we sent.
+                # Skip stragglers (e.g. update_system_prompt action-response
+                # that races us at scenario start).
+                if data.get("id") != action_id:
+                    logger.debug(
+                        f"[APPLY INIT] Skipping unrelated action-response "
+                        f"id={data.get('id')!r}"
                     )
+                    continue
+                result = data.get("data", {}).get("result", {})
+                if result.get("success"):
+                    logger.info(
+                        f"[APPLY INIT] {side_label} bot applied "
+                        f"{len(actions)} action(s) successfully"
+                    )
+                    return
+                raise RuntimeError(
+                    f"[APPLY INIT] {side_label} bot reported failure on "
+                    f"{len(actions)} action(s): {result.get('errors')}"
+                )
             except asyncio.TimeoutError:
                 continue
 
@@ -1568,6 +1612,7 @@ class VoiceAgentEvaluationBridge:
         self.user_context_history = None
         self.agent_context_history = None
         self.scenario_summary = None
+        self.user_scenario_summary = None
         self.token_usage = self._fresh_token_usage()
 
         # Clear thread-safe queues
@@ -1603,6 +1648,32 @@ class VoiceAgentEvaluationBridge:
         await loop.run_in_executor(None, agent_thread.join)
 
         logger.info("[RUN SCENARIO] Both user and agent threads completed")
+
+        # Merge the user-thread-pulled scenario summary into the
+        # agent-side one. Done here (post-join), not inside either thread,
+        # because each ``ws`` is owned by its own thread/event loop and
+        # closes when the thread's ``async with`` block exits. The agent
+        # thread populated ``self.scenario_summary`` from agent_ws; the
+        # user thread populated ``self.user_scenario_summary`` from
+        # user_ws. We label the user payload under parallel keys
+        # (``user_db_hash`` / ``user_db``) and stamp side="user" on its
+        # action records before appending to the merged list. For
+        # single-side domains (eva / airline / retail) the user bot has
+        # no DB seeded so ``user_scenario_summary`` is
+        # ``{actions: [], db_hash: None}`` — harmless no-op merge.
+        user_summary = self.user_scenario_summary or {}
+        if self.scenario_summary is None:
+            self.scenario_summary = {}
+        self.scenario_summary["user_db_hash"] = user_summary.get("db_hash")
+        if self.include_db_in_summary:
+            self.scenario_summary["user_db"] = user_summary.get("db")
+        user_actions = user_summary.get("actions") or []
+        if user_actions:
+            agent_actions = self.scenario_summary.get("actions") or []
+            self.scenario_summary["actions"] = list(agent_actions) + [
+                {**a, "side": "user"} for a in user_actions
+            ]
+
         self.metrics.end_time = datetime.now()
         # Finalize any in-progress turns at end of scenario
         loop = asyncio.get_event_loop()
@@ -1999,8 +2070,23 @@ class VoiceAgentEvaluationBridge:
                     logger.info("[AGENT] Final response saved")
                 if text.startswith(EXIT_MESSAGE_START_TAG) and text.endswith(EXIT_MESSAGE_END_TAG):
                     exit_message = text[len(EXIT_MESSAGE_START_TAG) : -len(EXIT_MESSAGE_END_TAG)]
-                    logger.info(f"[AGENT] Exit message received, signaling early stop. Exit message: {exit_message}")
+                    logger.info(
+                        f"[AGENT] Exit message received; settling "
+                        f"{self.exit_settle_delay}s before stopping threads. "
+                        f"Exit message: {exit_message}"
+                    )
                     self.stop_reason = STOP_REASON_EXIT
+                    # Grace window: let the bots commit any in-flight
+                    # tool-call cycle (assistant + tool messages) to
+                    # their LLM contexts and ``shared_state["actions"]``
+                    # before the receive loops exit and the bridge pulls
+                    # ``get_context_history`` / ``get_scenario_summary``.
+                    # Without this, the bridge can race the commit and
+                    # snapshot stale state (most visibly: ``EndConversationTool``
+                    # missing from ``bot_logs_agent/llm_context.json`` even
+                    # though it fired — see ``SendExitMessageTool._execute``
+                    # for the paired source-side fix).
+                    await asyncio.sleep(self.exit_settle_delay)
                     self.stop_event.set()
                     self.metrics.end_time = datetime.now()
 
@@ -2025,13 +2111,15 @@ class VoiceAgentEvaluationBridge:
 
         # Pull path
         if self.scenario_summary and self.scenario_summary.get("actions") is not None:
-            # Stamp side="agent" on each pulled action. Side-tagging happens
-            # at merge time in the bridge, since the bridge is the single
-            # point of truth for which WebSocket each record came from. Tool
-            # code has no notion of side. Telecom will add a symmetric pull
-            # from ws_user that stamps side="user" on user-side records
-            # before merging.
-            actions = [{**a, "side": "agent"} for a in self.scenario_summary.get("actions", [])]
+            # Default each pulled action's ``side`` to "agent", but PRESERVE
+            # any existing ``side`` key on the entry. The merge step in
+            # ``run_scenario`` already stamps ``side="user"`` on the
+            # user-bot-pulled actions before they land in
+            # ``scenario_summary["actions"]``; we must not overwrite that.
+            # The dict-merge ``{"side": "agent", **a}`` puts the
+            # default first so any ``side`` already in ``a`` wins (later
+            # keys override earlier ones in dict literal expansion).
+            actions = [{"side": "agent", **a} for a in self.scenario_summary.get("actions", [])]
             results = [{"actions": actions}]
             source = "pull"
         else:

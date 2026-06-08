@@ -178,8 +178,9 @@ class Task:
         """Render this task as a prompt section."""
         prompt = "# Task\n\n"
         if self.background:
-            prompt += self.background + "\n"
-        prompt += f"Your goal is to: {self.goal}"
+            prompt += self.background + "\n\n"
+        if self.goal:
+            prompt += f"Your goal is to: {self.goal}\n\n"
         return prompt
 
 

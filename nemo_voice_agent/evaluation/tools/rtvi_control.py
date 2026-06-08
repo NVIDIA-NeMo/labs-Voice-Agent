@@ -180,5 +180,12 @@ class SendExitMessageTool(SendRTVIMessageTool):
             params: The function call parameters.
         """
         message = "The task is finished."
-        await self.send_exit_message(message)
+        # Order matters: ack the function call FIRST so pipecat dispatches
+        # ``FunctionCallResultFrame`` and the assistant aggregator commits
+        # both the assistant message (with tool_calls) and the tool reply
+        # before the bridge sees ``<exit>``. If ``send_exit_message`` ran
+        # first, the bridge would race the commit cycle, snapshot the
+        # context mid-flight, and the captured llm_context.json would be
+        # missing the ``EndConversationTool`` entry.
         await params.result_callback({"success": True, "message": "Exit message sent."})
+        await self.send_exit_message(message)

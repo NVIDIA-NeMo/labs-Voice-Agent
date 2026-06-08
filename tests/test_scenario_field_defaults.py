@@ -69,12 +69,13 @@ def test_no_single_side_scenario_carries_db_state_assertions():
     """Scan every registered scenario; only telecom (dual-side) scenarios
     should opt into ``db_state_assertions`` / ``initialization_actions`` /
     ``expected_user_db``. This catches accidental field assignments on
-    single-side domains (eva / tau2_airline / tau2_retail).
-
-    Currently no domain opts in. When ``tau2_telecom`` scenarios land,
-    update this test to allowlist them."""
+    single-side domains (eva / tau2_airline / tau2_retail)."""
+    # Allowlist: telecom scenarios are the only ones expected to opt in.
+    allowed_domain_prefix = "tau2_telecom__"
     offenders = []
     for name, cls in ALL_EVAL_SCENARIOS.items():
+        if name.startswith(allowed_domain_prefix):
+            continue
         try:
             inst = cls()
         except Exception:

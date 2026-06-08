@@ -384,16 +384,25 @@ You will be given some or all of the following XML-tagged inputs (only those ava
 - <reference>: The reference answer (the expected outcome).
 - <prediction>: The actual agent output (the "final response" the agent produced).
 - <conversation>: The transcribed conversation turns between the user and the agent.
-- <context_history>: The agent's LLM context history, including system prompt and tool/function calls with their arguments and results.
+- <agent_context_history>: The agent's LLM context history, including system prompt and tool/function calls with their arguments and results.
+- <user_context_history>: The simulated user's LLM context history, including the user-sim's own tool calls (e.g., phone-control tools in telecom scenarios where the user toggles airplane mode / data themselves).
 - <nl_assertions>: A numbered list of natural-language assertions to consider when scoring.
+
+Action `side` semantics. Each action in <reference> and <prediction> may carry a `side` field with one of two values:
+- `side="agent"` — performed by the agent under test using its own LLM-callable tool. Score the agent on whether the corresponding tool call appears in <agent_context_history> with matching arguments.
+- `side="user"` — performed by the simulated user using its own environment tool (e.g., telecom phone controls like `toggle_data`, `toggle_airplane_mode`). The agent does NOT have this tool and is NOT expected to invoke it. Score the agent on **guidance quality** — did it correctly diagnose the issue and clearly instruct the user to perform the action? Confirm the user-sim actually performed it by checking <user_context_history> for the corresponding tool call.
+When `side` is absent on a reference action, default to `side="agent"` (legacy single-side domains: eva, tau2_airline, tau2_retail).
+
+Strict attribution rule. Tool calls visible in <user_context_history> were made by the **simulated user**, NOT by the agent. Do NOT attribute them to the agent in your reasoning or deductions. The agent's tool calls live ONLY in <agent_context_history>. If a tool name appears in <user_context_history> but not in <agent_context_history>, the agent did NOT call it — treat it as the user-sim's action. Common cross-attribution mistake to avoid: claiming "the agent made an unnecessary call to `check_status_bar`" when that call actually appears only in <user_context_history>. Before deducting for any agent tool call, verify the call is in <agent_context_history> and quote its index.
 
 Evaluate how well the agent performed by considering:
 1. Whether <prediction> matches <reference>.
 2. Whether the agent followed instructions correctly during the conversation.
-3. Whether the agent called the correct tools with the correct arguments at the right time (use <context_history> when present).
-4. Whether the agent avoided unnecessary or incorrect tool calls.
-5. Whether the agent handled the conversation naturally and helpfully.
-6. If <nl_assertions> is present, judge EACH numbered assertion independently against <conversation> and <context_history>. Emit a per-assertion verdict for each one.
+3. For `side="agent"` reference actions: whether the agent called the corresponding tool with the correct arguments at the right time (use <agent_context_history> when present).
+4. For `side="user"` reference actions: whether the agent correctly guided the user to perform that action (clear diagnosis + instruction). Do NOT deduct because "the agent didn't call the tool" — the agent has no such tool. Use <user_context_history> to confirm the user-sim actually executed the action.
+5. Whether the agent avoided unnecessary or incorrect tool calls.
+6. Whether the agent handled the conversation naturally and helpfully.
+7. If <nl_assertions> is present, judge EACH numbered assertion independently against <conversation>, <agent_context_history>, and <user_context_history>. Emit a per-assertion verdict for each one.
 
 Presentation-issue deduction cap. The following are "presentation issues" — they affect how the agent speaks, not whether the agent did the right thing:
 - Missing or skipped `EndConversationTool` call. This is a voice-harness termination signal, not a domain policy requirement; the framework tracks termination separately via the conversation's stop reason.
@@ -406,6 +415,7 @@ Reason field requirements. The `reason` field MUST be concrete and debuggable:
 - Cite the expected form alongside (e.g. *expected: "S, K, seven, zero, three"*).
 - Group multiple instances of the same class of issue (e.g. "spelled 3 flight numbers and 2 confirmation numbers as ordinary words") instead of listing each individually, then quote 1-2 representative examples.
 - Do NOT use vague phrases like "minor presentation issues" or "did not follow guidelines" without naming the specific guideline and the specific phrase that violated it.
+- When deducting on a `side="user"` action: quote the agent's misguidance (e.g. *Agent said "Go to your phone's Settings..." instead of cuing the user to use `toggle_airplane_mode`*) — do NOT phrase the deduction as "the agent didn't call the tool", since the agent has no such tool.
 
 Return a score between 0 and 1, where 0 means complete failure and 1 means perfect performance.
 
@@ -498,17 +508,23 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
         """
         user_content = f"<reference>\n{reference}\n</reference>\n\n<prediction>\n{prediction}\n</prediction>"
         payload = self._get_payload(user_content, prompt)
+        # Attached to the returned dict (and saved into ``judge_result.json``
+        # by the runner) so the exact text the judge saw is debuggable
+        # without re-deriving from the source files — useful for triaging
+        # surprising scores or iterating on the prompt.
+        judge_input = {"system_prompt": prompt or self.default_prompt, "user_content": user_content}
         try:
             response = requests.post(self.url, headers=self.headers, json=payload)
             result = self._parse_response(response)
             result["score"] = float(result["score"])
             if "reason" not in result:
                 result["reason"] = ""
+            result["judge_input"] = judge_input
             logger.debug(f"LLMJudge result: {result}")
             return result
         except Exception as e:
             logger.error(f"LLMJudge error: {e}")
-            return {"score": 0.0, "reason": f"Error: {e}"}
+            return {"score": 0.0, "reason": f"Error: {e}", "judge_input": judge_input}
 
     def judge_file(self, reference: str, prediction: str, prompt: Optional[str] = None) -> dict:
         """
@@ -543,7 +559,8 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
         reference: str,
         prediction: str,
         conversation: Optional[list] = None,
-        context_history: Optional[list] = None,
+        agent_context_history: Optional[list] = None,
+        user_context_history: Optional[list] = None,
         nl_assertions: Optional[List[str]] = None,
         prompt: Optional[str] = None,
     ) -> dict:
@@ -554,7 +571,15 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
             reference: The reference answer string (or JSON string).
             prediction: The prediction answer string (or JSON string).
             conversation: List of conversation turns, each a dict with "role" and "text" keys.
-            context_history: LLM context messages (from _retrieve_context_history).
+            agent_context_history: Agent's LLM context messages (from
+                ``bot_logs_agent/llm_context.json``). Contains the agent's
+                tool calls + results. Rendered as ``<agent_context_history>``.
+            user_context_history: Simulated user's LLM context messages
+                (from ``bot_logs_user/llm_context.json``). Contains the
+                user-sim's own tool calls — essential for dual-side
+                domains like telecom where reference actions with
+                ``side="user"`` are executed by the user-sim, not the
+                agent. Rendered as ``<user_context_history>``.
             nl_assertions: Optional natural-language assertions (tau2 retail). When provided,
                 each assertion is appended to the prompt and the LLM is instructed to emit
                 a per-assertion verdict list. The returned dict gains a
@@ -585,16 +610,28 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
             numbered = "\n".join(f"{i+1}. {a}" for i, a in enumerate(nl_assertions))
             sections.append(f"<nl_assertions>\n{numbered}\n</nl_assertions>")
 
-        if context_history:
-            sections.append(f"<context_history>\n{json.dumps(context_history, indent=2)}\n</context_history>")
+        if agent_context_history:
+            sections.append(
+                f"<agent_context_history>\n{json.dumps(agent_context_history, indent=2)}\n</agent_context_history>"
+            )
+        if user_context_history:
+            sections.append(
+                f"<user_context_history>\n{json.dumps(user_context_history, indent=2)}\n</user_context_history>"
+            )
 
         user_content = "\n\n".join(sections)
         payload = self._get_payload(user_content, prompt)
+        # Attached to the returned dict (and saved into ``judge_result.json``
+        # by the runner) so the exact text the judge saw is debuggable
+        # without re-deriving from the source files — useful for triaging
+        # surprising scores or iterating on the prompt.
+        judge_input = {"system_prompt": prompt, "user_content": user_content}
         try:
             response = requests.post(self.url, headers=self.headers, json=payload)
             result = self._parse_response(response)
             result["score"] = float(result["score"])
             result.setdefault("reason", "")
+            result["judge_input"] = judge_input
             if nl_assertions:
                 # Normalize per-assertion verdicts: ensure exactly len(nl_assertions)
                 # entries, in numbered order, with passed=False for any missing or
@@ -624,7 +661,7 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
             return result
         except Exception as e:
             logger.error(f"LLMJudge error: {e}")
-            err_result = {"score": 0.0, "reason": f"Error: {e}"}
+            err_result = {"score": 0.0, "reason": f"Error: {e}", "judge_input": judge_input}
             if nl_assertions:
                 err_result["nl_assertion_verdicts"] = [
                     {"index": i + 1, "passed": False, "reason": f"Judge error: {e}"} for i in range(len(nl_assertions))

@@ -493,6 +493,289 @@ class TelecomUserDB(BaseModelNoExtra):
 
 
 # =============================================================================
+# Per-tool argument schemas (LLM-callable user-side phone-control tools)
+# =============================================================================
+#
+# The four tools registered in ``tau2_telecom_user_tools.py`` all take zero
+# arguments (toggles + status reads with no parameters). We still ship empty
+# strict-Pydantic models for them so the ``_Tau2InvokeMixin.invoke()`` path
+# returns a uniform validation_error_response shape on accidentally-supplied
+# extra args — matching the airline/retail tool-args convention.
+
+
+# Shared base for the many no-argument tools (toggles, status reads, etc.).
+# Each tool aliases it via a per-tool Params class for clarity in the
+# tool definitions — same shape, different name, lets the tool's intent
+# stay readable.
+class _NoArgsParams(BaseModelNoExtra):
+    """Shared no-arguments schema used by every parameter-less telecom tool."""
+
+
+# === User-side: existing 4 tools ===
+class ToggleDataParams(_NoArgsParams):
+    """No arguments. Toggles the mobile-data master switch on the device."""
+
+
+class ToggleAirplaneModeParams(_NoArgsParams):
+    """No arguments. Toggles Airplane Mode on the device."""
+
+
+class CheckStatusBarParams(_NoArgsParams):
+    """No arguments. Returns the formatted phone-status-bar string."""
+
+
+class RunSpeedTestParams(_NoArgsParams):
+    """No arguments. Returns the simulated mobile-data download speed."""
+
+
+# === User-side: status-read tools (no args) ===
+class CheckNetworkStatusParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CheckNetworkModePreferenceParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CheckSimStatusParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CheckDataRestrictionStatusParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CheckApnSettingsParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CheckWifiStatusParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CheckWifiCallingStatusParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CheckVpnStatusParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CheckInstalledAppsParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CanSendMmsParams(_NoArgsParams):
+    """No arguments."""
+
+
+class CheckPaymentRequestParams(_NoArgsParams):
+    """No arguments."""
+
+
+# === User-side: phone-control writes (no args) ===
+class ReseatSimCardParams(_NoArgsParams):
+    """No arguments."""
+
+
+class ToggleRoamingParams(_NoArgsParams):
+    """No arguments."""
+
+
+class ToggleDataSaverModeParams(_NoArgsParams):
+    """No arguments."""
+
+
+class ResetApnSettingsParams(_NoArgsParams):
+    """No arguments."""
+
+
+class ToggleWifiParams(_NoArgsParams):
+    """No arguments."""
+
+
+class ToggleWifiCallingParams(_NoArgsParams):
+    """No arguments."""
+
+
+class ConnectVpnParams(_NoArgsParams):
+    """No arguments."""
+
+
+class DisconnectVpnParams(_NoArgsParams):
+    """No arguments."""
+
+
+class RebootDeviceParams(_NoArgsParams):
+    """No arguments."""
+
+
+class MakePaymentParams(_NoArgsParams):
+    """No arguments. Pays the most recent pending payment request from the agent."""
+
+
+# === User-side: write tools with arguments ===
+class SetNetworkModePreferenceParams(BaseModelNoExtra):
+    """Sets the preferred cellular network mode (5G, 4G, 3G, 2G).
+
+    ``mode`` is the string value of a ``NetworkModePreference`` enum
+    (e.g. ``"4g_5g_preferred"``, ``"4g_only"``, ``"3g_only"``,
+    ``"2g_only"``). Invalid values are rejected by the tool with a
+    failure message instead of a Pydantic ValidationError, so the
+    schema accepts a plain ``str`` — matches upstream's permissive
+    signature.
+    """
+
+    mode: str
+
+
+class SetApnSettingsParams(BaseModelNoExtra):
+    """Sets the active APN settings to a new ``APNSettings`` dict.
+
+    Upstream accepts ``Union[APNSettings, dict]``. Voice mode receives
+    dict shape only.
+    """
+
+    apn_settings: Dict[str, Any]
+
+
+class CheckAppStatusParams(BaseModelNoExtra):
+    """Get detailed status of a specific installed app."""
+
+    app_name: str
+
+
+class CheckAppPermissionsParams(BaseModelNoExtra):
+    """Get the permissions granted to a specific app."""
+
+    app_name: str
+
+
+class GrantAppPermissionParams(BaseModelNoExtra):
+    """Grant a specific permission to a specific app.
+
+    ``permission`` is one of the lowercase keys on ``AppPermissions``
+    (``storage``, ``camera``, ``microphone``, ``location``, ``contacts``,
+    ``sms``, ``phone``). Unknown keys are rejected at execution time.
+    """
+
+    app_name: str
+    permission: str
+
+
+# === Agent-side: read tools ===
+class GetCustomerByPhoneParams(BaseModelNoExtra):
+    """Find a customer record by their primary or line phone number."""
+
+    phone_number: str
+
+
+class GetCustomerByIdParams(BaseModelNoExtra):
+    """Retrieve a customer record by their customer ID."""
+
+    customer_id: str
+
+
+class GetCustomerByNameParams(BaseModelNoExtra):
+    """Find customer records by full name + date of birth (YYYY-MM-DD).
+
+    ``dob`` is required for name-based lookup — disambiguates customers
+    with the same name (upstream policy: name alone cannot identify;
+    DOB confirms identity).
+    """
+
+    full_name: str
+    dob: str
+
+
+class GetDetailsByIdParams(BaseModelNoExtra):
+    """Get details for any object by its ID (Customer ``C``, Line ``L``,
+    Device ``D``, Bill ``B``, or Plan ``P``)."""
+
+    id: str
+
+
+class GetBillsForCustomerParams(BaseModelNoExtra):
+    """List a customer's bills, most-recent-first, optionally limited."""
+
+    customer_id: str
+    limit: int = 12
+
+
+class GetDataUsageParams(BaseModelNoExtra):
+    """Get current cycle data usage + plan limit + refueling amount for a line."""
+
+    customer_id: str
+    line_id: str
+
+
+# === Agent-side: write tools ===
+class SuspendLineParams(BaseModelNoExtra):
+    """Suspend an Active line; records suspension start date + reason."""
+
+    customer_id: str
+    line_id: str
+    reason: str
+
+
+class ResumeLineParams(BaseModelNoExtra):
+    """Resume a Suspended or Pending Activation line."""
+
+    customer_id: str
+    line_id: str
+
+
+class SendPaymentRequestParams(BaseModelNoExtra):
+    """Send a payment request to the customer for a specific bill.
+
+    Sets the bill to AWAITING_PAYMENT. Fails if another bill is already
+    awaiting payment for this customer (one open request at a time).
+    """
+
+    customer_id: str
+    bill_id: str
+
+
+class RefuelDataParams(BaseModelNoExtra):
+    """Refuel a line with additional data (positive GB amount). Adds a
+    one-time charge to the customer's next bill at the plan's refueling rate."""
+
+    customer_id: str
+    line_id: str
+    gb_amount: float
+
+
+class EnableRoamingParams(BaseModelNoExtra):
+    """Enable international data roaming on a line."""
+
+    customer_id: str
+    line_id: str
+
+
+class DisableRoamingParams(BaseModelNoExtra):
+    """Disable international data roaming on a line."""
+
+    customer_id: str
+    line_id: str
+
+
+class TransferToHumanAgentsParams(BaseModelNoExtra):
+    """Transfer the call to a human agent with a summary of the issue."""
+
+    summary: str
+
+
+def validation_error_response(exc: Any) -> dict:
+    """Mirror of the helper in ``tau2_retail_params.py`` — uniform shape for
+    Pydantic validation errors raised inside ``_Tau2InvokeMixin.invoke()``."""
+    return {
+        "status": "error",
+        "error_type": "invalid_arguments",
+        "message": str(exc),
+    }
+
+
+# =============================================================================
 # Convenience exports
 # =============================================================================
 
@@ -510,6 +793,28 @@ __all__ = [
     # user-side models
     "APNSettings", "VpnDetails", "AppPermissions", "AppStatus", "StatusBar",
     "MockPhoneAttributes", "PaymentRequest", "UserSurroundings", "TelecomUserDB",
+    # per-tool args — user-side (no args)
+    "ToggleDataParams", "ToggleAirplaneModeParams",
+    "CheckStatusBarParams", "RunSpeedTestParams",
+    "CheckNetworkStatusParams", "CheckNetworkModePreferenceParams",
+    "CheckSimStatusParams", "CheckDataRestrictionStatusParams",
+    "CheckApnSettingsParams", "CheckWifiStatusParams",
+    "CheckWifiCallingStatusParams", "CheckVpnStatusParams",
+    "CheckInstalledAppsParams", "CanSendMmsParams", "CheckPaymentRequestParams",
+    "ReseatSimCardParams", "ToggleRoamingParams", "ToggleDataSaverModeParams",
+    "ResetApnSettingsParams", "ToggleWifiParams", "ToggleWifiCallingParams",
+    "ConnectVpnParams", "DisconnectVpnParams", "RebootDeviceParams",
+    "MakePaymentParams",
+    # per-tool args — user-side (with args)
+    "SetNetworkModePreferenceParams", "SetApnSettingsParams",
+    "CheckAppStatusParams", "CheckAppPermissionsParams", "GrantAppPermissionParams",
+    # per-tool args — agent-side
+    "GetCustomerByPhoneParams", "GetCustomerByIdParams", "GetCustomerByNameParams",
+    "GetDetailsByIdParams", "GetBillsForCustomerParams", "GetDataUsageParams",
+    "SuspendLineParams", "ResumeLineParams", "SendPaymentRequestParams",
+    "RefuelDataParams", "EnableRoamingParams", "DisableRoamingParams",
+    "TransferToHumanAgentsParams",
+    "validation_error_response",
     # constants
     "DEFAULT_START_DATE",
 ]

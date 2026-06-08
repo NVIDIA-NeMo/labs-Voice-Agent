@@ -181,6 +181,8 @@ import nemo_voice_agent.evaluation.tools.eva_airline_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.restaurant_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.tau2_airline_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.tau2_retail_tools  # noqa: E402, F401
+import nemo_voice_agent.evaluation.tools.tau2_telecom_tools  # noqa: E402, F401
+import nemo_voice_agent.evaluation.tools.tau2_telecom_user_tools  # noqa: E402, F401
 
 # Import subpackages to trigger @register_schema_tool_for_eval decorators.
 # Must be at the end to avoid circular imports (data modules import register_schema_tool_for_eval).

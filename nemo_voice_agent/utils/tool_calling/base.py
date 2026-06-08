@@ -30,7 +30,25 @@ class StandardSchemaTool:
     def __init__(
         self, *, description: Optional[str] = None, name: Optional[str] = None
     ):
-        self.name = name if name is not None else self.__class__.__name__
+        if name is None:
+            # Honor a class-level ``name`` attribute when set (e.g.
+            # ``class ToggleDataTool(...): name = "toggle_data"``). The
+            # eval tool registry at ``nemo_voice_agent.evaluation.tools``
+            # also reads ``cls.name`` for its registry key, so setting
+            # this single class attribute unifies the registry key, the
+            # LLM-visible function name, and the ``_build_tool_map``
+            # gold-replay key under one snake_case identifier — matching
+            # how the upstream tau2 policy documents reference tools
+            # (e.g. ``toggle_airplane_mode()``).
+            #
+            # Filter to ``str`` so type-annotation-only declarations like
+            # ``name: ClassVar[Optional[str]] = None`` don't get picked up
+            # as the literal value ``None``. Falls back to the Python
+            # class name for tools that don't set this attribute (every
+            # airline / retail / harness tool today).
+            cls_name = getattr(type(self), "name", None)
+            name = cls_name if isinstance(cls_name, str) else self.__class__.__name__
+        self.name = name
         self.description = description if description is not None else ""
         if not self.name:
             raise ValueError(f"Name is required for tool {self.__class__}")

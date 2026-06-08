@@ -20,3 +20,4 @@ import nemo_voice_agent.evaluation.scenarios.data.restaurant  # noqa: E402, F401
 import nemo_voice_agent.evaluation.scenarios.data.simple_qa  # noqa: E402, F401
 import nemo_voice_agent.evaluation.scenarios.data.tau2_airline  # noqa: E402, F401
 import nemo_voice_agent.evaluation.scenarios.data.tau2_retail  # noqa: E402, F401
+import nemo_voice_agent.evaluation.scenarios.data.tau2_telecom  # noqa: E402, F401
