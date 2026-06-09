@@ -4,7 +4,7 @@
 """tau2_airline scenarios package.
 
 ``base.py`` holds ``Tau2AirlineBaseScenario``. ``group_Nx.py`` modules hold
-auto-scaffolded scenarios (see nemo_experiments/generate_tau2_airline_scaffolds.py).
+auto-scaffolded scenarios (see scripts/prepare_tau2_data/generate_airline_scaffolds.py).
 Importing this package side-imports every group so registry decoration fires
 for all 50 base-split tau2_airline scenarios.
 """

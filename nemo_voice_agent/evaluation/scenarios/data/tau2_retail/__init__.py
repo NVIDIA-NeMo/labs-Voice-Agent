@@ -4,7 +4,7 @@
 """tau2_retail scenarios package.
 
 ``base.py`` holds ``Tau2RetailBaseScenario``. ``group_Nx.py`` modules hold
-auto-scaffolded scenarios (see nemo_experiments/generate_tau2_retail_scaffolds.py).
+auto-scaffolded scenarios (see scripts/prepare_tau2_data/generate_retail_scaffolds.py).
 Importing this package side-imports every group so registry decoration fires
 for all 114 base-split tau2_retail scenarios.
 """

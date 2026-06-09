@@ -16,8 +16,8 @@
 
 Covers two surface-level behaviors without spinning up an LLM or a bot server:
     1. ``Scenario.setup_shared_state`` propagates per-side state through the
-       runner-side serialization step into the bridge's ``scenario_dict``, with
-       the user-side and agent-side states kept separate.
+       bridge's per-side seeding step, with the user-side and agent-side
+       states kept separate.
     2. ``check_if_task_success`` honors ``disallow_extra_items``: extras pass
        in lenient mode, fail in strict mode; pred-shorter-than-ref fails in
        both modes.
@@ -151,14 +151,11 @@ def test_setup_shared_state_per_side_isolation():
     assert user_state == {"marker": "user_value"}
     assert agent_state == {"marker": "agent_value", "db_path": "agent/fixture.json"}
 
-    # Runner serializes both into the scenario_dict; bridge's prepare_for_scenario
-    # will read these back via .get(...). Round-trip the JSON to confirm shape.
-    scenario_dict = {
-        "user_shared_state_init": json.dumps(user_state),
-        "agent_shared_state_init": json.dumps(agent_state),
-    }
-    assert json.loads(scenario_dict["user_shared_state_init"]) == user_state
-    assert json.loads(scenario_dict["agent_shared_state_init"]) == agent_state
+    # Each side's state JSON-round-trips intact (the bridge JSON-encodes
+    # them before sending to the bot via ``update_system_prompt``'s
+    # ``shared_state_init`` argument).
+    assert json.loads(json.dumps(user_state)) == user_state
+    assert json.loads(json.dumps(agent_state)) == agent_state
 
 
 def test_setup_shared_state_disallow_extra_items_default():
