@@ -14,7 +14,7 @@ the upstream ``tasks.json`` schema changes. See plan §7 item 10.
 
 Usage::
 
-    cd /home/heh/github/NeMo-Voice-Agent
+    cd /path/to/NeMo-Voice-Agent
     python scripts/prepare_tau2_data/generate_retail_scaffolds.py
 
 Overwrites ``group_Nx.py`` files in the target directory and rewrites

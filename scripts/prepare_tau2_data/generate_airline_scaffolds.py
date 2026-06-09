@@ -15,7 +15,7 @@ output is versioned; the generator itself is not). See plan §7 item 10.
 
 Usage::
 
-    cd /home/heh/github/NeMo-Voice-Agent
+    cd /path/to/NeMo-Voice-Agent
     python scripts/prepare_tau2_data/generate_airline_scaffolds.py
 
 This overwrites any existing ``group_Nx.py`` files in the target directory and
