@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Scenario fixtures (data/eva_airline_scenarios/*.json) are
-# adapted from https://github.com/ServiceNow/eva/tree/0.1.3 (MIT-licensed).
+# Scenario fixtures (data/eva_airline/*.json + data/eva_airline/eva_airline_dataset.jsonl)
+# are adapted from https://github.com/ServiceNow/eva/tree/0.1.3 (MIT-licensed).
 
 # Scenario definitions contain long prose strings (personas, policy bullets);
 # wrapping every one hurts readability without improving correctness.
@@ -54,7 +54,7 @@ def _load_eva_airline_dataset_index() -> dict:
     instances. The dataset is small (50 lines × ~15KB), and ``EVAL_DATA_ROOT``
     doesn't change within a process run.
     """
-    path = get_eval_data_root() / "eva_airline_dataset.jsonl"
+    path = get_eval_data_root() / "eva_airline" / "eva_airline_dataset.jsonl"
     index = {}
     for line in path.read_text().splitlines():
         if line.strip():
@@ -102,7 +102,7 @@ class EvaAirlineBaseScenario(Scenario):
         """Load the bound eva scenario JSON. Bridge-side; cached after first read."""
         if not self.eva_id:
             raise ValueError(f"{type(self).__name__} must declare a class attribute eva_id")
-        path = get_eval_data_root() / "eva_airline_scenarios" / f"{self.eva_id}.json"
+        path = get_eval_data_root() / "eva_airline" / f"{self.eva_id}.json"
         return json.loads(path.read_text())
 
     @cached_property

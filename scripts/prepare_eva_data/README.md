@@ -7,7 +7,7 @@ One-shot developer-only scripts for the eva_airline domain — companion to
 
 | Script | What it does |
 |---|---|
-| `generate_airline_scaffolds.py` | Reads `evaluation/data/eva_airline_dataset.jsonl` and emits `@register_eval_scenario class Eva...` definitions for the major group requested via `--major N`. **Streams to stdout** (unlike the tau2 scaffolders which fully overwrite group files) because eva scenarios carry curated prose that benefits from hand-review before committing. |
+| `generate_airline_scaffolds.py` | Reads `evaluation/data/eva_airline/eva_airline_dataset.jsonl` and emits `@register_eval_scenario class Eva...` definitions for the major group requested via `--major N`. **Streams to stdout** (unlike the tau2 scaffolders which fully overwrite group files) because eva scenarios carry curated prose that benefits from hand-review before committing. |
 
 ## When to re-run
 

@@ -4,7 +4,7 @@
 """Generate NeMo Scenario class scaffolds from eva_airline_dataset.jsonl entries.
 
 One-shot generator for eva_airline scenario classes — reads
-``evaluation/data/eva_airline_dataset.jsonl`` and emits
+``evaluation/data/eva_airline/eva_airline_dataset.jsonl`` and emits
 ``@register_eval_scenario class Eva...`` definitions to stdout. Output is a
 **starting point, not final**: paste/append into the relevant
 ``nemo_voice_agent/evaluation/scenarios/data/eva_airline/group_Nx.py`` module,
@@ -309,7 +309,7 @@ def main():
         "--dataset",
         type=str,
         default=str(
-            Path(__file__).resolve().parents[2] / "evaluation" / "data" / "eva_airline_dataset.jsonl"
+            Path(__file__).resolve().parents[2] / "evaluation" / "data" / "eva_airline" / "eva_airline_dataset.jsonl"
         ),
     )
     args = ap.parse_args()

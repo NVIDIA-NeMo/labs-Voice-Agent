@@ -81,7 +81,7 @@ class _FakeFunctionCallParams:
 def _load_fixture_state(eva_id: str) -> dict:
     """Build a shared_state dict matching what the action handler initializes
     when ``setup_shared_state`` writes inline DB content."""
-    path = get_eval_data_root() / "eva_airline_scenarios" / f"{eva_id}.json"
+    path = get_eval_data_root() / "eva_airline" / f"{eva_id}.json"
     return {"db": json.loads(path.read_text())}
 
 

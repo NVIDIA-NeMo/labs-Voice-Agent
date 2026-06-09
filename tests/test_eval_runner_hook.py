@@ -184,9 +184,9 @@ def test_eval_data_root_falls_back_to_repo_path(monkeypatch):
     assert root.name == "data"
     assert root.parent.name == "evaluation"
     assert root.is_dir(), f"eval data root {root} does not exist"
-    # eva_airline_dataset.jsonl is checked in at the repo root's evaluation/data/.
-    assert (root / "eva_airline_dataset.jsonl").exists(), (
-        f"expected eva_airline_dataset.jsonl under {root}"
+    # eva_airline_dataset.jsonl is checked in at evaluation/data/eva_airline/.
+    assert (root / "eva_airline" / "eva_airline_dataset.jsonl").exists(), (
+        f"expected eva_airline/eva_airline_dataset.jsonl under {root}"
     )
 
 

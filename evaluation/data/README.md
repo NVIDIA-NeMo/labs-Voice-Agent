@@ -17,10 +17,10 @@ that scenarios from different upstream libraries don't collide.
 - **Version**: `0.1.3`
 - **License**: MIT
 - **Contents** (verbatim copy, no local modifications):
-  - `eva_airline_scenarios/` (50 files) — scenario databases (`reservations`,
+  - `eva_airline/{eva_id}.json` (50 files) — scenario databases (`reservations`,
     `journeys`, `disruptions`, etc.). Each file is a self-contained world state
     keyed by an eva scenario ID like `1.1.2.json`. Source: `data/airline_scenarios/`.
-  - `eva_airline_dataset.jsonl` (50 lines) — scenario metadata (`user_goal`,
+  - `eva_airline/eva_airline_dataset.jsonl` (50 lines) — scenario metadata (`user_goal`,
     `decision_tree`, `information_required`, `ground_truth.expected_scenario_db`).
     Used to translate eva scenarios into NeMo `Scenario` subclasses. Source:
     `data/airline_dataset.jsonl`.

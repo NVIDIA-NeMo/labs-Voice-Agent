@@ -54,7 +54,7 @@ class _FakeFunctionCallParams:
 
 def _load_fixture_state(eva_id: str) -> dict:
     """Mimic the action handler's db_path → db resolution server-side."""
-    path = get_eval_data_root() / "eva_airline_scenarios" / f"{eva_id}.json"
+    path = get_eval_data_root() / "eva_airline" / f"{eva_id}.json"
     return {"db": json.loads(path.read_text())}
 
 
