@@ -249,8 +249,8 @@ DB-key casing in `tau2_retail_tools.py`: order IDs are uppercase with a leading 
 nemo_voice_agent/evaluation/
 ├── scenarios/data/tau2_telecom/        # package
 │   ├── __init__.py
-│   ├── base.py                         # Tau2TelecomBaseScenario
-│   └── group_{0..11}x.py               # 114 auto-scaffolded scenarios (10 each, last group has 4)
+│   ├── base.py                         # Tau2TelecomBaseScenario + Tau2TelecomWorkflowBaseScenario
+│   └── group_{0..11}x.py               # 228 auto-scaffolded scenarios (114 manual + 114 workflow, paired per upstream task)
 ├── tools/tau2_telecom_user_tools.py    # 30 user-side LLM tools (phone controls + reads)
 ├── tools/tau2_telecom_tools.py         # 13 agent-side LLM tools (lookup, billing, line mgmt, transfer)
 ├── tools/tau2_telecom_params.py        # Pydantic data model (data_model.py + user_data_model.py) + 39 tool-arg schemas
@@ -261,7 +261,16 @@ nemo_voice_agent/evaluation/
 
 Telecom is the **first dual-side domain**: a separate user-side `TelecomUserDB` (mock phone attributes + user surroundings) lives alongside the agent-side `TelecomDB`. `Tau2TelecomBaseScenario.has_user_state = True` triggers user-side seeding in `_gold_replay` and bridge dual-pull at end of scenario. The 30 user-side tools are exposed to the user-sim's LLM (`enable_tool_calling: true` on the user bot); the 13 agent-side tools are exposed to the agent.
 
-**Multi-file policy.** The agent system prompt concatenates `main_policy.md` + `tech_support_{manual,workflow}.md` with a markdown `---` separator (no XML tags — drops the upstream's `<main_policy>`/`<tech_support_policy>` wrapping for parity with the airline/retail single-markdown convention). `policy_variant` ClassVar defaults to `"manual"`; subclasses can override to `"workflow"`.
+**Multi-file policy.** The agent system prompt concatenates `main_policy.md` + `tech_support_{manual,workflow}.md` with a markdown `---` separator (no XML tags — drops the upstream's `<main_policy>`/`<tech_support_policy>` wrapping for parity with the airline/retail single-markdown convention). `policy_variant` ClassVar defaults to `"manual"`.
+
+**Policy variants — two parallel registrations.** Mirrors upstream tau2's `--domain telecom` vs `--domain telecom-workflow` registration split. Each base-split task is emitted as **two** scenario classes by the scaffold generator:
+
+- `tau2_telecom__X` (inherits `Tau2TelecomBaseScenario`, `policy_variant="manual"`) — uses `tech_support_manual.md` (long-form prose).
+- `tau2_telecom_workflow__X` (inherits `Tau2TelecomWorkflowBaseScenario`, `policy_variant="workflow"`) — uses `tech_support_workflow.md` (procedural step-by-step).
+
+Both share the same upstream task → identical `tau2_id`, `db`, `user_db`, `reference_answer`, `db_state_assertions`, `initialization_actions`, `nl_assertions`, agent/user tool surface, and sync_state logic. **Only the rendered policy file differs.** `Tau2TelecomWorkflowBaseScenario` inherits from `Tau2TelecomBaseScenario` and overrides only the `policy_variant` ClassVar. `scenario.domain` stays `"tau2_telecom"` on both variants so the tool registry, data files, sync applier, predicate registry, and init-function registry are all shared — no resource duplication. The split is purely organizational (different `--domain` filters + different output-dir prefixes via the `scenario.name` split), giving operators a clean A/B comparison knob over policy prose without doubling the rest of the framework.
+
+Total telecom scenarios registered: **228** (114 manual + 114 workflow). Run with `--domain tau2_telecom` or `--domain tau2_telecom_workflow`. `tests/test_tau2_telecom_scenarios.py` locks in the count + verifies the variants produce different `policy` text but identical `reference_answer`, `db_state_assertions`, and `initialization_actions`.
 
 **Three telecom-specific agent-prompt addenda** appended after the parent's voice-realization notes (in `get_agent_prompt`), compensating for structural gaps vs upstream tau2's text-mode evaluation:
 1. `TELECOM_AGENT_TOOL_AVAILABILITY_NOTE` — explicit enumeration of the 13 agent-callable tools vs the 30 user-controlled phone tools, by snake_case name matching `policy.md` references. Prevents the LLM from hallucinating user-side tool calls (which would return `unknown_tool` errors).

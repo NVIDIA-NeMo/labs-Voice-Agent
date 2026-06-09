@@ -70,11 +70,12 @@ def test_no_single_side_scenario_carries_db_state_assertions():
     should opt into ``db_state_assertions`` / ``initialization_actions`` /
     ``expected_user_db``. This catches accidental field assignments on
     single-side domains (eva / tau2_airline / tau2_retail)."""
-    # Allowlist: telecom scenarios are the only ones expected to opt in.
-    allowed_domain_prefix = "tau2_telecom__"
+    # Allowlist: telecom scenarios (both manual + workflow variants) are
+    # the only ones expected to opt in.
+    allowed_prefixes = ("tau2_telecom__", "tau2_telecom_workflow__")
     offenders = []
     for name, cls in ALL_EVAL_SCENARIOS.items():
-        if name.startswith(allowed_domain_prefix):
+        if any(name.startswith(p) for p in allowed_prefixes):
             continue
         try:
             inst = cls()

@@ -71,19 +71,28 @@ def parse_tau2_id(tau2_id: str) -> Tuple[str, List[str], str]:
     return category, issues, persona
 
 
-def scenario_name_for(tau2_id: str) -> str:
+def scenario_name_for(tau2_id: str, variant: str = "manual") -> str:
     """Snake-case registry name. Drops ``PERSONA:None`` suffix to match the
-    hand-authored seed convention."""
+    hand-authored seed convention.
+
+    ``variant="manual"`` produces ``tau2_telecom__...`` (default);
+    ``variant="workflow"`` produces ``tau2_telecom_workflow__...``. Both
+    variants share the same upstream task — only the agent-prompt
+    policy file differs (``tech_support_manual.md`` vs
+    ``tech_support_workflow.md``).
+    """
     category, issues, persona = parse_tau2_id(tau2_id)
     parts = [category] + issues
     if persona != "None":
         parts.append(persona.lower())
-    return "tau2_telecom__" + "__".join(parts)
+    prefix = "tau2_telecom_workflow" if variant == "workflow" else "tau2_telecom"
+    return prefix + "__" + "__".join(parts)
 
 
-def class_name_for(tau2_id: str) -> str:
+def class_name_for(tau2_id: str, variant: str = "manual") -> str:
     """PascalCase Python class name. Mirrors ``scenario_name_for`` but
-    drops separators."""
+    drops separators. ``variant="workflow"`` inserts ``Workflow`` into
+    the class name to keep the two registrations distinct in Python."""
     category, issues, persona = parse_tau2_id(tau2_id)
 
     def camel(s: str) -> str:
@@ -92,7 +101,8 @@ def class_name_for(tau2_id: str) -> str:
     parts = [camel(category)] + [camel(i) for i in issues]
     if persona != "None":
         parts.append(persona)
-    return "Tau2Telecom" + "".join(parts)
+    stem = "Tau2TelecomWorkflow" if variant == "workflow" else "Tau2Telecom"
+    return stem + "".join(parts)
 
 
 GROUP_HEADER = '''# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
@@ -103,10 +113,20 @@ GROUP_HEADER = '''# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved
 #
 # Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0
 # (MIT-licensed) — task ids correspond 1:1 with tau2's ``tasks.json``.
+#
+# Each upstream task is emitted as TWO scenario classes — one bound to
+# the "manual" policy variant (Tau2TelecomBaseScenario) and one bound
+# to the "workflow" policy variant (Tau2TelecomWorkflowBaseScenario).
+# Both share the same task data, reference actions, predicates, and
+# initialization actions; only the rendered agent policy differs
+# (tech_support_manual.md vs tech_support_workflow.md). Mirrors
+# upstream tau2's ``--domain telecom`` vs ``--domain telecom-workflow``
+# registration split.
 
 from nemo_voice_agent.evaluation.scenarios import register_eval_scenario
 from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
     Tau2TelecomBaseScenario,
+    Tau2TelecomWorkflowBaseScenario,
 )
 
 
@@ -116,18 +136,20 @@ from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
 def emit_group(ids: List[str]) -> str:
     parts = [GROUP_HEADER]
     for tid in ids:
-        cls = class_name_for(tid)
-        name = scenario_name_for(tid)
-        # ``tau2_id`` may contain backslashes / quotes in theory; use a
-        # raw-string literal escape to be safe. In practice telecom ids
-        # are ASCII without backslashes, so a plain double-quoted string
-        # works — but ``repr`` is the bulletproof option.
-        parts.append(
-            f"@register_eval_scenario\n"
-            f"class {cls}(Tau2TelecomBaseScenario):\n"
-            f"    name = {name!r}\n"
-            f"    tau2_id = {tid!r}\n\n\n"
-        )
+        # Paired emission: manual scenario class immediately followed by
+        # the workflow scenario class for the same upstream task. The
+        # adjacency makes it easy to spot when one variant drifts from
+        # the other on review.
+        for variant, base in (("manual", "Tau2TelecomBaseScenario"),
+                              ("workflow", "Tau2TelecomWorkflowBaseScenario")):
+            cls = class_name_for(tid, variant=variant)
+            name = scenario_name_for(tid, variant=variant)
+            parts.append(
+                f"@register_eval_scenario\n"
+                f"class {cls}({base}):\n"
+                f"    name = {name!r}\n"
+                f"    tau2_id = {tid!r}\n\n\n"
+            )
     return "".join(parts).rstrip() + "\n"
 
 
@@ -164,21 +186,31 @@ def main() -> int:
     for cat, items in sorted(categories_seen.items()):
         print(f"  {cat}: {len(items)} (e.g. {items[0]})")
 
-    # Detect class-name collisions before writing — same descriptive
-    # tau2_id is unique upstream, but the persona-dropping step could in
-    # principle collapse two ids with PERSONA:None into one. (In the
-    # current base split this doesn't happen, but the check is cheap.)
+    # Detect class-name + scenario-name collisions before writing —
+    # same descriptive tau2_id is unique upstream, but the
+    # persona-dropping step could in principle collapse two ids with
+    # PERSONA:None into one. (In the current base split this doesn't
+    # happen, but the check is cheap.) Runs across BOTH variants so a
+    # collision between e.g. ``Tau2TelecomFoo`` and an unrelated
+    # ``Tau2TelecomWorkflowFoo`` collapsing to the same name surfaces here.
     by_class: dict = {}
     by_name: dict = {}
     for tid in ids:
-        cls = class_name_for(tid)
-        name = scenario_name_for(tid)
-        if cls in by_class:
-            raise RuntimeError(f"Class-name collision: {cls!r} for ids {by_class[cls]!r} and {tid!r}")
-        if name in by_name:
-            raise RuntimeError(f"Scenario-name collision: {name!r} for ids {by_name[name]!r} and {tid!r}")
-        by_class[cls] = tid
-        by_name[name] = tid
+        for variant in ("manual", "workflow"):
+            cls = class_name_for(tid, variant=variant)
+            name = scenario_name_for(tid, variant=variant)
+            if cls in by_class:
+                raise RuntimeError(
+                    f"Class-name collision: {cls!r} for ids "
+                    f"{by_class[cls]!r} and ({variant!r}, {tid!r})"
+                )
+            if name in by_name:
+                raise RuntimeError(
+                    f"Scenario-name collision: {name!r} for ids "
+                    f"{by_name[name]!r} and ({variant!r}, {tid!r})"
+                )
+            by_class[cls] = (variant, tid)
+            by_name[name] = (variant, tid)
 
     # Chunk into groups of GROUP_SIZE; sequential chunk index (telecom ids
     # aren't numeric so we can't use a decade-based filename like

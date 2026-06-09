@@ -79,13 +79,28 @@ def test_first_scenario_registered():
     assert _FIRST_SCENARIO in ALL_EVAL_SCENARIOS
 
 
-def test_all_114_base_split_scenarios_registered():
-    """Auto-scaffolded by ``nemo_experiments/generate_tau2_telecom_scaffolds.py``
+def test_all_114_manual_scenarios_registered():
+    """Auto-scaffolded by ``scripts/prepare_tau2_data/generate_telecom_scaffolds.py``
     from ``split_tasks.json[base]``. Locks in the count so an accidental
     overwrite or generator regression surfaces in unit tests, not at
-    eval-run time."""
-    telecom = [n for n in ALL_EVAL_SCENARIOS if n.startswith("tau2_telecom__")]
-    assert len(telecom) == 114
+    eval-run time. Filters by ``tau2_telecom__`` prefix to count only
+    the manual-policy variants (workflow variants use
+    ``tau2_telecom_workflow__`` prefix and are tested separately)."""
+    manual = [
+        n
+        for n in ALL_EVAL_SCENARIOS
+        if n.startswith("tau2_telecom__") and not n.startswith("tau2_telecom_workflow__")
+    ]
+    assert len(manual) == 114
+
+
+def test_all_114_workflow_scenarios_registered():
+    """Each manual-variant task has a paired workflow-variant scenario
+    registered under the ``tau2_telecom_workflow__`` prefix. Both share
+    the same upstream task; only the rendered policy file differs
+    (``tech_support_workflow.md`` vs ``tech_support_manual.md``)."""
+    workflow = [n for n in ALL_EVAL_SCENARIOS if n.startswith("tau2_telecom_workflow__")]
+    assert len(workflow) == 114
 
 
 def test_every_scaffolded_scenario_instantiates_and_gold_replays():
@@ -93,8 +108,14 @@ def test_every_scaffolded_scenario_instantiates_and_gold_replays():
     a loadable policy, and a successful in-process gold replay. Catches
     bad ``env_type`` translations, missing init functions, predicate
     name collisions, and class-name collisions before live runs.
+
+    Covers BOTH variants (manual + workflow). Both should gold-replay
+    identically since reference actions + init functions + predicates
+    don't depend on policy_variant — only the agent's rendered policy
+    does. Running the gold-replay on both is cheap and catches
+    regressions in either branch.
     """
-    telecom = [n for n in ALL_EVAL_SCENARIOS if n.startswith("tau2_telecom__")]
+    telecom = [n for n in ALL_EVAL_SCENARIOS if n.startswith("tau2_telecom")]
     failures: list = []
     for name in telecom:
         try:
@@ -115,6 +136,52 @@ def test_every_scaffolded_scenario_instantiates_and_gold_replays():
         except Exception as exc:  # noqa: BLE001 — we want to collect all
             failures.append((name, f"{type(exc).__name__}: {exc!s:.200}"))
     assert not failures, f"Scaffolded scenarios failed: {failures[:5]}"
+
+
+def test_workflow_variant_pulls_from_tech_support_workflow_md():
+    """The workflow-variant scenarios concatenate ``tech_support_workflow.md``
+    instead of ``tech_support_manual.md``. We verify by checking for a
+    workflow-specific marker (the procedural ``Step`` numbering used in
+    ``tech_support_workflow.md`` but not in ``tech_support_manual.md``).
+    """
+    manual_name = "tau2_telecom__mobile_data_issue__data_mode_off__data_usage_exceeded"
+    workflow_name = "tau2_telecom_workflow__mobile_data_issue__data_mode_off__data_usage_exceeded"
+
+    manual_inst = ALL_EVAL_SCENARIOS[manual_name]()
+    workflow_inst = ALL_EVAL_SCENARIOS[workflow_name]()
+
+    # Both variants point at the SAME upstream tau2_id + domain
+    assert manual_inst.tau2_id == workflow_inst.tau2_id
+    assert manual_inst.domain == workflow_inst.domain == "tau2_telecom"
+
+    # But policy_variant + the rendered policy text differ
+    assert manual_inst.policy_variant == "manual"
+    assert workflow_inst.policy_variant == "workflow"
+    assert manual_inst.policy != workflow_inst.policy
+
+    # Workflow file uses procedural step markers (e.g. ``# Step 1``) — not
+    # present in the manual prose form. This is a stable signal of "which
+    # file got loaded" without depending on specific section wording.
+    assert "Step 2" in workflow_inst.policy
+    # The manual file uses the "Understanding and Troubleshooting" section
+    # header that doesn't exist in the workflow file.
+    assert "Understanding and Troubleshooting" in manual_inst.policy
+    assert "Understanding and Troubleshooting" not in workflow_inst.policy
+
+
+def test_workflow_and_manual_share_reference_answer():
+    """Same upstream task → same reference actions, predicates, init
+    actions, and expected DB hash. The workflow variant is purely a
+    policy-prose A/B knob, not a different evaluation contract."""
+    manual_inst = ALL_EVAL_SCENARIOS[
+        "tau2_telecom__mobile_data_issue__data_mode_off__data_usage_exceeded"
+    ]()
+    workflow_inst = ALL_EVAL_SCENARIOS[
+        "tau2_telecom_workflow__mobile_data_issue__data_mode_off__data_usage_exceeded"
+    ]()
+    assert manual_inst.reference_answer == workflow_inst.reference_answer
+    assert manual_inst.db_state_assertions == workflow_inst.db_state_assertions
+    assert manual_inst.initialization_actions == workflow_inst.initialization_actions
 
 
 def test_first_scenario_instantiates():

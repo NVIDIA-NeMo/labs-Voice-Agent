@@ -6,10 +6,20 @@
 #
 # Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0
 # (MIT-licensed) — task ids correspond 1:1 with tau2's ``tasks.json``.
+#
+# Each upstream task is emitted as TWO scenario classes — one bound to
+# the "manual" policy variant (Tau2TelecomBaseScenario) and one bound
+# to the "workflow" policy variant (Tau2TelecomWorkflowBaseScenario).
+# Both share the same task data, reference actions, predicates, and
+# initialization actions; only the rendered agent policy differs
+# (tech_support_manual.md vs tech_support_workflow.md). Mirrors
+# upstream tau2's ``--domain telecom`` vs ``--domain telecom-workflow``
+# registration split.
 
 from nemo_voice_agent.evaluation.scenarios import register_eval_scenario
 from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
     Tau2TelecomBaseScenario,
+    Tau2TelecomWorkflowBaseScenario,
 )
 
 
@@ -20,8 +30,20 @@ class Tau2TelecomMobileDataIssueBadNetworkPreferenceBadVpnDataSaverModeOnDataUsa
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadNetworkPreferenceBadVpnDataSaverModeOnDataUsageExceededUserAbroadRoamingDisabledOffEasy(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_network_preference__bad_vpn__data_saver_mode_on__data_usage_exceeded__user_abroad_roaming_disabled_off__easy'
+    tau2_id = '[mobile_data_issue]bad_network_preference|bad_vpn|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]'
+
+
+@register_eval_scenario
 class Tau2TelecomMobileDataIssueBadNetworkPreferenceBadVpnDataUsageExceededUserAbroadRoamingDisabledOffEasy(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mobile_data_issue__bad_network_preference__bad_vpn__data_usage_exceeded__user_abroad_roaming_disabled_off__easy'
+    tau2_id = '[mobile_data_issue]bad_network_preference|bad_vpn|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadNetworkPreferenceBadVpnDataUsageExceededUserAbroadRoamingDisabledOffEasy(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_network_preference__bad_vpn__data_usage_exceeded__user_abroad_roaming_disabled_off__easy'
     tau2_id = '[mobile_data_issue]bad_network_preference|bad_vpn|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]'
 
 
@@ -32,8 +54,20 @@ class Tau2TelecomMobileDataIssueBadNetworkPreferenceBadVpnUserAbroadRoamingDisab
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadNetworkPreferenceBadVpnUserAbroadRoamingDisabledOffHard(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_network_preference__bad_vpn__user_abroad_roaming_disabled_off__hard'
+    tau2_id = '[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_disabled_off[PERSONA:Hard]'
+
+
+@register_eval_scenario
 class Tau2TelecomMobileDataIssueBadNetworkPreferenceBadVpnUserAbroadRoamingDisabledOn(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mobile_data_issue__bad_network_preference__bad_vpn__user_abroad_roaming_disabled_on'
+    tau2_id = '[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_disabled_on[PERSONA:None]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadNetworkPreferenceBadVpnUserAbroadRoamingDisabledOn(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_network_preference__bad_vpn__user_abroad_roaming_disabled_on'
     tau2_id = '[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_disabled_on[PERSONA:None]'
 
 
@@ -44,8 +78,20 @@ class Tau2TelecomMobileDataIssueBadNetworkPreferenceBadVpnUserAbroadRoamingEnabl
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadNetworkPreferenceBadVpnUserAbroadRoamingEnabledOffEasy(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_network_preference__bad_vpn__user_abroad_roaming_enabled_off__easy'
+    tau2_id = '[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_enabled_off[PERSONA:Easy]'
+
+
+@register_eval_scenario
 class Tau2TelecomMobileDataIssueBadNetworkPreferenceDataModeOffDataSaverModeOnDataUsageExceededUserAbroadRoamingDisabledOffEasy(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mobile_data_issue__bad_network_preference__data_mode_off__data_saver_mode_on__data_usage_exceeded__user_abroad_roaming_disabled_off__easy'
+    tau2_id = '[mobile_data_issue]bad_network_preference|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadNetworkPreferenceDataModeOffDataSaverModeOnDataUsageExceededUserAbroadRoamingDisabledOffEasy(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_network_preference__data_mode_off__data_saver_mode_on__data_usage_exceeded__user_abroad_roaming_disabled_off__easy'
     tau2_id = '[mobile_data_issue]bad_network_preference|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]'
 
 
@@ -56,8 +102,20 @@ class Tau2TelecomMobileDataIssueBadNetworkPreferenceDataSaverModeOnDataUsageExce
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadNetworkPreferenceDataSaverModeOnDataUsageExceededHard(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_network_preference__data_saver_mode_on__data_usage_exceeded__hard'
+    tau2_id = '[mobile_data_issue]bad_network_preference|data_saver_mode_on|data_usage_exceeded[PERSONA:Hard]'
+
+
+@register_eval_scenario
 class Tau2TelecomMobileDataIssueBadNetworkPreferenceUserAbroadRoamingEnabledOffHard(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mobile_data_issue__bad_network_preference__user_abroad_roaming_enabled_off__hard'
+    tau2_id = '[mobile_data_issue]bad_network_preference|user_abroad_roaming_enabled_off[PERSONA:Hard]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadNetworkPreferenceUserAbroadRoamingEnabledOffHard(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_network_preference__user_abroad_roaming_enabled_off__hard'
     tau2_id = '[mobile_data_issue]bad_network_preference|user_abroad_roaming_enabled_off[PERSONA:Hard]'
 
 
@@ -68,6 +126,18 @@ class Tau2TelecomMobileDataIssueBadVpnDataModeOffDataUsageExceededUserAbroadRoam
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadVpnDataModeOffDataUsageExceededUserAbroadRoamingDisabledOff(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_vpn__data_mode_off__data_usage_exceeded__user_abroad_roaming_disabled_off'
+    tau2_id = '[mobile_data_issue]bad_vpn|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]'
+
+
+@register_eval_scenario
 class Tau2TelecomMobileDataIssueBadVpnDataSaverModeOnUserAbroadRoamingDisabledOn(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mobile_data_issue__bad_vpn__data_saver_mode_on__user_abroad_roaming_disabled_on'
+    tau2_id = '[mobile_data_issue]bad_vpn|data_saver_mode_on|user_abroad_roaming_disabled_on[PERSONA:None]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMobileDataIssueBadVpnDataSaverModeOnUserAbroadRoamingDisabledOn(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mobile_data_issue__bad_vpn__data_saver_mode_on__user_abroad_roaming_disabled_on'
     tau2_id = '[mobile_data_issue]bad_vpn|data_saver_mode_on|user_abroad_roaming_disabled_on[PERSONA:None]'

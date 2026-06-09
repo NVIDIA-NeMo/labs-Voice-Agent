@@ -518,3 +518,46 @@ class Tau2TelecomBaseScenario(Tau2BaseScenario):
             tools=tools,
             information=[],
         )
+
+
+class Tau2TelecomWorkflowBaseScenario(Tau2TelecomBaseScenario):
+    """Workflow policy variant of ``Tau2TelecomBaseScenario``.
+
+    Mirrors upstream tau2's ``--domain telecom-workflow`` registration:
+    same task set, same reference actions, same predicates, same
+    initialization actions, same agent / user tools, same data files.
+    The ONLY difference is which tech_support policy file gets
+    concatenated into the agent prompt — ``tech_support_workflow.md``
+    (procedural step-by-step) instead of ``tech_support_manual.md``
+    (long-form documentation).
+
+    ``domain`` stays ``"tau2_telecom"`` (inherited) so tool registry
+    lookup, data-file paths (``evaluation/data/tau2_telecom/``),
+    sync-applier dispatch, and predicate / init-function registries
+    are all unchanged. Only ``scenario.name`` (the
+    organizational-bucket key derived from
+    ``name.split("__")[0]``) and ``policy_variant`` (the policy file
+    suffix) differ.
+
+    Subclasses set ``name`` and ``tau2_id`` exactly as for the manual
+    variant — the scaffold generator emits both classes per upstream
+    task:
+
+        @register_eval_scenario
+        class Tau2TelecomMobileDataIssueDataModeOff(Tau2TelecomBaseScenario):
+            name = "tau2_telecom__mobile_data_issue__data_mode_off"
+            tau2_id = "[mobile_data_issue]data_mode_off[PERSONA:None]"
+
+        @register_eval_scenario
+        class Tau2TelecomWorkflowMobileDataIssueDataModeOff(Tau2TelecomWorkflowBaseScenario):
+            name = "tau2_telecom_workflow__mobile_data_issue__data_mode_off"
+            tau2_id = "[mobile_data_issue]data_mode_off[PERSONA:None]"
+
+    Both variants resolve identical ``expected_scenario_db`` /
+    ``reference_answer`` / ``db_state_assertions`` /
+    ``initialization_actions`` from the upstream task — same scoring
+    contract — so a side-by-side run yields a clean A/B comparison of
+    which policy-prose variant produces better agent behavior.
+    """
+
+    policy_variant: ClassVar[str] = "workflow"

@@ -6,10 +6,20 @@
 #
 # Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0
 # (MIT-licensed) — task ids correspond 1:1 with tau2's ``tasks.json``.
+#
+# Each upstream task is emitted as TWO scenario classes — one bound to
+# the "manual" policy variant (Tau2TelecomBaseScenario) and one bound
+# to the "workflow" policy variant (Tau2TelecomWorkflowBaseScenario).
+# Both share the same task data, reference actions, predicates, and
+# initialization actions; only the rendered agent policy differs
+# (tech_support_manual.md vs tech_support_workflow.md). Mirrors
+# upstream tau2's ``--domain telecom`` vs ``--domain telecom-workflow``
+# registration split.
 
 from nemo_voice_agent.evaluation.scenarios import register_eval_scenario
 from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
     Tau2TelecomBaseScenario,
+    Tau2TelecomWorkflowBaseScenario,
 )
 
 
@@ -20,8 +30,20 @@ class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceBadWifiCallingBreakAp
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceBadWifiCallingBreakAppStoragePermissionDataModeOffDataUsageExceededUnseatSimCardUserAbroadRoamingEnabledOffHard(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__bad_wifi_calling__break_app_storage_permission__data_mode_off__data_usage_exceeded__unseat_sim_card__user_abroad_roaming_enabled_off__hard'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_app_storage_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:Hard]'
+
+
+@register_eval_scenario
 class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceBadWifiCallingBreakAppStoragePermissionUnseatSimCardHard(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mms_issue__airplane_mode_on__bad_network_preference__bad_wifi_calling__break_app_storage_permission__unseat_sim_card__hard'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_app_storage_permission|unseat_sim_card[PERSONA:Hard]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceBadWifiCallingBreakAppStoragePermissionUnseatSimCardHard(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__bad_wifi_calling__break_app_storage_permission__unseat_sim_card__hard'
     tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_app_storage_permission|unseat_sim_card[PERSONA:Hard]'
 
 
@@ -32,8 +54,20 @@ class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceBadWifiCallingDataUsa
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceBadWifiCallingDataUsageExceededUnseatSimCardUserAbroadRoamingDisabledOnEasy(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__bad_wifi_calling__data_usage_exceeded__unseat_sim_card__user_abroad_roaming_disabled_on__easy'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Easy]'
+
+
+@register_eval_scenario
 class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceBreakApnMmsSettingBreakAppBothPermissionsDataModeOffDataUsageExceededUserAbroadRoamingEnabledOff(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mms_issue__airplane_mode_on__bad_network_preference__break_apn_mms_setting__break_app_both_permissions__data_mode_off__data_usage_exceeded__user_abroad_roaming_enabled_off'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:None]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceBreakApnMmsSettingBreakAppBothPermissionsDataModeOffDataUsageExceededUserAbroadRoamingEnabledOff(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__break_apn_mms_setting__break_app_both_permissions__data_mode_off__data_usage_exceeded__user_abroad_roaming_enabled_off'
     tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:None]'
 
 
@@ -44,8 +78,20 @@ class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceBreakApnMmsSettingBre
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceBreakApnMmsSettingBreakAppStoragePermission(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__break_apn_mms_setting__break_app_storage_permission'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|break_app_storage_permission[PERSONA:None]'
+
+
+@register_eval_scenario
 class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceBreakApnMmsSettingDataModeOffUnseatSimCardUserAbroadRoamingDisabledOffEasy(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mms_issue__airplane_mode_on__bad_network_preference__break_apn_mms_setting__data_mode_off__unseat_sim_card__user_abroad_roaming_disabled_off__easy'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|data_mode_off|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:Easy]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceBreakApnMmsSettingDataModeOffUnseatSimCardUserAbroadRoamingDisabledOffEasy(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__break_apn_mms_setting__data_mode_off__unseat_sim_card__user_abroad_roaming_disabled_off__easy'
     tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|data_mode_off|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:Easy]'
 
 
@@ -56,8 +102,20 @@ class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceBreakApnMmsSettingDat
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceBreakApnMmsSettingDataUsageExceededHard(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__break_apn_mms_setting__data_usage_exceeded__hard'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|data_usage_exceeded[PERSONA:Hard]'
+
+
+@register_eval_scenario
 class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceBreakAppBothPermissionsDataUsageExceededUnseatSimCardUserAbroadRoamingDisabledOnHard(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mms_issue__airplane_mode_on__bad_network_preference__break_app_both_permissions__data_usage_exceeded__unseat_sim_card__user_abroad_roaming_disabled_on__hard'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|break_app_both_permissions|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Hard]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceBreakAppBothPermissionsDataUsageExceededUnseatSimCardUserAbroadRoamingDisabledOnHard(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__break_app_both_permissions__data_usage_exceeded__unseat_sim_card__user_abroad_roaming_disabled_on__hard'
     tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|break_app_both_permissions|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Hard]'
 
 
@@ -68,6 +126,18 @@ class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceBreakAppStoragePermis
 
 
 @register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceBreakAppStoragePermissionDataModeOffUserAbroadRoamingEnabledOffEasy(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__break_app_storage_permission__data_mode_off__user_abroad_roaming_enabled_off__easy'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|break_app_storage_permission|data_mode_off|user_abroad_roaming_enabled_off[PERSONA:Easy]'
+
+
+@register_eval_scenario
 class Tau2TelecomMmsIssueAirplaneModeOnBadNetworkPreferenceDataUsageExceeded(Tau2TelecomBaseScenario):
     name = 'tau2_telecom__mms_issue__airplane_mode_on__bad_network_preference__data_usage_exceeded'
+    tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|data_usage_exceeded[PERSONA:None]'
+
+
+@register_eval_scenario
+class Tau2TelecomWorkflowMmsIssueAirplaneModeOnBadNetworkPreferenceDataUsageExceeded(Tau2TelecomWorkflowBaseScenario):
+    name = 'tau2_telecom_workflow__mms_issue__airplane_mode_on__bad_network_preference__data_usage_exceeded'
     tau2_id = '[mms_issue]airplane_mode_on|bad_network_preference|data_usage_exceeded[PERSONA:None]'
