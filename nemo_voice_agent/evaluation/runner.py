@@ -135,43 +135,13 @@ async def run_dynamic_evaluation(
         scenario_dir = os.path.join(output_dir, scenario.name)
         os.makedirs(scenario_dir, exist_ok=True)
 
-        # Per-side shared_state — let the scenario seed scenario fixtures
-        # (e.g., a database path) before tools are instantiated on the bot
-        # server. Decoupled from agent tool-call order; LLM-invisible.
-        user_state, agent_state = {}, {}
-        scenario.setup_shared_state(user_state, "user")
-        scenario.setup_shared_state(agent_state, "agent")
-
-        # Build dict for bridge.prepare_for_scenario. ``tool_domain`` is the
-        # registry namespace the bots should use to look up tool classes by
-        # name; defaults to "default" for scenarios that don't override.
-        scenario_dict = {
-            "name": scenario.name,
-            "user_prompt": scenario.get_user_prompt(),
-            "agent_prompt": scenario.get_agent_prompt(),
-            "user_tools": scenario.get_user_tools(),
-            "agent_tools": scenario.get_agent_tools(),
-            "user_shared_state_init": json.dumps(user_state),
-            "agent_shared_state_init": json.dumps(agent_state),
-            "tool_domain": getattr(scenario, "domain", "default"),
-            # When set, the bridge asks the bot for the inline DB dict in
-            # ``get_scenario_summary`` (not just the hash) so the runner can
-            # evaluate ``db_state_assertions`` predicates against it. Off
-            # for retail (7MB DB exceeds the WS frame cap); on for telecom
-            # (~5KB user_db). See ``Scenario.db_state_assertions``.
-            "include_db_in_summary": bool(getattr(scenario, "db_state_assertions", None)),
-            # Initialization actions replayed bot-side via the new
-            # ``apply_initialization_actions`` RTVI action before the
-            # conversation starts. ``None`` (default) skips the replay step
-            # entirely — eva/airline/retail won't hit this path. Telecom
-            # populates this from ``task["initial_state"]["initialization_actions"]``.
-            "initialization_actions": getattr(scenario, "initialization_actions", None),
-        }
-        if scenario.noise_config:
-            scenario_dict["noise_config"] = scenario.noise_config
-
+        # Bridge accepts the scenario instance directly — no intermediate
+        # dict serialization. The bridge calls scenario methods
+        # (``get_user_prompt``, ``setup_shared_state``,
+        # ``initialization_actions``, ``sync_state``, etc.) as the
+        # single source of truth.
         logger.info(f"Preparing for scenario: {scenario.name}...")
-        await bridge.prepare_for_scenario(scenario_dict, scenario_dir)
+        await bridge.prepare_for_scenario(scenario, scenario_dir)
         scenario_config_dir = os.path.join(scenario_dir, "scenario_config")
         os.makedirs(scenario_config_dir, exist_ok=True)
         scenario.save(scenario_config_dir)

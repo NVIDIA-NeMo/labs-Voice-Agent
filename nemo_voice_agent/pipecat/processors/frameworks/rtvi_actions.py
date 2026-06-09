@@ -201,6 +201,29 @@ def create_update_system_prompt_action(
                 shared_state["db"] = json.loads(full_path.read_text())
                 logger.info(f"Loaded scenario DB from {full_path} into shared_state['db']")
 
+            # Stash the RTVI processor reference under a sentinel key so
+            # ``WriteScenarioTool._record_action`` can push an
+            # ``action-applied`` RTVIServerMessage after each write —
+            # consumed by the bridge to trigger cross-side sync.
+            # The sentinel name (``__rtvi__``) starts with ``__`` so it
+            # won't collide with any domain-data key and won't appear in
+            # JSON-serialized DB snapshots (db_hash filters dunder keys).
+            shared_state["__rtvi__"] = rtvi
+
+            # Stash the active scenario's domain so write tools can
+            # include it in the ``action-applied`` payload — the bridge
+            # routes by domain when dispatching sync deltas.
+            shared_state["__tool_domain__"] = arguments.get("tool_domain", "default")
+
+            # Stash the side this bot is on. The bot doesn't natively
+            # know this; the runner could in principle send it, but
+            # ``system_role`` is a reliable proxy: the agent uses
+            # ``system_role="system"`` with a non-empty policy, while
+            # the user-sim uses the same. Instead, we expose a default
+            # ``__side__`` and let the bridge override via the
+            # ``action-applied`` message routing logic — see below.
+            # No-op for now; placeholder for future side-aware tools.
+
             # Publish the dict so sibling action handlers (e.g. get_scenario_summary,
             # apply_initialization_actions) can read the same shared_state.
             if shared_state_ref is not None:
@@ -537,6 +560,90 @@ def create_apply_initialization_actions_action(
         arguments=[
             {"name": "domain", "type": "string", "required": False, "default": "default"},
             {"name": "actions", "type": "array", "required": True},
+        ],
+        handler=handler,
+    )
+
+
+def create_apply_sync_delta_action(
+    shared_state_ref: SharedStateRef,
+) -> RTVIAction:
+    """Build the ``context.apply_sync_delta`` action.
+
+    Bot-side endpoint of the cross-side state-propagation pipeline.
+    The bridge calls this after an ``action-applied`` event from the
+    *other* bot — it runs ``scenario.sync_state(agent_db, user_db)`` on
+    its in-process shadow DBs, then pushes any non-empty per-side delta
+    to the corresponding bot via this action.
+
+    **Payload shape:**
+
+    .. code-block:: json
+
+        {
+          "domain": "tau2_telecom",
+          "delta": {
+            "surroundings.payment_request": {"bill_id": "B1002", ...},
+            "surroundings.line_active": true
+          }
+        }
+
+    The bot's handler dispatches via
+    ``nemo_voice_agent.evaluation.sync_appliers.apply_sync_delta`` —
+    looks up the domain-specific applier (falls back to the generic
+    dotted-path setter) and mutates ``shared_state["db"]`` in place.
+
+    For single-side domains (eva / airline / retail) this action would
+    never be called by the bridge — only scenarios overriding
+    ``Scenario.sync_state`` trigger the pipeline. But the action is
+    registered domain-agnostically so the same bot binary can run any
+    scenario.
+
+    **Returns** ``{"success": bool, "errors": list[str]}``. ``success``
+    is ``True`` when the delta applied cleanly. Errors are
+    informational — the bridge logs them and continues (a malformed
+    delta should not crash the bot or stall the conversation).
+    """
+    # Lazy import — same rationale as create_apply_initialization_actions.
+    from nemo_voice_agent.evaluation.sync_appliers import apply_sync_delta as _apply_delta
+
+    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
+        try:
+            domain = arguments.get("domain", "default")
+            delta = arguments.get("delta") or {}
+            if not isinstance(delta, dict):
+                return {
+                    "success": False,
+                    "errors": [f"`delta` payload must be a dict, got {type(delta).__name__}."],
+                }
+            db = shared_state_ref.state.get("db") if shared_state_ref.state else None
+            logger.info(
+                f"[APPLY SYNC] domain={domain!r}, delta_keys={list(delta.keys())}, "
+                f"db_present={db is not None}"
+            )
+            if db is None:
+                return {
+                    "success": False,
+                    "errors": [
+                        f"No shared_state['db'] available; cannot apply sync delta "
+                        f"with {len(delta)} key(s). update_system_prompt didn't "
+                        f"seed the DB on this bot."
+                    ],
+                }
+            _apply_delta(domain=domain, db=db, delta=delta)
+            logger.info(f"[APPLY SYNC] success ({len(delta)} key(s) applied)")
+            return {"success": True, "errors": []}
+        except Exception as e:
+            logger.error(f"Error applying sync delta: {e}")
+            return {"success": False, "errors": [f"{type(e).__name__}: {e}"]}
+
+    return RTVIAction(
+        service="context",
+        action="apply_sync_delta",
+        result="object",
+        arguments=[
+            {"name": "domain", "type": "string", "required": False, "default": "default"},
+            {"name": "delta", "type": "object", "required": True},
         ],
         handler=handler,
     )

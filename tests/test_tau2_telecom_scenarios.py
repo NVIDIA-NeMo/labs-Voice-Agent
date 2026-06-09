@@ -79,6 +79,44 @@ def test_first_scenario_registered():
     assert _FIRST_SCENARIO in ALL_EVAL_SCENARIOS
 
 
+def test_all_114_base_split_scenarios_registered():
+    """Auto-scaffolded by ``nemo_experiments/generate_tau2_telecom_scaffolds.py``
+    from ``split_tasks.json[base]``. Locks in the count so an accidental
+    overwrite or generator regression surfaces in unit tests, not at
+    eval-run time."""
+    telecom = [n for n in ALL_EVAL_SCENARIOS if n.startswith("tau2_telecom__")]
+    assert len(telecom) == 114
+
+
+def test_every_scaffolded_scenario_instantiates_and_gold_replays():
+    """Every scaffold must produce a valid Pydantic-validated tau2 task,
+    a loadable policy, and a successful in-process gold replay. Catches
+    bad ``env_type`` translations, missing init functions, predicate
+    name collisions, and class-name collisions before live runs.
+    """
+    telecom = [n for n in ALL_EVAL_SCENARIOS if n.startswith("tau2_telecom__")]
+    failures: list = []
+    for name in telecom:
+        try:
+            inst = ALL_EVAL_SCENARIOS[name]()
+            # Touch every cached_property derived from tau2_task / data so
+            # any latent error surfaces (reference_answer runs the gold
+            # replay which exercises tool dispatch + init replay).
+            _ = (
+                inst.policy,
+                inst.user_db,
+                inst.db_state_assertions,
+                inst.initialization_actions,
+                inst.nl_assertions,
+                inst.user_resources,
+                inst.agent_resources,
+                inst.reference_answer,
+            )
+        except Exception as exc:  # noqa: BLE001 — we want to collect all
+            failures.append((name, f"{type(exc).__name__}: {exc!s:.200}"))
+    assert not failures, f"Scaffolded scenarios failed: {failures[:5]}"
+
+
 def test_first_scenario_instantiates():
     scenario = ALL_EVAL_SCENARIOS[_FIRST_SCENARIO]()
     assert isinstance(scenario, Tau2TelecomBaseScenario)

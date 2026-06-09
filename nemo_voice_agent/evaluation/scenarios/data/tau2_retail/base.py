@@ -53,13 +53,6 @@ class Tau2RetailBaseScenario(Tau2BaseScenario):
 
     domain: str = "tau2_retail"
 
-    # Retail policy.md is not date-sensitive (unlike airline). The retail tasks
-    # don't reference an explicit "current time" anchor in their tool-call
-    # arguments either — but we still set a value to keep the Scenario contract
-    # consistent and so the agent has a date to cite if asked. Pinned to the
-    # same date as airline so a mixed eva+tau2 run reports one coherent date.
-    current_date: str = "2024-05-15"
-
     # tau2_retail is single-side (agent only). Only telecom uses user_db.
     has_user_state: bool = False
 
@@ -126,7 +119,5 @@ class Tau2RetailBaseScenario(Tau2BaseScenario):
                 # Harness tool — default-namespace fallback (lives in basic_tools.py).
                 "EndConversationTool": {},
             },
-            information=[
-                f"Today's date is {self.current_date}.",
-            ],
+            information=[],
         )

@@ -62,11 +62,6 @@ class Tau2AirlineBaseScenario(Tau2BaseScenario):
 
     domain: str = "tau2_airline"
 
-    # Tau2 airline tasks use a fixed scenario date — see tau2's `_get_datetime()`
-    # (returns ``"2024-05-15T15:00:00"``) and the matching line at the top of
-    # ``policy.md``: "The current time is 2024-05-15 15:00:00 EST.".
-    current_date: str = "2024-05-15"
-
     # tau2_airline is single-side (agent only); user side is text-driven by the
     # user simulator but the tau2 toolset doesn't include user-side tools.
     has_user_state: bool = False
@@ -121,7 +116,5 @@ class Tau2AirlineBaseScenario(Tau2BaseScenario):
                 # guidance that pairs with this.
                 "EndConversationTool": {},
             },
-            information=[
-                f"Today's date is {self.current_date}.",
-            ],
+            information=[],
         )

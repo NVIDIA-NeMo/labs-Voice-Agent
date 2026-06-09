@@ -45,7 +45,6 @@ derives from the upstream task JSON.
 # pylint: disable=line-too-long
 # flake8: noqa: E501
 
-import copy
 import json
 from functools import cached_property
 from typing import Any, ClassVar, Dict, List, Optional
@@ -98,6 +97,7 @@ TELECOM_PASSIVE_TOOL_USE_GUIDELINE: str = (
     "agent (phrases like \"the issue is resolved\" or \"is there anything else I can help "
     "with?\" are the agent's lines, not yours)."
 )
+from nemo_voice_agent.evaluation.tools.tau2_telecom_sync import sync_telecom_state
 from nemo_voice_agent.evaluation.tools.tau2_telecom_tools import (
     TAU2_TELECOM_AGENT_TOOL_NAME_TO_CLASS,
 )
@@ -159,6 +159,29 @@ TELECOM_AGENT_STAY_ON_TASK_GUIDELINE = (
 )
 
 
+# Bridges a gap upstream policy.md leaves open: the policy says
+# "outside the home network" without ever specifying what the home
+# network is. Phone numbers (10-digit US format), customer addresses
+# (US states), and billing (USD) all imply US-based, but the LLM
+# needs that stated explicitly to confidently classify a user's
+# named location (e.g. "France", "Mexico") as abroad.
+TELECOM_AGENT_HOME_NETWORK_NOTE = (
+    "Home network context + location-probe rule. This telecom company operates in "
+    "the United States — phone numbers are 10-digit US format (e.g. 555-123-4567), "
+    "customer addresses are US states, billing is in USD. \n\n" 
+    "Always ASK the user where they are physically located right now "
+    "for any connectivity complaint like no data, slow "
+    "data, MMS not sending, no service, weak signal, etc. The user may not "
+    "volunteer their location proactively; you must ask. Example opener: "
+    "\"Before we check other settings on your account, can you tell me where you are right now? "
+    "Are you home in the US, or traveling abroad?\"\n\n"
+    "If the user reports being abroad with no data, IMMEDIATELY check `line.roaming_enabled` "
+    "via `get_details_by_id(<line_id>)`. If `line.roaming_enabled` is False, "
+    "explain that roaming is disabled on their line and ASK the user if they want to enable it. "
+    "If the user says yes, call `enable_roaming` to enable roaming. "
+)
+
+
 class Tau2TelecomBaseScenario(Tau2BaseScenario):
     """Base class for scenarios ported from tau2-bench/telecom (voice-user-sim-v1.0).
 
@@ -176,10 +199,6 @@ class Tau2TelecomBaseScenario(Tau2BaseScenario):
     # Triggers dual-DB seeding in gold replay (``_gold_replay`` calls
     # ``setup_shared_state(state, side="user")`` when this is True).
     has_user_state: bool = True
-
-    # Telecom tasks reference no explicit "current time" anchor (unlike
-    # airline). Pinned to a consistent date for any cross-domain mixed run.
-    current_date: str = "2024-05-15"
 
     # Default policy variant. Upstream offers two — ``"manual"`` (long-form
     # documentation) and ``"workflow"`` (procedural step-by-step). Matches
@@ -416,13 +435,31 @@ class Tau2TelecomBaseScenario(Tau2BaseScenario):
     # -----------------------------------------------------------------------
 
     # -----------------------------------------------------------------------
+    # sync_state — cross-side state propagation (mirrors upstream sync_tools)
+    # -----------------------------------------------------------------------
+
+    def sync_state(self, agent_db: dict, user_db: dict) -> Dict[str, Dict[str, Any]]:
+        """Delegate to the pure ``sync_telecom_state`` function.
+
+        Called by the bridge after each write action on either bot. The
+        actual reconciliation logic — propagating ``line.status``,
+        ``line.roaming_enabled``, data-usage, and payment-request state
+        between the two DBs — lives in ``sync_telecom_state`` so it can
+        be unit-tested without bridge or scenario plumbing.
+
+        See ``Scenario.sync_state`` for the framework contract and
+        ``sync_telecom_state``'s docstring for the propagation paths.
+        """
+        return sync_telecom_state(agent_db, user_db)
+
+    # -----------------------------------------------------------------------
     # get_agent_prompt — extend parent with telecom-specific addenda
     # -----------------------------------------------------------------------
 
     def get_agent_prompt(self) -> str:
         """Parent's policy + voice notes + telecom-specific addenda.
 
-        Appends two telecom-only blocks to the parent's
+        Appends three telecom-only blocks to the parent's
         ``policy + Additional Notes`` output:
 
         - ``TELECOM_AGENT_TOOL_AVAILABILITY_NOTE``: explicit enumeration
@@ -431,8 +468,13 @@ class Tau2TelecomBaseScenario(Tau2BaseScenario):
           model can map policy.md references unambiguously.
         - ``TELECOM_AGENT_STAY_ON_TASK_GUIDELINE``: prevents drift to
           unrelated discovered issues (e.g. overdue bills).
+        - ``TELECOM_AGENT_HOME_NETWORK_NOTE``: states the home country
+          (US) and frontloads the "check roaming first when abroad"
+          diagnostic rule — disambiguates user-reported locations
+          ("France", "overseas") that policy.md mentions only
+          generically as "outside the home network".
 
-        See module-level docstrings on the two constants for the
+        See module-level docstrings on the three constants for the
         upstream-vs-voice-mode structural reasoning.
         """
         agent_names = sorted(TAU2_TELECOM_AGENT_TOOL_NAME_TO_CLASS.keys()) + ["EndConversationTool"]
@@ -447,6 +489,8 @@ class Tau2TelecomBaseScenario(Tau2BaseScenario):
             + availability
             + "\n\n"
             + TELECOM_AGENT_STAY_ON_TASK_GUIDELINE
+            + "\n\n"
+            + TELECOM_AGENT_HOME_NETWORK_NOTE
         )
 
     @cached_property
@@ -472,7 +516,5 @@ class Tau2TelecomBaseScenario(Tau2BaseScenario):
         tools["EndConversationTool"] = {}
         return Resources(
             tools=tools,
-            information=[
-                f"Today's date is {self.current_date}.",
-            ],
+            information=[],
         )

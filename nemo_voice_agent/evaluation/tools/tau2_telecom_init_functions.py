@@ -426,15 +426,20 @@ def disable_roaming(db: Dict[str, Any], customer_id: str, line_id: str) -> None:
 
 @register_initialization_function(domain="tau2_telecom")
 def set_data_usage(
-    db: Dict[str, Any], customer_id: str, line_id: str, amount_gb: float
+    db: Dict[str, Any], customer_id: str, line_id: str, data_used_gb: float
 ) -> None:
-    """Overwrite ``data_used_gb`` on the named line."""
+    """Overwrite ``data_used_gb`` on the named line.
+
+    Parameter name matches upstream ``TelecomTools.set_data_usage`` so
+    task ``initialization_actions`` payloads (e.g.
+    ``{"data_used_gb": 15.1}``) dispatch cleanly without renaming.
+    """
     line = _get_target_line(db, customer_id, line_id)
     if line is None:
         raise ValueError(
             f"set_data_usage: line {line_id!r} not found for customer {customer_id!r}"
         )
-    line["data_used_gb"] = float(amount_gb)
+    line["data_used_gb"] = float(data_used_gb)
 
 
 @register_initialization_function(domain="tau2_telecom")
@@ -442,42 +447,90 @@ def suspend_line_for_overdue_bill(
     db: Dict[str, Any],
     customer_id: str,
     line_id: str,
-    bill_id: Optional[str] = None,
+    new_bill_id: str,
+    contract_ended: bool = False,
 ) -> None:
-    """Suspend a line by setting ``status = SUSPENDED``, with an optional
-    OVERDUE bill linked.
+    """Suspend a line and create a new OVERDUE bill (mirrors upstream).
 
-    Upstream's full version creates a new overdue bill and updates the
-    customer's bill_ids; for init-time replay we accept either path:
+    Faithful port of upstream's ``TelecomTools.suspend_line_for_overdue_bill``.
+    Used by service_issue scenarios that need to test the agent's
+    bill-payment + line-resume flow:
 
-      - If ``bill_id`` is provided, it must already exist in ``db.bills``
-        — we flip its status to OVERDUE if it isn't already, and verify
-        it's linked to the customer's ``bill_ids`` (raises otherwise).
-      - If ``bill_id`` is None, we only suspend the line; the caller is
-        expected to have separately set up any required bill state via
-        other init actions (e.g. by importing a pre-seeded ``db.json``).
+      1. Verify line is ACTIVE (raise if not).
+      2. Create a new OVERDUE bill with id ``new_bill_id`` linked to the
+         customer, charging one month's plan price.
+      3. Set the line's status to SUSPENDED with today's
+         ``suspension_start_date``.
+      4. If ``contract_ended=True``, also set
+         ``line.contract_end_date`` to the last day of the previous
+         month — the agent then can NOT lift the suspension by paying,
+         per policy.
 
-    This split lets us cover both upstream task patterns without
-    re-implementing upstream's bill-creation flow at init time.
+    Parameter names match upstream's ``set_data_usage`` /
+    ``suspend_line_for_overdue_bill`` signatures so task
+    ``initialization_actions`` payloads dispatch without renaming.
     """
+    from datetime import date, datetime, timedelta
+
     line = _get_target_line(db, customer_id, line_id)
     if line is None:
         raise ValueError(
             f"suspend_line_for_overdue_bill: line {line_id!r} not found for "
             f"customer {customer_id!r}"
         )
+    if line["status"] != LineStatus.ACTIVE.value:
+        raise ValueError(
+            f"suspend_line_for_overdue_bill: line {line_id!r} must be active "
+            f"to suspend for unpaid bill (got status={line['status']!r})"
+        )
+
+    customer = _get_customer_by_id(db, customer_id)
+    if customer is None:
+        raise ValueError(f"suspend_line_for_overdue_bill: customer {customer_id!r} not found")
+
+    # No existing OVERDUE bill allowed (one open dispute at a time).
+    for bid in customer.get("bill_ids") or []:
+        bill = next((b for b in (db.get("bills") or []) if b["bill_id"] == bid), None)
+        if bill is not None and bill["status"] == BillStatus.OVERDUE.value:
+            raise ValueError(
+                f"suspend_line_for_overdue_bill: customer {customer_id!r} already has "
+                f"an overdue bill ({bid})"
+            )
+
+    plan = next((p for p in (db.get("plans") or []) if p["plan_id"] == line.get("plan_id")), None)
+    if plan is None:
+        raise ValueError(f"suspend_line_for_overdue_bill: plan {line.get('plan_id')!r} not found")
+    amount = float(plan["price_per_month"])
+
+    # ``current_date`` on the scenario drives "today" — but init
+    # functions run against the bot's live state and don't have that
+    # context. Fall back to system today; the bot logs the date
+    # window so scoring can attribute correctly.
+    today = date.today()
+    first_day_of_last_month = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    last_day_of_last_month = today.replace(day=1) - timedelta(days=1)
+
+    overdue_bill = {
+        "bill_id": new_bill_id,
+        "customer_id": customer_id,
+        "period_start": first_day_of_last_month.isoformat(),
+        "period_end": last_day_of_last_month.isoformat(),
+        "issue_date": first_day_of_last_month.isoformat(),
+        "total_due": amount,
+        "due_date": (first_day_of_last_month + timedelta(days=14)).isoformat(),
+        "status": BillStatus.OVERDUE.value,
+        "line_items": [
+            {
+                "description": f"Charge for line {line_id}",
+                "amount": amount,
+                "date": today.isoformat(),
+                "item_type": "Charge",
+            }
+        ],
+    }
+    db.setdefault("bills", []).append(overdue_bill)
+    customer.setdefault("bill_ids", []).append(new_bill_id)
     line["status"] = LineStatus.SUSPENDED.value
-    if bill_id is not None:
-        # Find the bill, mark OVERDUE
-        bill = next((b for b in (db.get("bills") or []) if b["bill_id"] == bill_id), None)
-        if bill is None:
-            raise ValueError(
-                f"suspend_line_for_overdue_bill: bill {bill_id!r} not found"
-            )
-        bill["status"] = BillStatus.OVERDUE.value
-        customer = _get_customer_by_id(db, customer_id)
-        if customer is not None and bill_id not in (customer.get("bill_ids") or []):
-            raise ValueError(
-                f"suspend_line_for_overdue_bill: bill {bill_id!r} not linked to "
-                f"customer {customer_id!r} (bill_ids)"
-            )
+    line["suspension_start_date"] = today.isoformat()
+    if contract_ended:
+        line["contract_end_date"] = last_day_of_last_month.isoformat()

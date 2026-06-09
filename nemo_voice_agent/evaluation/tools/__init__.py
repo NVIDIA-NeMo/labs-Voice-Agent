@@ -181,6 +181,7 @@ import nemo_voice_agent.evaluation.tools.eva_airline_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.restaurant_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.tau2_airline_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.tau2_retail_tools  # noqa: E402, F401
+import nemo_voice_agent.evaluation.tools.tau2_telecom_sync  # noqa: E402, F401  — registers cross-side sync applier
 import nemo_voice_agent.evaluation.tools.tau2_telecom_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.tau2_telecom_user_tools  # noqa: E402, F401
 

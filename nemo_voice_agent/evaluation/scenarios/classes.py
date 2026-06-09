@@ -356,6 +356,40 @@ class Scenario:
         if not hasattr(self, "expected_user_db"):
             self.expected_user_db = expected_user_db
 
+    def sync_state(self, agent_db: dict, user_db: dict) -> Dict[str, Dict[str, Any]]:
+        """Reconcile cross-side state after a write action fired on either side.
+
+        Mirrors upstream tau2's ``Environment.sync_tools()`` — both DBs
+        live in different processes in voice mode (each bot owns one),
+        so this function runs on the bridge's in-process shadow copies
+        and returns per-side deltas the bridge pushes back to the bots.
+
+        Default no-op: returns ``{"agent": {}, "user": {}}``. Single-side
+        domains (eva, tau2_airline, tau2_retail) keep the default —
+        their scenarios never have user-side LLM tools so there's
+        nothing to propagate.
+
+        **Contract for overrides** (currently only ``Tau2TelecomBaseScenario``):
+
+        - Inputs ``agent_db`` and ``user_db`` are the bridge's shadow
+          dicts, already updated by replaying the just-fired action.
+        - The override MAY mutate both dicts in place AND MUST return
+          the per-side delta dicts the bridge dispatches via
+          ``apply_sync_delta``.
+        - A scenario that overrides ``sync_state`` MUST also provide
+          ``_build_tool_map(state) → {name: tool}`` where each tool has
+          a sync ``invoke(**kwargs)`` method. The bridge uses this to
+          replay actions onto the shadow DBs before calling
+          ``sync_state``. Tau2 satisfies this via ``_Tau2InvokeMixin``.
+
+        Delta shape is **domain-defined** — the bridge transports it
+        verbatim to the registered ``apply_sync_delta`` applier on the
+        receiving bot. See ``evaluation/sync_appliers.py`` for the
+        generic default applier (dotted-path field set) and per-domain
+        ports (e.g. ``tau2_telecom_sync.apply_telecom_sync_delta``).
+        """
+        return {"agent": {}, "user": {}}
+
     def setup_shared_state(self, state: dict, side: str) -> None:
         """Populate per-side ``shared_state`` before tools are instantiated.
 

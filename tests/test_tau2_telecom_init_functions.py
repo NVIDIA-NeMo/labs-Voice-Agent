@@ -317,8 +317,10 @@ def test_enable_roaming_missing_line_raises(default_agent_db):
 
 
 def test_set_data_usage(default_agent_db):
+    """Parameter is ``data_used_gb`` (matches upstream signature for
+    payload-compatible dispatch from task ``initialization_actions``)."""
     customer_id, line_id = _first_line_with_customer(default_agent_db)
-    set_data_usage(default_agent_db, customer_id=customer_id, line_id=line_id, amount_gb=7.5)
+    set_data_usage(default_agent_db, customer_id=customer_id, line_id=line_id, data_used_gb=7.5)
     line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
     assert line["data_used_gb"] == 7.5
 
@@ -326,57 +328,86 @@ def test_set_data_usage(default_agent_db):
 def test_set_data_usage_missing_line_raises(default_agent_db):
     with pytest.raises(ValueError, match="line .* not found"):
         set_data_usage(
-            default_agent_db, customer_id="C1001", line_id="L_FAKE", amount_gb=1.0
+            default_agent_db, customer_id="C1001", line_id="L_FAKE", data_used_gb=1.0
         )
 
 
-def test_suspend_line_for_overdue_bill_no_bill(default_agent_db):
-    """Without bill_id, just flip line to SUSPENDED."""
-    customer_id, line_id = _first_line_with_customer(default_agent_db)
-    suspend_line_for_overdue_bill(
-        default_agent_db, customer_id=customer_id, line_id=line_id
+def test_suspend_line_for_overdue_bill_creates_new_overdue_bill(default_agent_db):
+    """Faithful upstream port: creates a new OVERDUE bill with the
+    supplied ``new_bill_id`` and links it to the customer, in addition
+    to flipping the line to SUSPENDED."""
+    customer = next(
+        c
+        for c in default_agent_db["customers"]
+        if c.get("line_ids")
+        and not any(
+            (b := next((bb for bb in default_agent_db["bills"] if bb["bill_id"] == bid), None))
+            and b["status"] == "Overdue"
+            for bid in c.get("bill_ids") or []
+        )
     )
-    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
-    assert line["status"] == "Suspended"
-
-
-def test_suspend_line_for_overdue_bill_with_linked_bill(default_agent_db):
-    """With bill_id linked to the customer, mark bill as OVERDUE too."""
-    # Find a customer + line + their associated bill
-    customer = next(c for c in default_agent_db["customers"] if c.get("line_ids") and c.get("bill_ids"))
     customer_id = customer["customer_id"]
     line_id = customer["line_ids"][0]
-    bill_id = customer["bill_ids"][0]
+    # Pick a line that's currently active — upstream requires this.
+    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line["status"] = "Active"  # ensure precondition
     suspend_line_for_overdue_bill(
         default_agent_db,
         customer_id=customer_id,
         line_id=line_id,
-        bill_id=bill_id,
+        new_bill_id="B_NEW_OVERDUE",
+        contract_ended=False,
     )
     line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
-    bill = next(b for b in default_agent_db["bills"] if b["bill_id"] == bill_id)
+    new_bill = next(b for b in default_agent_db["bills"] if b["bill_id"] == "B_NEW_OVERDUE")
     assert line["status"] == "Suspended"
-    assert bill["status"] == "Overdue"
+    assert new_bill["status"] == "Overdue"
+    assert "B_NEW_OVERDUE" in customer["bill_ids"]
 
 
-def test_suspend_line_for_overdue_bill_unlinked_bill_raises(default_agent_db):
+def test_suspend_line_for_overdue_bill_contract_ended_sets_contract_end_date(default_agent_db):
+    """``contract_ended=True`` also sets ``line.contract_end_date`` to
+    the last day of the previous month — the agent then cannot lift
+    the suspension by paying, per upstream policy."""
+    customer = next(
+        c
+        for c in default_agent_db["customers"]
+        if c.get("line_ids")
+        and not any(
+            (b := next((bb for bb in default_agent_db["bills"] if bb["bill_id"] == bid), None))
+            and b["status"] == "Overdue"
+            for bid in c.get("bill_ids") or []
+        )
+    )
+    customer_id = customer["customer_id"]
+    line_id = customer["line_ids"][0]
+    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line["status"] = "Active"
+    suspend_line_for_overdue_bill(
+        default_agent_db,
+        customer_id=customer_id,
+        line_id=line_id,
+        new_bill_id="B_ENDED",
+        contract_ended=True,
+    )
+    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    assert line["status"] == "Suspended"
+    assert line["contract_end_date"] is not None
+
+
+def test_suspend_line_for_overdue_bill_inactive_line_raises(default_agent_db):
+    """Line must be ACTIVE — suspending an already-suspended line raises."""
     customer = next(c for c in default_agent_db["customers"] if c.get("line_ids"))
     customer_id = customer["customer_id"]
     line_id = customer["line_ids"][0]
-    # Pick a bill that exists but isn't linked to this customer
-    other_bills = [
-        b["bill_id"]
-        for b in default_agent_db["bills"]
-        if b["bill_id"] not in (customer.get("bill_ids") or [])
-    ]
-    if not other_bills:
-        pytest.skip("no unlinked bill available in fixture db.json")
-    with pytest.raises(ValueError, match="not linked to customer"):
+    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line["status"] = "Suspended"  # precondition violation
+    with pytest.raises(ValueError, match="must be active"):
         suspend_line_for_overdue_bill(
             default_agent_db,
             customer_id=customer_id,
             line_id=line_id,
-            bill_id=other_bills[0],
+            new_bill_id="B_NOPE",
         )
 
 

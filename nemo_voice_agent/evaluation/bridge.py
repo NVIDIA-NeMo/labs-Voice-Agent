@@ -22,6 +22,7 @@ Connects two voice agents via WebSocket and provides:
 - Conversation monitoring and metrics
 """
 import asyncio
+import copy
 import json
 import queue
 import random
@@ -30,7 +31,7 @@ import wave
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import soxr
@@ -289,6 +290,15 @@ class VoiceAgentEvaluationBridge:
         self.user_scenario_summary = None
         self.agent_ws = None
 
+        # Cross-side sync state — populated by ``_setup_cross_side_sync``
+        # at scenario start when the scenario opts in via ``sync_state``
+        # override. Default-off for single-side domains.
+        self.sync_enabled: bool = False
+        self.scenario_instance = None
+        self.shadow_state: Optional[dict] = None
+        self.shadow_tool_map: Dict[str, Any] = {}
+        self.sync_lock = asyncio.Lock()
+
         self.metrics = EvaluationMetrics()
 
         # Serializers for protobuf communication
@@ -417,58 +427,88 @@ class VoiceAgentEvaluationBridge:
 
     async def prepare_for_scenario(
         self,
-        scenario: Union[dict, DictConfig],
+        scenario,
         output_dir: str,
         log_level: str = "DEBUG",
     ):
-        """Prepare the bridge for a scenario"""
+        """Prepare the bridge for a scenario.
 
+        Args:
+            scenario: A ``Scenario`` instance. The bridge calls methods
+                on it directly (``get_user_prompt``, ``get_agent_prompt``,
+                ``setup_shared_state``, ``initialization_actions``,
+                ``sync_state``, etc.) — no intermediate dict
+                serialization step. Single source of truth.
+            output_dir: Per-scenario output directory.
+            log_level: Pipecat log level for the bot servers.
+        """
         # Initialize output directory for this scenario
-        self.init_output_dir(output_dir, scenario_name=scenario["name"], log_level=log_level)
+        self.init_output_dir(output_dir, scenario_name=scenario.name, log_level=log_level)
 
         # Reset bridge before each scenario, and create connection to update the prompts
         await self.connect()
 
-        # Update prompts (handler will automatically reset). ``tool_domain``
-        # tells each bot which registry namespace to look up tools in. Falls
-        # back to "default" per-tool for shared harness tools.
-        tool_domain = scenario.get("tool_domain", "default")
-        # Bridge-side bit: when True, ``_retrieve_scenario_summary`` asks the
-        # bot to inline the ``db`` / ``user_db`` dicts (not just hashes) so
-        # the runner can evaluate ``db_state_assertions`` predicates. Set by
-        # the runner from ``bool(scenario.db_state_assertions)``.
-        self.include_db_in_summary = bool(scenario.get("include_db_in_summary", False))
+        # ``tool_domain`` tells each bot which registry namespace to
+        # look up tools in. Falls back to "default" per-tool for shared
+        # harness tools (EndConversationTool, etc.).
+        tool_domain = getattr(scenario, "domain", "default")
+        # Bridge-side bit: when True, ``_retrieve_scenario_summary``
+        # asks the bot to inline the ``db`` / ``user_db`` dicts (not
+        # just hashes) so the runner can evaluate
+        # ``db_state_assertions`` predicates against them. Set
+        # automatically from the scenario's predicate-list opt-in.
+        self.include_db_in_summary = bool(getattr(scenario, "db_state_assertions", None))
+
+        # Per-side shared_state seeding — let the scenario seed
+        # scenario fixtures (e.g., a database path) before tools are
+        # instantiated on the bot servers. Telecom uses this to point
+        # each bot at its respective DB file.
+        user_state: dict = {}
+        agent_state: dict = {}
+        scenario.setup_shared_state(user_state, "user")
+        scenario.setup_shared_state(agent_state, "agent")
+
         await self.update_user_prompt(
-            prompt=scenario["user_prompt"],
-            tools=scenario["user_tools"],
-            shared_state_init=scenario.get("user_shared_state_init", "{}"),
+            prompt=scenario.get_user_prompt(),
+            tools=scenario.get_user_tools(),
+            shared_state_init=json.dumps(user_state),
             tool_domain=tool_domain,
         )
         await self.update_agent_prompt(
-            prompt=scenario["agent_prompt"],
-            tools=scenario["agent_tools"],
-            shared_state_init=scenario.get("agent_shared_state_init", "{}"),
+            prompt=scenario.get_agent_prompt(),
+            tools=scenario.get_agent_tools(),
+            shared_state_init=json.dumps(agent_state),
             tool_domain=tool_domain,
         )
 
-        # Telecom-only path: replay any ``initialization_actions`` against the
-        # bots' live ``shared_state`` before the conversation starts. Bot-side
-        # dispatch via the ``apply_initialization_actions`` RTVI action; bridge
-        # splits the action list by ``side`` (agent → agent_ws, user →
-        # user_ws). A no-op when ``scenario["initialization_actions"]`` is
-        # falsy, which is the common case for eva/airline/retail. See
-        # ``Scenario.initialization_actions`` docstring.
+        # Telecom-only path: replay any ``initialization_actions``
+        # against the bots' live ``shared_state`` before the
+        # conversation starts. Bot-side dispatch via the
+        # ``apply_initialization_actions`` RTVI action; bridge splits
+        # the action list by ``side`` (agent → agent_ws, user →
+        # user_ws). A no-op when ``scenario.initialization_actions``
+        # is falsy, which is the common case for eva/airline/retail.
         await self._apply_initialization_actions(scenario)
 
-        if "noise_config" in scenario:
-            self.set_noise_config(scenario["noise_config"])
-        else:
-            self.set_noise_config(None)
+        # Cross-side sync setup. When the scenario overrides
+        # ``Scenario.sync_state`` (dual-side domains like tau2_telecom),
+        # the bridge maintains in-process shadow DBs that mirror the
+        # bots' state. After each write action fires on either bot, the
+        # bridge replays it onto the shadow DBs, runs
+        # ``scenario.sync_state(agent_db, user_db)``, and dispatches the
+        # resulting per-side deltas to the corresponding bot via the
+        # ``apply_sync_delta`` RTVI action. For single-side domains
+        # ``sync_state`` is the no-op default — the entire pipeline is
+        # skipped at scenario start.
+        await self._setup_cross_side_sync(scenario)
+
+        noise_config = getattr(scenario, "noise_config", None)
+        self.set_noise_config(noise_config)
 
         # Disconnect the bridge to clear the WebSocket buffers
         await self.disconnect(print_stats=False)
 
-        logger.info(f"Finished preparing for scenario: {scenario['name']}")
+        logger.info(f"Finished preparing for scenario: {scenario.name}")
         self.bridge_ready = True
 
     def _get_relative_time(self, timestamp: float) -> float:
@@ -1388,8 +1428,8 @@ class VoiceAgentEvaluationBridge:
             logger.warning(f"[SCENARIO SUMMARY] Error retrieving scenario summary: {e}")
             return {}
 
-    async def _apply_initialization_actions(self, scenario: dict) -> None:
-        """Dispatch ``scenario["initialization_actions"]`` to the bots before kickoff.
+    async def _apply_initialization_actions(self, scenario) -> None:
+        """Dispatch ``scenario.initialization_actions`` to the bots before kickoff.
 
         Bot-side dispatch via the ``apply_initialization_actions`` RTVI action.
         The bridge splits the action list by ``side``:
@@ -1412,11 +1452,11 @@ class VoiceAgentEvaluationBridge:
         before the conversation starts. Partial seeding produces noisy /
         unscoreable runs, so we'd rather fail loud than silently degrade.
         """
-        actions = scenario.get("initialization_actions") or []
+        actions = getattr(scenario, "initialization_actions", None) or []
         if not actions:
             return  # No-op for scenarios without init actions
 
-        domain = scenario.get("tool_domain", "default")
+        domain = getattr(scenario, "domain", "default")
         agent_actions = [a for a in actions if a.get("side") == "agent"]
         user_actions = [a for a in actions if a.get("side") == "user"]
         unsided = [a for a in actions if a.get("side") not in ("agent", "user")]
@@ -1542,6 +1582,256 @@ class VoiceAgentEvaluationBridge:
             f"[APPLY INIT] Timeout ({timeout}s) waiting for {side_label} bot "
             f"to apply {len(actions)} initialization action(s)."
         )
+
+    # ---------------------------------------------------------------------
+    # Cross-side sync (mirrors upstream tau2's Environment.sync_tools())
+    # ---------------------------------------------------------------------
+
+    async def _setup_cross_side_sync(self, scenario) -> None:
+        """Prepare shadow DBs + tool map for cross-side state propagation.
+
+        Called from ``prepare_for_scenario`` once per scenario,
+        **after** ``_apply_initialization_actions`` so the bot-side
+        live state is already at its post-init starting point. We
+        mirror that here by replaying the same init actions onto the
+        shadow DBs, then run a one-shot ``sync_state`` to propagate
+        any cross-side state that should be coherent at conversation
+        start (e.g. agent-side ``set_data_usage(15.1)`` flipping
+        user-side ``surroundings.mobile_data_usage_exceeded`` to True).
+
+        No-op when the scenario's ``sync_state`` is the inherited
+        default (single-side domains).
+        """
+        # Reset per-scenario sync state regardless of whether the
+        # scenario opts in — old shadow DBs from a previous scenario
+        # must not leak into this one.
+        self.sync_enabled = False
+        self.scenario_instance = None
+        self.shadow_state = None
+        self.shadow_tool_map = {}
+
+        # Detect override by walking the MRO. ``sync_state`` lives on
+        # ``Scenario`` as a default no-op; any override on a subclass
+        # (currently only ``Tau2TelecomBaseScenario``) signals opt-in.
+        from nemo_voice_agent.evaluation.scenarios.classes import Scenario as _BaseScenario
+
+        if type(scenario).sync_state is _BaseScenario.sync_state:
+            # Default no-op; nothing to do.
+            return
+
+        # Deep-copy both DBs so live mutations during replay don't
+        # leak into ``scenario``'s cached_property results (which are
+        # shared across the scenario lifetime).
+        try:
+            agent_db = copy.deepcopy(scenario.db) if hasattr(scenario, "db") else {}
+            user_db = copy.deepcopy(scenario.user_db) if hasattr(scenario, "user_db") else {}
+        except Exception as exc:
+            logger.warning(
+                f"[SYNC SETUP] Couldn't deepcopy scenario DBs: {type(exc).__name__}: {exc}. "
+                f"Cross-side sync disabled for this scenario."
+            )
+            return
+
+        # Replay ``initialization_actions`` onto the shadow DBs so they
+        # mirror the bots' post-init state. Init functions don't fire
+        # ``action-applied`` events (they aren't WriteScenarioTool
+        # subclasses), so this is the only place we can bring shadow
+        # state into alignment with what the bots already have.
+        domain = getattr(scenario, "domain", "default")
+        init_actions = getattr(scenario, "initialization_actions", None) or []
+        if init_actions:
+            from nemo_voice_agent.evaluation.initialization_functions import (
+                apply_initialization_actions as _apply_init,
+            )
+
+            for side, target_db in (("agent", agent_db), ("user", user_db)):
+                side_actions = [a for a in init_actions if a.get("side") == side]
+                if not side_actions:
+                    continue
+                result = _apply_init(domain=domain, actions=side_actions, db=target_db)
+                if not result["success"]:
+                    logger.warning(
+                        f"[SYNC SETUP] Shadow init replay failed on {side} side: "
+                        f"{result['errors']}. Cross-side sync disabled."
+                    )
+                    return
+
+        self.scenario_instance = scenario
+        self.shadow_state = {
+            "db": agent_db,
+            "user_db": user_db,
+            "actions": [],
+        }
+        try:
+            self.shadow_tool_map = scenario._build_tool_map(self.shadow_state)
+        except Exception as exc:
+            logger.warning(
+                f"[SYNC SETUP] scenario._build_tool_map raised: {type(exc).__name__}: {exc}. "
+                f"Cross-side sync disabled."
+            )
+            self.shadow_state = None
+            return
+
+        self.sync_enabled = True
+        logger.info(
+            f"[SYNC SETUP] Cross-side sync enabled for scenario {scenario.name!r} "
+            f"(shadow tool map: {len(self.shadow_tool_map)} entries)"
+        )
+
+        # One-shot post-init sync. Cross-side state that's coherent
+        # from initial-state alone (e.g. agent ``data_used_gb=15.1`` →
+        # user ``mobile_data_usage_exceeded=True``) gets propagated to
+        # the bots BEFORE the conversation starts. Without this, the
+        # user-sim's first ``check_*`` / ``run_speed_test`` would see
+        # stale defaults and the conversation would diverge from the
+        # task's intended starting state.
+        try:
+            deltas = scenario.sync_state(
+                agent_db=self.shadow_state["db"],
+                user_db=self.shadow_state["user_db"],
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[SYNC SETUP] Initial sync_state raised: {type(exc).__name__}: {exc}. "
+                f"Conversation starts without initial propagation."
+            )
+            return
+
+        agent_delta = deltas.get("agent") or {}
+        user_delta = deltas.get("user") or {}
+        if agent_delta or user_delta:
+            logger.info(
+                f"[SYNC SETUP] Initial sync dispatch: "
+                f"agent_delta={list(agent_delta)}, user_delta={list(user_delta)}"
+            )
+            tasks = []
+            if agent_delta:
+                tasks.append(
+                    self._send_apply_sync_delta(self.agent_ws, "agent", domain, agent_delta)
+                )
+            if user_delta:
+                tasks.append(
+                    self._send_apply_sync_delta(self.user_ws, "user", domain, user_delta)
+                )
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _propagate_cross_side_sync(self, action: dict, source_side: str) -> None:
+        """Replay one action onto the shadow DBs, run scenario.sync_state, dispatch deltas.
+
+        Called from ``_monitor_agent_message`` / ``_monitor_user_message``
+        when an ``action-applied`` RTVI server message arrives. ``source_side``
+        is which side's monitor saw it.
+
+        Steps:
+          1. Replay ``action`` onto the shadow state via the shadow
+             tool map (uses each tool's sync ``invoke``).
+          2. Call ``scenario.sync_state(agent_db, user_db)`` — returns
+             ``{"agent": delta_dict, "user": delta_dict}``.
+          3. For each non-empty side delta, send an ``apply_sync_delta``
+             RTVI action to that bot's WebSocket.
+
+        No-op when ``sync_enabled`` is False (single-side scenarios).
+        """
+        if not self.sync_enabled or self.shadow_state is None:
+            return
+
+        async with self.sync_lock:
+            name = action.get("name")
+            args = action.get("arguments") or {}
+            tool = self.shadow_tool_map.get(name)
+            if tool is None:
+                logger.warning(
+                    f"[SYNC] No shadow tool for action name={name!r} (source_side={source_side!r}); "
+                    f"shadow state will drift. Available: {list(self.shadow_tool_map)[:10]}..."
+                )
+                return
+            try:
+                tool.invoke(**args)
+            except Exception as exc:
+                logger.warning(
+                    f"[SYNC] Shadow replay failed for {name!r}: {type(exc).__name__}: {exc}. "
+                    f"Skipping sync this turn."
+                )
+                return
+
+            try:
+                deltas = self.scenario_instance.sync_state(
+                    agent_db=self.shadow_state["db"],
+                    user_db=self.shadow_state["user_db"],
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"[SYNC] sync_state raised: {type(exc).__name__}: {exc}. Skipping."
+                )
+                return
+
+            agent_delta = deltas.get("agent") or {}
+            user_delta = deltas.get("user") or {}
+            if not agent_delta and not user_delta:
+                return
+
+            domain = type(self.scenario_instance).domain
+            logger.info(
+                f"[SYNC] Propagating after {source_side}-side {name!r}: "
+                f"agent_delta={list(agent_delta)}, user_delta={list(user_delta)}"
+            )
+            tasks = []
+            if agent_delta:
+                tasks.append(
+                    self._send_apply_sync_delta(self.agent_ws, "agent", domain, agent_delta)
+                )
+            if user_delta:
+                tasks.append(
+                    self._send_apply_sync_delta(self.user_ws, "user", domain, user_delta)
+                )
+            # Both pushes can run concurrently — they target different bots.
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _send_apply_sync_delta(
+        self, ws, side_label: str, domain: str, delta: dict
+    ) -> None:
+        """Send a single ``apply_sync_delta`` RTVI action to a bot.
+
+        Mirrors ``_send_apply_initialization_actions``: builds an action
+        message with a unique id, awaits the response, logs success or
+        failure. Failures are warnings — sync drift is recoverable as
+        long as the next propagation cycle eventually catches up.
+        """
+        if not ws:
+            logger.warning(
+                f"[SYNC] {side_label}_ws is not connected; cannot push "
+                f"{len(delta)}-key sync delta."
+            )
+            return
+
+        action_id = f"apply_sync_delta_{side_label}_{datetime.now().timestamp()}"
+        action_msg = {
+            "label": "rtvi-ai",
+            "type": "action",
+            "id": action_id,
+            "data": {
+                "service": "context",
+                "action": "apply_sync_delta",
+                "arguments": [
+                    {"name": "domain", "value": domain},
+                    {"name": "delta", "value": delta},
+                ],
+            },
+        }
+        msg_frame = MessageFrame(data=json.dumps(action_msg))
+        serialized = await self.serializer.serialize(msg_frame)
+        try:
+            await ws.send(serialized)
+            logger.debug(
+                f"[SYNC] Sent apply_sync_delta to {side_label} bot "
+                f"({len(delta)} key(s)); id={action_id!r}"
+            )
+        except Exception as exc:
+            # The connection may have closed between turns; log + continue.
+            logger.warning(
+                f"[SYNC] Failed to send apply_sync_delta to {side_label}: "
+                f"{type(exc).__name__}: {exc}"
+            )
 
     async def _receive_user_to_queue(self, user_ws, duration: float):
         """Receive audio from user WebSocket and put into queue for agent thread."""
@@ -1982,6 +2272,16 @@ class VoiceAgentEvaluationBridge:
                     }
                 )
 
+        elif message_type == RTVI_BOT_SERVER_MESSAGE:
+            # Cross-side sync trigger: a write tool on the user bot
+            # emitted ``action-applied`` (e.g. telecom phone-control
+            # tools). Replay onto shadow DBs and propagate any
+            # cross-side delta to the agent bot.
+            inner = data.get("data") or {}
+            if isinstance(inner, dict) and inner.get("type") == "action-applied":
+                action_record = inner.get("action") or {}
+                await self._propagate_cross_side_sync(action_record, source_side="user")
+
     async def _monitor_agent_message(self, frame):
         """
         Monitor agent messages for timing and transcripts.
@@ -2059,7 +2359,15 @@ class VoiceAgentEvaluationBridge:
                 )
 
         elif message_type == RTVI_BOT_SERVER_MESSAGE:
-            text = str(data.get("data", {}).get("text", ""))
+            inner = data.get("data") or {}
+            # Cross-side sync trigger: a write tool on the agent bot
+            # emitted ``action-applied``. Replay onto shadow DBs and
+            # propagate any cross-side delta to the user bot.
+            if isinstance(inner, dict) and inner.get("type") == "action-applied":
+                action_record = inner.get("action") or {}
+                await self._propagate_cross_side_sync(action_record, source_side="agent")
+                return
+            text = str(inner.get("text", "")) if isinstance(inner, dict) else ""
             if text:
                 logger.info(f"[AGENT SERVER MESSAGE] {text}")
                 if text.startswith(FINAL_RESPONSE_START_TAG) and text.endswith(FINAL_RESPONSE_END_TAG):

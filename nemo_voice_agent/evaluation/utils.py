@@ -406,9 +406,11 @@ Evaluate how well the agent performed by considering:
 
 Presentation-issue deduction cap. The following are "presentation issues" — they affect how the agent speaks, not whether the agent did the right thing:
 - Missing or skipped `EndConversationTool` call. This is a voice-harness termination signal, not a domain policy requirement; the framework tracks termination separately via the conversation's stop reason.
-- Voice-realization violations: not spelling alphanumeric identifiers character-by-character (e.g. flight numbers, confirmation numbers, user IDs spoken as ordinary words instead of "S, K, seven, zero, three"), missing brand-specific farewells, prosody/formatting nits, etc.
 
 When the agent successfully completed the task (reference actions matched, DB state correct, nl_assertions satisfied), **all presentation issues combined must not deduct more than 0.05 from the score**. Treat them as a single category capped at 0.05 total, regardless of how many individual presentation issues you find. The minimum score after only presentation issues is 0.95.
+
+Minor issues that DO NOT deduct points from the score:
+- Voice-realization violations: not spelling alphanumeric identifiers character-by-character (e.g. flight numbers, confirmation numbers, user IDs spoken as ordinary words instead of "S, K, seven, zero, three"), missing brand-specific farewells, prosody/formatting nits, etc.
 
 Reason field requirements. The `reason` field MUST be concrete and debuggable:
 - For each deduction, quote the specific phrase from <conversation> or <prediction> that was wrong (e.g. *Agent said "Flight SK703" instead of spelling it as "S, K, seven, zero, three"*).
