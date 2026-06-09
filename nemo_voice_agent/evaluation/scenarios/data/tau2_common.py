@@ -331,6 +331,30 @@ class Tau2BaseScenario(Scenario):
                         f"{result['errors']}"
                     )
 
+        # Mirror the bridge's cross-side sync pipeline in-process so the
+        # gold-replay DB matches what live runtime produces. Without this,
+        # actions like ``make_payment`` (user-side) silently no-op because
+        # their input state (``surroundings.payment_request``) is only ever
+        # seeded by sync from a preceding agent-side action like
+        # ``send_payment_request``. ``sync_state`` is a no-op on the base
+        # ``Scenario``, so single-side domains (eva / airline / retail) pay
+        # nothing here.
+        from nemo_voice_agent.evaluation.sync_appliers import apply_sync_delta
+
+        def _run_sync() -> None:
+            agent_db = gold_state.get("db")
+            user_db = gold_state.get("user_db")
+            if agent_db is None or user_db is None:
+                return
+            delta = self.sync_state(agent_db, user_db)
+            if delta.get("agent"):
+                apply_sync_delta(self.domain, agent_db, delta["agent"])
+            if delta.get("user"):
+                apply_sync_delta(self.domain, user_db, delta["user"])
+
+        # Post-init sync (matches bridge's ``_setup_cross_side_sync``).
+        _run_sync()
+
         actions = (self.tau2_task.get("evaluation_criteria") or {}).get("actions") or []
         for action in actions:
             side = "user" if action.get("requestor") == "user" else "agent"
@@ -353,6 +377,8 @@ class Tau2BaseScenario(Scenario):
             # Read-tools record nothing → no records to tag.
             for rec in gold_state["actions"][before:]:
                 rec["side"] = side
+            # Per-action sync (matches bridge's ``_propagate_cross_side_sync``).
+            _run_sync()
 
         final_user_db = gold_state.get("user_db") if self.has_user_state else None
         return gold_state.get("db", {}), final_user_db, gold_state["actions"]
