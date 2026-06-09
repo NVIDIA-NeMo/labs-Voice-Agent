@@ -95,7 +95,22 @@ async def run_dynamic_evaluation(
     )
 
     all_results = []
-    success_results = []
+    # Composite ``is_successful`` results (strict conjunction across all
+    # applicable signals — see ``_signal_passes`` below). One bool per
+    # scenario that had at least one applicable signal; scenarios where
+    # every signal was "N/A" don't append here.
+    success_results: List[bool] = []
+    # Action-list match results (deterministic comparator). Tracked
+    # independently of ``success_results`` so the per-signal breakdown
+    # can report action-match-only rates alongside the composite.
+    # One bool per scenario with a ``reference_answer``.
+    action_match_results: List[bool] = []
+    # LLM judge scores (raw 0-1 float). One entry per scenario when
+    # ``--judge-url`` is set. Used for the mean-score rollup.
+    judge_score_results: List[float] = []
+    # LLM judge pass results — one bool per scenario when both
+    # ``--judge-url`` and ``--judge-threshold`` are set.
+    judge_pass_results: List[bool] = []
     # DB-state match results (only collected for scenarios with `expected_scenario_db`).
     # Denominator is "scenarios that opted into DB-state scoring", not "all scenarios".
     db_state_results: List[bool] = []
@@ -123,9 +138,36 @@ async def run_dynamic_evaluation(
     # Scenarios without a ``__`` separator (e.g. "fastbite", "simple_qa_1") fall
     # under the scenario name itself.
     per_domain_success: dict = {}
+    per_domain_action_match: dict = {}
+    per_domain_judge_score: dict = {}
+    per_domain_judge_pass: dict = {}
     per_domain_db_state: dict = {}
     per_domain_nl_assertion: dict = {}
     per_domain_db_state_assertion: dict = {}
+
+    def _signal_passes(value, *, pass_rate_threshold: float = 1.0):
+        """Normalize a per-scenario signal to True / False / None (N/A).
+
+        Used by the composite ``is_successful`` strict-conjunction logic
+        below — every applicable signal must pass for the scenario to be
+        considered successful overall.
+
+        - ``None`` or ``"N/A"`` → ``None`` (signal not applicable to this scenario).
+        - ``bool`` → returned as-is.
+        - ``float`` (pass rates) → True iff ``value >= pass_rate_threshold``.
+          Default ``pass_rate_threshold=1.0`` enforces "every assertion
+          must pass" for ``db_state_assertion_pass_rate`` and
+          ``nl_assertion_pass_rate``. Loosen via per-call override if
+          empirical noise warrants.
+        """
+        if value is None or value == "N/A":
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return float(value) >= pass_rate_threshold
+        return None
+
     for idx, scenario in enumerate(scenarios):
         logger.info(f"{'='*80}")
         logger.info(f"Starting Scenario {idx+1}/{len(scenarios)}: {scenario.name}")
@@ -164,25 +206,43 @@ async def run_dynamic_evaluation(
         # Check if the scenario is successful
         reference_file = os.path.join(scenario_config_dir, scenario.reference_file)
         prediction_file = os.path.join(scenario_dir, bridge.final_response_file)
+
         # Per-scenario nl-assertion pass rate (set inside the judge branch when
-        # the scenario carries nl_assertions; remains None for scenarios without
-        # assertions OR for paths that bypass the judge — e.g. action-list scoring).
+        # the scenario carries nl_assertions; remains None when no judge ran).
         scenario_nl_pass_rate: Optional[float] = None
+
+        # ----- Signal 1: deterministic action-list match ---------------------
+        # Computed independently of the LLM judge — both signals are
+        # orthogonal. The composite ``is_successful`` (computed at the end of
+        # this block) requires ALL applicable signals to pass.
         if not os.path.exists(reference_file):
-            logger.info(f"Reference file {reference_file} not found, skipping checking for task success...")
-            is_successful = "N/A"
+            logger.info(f"Reference file {reference_file} not found; action-match is N/A.")
+            is_action_match = "N/A"
         elif not os.path.exists(prediction_file):
-            logger.info(f"Prediction file {prediction_file} not found, setting task success to False...")
-            is_successful = False
-            success_results.append(False)
-            per_domain_success.setdefault(domain, []).append(False)
-        elif judge is not None:
-            # Wire through judge_scenario (not judge_file). Same output shape
-            # ({"score", "reason"}) when nl_assertions is None, so the
-            # downstream scoring path is unchanged. tau2_retail (and any
-            # other domain with nl_assertions) gets per-assertion verdicts
-            # in the response.
-            #
+            logger.info(f"Prediction file {prediction_file} not found; action-match=False.")
+            is_action_match = False
+        else:
+            scenario_disallow_extra = strict_match or getattr(scenario, "disallow_extra_items", False)
+            is_action_match = check_if_task_success(
+                reference=reference_file,
+                prediction=prediction_file,
+                ignore_capitalization=getattr(scenario, "ignore_capitalization", False),
+                ignore_punctuation=getattr(scenario, "ignore_punctuation", False),
+                clean_text=getattr(scenario, "clean_text", False),
+                disallow_extra_items=scenario_disallow_extra,
+            )
+        if isinstance(is_action_match, bool):
+            action_match_results.append(is_action_match)
+            per_domain_action_match.setdefault(domain, []).append(is_action_match)
+
+        # ----- Signal 2: LLM judge (independent of action-list) --------------
+        # Runs whenever judge is configured AND both reference + prediction
+        # files exist. Produces ``judge_score`` (float) and (when threshold
+        # is set) ``judge_passed`` (bool). Also produces per-assertion
+        # nl_assertion verdicts when the scenario carries nl_assertions.
+        judge_score: Optional[float] = None
+        judge_passed: Optional[bool] = None
+        if judge is not None and os.path.exists(reference_file) and os.path.exists(prediction_file):
             # Shape-normalize both files before handing to the judge: the
             # deterministic comparator's "Situation 2" logic treats
             # ``{...}`` and ``[{...}]`` as equivalent payloads, but the
@@ -233,12 +293,13 @@ async def run_dynamic_evaluation(
             )
             with open(os.path.join(scenario_dir, "judge_result.json"), "w") as f:
                 json.dump(result, f, indent=2)
+            judge_score = float(result["score"])
+            judge_score_results.append(judge_score)
+            per_domain_judge_score.setdefault(domain, []).append(judge_score)
             if judge_threshold is not None:
-                is_successful = result["score"] >= judge_threshold
-            else:
-                is_successful = result["score"]
-            success_results.append(is_successful)
-            per_domain_success.setdefault(domain, []).append(is_successful)
+                judge_passed = judge_score >= judge_threshold
+                judge_pass_results.append(judge_passed)
+                per_domain_judge_pass.setdefault(domain, []).append(judge_passed)
             # Roll per-assertion verdicts into both the run-wide list and the
             # per-domain bucket. Denominator is total assertions, not scenarios —
             # makes the rate stable when scenarios carry different assertion counts.
@@ -252,25 +313,17 @@ async def run_dynamic_evaluation(
                     if passed:
                         scenario_passes += 1
                 scenario_nl_pass_rate = scenario_passes / len(verdicts)
-        else:
-            scenario_disallow_extra = strict_match or getattr(scenario, "disallow_extra_items", False)
-            is_successful = check_if_task_success(
-                reference=reference_file,
-                prediction=prediction_file,
-                ignore_capitalization=getattr(scenario, "ignore_capitalization", False),
-                ignore_punctuation=getattr(scenario, "ignore_punctuation", False),
-                clean_text=getattr(scenario, "clean_text", False),
-                disallow_extra_items=scenario_disallow_extra,
-            )
-            success_results.append(is_successful)
-            per_domain_success.setdefault(domain, []).append(is_successful)
 
         # Collect metrics for this scenario
         metrics = bridge.get_metrics()
         metrics["scenario_name"] = scenario.name
         metrics["scenario_directory"] = scenario_dir
         metrics["scenario_duration"] = (scenario_end - scenario_start).total_seconds()
-        metrics["is_successful"] = is_successful
+        metrics["is_action_match"] = is_action_match
+        if judge_score is not None:
+            metrics["judge_score"] = judge_score
+        if judge_passed is not None:
+            metrics["judge_passed"] = judge_passed
         # Snapshot per-side token usage accumulated by the bridge during the
         # scenario. Shape mirrors ``run_token_usage``: each side has n_calls,
         # prompt sum, completion sum. Roll into the run-level accumulator for
@@ -361,6 +414,36 @@ async def run_dynamic_evaluation(
                 db_state_assertion_results.append(passed)
                 per_domain_db_state_assertion.setdefault(domain, []).append(passed)
 
+        # ----- Composite is_successful (strict conjunction) ------------------
+        # ``is_successful`` is True iff every applicable signal passes:
+        # action-list match, db-state hash match, db-state assertions (==1.0),
+        # nl-assertions (==1.0), and judge_passed (when threshold is set).
+        # Signals that are "N/A" or absent are excluded from the conjunction.
+        # If no signals are applicable to this scenario, ``is_successful``
+        # falls back to "N/A".
+        #
+        # ``success_breakdown`` lists each signal's verdict so operators can
+        # see at-a-glance WHICH signal failed without comparing every field.
+        signal_checks = {
+            "is_action_match": _signal_passes(metrics.get("is_action_match")),
+            "db_state_match": _signal_passes(metrics.get("db_state_match")),
+            "db_state_assertion": _signal_passes(metrics.get("db_state_assertion_pass_rate")),
+            "nl_assertion": _signal_passes(metrics.get("nl_assertion_pass_rate")),
+            "judge_passed": metrics.get("judge_passed"),  # already bool/None
+        }
+        applicable = {k: v for k, v in signal_checks.items() if v is not None}
+        metrics["success_breakdown"] = {
+            "passed": [k for k, v in applicable.items() if v],
+            "failed": [k for k, v in applicable.items() if not v],
+            "not_applicable": [k for k, v in signal_checks.items() if v is None],
+        }
+        if applicable:
+            metrics["is_successful"] = all(applicable.values())
+            success_results.append(metrics["is_successful"])
+            per_domain_success.setdefault(domain, []).append(metrics["is_successful"])
+        else:
+            metrics["is_successful"] = "N/A"
+
         # Save metrics to file
         metrics_file = os.path.join(scenario_dir, "metrics.json")
         with open(metrics_file, "w") as f:
@@ -375,14 +458,21 @@ async def run_dynamic_evaluation(
         logger.info(f"Scenario '{scenario.name}' Complete")
         logger.info(f"{'='*80}")
         logger.info(f"  Is successful: {metrics['is_successful']}")
+        logger.info(f"    Action-list match: {metrics['is_action_match']}")
         if "db_state_match" in metrics:
-            logger.info(f"  DB-state match: {metrics['db_state_match']}")
-        if "nl_assertion_pass_rate" in metrics:
-            logger.info(f"  NL-assertion pass rate: {metrics['nl_assertion_pass_rate']*100:.2f}%")
+            logger.info(f"    DB-state match: {metrics['db_state_match']}")
         if "db_state_assertion_pass_rate" in metrics:
             logger.info(
-                f"  DB-state-assertion pass rate: {metrics['db_state_assertion_pass_rate']*100:.2f}%"
+                f"    DB-state-assertion pass rate: {metrics['db_state_assertion_pass_rate']*100:.2f}%"
             )
+        if "nl_assertion_pass_rate" in metrics:
+            logger.info(f"    NL-assertion pass rate: {metrics['nl_assertion_pass_rate']*100:.2f}%")
+        if "judge_score" in metrics:
+            logger.info(f"    Judge score: {metrics['judge_score']:.2f}")
+        if "judge_passed" in metrics:
+            logger.info(f"    Judge passed: {metrics['judge_passed']}")
+        if metrics["success_breakdown"]["failed"]:
+            logger.info(f"    Failed signals: {metrics['success_breakdown']['failed']}")
         logger.info(f"  Total turns: {metrics['total_turns']}")
         logger.info(f"  Duration: {metrics['scenario_duration']:.1f}s")
         logger.info(f"  Latency measurements: {latency_stats['count']}")
@@ -409,7 +499,21 @@ async def run_dynamic_evaluation(
 
     # Save summary
     summary_file = os.path.join(output_dir, "all_summary.txt")
+    # Composite success rate — fraction of scenarios where EVERY applicable
+    # signal passed (strict conjunction). See ``success_breakdown`` per
+    # scenario for which signal failed.
     success_rate = sum(success_results) / len(success_results) if len(success_results) > 0 else 0
+    # Per-signal rates so the headline can be broken down. Denominators
+    # are per-signal: only scenarios that opted into each signal count.
+    action_match_rate = (
+        sum(action_match_results) / len(action_match_results) if action_match_results else None
+    )
+    judge_score_mean = (
+        sum(judge_score_results) / len(judge_score_results) if judge_score_results else None
+    )
+    judge_pass_rate = (
+        sum(judge_pass_results) / len(judge_pass_results) if judge_pass_results else None
+    )
     # Denominator is "scenarios with expected_scenario_db", not all scenarios.
     # None when no scenario in the run opted into DB-state scoring.
     db_state_success_rate = sum(db_state_results) / len(db_state_results) if db_state_results else None
@@ -456,15 +560,23 @@ async def run_dynamic_evaluation(
             stats = result["latency_stats"]
             f.write(f"\n====== {result['scenario_name']} ======:\n")
             f.write(f"  Is successful: {result['is_successful']}\n")
+            f.write(f"    Action-list match: {result['is_action_match']}\n")
             if "db_state_match" in result:
-                f.write(f"  DB-state match: {result['db_state_match']}\n")
-            if "nl_assertion_pass_rate" in result:
-                f.write(f"  NL-assertion pass rate: {result['nl_assertion_pass_rate']*100:.2f}%\n")
+                f.write(f"    DB-state match: {result['db_state_match']}\n")
             if "db_state_assertion_pass_rate" in result:
                 f.write(
-                    f"  DB-state-assertion pass rate: "
+                    f"    DB-state-assertion pass rate: "
                     f"{result['db_state_assertion_pass_rate']*100:.2f}%\n"
                 )
+            if "nl_assertion_pass_rate" in result:
+                f.write(f"    NL-assertion pass rate: {result['nl_assertion_pass_rate']*100:.2f}%\n")
+            if "judge_score" in result:
+                f.write(f"    Judge score: {result['judge_score']:.2f}\n")
+            if "judge_passed" in result:
+                f.write(f"    Judge passed: {result['judge_passed']}\n")
+            failed_signals = result["success_breakdown"]["failed"]
+            if failed_signals:
+                f.write(f"    Failed signals: {', '.join(failed_signals)}\n")
             f.write(f"  Turns: {result['total_turns']}\n")
             f.write(f"  Duration: {result['scenario_duration']:.1f}s\n")
             if result["scenario_duration"] > 0:
@@ -487,31 +599,48 @@ async def run_dynamic_evaluation(
         f.write(f"  Min: {overall_latency_stats['min_ms']:.1f}ms\n")
         f.write(f"  Max: {overall_latency_stats['max_ms']:.1f}ms\n")
 
+        # Composite (strict-conjunction) success rate first — the headline
+        # number — followed by per-signal breakdown so operators can see
+        # which dimension(s) dragged the conjunction down.
         if success_results:
-            # success_results entries are bool (action-list match, or judge ≥ threshold)
-            # or float (raw judge score when no threshold set). `:g` drops trailing zeros
-            # so 2.0 → "2" and 1.6 → "1.6".
             f.write(
                 f"\n\nOverall Success Rate: {success_rate*100:.2f}% "
-                f"({sum(success_results):g}/{len(success_results)} scenarios with reference_answer)\n"
+                f"({sum(success_results)}/{len(success_results)} scenarios — strict conjunction "
+                f"across all applicable signals)\n"
             )
         else:
-            f.write("\n\nOverall Success Rate: N/A (no scenarios had reference_answer for action-list scoring)\n")
+            f.write("\n\nOverall Success Rate: N/A (no scenarios had any applicable signal)\n")
+
+        f.write("\nPer-signal pass rates:\n")
+        if action_match_rate is not None:
+            f.write(
+                f"  Action-list match:           {action_match_rate*100:6.2f}% "
+                f"({sum(action_match_results)}/{len(action_match_results)} scenarios)\n"
+            )
         if db_state_success_rate is not None:
             f.write(
-                f"DB-State Match Rate: {db_state_success_rate*100:.2f}% "
-                f"({sum(db_state_results)}/{len(db_state_results)} scenarios with expected_scenario_db)\n"
-            )
-        if nl_assertion_success_rate is not None:
-            f.write(
-                f"NL-Assertion Pass Rate: {nl_assertion_success_rate*100:.2f}% "
-                f"({sum(nl_assertion_results)}/{len(nl_assertion_results)} assertions across scenarios)\n"
+                f"  DB-State match:              {db_state_success_rate*100:6.2f}% "
+                f"({sum(db_state_results)}/{len(db_state_results)} scenarios)\n"
             )
         if db_state_assertion_success_rate is not None:
             f.write(
-                f"DB-State-Assertion Pass Rate: {db_state_assertion_success_rate*100:.2f}% "
-                f"({sum(db_state_assertion_results)}/{len(db_state_assertion_results)} "
-                f"predicates across scenarios)\n"
+                f"  DB-State-Assertion pass:     {db_state_assertion_success_rate*100:6.2f}% "
+                f"({sum(db_state_assertion_results)}/{len(db_state_assertion_results)} predicates)\n"
+            )
+        if nl_assertion_success_rate is not None:
+            f.write(
+                f"  NL-Assertion pass:           {nl_assertion_success_rate*100:6.2f}% "
+                f"({sum(nl_assertion_results)}/{len(nl_assertion_results)} assertions)\n"
+            )
+        if judge_score_mean is not None:
+            f.write(
+                f"  Judge score mean:            {judge_score_mean:.3f} "
+                f"(across {len(judge_score_results)} scenarios)\n"
+            )
+        if judge_pass_rate is not None:
+            f.write(
+                f"  Judge passed (>= threshold): {judge_pass_rate*100:6.2f}% "
+                f"({sum(judge_pass_results)}/{len(judge_pass_results)} scenarios)\n"
             )
 
         # Token usage rollup — only printed when there's at least one
@@ -573,25 +702,40 @@ async def run_dynamic_evaluation(
     if success_results:
         logger.info(
             f"Overall Success Rate: {success_rate*100:.2f}% "
-            f"({sum(success_results):g}/{len(success_results)} scenarios with reference_answer)"
+            f"({sum(success_results)}/{len(success_results)} scenarios — "
+            f"strict conjunction across all applicable signals)"
         )
     else:
-        logger.info("Overall Success Rate: N/A (no scenarios had reference_answer for action-list scoring)")
+        logger.info("Overall Success Rate: N/A (no scenarios had any applicable signal)")
+    if action_match_rate is not None:
+        logger.info(
+            f"  Action-list match: {action_match_rate*100:.2f}% "
+            f"({sum(action_match_results)}/{len(action_match_results)} scenarios)"
+        )
     if db_state_success_rate is not None:
         logger.info(
-            f"DB-State Match Rate: {db_state_success_rate*100:.2f}% "
-            f"({sum(db_state_results)}/{len(db_state_results)} scenarios with expected_scenario_db)"
-        )
-    if nl_assertion_success_rate is not None:
-        logger.info(
-            f"NL-Assertion Pass Rate: {nl_assertion_success_rate*100:.2f}% "
-            f"({sum(nl_assertion_results)}/{len(nl_assertion_results)} assertions across scenarios)"
+            f"  DB-State match: {db_state_success_rate*100:.2f}% "
+            f"({sum(db_state_results)}/{len(db_state_results)} scenarios)"
         )
     if db_state_assertion_success_rate is not None:
         logger.info(
-            f"DB-State-Assertion Pass Rate: {db_state_assertion_success_rate*100:.2f}% "
-            f"({sum(db_state_assertion_results)}/{len(db_state_assertion_results)} "
-            f"predicates across scenarios)"
+            f"  DB-State-Assertion pass: {db_state_assertion_success_rate*100:.2f}% "
+            f"({sum(db_state_assertion_results)}/{len(db_state_assertion_results)} predicates)"
+        )
+    if nl_assertion_success_rate is not None:
+        logger.info(
+            f"  NL-Assertion pass: {nl_assertion_success_rate*100:.2f}% "
+            f"({sum(nl_assertion_results)}/{len(nl_assertion_results)} assertions)"
+        )
+    if judge_score_mean is not None:
+        logger.info(
+            f"  Judge score mean: {judge_score_mean:.3f} "
+            f"(across {len(judge_score_results)} scenarios)"
+        )
+    if judge_pass_rate is not None:
+        logger.info(
+            f"  Judge passed: {judge_pass_rate*100:.2f}% "
+            f"({sum(judge_pass_results)}/{len(judge_pass_results)} scenarios)"
         )
     run_token_total = (
         run_token_usage["agent"]["prompt"] + run_token_usage["agent"]["completion"]

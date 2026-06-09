@@ -236,12 +236,12 @@ Examples:
             url=args.judge_url,
             model=args.judge_model,
             api_key=args.judge_api_key,
-            max_tokens=2048,
+            max_tokens=8192,
             temperature=1.0,
             top_p=0.95,
             seed=42,
             chat_template_kwargs={"enable_thinking": True},
-            thinking_token_budget=1800,
+            thinking_token_budget=4096,
         )
     else:
         judge = None
