@@ -316,7 +316,7 @@ class Scenario:
             initialization_actions: Action records replayed against shared_state
                 before the scenario starts (e.g., tau2-telecom). Each entry has
                 shape ``{"side": "user"|"agent", "func_name": str, "arguments":
-                dict}``. Dispatched bot-side via the ``apply_initialization_actions``
+                dict}``. Dispatched bot-side via the ``apply_initialization``
                 RTVI action. Default ``None`` skips replay. Same renames as
                 ``db_state_assertions``: upstream key ``env_type`` → ``side``,
                 value ``"assistant"`` → ``"agent"``.

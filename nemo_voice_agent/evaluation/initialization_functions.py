@@ -23,10 +23,12 @@ Concretely:
   - Dispatch is **bot-side** (the opposite of predicates). The bot has the
     live ``shared_state["db"]`` (agent) or ``shared_state["user_db"]`` (user)
     and the toolkit instance methods that read/write them; init functions
-    just mutate the dict directly. The bridge calls ``apply_initialization_actions``
-    once per side (agent bot for ``side=="agent"`` actions, user bot for
-    ``side=="user"`` actions); each bot's handler selects its own DB based on
-    the ``side`` it was told and passes that single dict to this dispatcher.
+    just mutate the dict directly. The bridge calls the ``apply_initialization``
+    RTVI action once per side (agent bot for ``side=="agent"`` actions, user
+    bot for ``side=="user"`` actions); each bot's handler selects its own DB
+    based on the ``side`` it was told and passes that single dict to this
+    dispatcher (``apply_initialization_actions`` — the Python function below,
+    which keeps its plural name for clarity that it dispatches a LIST).
 
 Why bot-side dispatch (and not runner-side like ``db_state_assertions``):
 
@@ -117,7 +119,7 @@ def apply_initialization_actions(
 ) -> Dict[str, Any]:
     """Iterate ``actions`` and dispatch each against ``db``.
 
-    Called bot-side by the ``apply_initialization_actions`` RTVI handler.
+    Called bot-side by the ``apply_initialization`` RTVI handler.
     All actions in the list apply to the single ``db`` dict — the caller
     (bot handler) has already picked the correct side-specific dict from
     ``shared_state`` based on the ``side`` arg sent by the bridge. Each

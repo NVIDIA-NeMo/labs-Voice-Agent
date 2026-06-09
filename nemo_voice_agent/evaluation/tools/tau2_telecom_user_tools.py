@@ -28,7 +28,7 @@
 #   - These are LLM-callable tools the user-sim's LLM calls during the
 #     conversation; they're distinct from M5c's initialization functions
 #     (which run before the conversation starts via the
-#     ``apply_initialization_actions`` RTVI path). Some tools share helper
+#     ``apply_initialization`` RTVI path). Some tools share helper
 #     logic with init functions (network search, status checks); we reuse
 #     those helpers across the two layers via plain Python imports.
 #   - Write tools subclass ``WriteScenarioTool`` so successful mutations

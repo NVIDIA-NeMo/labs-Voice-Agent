@@ -26,7 +26,7 @@
 #     inherit from a local ``BaseModelNoExtra`` only.
 #   - No ``update_device`` / ``update_pydantic_model_with_dict`` helpers —
 #     our init functions operate on plain dicts via the
-#     ``apply_initialization_actions`` RTVI dispatch path, not through
+#     ``apply_initialization`` RTVI dispatch path, not through
 #     Pydantic mutation.
 #   - The ``StatusBar`` model is dropped from the live runtime — upstream
 #     only uses it as a derived view in ``check_status_bar`` (a user-side

@@ -137,18 +137,21 @@ def create_update_system_prompt_action(
     onto ``llm`` / ``context``. This keeps the factory decoupled from
     evaluation-specific tool registries.
 
-    The action accepts an optional ``shared_state_init`` argument (JSON string)
-    used to initialize the per-scenario ``shared_state`` dict before tools are
-    instantiated. The bridge populates it from ``Scenario.setup_shared_state``.
-    Two supported shapes (both via ``shared_state_init``):
-      - **Inline**: ``{"db": {...full content...}, ...}``. Used as-is.
-      - **Path-based fallback**: ``{"db_path": "rel/path.json", ...}``. Resolved
-        against ``EVAL_DATA_ROOT`` and replaced under the de-suffixed key
-        (``db_path`` → ``db``). Missing files raise ``FileNotFoundError`` loudly.
+    **Scenario-start lifecycle gate.** This handler is the bot-side signal
+    that a new scenario is starting. In addition to swapping the prompt + tool
+    surface, it RESETS ``shared_state_ref.state`` so any prior scenario's
+    data (``db``, ``actions`` log, etc.) doesn't bleed into the new one. The
+    reset is done via ``dict.clear()`` rather than reassignment so the dict
+    identity is preserved — any tool that already holds a reference to
+    ``shared_state`` continues to see the same object after the clear, and
+    subsequent mutations by ``apply_initialization`` propagate correctly.
 
-    If ``shared_state_ref`` is provided, the resolved ``shared_state`` is
-    published to it so other action handlers (``get_scenario_summary``) can
-    read the same dict. Only consumed when tool calling is enabled.
+    Scenario fixture data (``db``, ``db_path``, ``actions`` list, custom
+    keys from ``Scenario.setup_shared_state``) is NOT loaded here — that
+    moves to ``create_apply_initialization_action`` which the bridge calls
+    immediately after this one. This handler only stashes bot-side runtime
+    sentinels (``__rtvi__``, ``__tool_domain__``) into the freshly-cleared
+    dict so write tools have them available at call time.
     """
 
     async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> bool:
@@ -176,58 +179,36 @@ def create_update_system_prompt_action(
             user_aggregator.set_messages(copy.deepcopy(new_messages))
             assistant_aggregator.set_messages(copy.deepcopy(new_messages))
 
-            # Initialize shared_state from the optional shared_state_init
-            # payload produced by Scenario.setup_shared_state(). Must run
-            # regardless of tool-calling, because sibling action handlers
-            # (``get_scenario_summary``, ``apply_initialization_actions``)
-            # consume ``shared_state["db"]`` even when the bot has no
-            # LLM-callable tools (e.g. user-sim with tool calling off).
-            #
-            # Inline DB content (state["db"]) is the primary path;
-            # path-based loading (state["db_path"]) is a fallback for
-            # fixtures too large to ship inline.
-            shared_state: dict = json.loads(arguments.get("shared_state_init", "{}"))
-            if "db_path" in shared_state:
-                # Lazy import to avoid coupling rtvi_actions to evaluation/.
-                from nemo_voice_agent.evaluation import get_eval_data_root
-
-                db_path = shared_state.pop("db_path")
-                full_path = get_eval_data_root() / db_path
-                if not full_path.exists():
-                    raise FileNotFoundError(
-                        f"Scenario DB not found at {full_path} (from db_path={db_path!r}). "
-                        f"Check EVAL_DATA_ROOT (currently resolves to {get_eval_data_root()})."
-                    )
-                shared_state["db"] = json.loads(full_path.read_text())
-                logger.info(f"Loaded scenario DB from {full_path} into shared_state['db']")
-
-            # Stash the RTVI processor reference under a sentinel key so
-            # ``WriteScenarioTool._record_action`` can push an
-            # ``action-applied`` RTVIServerMessage after each write —
-            # consumed by the bridge to trigger cross-side sync.
-            # The sentinel name (``__rtvi__``) starts with ``__`` so it
-            # won't collide with any domain-data key and won't appear in
-            # JSON-serialized DB snapshots (db_hash filters dunder keys).
-            shared_state["__rtvi__"] = rtvi
-
-            # Stash the active scenario's domain so write tools can
-            # include it in the ``action-applied`` payload — the bridge
-            # routes by domain when dispatching sync deltas.
-            shared_state["__tool_domain__"] = arguments.get("tool_domain", "default")
-
-            # Stash the side this bot is on. The bot doesn't natively
-            # know this; the runner could in principle send it, but
-            # ``system_role`` is a reliable proxy: the agent uses
-            # ``system_role="system"`` with a non-empty policy, while
-            # the user-sim uses the same. Instead, we expose a default
-            # ``__side__`` and let the bridge override via the
-            # ``action-applied`` message routing logic — see below.
-            # No-op for now; placeholder for future side-aware tools.
-
-            # Publish the dict so sibling action handlers (e.g. get_scenario_summary,
-            # apply_initialization_actions) can read the same shared_state.
+            # Scenario-start reset of shared_state. Preserve the dict
+            # identity so tools registered earlier (in a previous
+            # scenario) keep their reference valid. Tools access state
+            # lazily via ``self.state.get("db")`` etc., so seeing the
+            # post-clear empty dict + later ``apply_initialization``
+            # mutations is the expected sequence. ``SharedStateRef.state``
+            # is always a real dict (default_factory=dict) so we don't
+            # need to handle the ``None`` case.
             if shared_state_ref is not None:
-                shared_state_ref.state = shared_state
+                shared_state = shared_state_ref.state
+                shared_state.clear()
+            else:
+                shared_state = {}
+
+            # Stash bot-side runtime sentinels. These come from the BOT
+            # (the rtvi processor instance, the active tool domain) —
+            # not from scenario fixture data — so they belong here and
+            # not in ``apply_initialization``.
+            #
+            # ``__rtvi__``: read by ``WriteScenarioTool._record_action``
+            # to push ``action-applied`` RTVIServerMessages used by the
+            # bridge's cross-side sync pipeline. Sentinel name starts
+            # with ``__`` so it won't appear in JSON-serialized DB
+            # snapshots (``db_hash`` filters dunder keys).
+            #
+            # ``__tool_domain__``: included in the ``action-applied``
+            # payload so the bridge routes sync deltas to the correct
+            # domain's applier.
+            shared_state["__rtvi__"] = rtvi
+            shared_state["__tool_domain__"] = arguments.get("tool_domain", "default")
 
             if (
                 enable_tool_calling
@@ -284,12 +265,7 @@ def create_update_system_prompt_action(
             {"name": "prompt", "type": "string", "required": True},
             {"name": "tools", "type": "string", "required": False, "default": "{}"},
             {"name": "add_suffix", "type": "bool", "required": False, "default": True},
-            {
-                "name": "shared_state_init",
-                "type": "string",
-                "required": False,
-                "default": "{}",
-            },
+            {"name": "tool_domain", "type": "string", "required": False, "default": "default"},
         ],
         handler=handler,
     )
@@ -459,24 +435,33 @@ def create_get_scenario_summary_action(
     )
 
 
-def create_apply_initialization_actions_action(
+def create_apply_initialization_action(
     shared_state_ref: SharedStateRef,
 ) -> RTVIAction:
-    """Build the ``context.apply_initialization_actions`` action.
+    """Build the ``context.apply_initialization`` action.
 
-    Symmetric pre-scenario counterpart to ``get_scenario_summary``: takes a
-    list of state-mutation steps and applies them to the bot's live
-    ``shared_state["db"]`` / ``shared_state["user_db"]`` before the conversation
-    starts. Used by telecom scenarios to seed device state (e.g.
-    ``set_user_info``, ``turn_roaming_off``) and customer records
-    (``enable_roaming``) so the agent talks to a meaningful starting state.
+    Bot-side scenario-state initializer. The bridge calls this once per
+    scenario, immediately after ``update_system_prompt``, to populate
+    the empty ``shared_state`` dict with everything tools need at call
+    time. Does three things in order:
 
-    **Bot-side dispatch (vs runner-side for ``db_state_assertions``).** Init
-    actions mutate live DB dicts; the mutations have to land in the same dict
-    instance the live LLM tools will read/write during the conversation —
-    that's the bot's ``shared_state``, not a snapshot in the runner. Mirrors
-    upstream tau2-bench's ``Environment.run_env_function_call`` which
-    dispatches against live toolkit instances.
+    1. **Parse** ``shared_state_init`` JSON into ``shared_state_ref.state``
+       (merge, not overwrite — preserves bot-side sentinels stashed by
+       ``update_system_prompt`` like ``__rtvi__`` and ``__tool_domain__``).
+       Custom keys from ``Scenario.setup_shared_state`` flow through here.
+    2. **Load DB**: if the merged state has a ``db_path`` key, resolve it
+       against ``EVAL_DATA_ROOT`` and replace with the loaded ``db`` dict.
+       Idempotent — skipped when ``db`` is already present (e.g., when
+       the bridge sent an inline DB instead of a path).
+    3. **Apply init functions**: dispatch each ``{func_name, arguments}``
+       record against the now-loaded ``db``. Side-agnostic — the bridge
+       pre-filters by ``side`` before sending.
+
+    Defensive create-if-missing: if ``shared_state_ref.state`` is
+    ``None`` (e.g., in tests that skip ``update_system_prompt``), the
+    handler creates an empty dict and proceeds. In production the bridge
+    always calls ``update_system_prompt`` first, which creates + clears
+    the dict and stashes runtime sentinels.
 
     **Payload shape:**
 
@@ -484,6 +469,7 @@ def create_apply_initialization_actions_action(
 
         {
           "domain": "tau2_telecom",
+          "shared_state_init": "{\\"db_path\\": \\"tau2_telecom/db.json\\"}",
           "actions": [
             {"side": "user",  "func_name": "set_user_info",
              "arguments": {"name": "John Smith", "phone_number": "555-..."}},
@@ -492,19 +478,21 @@ def create_apply_initialization_actions_action(
           ]
         }
 
-    The bridge splits the upstream ``initialization_actions`` list by ``side``
-    and sends each subset to the matching bot (agent bot gets ``"agent"`` entries,
-    user bot gets ``"user"`` entries). Per-bot calls therefore typically carry
-    only one side's actions, but the dispatcher tolerates mixed lists for
-    flexibility (e.g. when the same bot owns both DBs in a single-process
-    test setup).
+    The bridge sends this action per-bot. ``shared_state_init`` carries
+    per-side scenario fixture data (path or inline DB, optional initial
+    actions list, etc.); ``actions`` carries the per-side filtered subset
+    of upstream init mutations. Both are independently optional — a
+    scenario with no init functions and an inline DB still benefits
+    from a single ``apply_initialization`` call that does only the
+    DB-load step.
 
-    **Returns** ``{"success": bool, "errors": list[str]}``. ``success`` is
-    ``True`` only when every action dispatched cleanly. The bridge treats any
-    ``success=False`` as a framework-class failure and aborts the scenario
-    without scoring it — partial seeding produces noise, not signal.
+    **Returns** ``{"success": bool, "errors": list[str]}``. ``success``
+    is ``True`` only when DB load and every action dispatch completed
+    cleanly. The bridge treats any ``success=False`` as a
+    framework-class failure and aborts the scenario without scoring it
+    — partial seeding produces noise, not signal.
     """
-    # Lazy import to avoid coupling rtvi_actions (a pipecat-side module) to
+    # Lazy imports to avoid coupling rtvi_actions (a pipecat-side module) to
     # the evaluation/ subpackage at module-load time. Same pattern as the
     # ``get_dict_hash`` import in ``create_get_scenario_summary_action``.
     from nemo_voice_agent.evaluation.initialization_functions import (
@@ -514,32 +502,85 @@ def create_apply_initialization_actions_action(
     async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
         try:
             domain = arguments.get("domain", "default")
+            shared_state_init_raw = arguments.get("shared_state_init", "{}")
             actions = arguments.get("actions") or []
             if not isinstance(actions, list):
                 return {
                     "success": False,
                     "errors": [f"`actions` payload must be a list, got {type(actions).__name__}."],
                 }
-            # Each bot owns exactly one DB at ``shared_state["db"]``. The
-            # agent bot's ``db`` is the agent-facing DB; the user bot's
-            # ``db`` is the user-facing DB. The bridge already filtered the
-            # upstream action list to only the entries that belong to this
-            # bot before sending — so all actions in the payload apply to
-            # this single ``db``. The handler is side-agnostic.
-            db = shared_state_ref.state.get("db") if shared_state_ref.state else None
+
+            # 1. Merge scenario fixture data into shared_state. Preserve
+            #    dict identity — tools registered in update_system_prompt
+            #    hold a reference; reassigning would break them. The
+            #    merge into existing keys preserves bot-side runtime
+            #    sentinels (``__rtvi__``, ``__tool_domain__``) that
+            #    update_system_prompt stashed. ``SharedStateRef.state``
+            #    is always a real dict (default_factory=dict).
+            shared_state = shared_state_ref.state
+            try:
+                init_payload = json.loads(shared_state_init_raw)
+            except json.JSONDecodeError as exc:
+                return {
+                    "success": False,
+                    "errors": [f"Invalid shared_state_init JSON: {exc}"],
+                }
+            if not isinstance(init_payload, dict):
+                return {
+                    "success": False,
+                    "errors": [
+                        f"shared_state_init must decode to a dict, got "
+                        f"{type(init_payload).__name__}."
+                    ],
+                }
+            shared_state.update(init_payload)
+
+            # 2. Resolve db_path → db. Idempotent: if ``db`` is already
+            #    present (e.g., bridge sent inline DB content rather
+            #    than a path), skip the load. Missing files raise loudly.
+            if "db_path" in shared_state and "db" not in shared_state:
+                # Lazy import to avoid coupling rtvi_actions to evaluation/.
+                from nemo_voice_agent.evaluation import get_eval_data_root
+
+                db_path = shared_state.pop("db_path")
+                full_path = get_eval_data_root() / db_path
+                if not full_path.exists():
+                    raise FileNotFoundError(
+                        f"Scenario DB not found at {full_path} (from db_path={db_path!r}). "
+                        f"Check EVAL_DATA_ROOT (currently resolves to {get_eval_data_root()})."
+                    )
+                shared_state["db"] = json.loads(full_path.read_text())
+                logger.info(f"Loaded scenario DB from {full_path} into shared_state['db']")
+            elif "db_path" in shared_state:
+                # ``db`` already present — drop the now-redundant path so
+                # subsequent calls don't keep trying to resolve it.
+                shared_state.pop("db_path", None)
+
+            # 3. Each bot owns exactly one DB at ``shared_state["db"]``;
+            #    the bridge already filtered the upstream action list to
+            #    only entries belonging to this bot before sending. The
+            #    handler is side-agnostic.
+            db = shared_state.get("db")
             logger.info(
                 f"[APPLY INIT] domain={domain!r}, actions={len(actions)}, "
                 f"db_present={db is not None}"
             )
-            if db is None:
+            if actions and db is None:
                 return {
                     "success": False,
                     "errors": [
                         f"No shared_state['db'] available; cannot apply "
                         f"{len(actions)} initialization action(s). "
-                        f"update_system_prompt didn't seed the DB on this bot."
+                        f"Bridge must send db_path (or inline db) in shared_state_init."
                     ],
                 }
+            if not actions:
+                # No init mutations to apply; the DB-load step above is
+                # the entire purpose of this call. Return success so the
+                # bridge can proceed to the conversation.
+                logger.info(f"[APPLY INIT] no actions to apply (DB-load-only call)")
+                return {"success": True, "errors": []}
+
             result = _apply(domain=domain, actions=actions, db=db)
             if result["success"]:
                 logger.info(f"[APPLY INIT] success ({len(actions)} action(s) applied)")
@@ -550,16 +591,17 @@ def create_apply_initialization_actions_action(
                 )
             return result
         except Exception as e:
-            logger.error(f"Error applying initialization actions: {e}")
+            logger.error(f"Error applying initialization: {e}")
             return {"success": False, "errors": [f"{type(e).__name__}: {e}"]}
 
     return RTVIAction(
         service="context",
-        action="apply_initialization_actions",
+        action="apply_initialization",
         result="object",
         arguments=[
             {"name": "domain", "type": "string", "required": False, "default": "default"},
-            {"name": "actions", "type": "array", "required": True},
+            {"name": "shared_state_init", "type": "string", "required": False, "default": "{}"},
+            {"name": "actions", "type": "array", "required": False, "default": []},
         ],
         handler=handler,
     )

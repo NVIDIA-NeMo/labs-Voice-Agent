@@ -459,36 +459,45 @@ class VoiceAgentEvaluationBridge:
         # automatically from the scenario's predicate-list opt-in.
         self.include_db_in_summary = bool(getattr(scenario, "db_state_assertions", None))
 
-        # Per-side shared_state seeding — let the scenario seed
-        # scenario fixtures (e.g., a database path) before tools are
-        # instantiated on the bot servers. Telecom uses this to point
-        # each bot at its respective DB file.
+        # Per-side scenario fixture data — pulled now, sent later as
+        # part of ``apply_initialization`` (NOT via ``update_system_prompt``).
+        # ``setup_shared_state`` populates ``state["db_path"]`` (or any
+        # other scenario-specific keys) which the bot's
+        # ``apply_initialization`` handler resolves into ``state["db"]``.
         user_state: dict = {}
         agent_state: dict = {}
         scenario.setup_shared_state(user_state, "user")
         scenario.setup_shared_state(agent_state, "agent")
 
+        # 1. Prompt + tool surface only. ``update_system_prompt`` is the
+        #    scenario-start lifecycle gate: it clears any prior
+        #    ``shared_state`` (preserving dict identity for tool
+        #    references) and stashes bot-side runtime sentinels
+        #    (``__rtvi__``, ``__tool_domain__``). Scenario fixture data
+        #    is NOT loaded here — that's the next step.
         await self.update_user_prompt(
             prompt=scenario.get_user_prompt(),
             tools=scenario.get_user_tools(),
-            shared_state_init=json.dumps(user_state),
             tool_domain=tool_domain,
         )
         await self.update_agent_prompt(
             prompt=scenario.get_agent_prompt(),
             tools=scenario.get_agent_tools(),
-            shared_state_init=json.dumps(agent_state),
             tool_domain=tool_domain,
         )
 
-        # Telecom-only path: replay any ``initialization_actions``
-        # against the bots' live ``shared_state`` before the
-        # conversation starts. Bot-side dispatch via the
-        # ``apply_initialization_actions`` RTVI action; bridge splits
-        # the action list by ``side`` (agent → agent_ws, user →
-        # user_ws). A no-op when ``scenario.initialization_actions``
-        # is falsy, which is the common case for eva/airline/retail.
-        await self._apply_initialization_actions(scenario)
+        # 2. Full state initialization — always called, even when
+        #    ``scenario.initialization_actions`` is falsy. The bot-side
+        #    handler does (a) merge ``shared_state_init`` JSON into the
+        #    bot's ``shared_state``, (b) resolve any ``db_path`` to an
+        #    inlined ``db`` dict, then (c) apply the per-side filtered
+        #    init function list. Steps (a) + (b) run for every scenario
+        #    regardless of whether (c) has anything to do.
+        await self._apply_initialization(
+            scenario,
+            user_shared_state_init=user_state,
+            agent_shared_state_init=agent_state,
+        )
 
         # Cross-side sync setup. When the scenario overrides
         # ``Scenario.sync_state`` (dual-side domains like tau2_telecom),
@@ -695,7 +704,6 @@ class VoiceAgentEvaluationBridge:
         tools: str,
         auto_reset: bool = False,
         add_suffix: bool = False,
-        shared_state_init: str = "{}",
         tool_domain: str = "default",
     ):
         """
@@ -706,9 +714,13 @@ class VoiceAgentEvaluationBridge:
             tools: New tools in json string format
             auto_reset: If True, also sends reset action after updating prompt
             add_suffix: If True, add previously configured system prompt suffix to the new prompt
-            shared_state_init: JSON string used to initialize ``shared_state`` on the
-                bot server before tools are instantiated. Default ``"{}"`` (empty
-                dict) preserves prior behavior.
+            tool_domain: Registry namespace the bot server should use to look up
+                tools by name. Stashed on bot-side ``shared_state["__tool_domain__"]``
+                for write tools to read when emitting ``action-applied`` events.
+
+        Scenario fixture data (``db_path``, custom keys from
+        ``Scenario.setup_shared_state``) is NOT sent here — it flows via
+        the subsequent ``apply_initialization`` call instead.
         """
         logger.info(f"Updating user prompt: {prompt[:100]}..., tools: {tools[:100]}..., tool_domain={tool_domain!r}")
 
@@ -724,7 +736,6 @@ class VoiceAgentEvaluationBridge:
                     {"name": "prompt", "value": prompt},
                     {"name": "tools", "value": tools},
                     {"name": "add_suffix", "value": add_suffix},
-                    {"name": "shared_state_init", "value": shared_state_init},
                     {"name": "tool_domain", "value": tool_domain},
                 ],
             },
@@ -749,7 +760,6 @@ class VoiceAgentEvaluationBridge:
         tools: str,
         auto_reset: bool = False,
         add_suffix: bool = False,
-        shared_state_init: str = "{}",
         tool_domain: str = "default",
     ):
         """
@@ -760,13 +770,14 @@ class VoiceAgentEvaluationBridge:
             tools: New tools in json string format
             auto_reset: If True, also sends reset action after updating prompt
             add_suffix: If True, add previously configured system prompt suffix to the new prompt
-            shared_state_init: JSON string used to initialize ``shared_state`` on the
-                bot server before tools are instantiated. Default ``"{}"`` (empty
-                dict) preserves prior behavior.
             tool_domain: Registry namespace the bot server should use to look up
                 tools by name (e.g., ``"tau2_airline"``). Falls back to
                 ``"default"`` per-tool if the name isn't in the specified
                 domain (with a warning logged bot-side).
+
+        Scenario fixture data (``db_path``, custom keys from
+        ``Scenario.setup_shared_state``) is NOT sent here — it flows via
+        the subsequent ``apply_initialization`` call instead.
         """
         logger.info(f"Updating agent prompt: {prompt[:100]}..., tools: {tools[:100]}..., tool_domain={tool_domain!r}")
 
@@ -782,7 +793,6 @@ class VoiceAgentEvaluationBridge:
                     {"name": "prompt", "value": prompt},
                     {"name": "tools", "value": tools},
                     {"name": "add_suffix", "value": add_suffix},
-                    {"name": "shared_state_init", "value": shared_state_init},
                     {"name": "tool_domain", "value": tool_domain},
                 ],
             },
@@ -1428,35 +1438,42 @@ class VoiceAgentEvaluationBridge:
             logger.warning(f"[SCENARIO SUMMARY] Error retrieving scenario summary: {e}")
             return {}
 
-    async def _apply_initialization_actions(self, scenario) -> None:
-        """Dispatch ``scenario.initialization_actions`` to the bots before kickoff.
+    async def _apply_initialization(
+        self,
+        scenario,
+        *,
+        user_shared_state_init: dict,
+        agent_shared_state_init: dict,
+    ) -> None:
+        """Send ``apply_initialization`` to BOTH bots — always, even with no init actions.
 
-        Bot-side dispatch via the ``apply_initialization_actions`` RTVI action.
-        The bridge splits the action list by ``side``:
+        Bot-side dispatch via the ``apply_initialization`` RTVI action.
+        The handler does three things per bot:
 
-          - ``side == "agent"`` → ``self.agent_ws``
-          - ``side == "user"``  → ``self.user_ws``
+          1. Merge ``shared_state_init`` JSON into the bot's
+             ``shared_state`` (preserving runtime sentinels stashed by
+             ``update_system_prompt``).
+          2. If ``db_path`` is in the merged state, resolve it against
+             ``EVAL_DATA_ROOT`` and replace with the loaded ``db`` dict.
+          3. Dispatch each per-side init function record (filtered by
+             ``side``) against the now-loaded ``db``.
 
-        Each bot's dispatcher mutates its local ``shared_state["db"]`` /
-        ``shared_state["user_db"]`` in place, so by the time the conversation
-        starts, the live LLM tools see the seeded state.
+        Always called once per bot, even when ``scenario.initialization_actions``
+        is empty — steps 1 and 2 (state merge + DB load) must run for every
+        tau2 scenario regardless. Single-side domains (eva / airline / retail)
+        whose ``setup_shared_state`` populates ``db_path`` rely on this call
+        to trigger the DB load. The bot's handler is fast (~tens of ms) when
+        actions list is empty.
 
-        **No-op cases** (skipped silently — common path for eva/airline/retail):
-
-          - ``initialization_actions`` is missing, ``None``, or an empty list.
-          - All actions on one side: only that side's bot is contacted.
-
-        **Failure handling:** any per-bot ``success: false`` response (missing
-        function in the bot's registry, side mismatch, dispatcher exception)
-        raises ``RuntimeError`` so the calling ``prepare_for_scenario`` aborts
-        before the conversation starts. Partial seeding produces noisy /
-        unscoreable runs, so we'd rather fail loud than silently degrade.
+        **Failure handling:** any per-bot ``success: false`` response
+        (invalid JSON, missing DB file, missing init function in the bot's
+        registry, dispatcher exception) raises ``RuntimeError`` so the
+        calling ``prepare_for_scenario`` aborts before the conversation
+        starts. Partial seeding produces noisy / unscoreable runs.
         """
         actions = getattr(scenario, "initialization_actions", None) or []
-        if not actions:
-            return  # No-op for scenarios without init actions
-
         domain = getattr(scenario, "domain", "default")
+
         agent_actions = [a for a in actions if a.get("side") == "agent"]
         user_actions = [a for a in actions if a.get("side") == "user"]
         unsided = [a for a in actions if a.get("side") not in ("agent", "user")]
@@ -1471,22 +1488,29 @@ class VoiceAgentEvaluationBridge:
 
         logger.info(
             f"[APPLY INIT] domain={domain!r}, total={len(actions)} action(s) "
-            f"(agent_side={len(agent_actions)}, user_side={len(user_actions)})"
+            f"(agent_side={len(agent_actions)}, user_side={len(user_actions)}); "
+            f"sending to both bots for state initialization."
         )
 
-        if agent_actions:
-            await self._send_apply_initialization_actions(
-                self.agent_ws, "agent", domain, agent_actions
-            )
-        if user_actions:
-            await self._send_apply_initialization_actions(
-                self.user_ws, "user", domain, user_actions
-            )
+        # Always call both — even with empty per-side action lists. The
+        # handler does state merge + DB load regardless of whether there
+        # are init functions to dispatch.
+        await self._send_apply_initialization(
+            self.agent_ws, "agent", domain, agent_shared_state_init, agent_actions
+        )
+        await self._send_apply_initialization(
+            self.user_ws, "user", domain, user_shared_state_init, user_actions
+        )
 
-    async def _send_apply_initialization_actions(
-        self, ws, side_label: str, domain: str, actions: List[dict]
+    async def _send_apply_initialization(
+        self,
+        ws,
+        side_label: str,
+        domain: str,
+        shared_state_init: dict,
+        actions: List[dict],
     ) -> None:
-        """Send one ``apply_initialization_actions`` action and wait for the result.
+        """Send one ``apply_initialization`` action and wait for the result.
 
         ``side_label`` is the bot label (``"agent"`` or ``"user"``) used only
         in log lines and error messages — the bot itself doesn't need to know
@@ -1495,13 +1519,14 @@ class VoiceAgentEvaluationBridge:
 
         Raises:
             RuntimeError: if the bot returns ``success: false`` or the request
-                times out. The caller (``_apply_initialization_actions``)
-                propagates this up so ``prepare_for_scenario`` aborts cleanly.
+                times out. The caller (``_apply_initialization``) propagates
+                this up so ``prepare_for_scenario`` aborts cleanly.
         """
         if not ws:
             raise RuntimeError(
                 f"[APPLY INIT] {side_label}_ws is not connected; cannot "
-                f"replay {len(actions)} initialization action(s)."
+                f"send apply_initialization (shared_state_init keys: "
+                f"{list(shared_state_init.keys())}, actions: {len(actions)})."
             )
 
         action_id = f"apply_init_{side_label}_{datetime.now().timestamp()}"
@@ -1511,15 +1536,20 @@ class VoiceAgentEvaluationBridge:
             "id": action_id,
             "data": {
                 "service": "context",
-                "action": "apply_initialization_actions",
+                "action": "apply_initialization",
                 "arguments": [
                     {"name": "domain", "value": domain},
-                    # No ``side`` in the payload: each bot owns exactly one
-                    # DB at ``shared_state["db"]``, and the bridge has
-                    # already filtered the upstream action list to only the
-                    # entries belonging to this bot before calling. The
-                    # ``side_label`` is bridge-internal — used here for the
-                    # action ID + log lines, not sent to the bot.
+                    # JSON-serialize the shared_state_init dict so the
+                    # bot receives a string (matching the action
+                    # signature). The bot's handler json.loads it back.
+                    {"name": "shared_state_init", "value": json.dumps(shared_state_init)},
+                    # No ``side`` in the payload: each bot owns exactly
+                    # one DB at ``shared_state["db"]``, and the bridge
+                    # has already filtered the upstream action list to
+                    # only the entries belonging to this bot before
+                    # calling. The ``side_label`` is bridge-internal
+                    # — used here for the action ID + log lines, not
+                    # sent to the bot.
                     {"name": "actions", "value": actions},
                 ],
             },
@@ -1528,8 +1558,9 @@ class VoiceAgentEvaluationBridge:
         serialized = await self.serializer.serialize(msg_frame)
         await ws.send(serialized)
         logger.info(
-            f"[APPLY INIT] Sent apply_initialization_actions to {side_label} bot "
-            f"({len(actions)} action(s)); waiting for response (id={action_id!r})..."
+            f"[APPLY INIT] Sent apply_initialization to {side_label} bot "
+            f"(shared_state_init keys: {list(shared_state_init.keys())}, "
+            f"{len(actions)} action(s)); waiting for response (id={action_id!r})..."
         )
 
         # Wait pattern mirrors ``_retrieve_scenario_summary``. 15s budget is
@@ -1591,7 +1622,7 @@ class VoiceAgentEvaluationBridge:
         """Prepare shadow DBs + tool map for cross-side state propagation.
 
         Called from ``prepare_for_scenario`` once per scenario,
-        **after** ``_apply_initialization_actions`` so the bot-side
+        **after** ``_apply_initialization`` so the bot-side
         live state is already at its post-init starting point. We
         mirror that here by replaying the same init actions onto the
         shadow DBs, then run a one-shot ``sync_state`` to propagate
@@ -1792,7 +1823,7 @@ class VoiceAgentEvaluationBridge:
     ) -> None:
         """Send a single ``apply_sync_delta`` RTVI action to a bot.
 
-        Mirrors ``_send_apply_initialization_actions``: builds an action
+        Mirrors ``_send_apply_initialization``: builds an action
         message with a unique id, awaits the response, logs success or
         failure. Failures are warnings — sync drift is recoverable as
         long as the next propagation cycle eventually catches up.

@@ -17,7 +17,7 @@
 Synthetic — uses fake init functions registered against a fake domain.
 Covers the registration + dispatcher (``initialization_functions.py``)
 and the bot-side RTVI handler
-(``create_apply_initialization_actions_action``). The bridge-side helper
+(``create_apply_initialization_action``). The bridge-side helper
 that talks to the bot over WebSocket is exercised at integration time
 with a real domain port; here we stop at the bot's handler.
 
@@ -46,7 +46,7 @@ from nemo_voice_agent.evaluation.initialization_functions import (
 )
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     SharedStateRef,
-    create_apply_initialization_actions_action,
+    create_apply_initialization_action,
 )
 
 _TEST_DOMAIN = "_test_init_actions_synthetic_domain"
@@ -200,15 +200,18 @@ def test_dispatch_empty_actions_list_is_success():
 
 
 def test_rtvi_action_metadata():
-    action = create_apply_initialization_actions_action(SharedStateRef())
+    action = create_apply_initialization_action(SharedStateRef())
     assert action.service == "context"
-    assert action.action == "apply_initialization_actions"
-    # Two arguments: domain (optional string), actions (required array).
-    # No ``side`` arg — each bot owns one DB at ``shared_state["db"]``; the
-    # bridge has already filtered the upstream action list to entries
+    assert action.action == "apply_initialization"
+    # Three arguments: domain (optional string), shared_state_init
+    # (optional JSON string carrying scenario fixture data + db_path),
+    # actions (optional array of init function records — empty list
+    # is valid for scenarios that need only the DB load + state merge).
+    # No ``side`` arg — each bot owns one DB at ``shared_state["db"]``;
+    # the bridge has already filtered the upstream action list to entries
     # belonging to this bot before calling.
     names = {a.name for a in action.arguments}
-    assert names == {"domain", "actions"}
+    assert names == {"domain", "shared_state_init", "actions"}
 
 
 def test_rtvi_handler_applies_to_state_db():
@@ -218,7 +221,7 @@ def test_rtvi_handler_applies_to_state_db():
     _register_set_count()
     ref = SharedStateRef()
     ref.state = {"db": {}}
-    action = create_apply_initialization_actions_action(ref)
+    action = create_apply_initialization_action(ref)
     result = asyncio.run(
         action.handler(
             None,
@@ -244,7 +247,7 @@ def test_rtvi_handler_per_action_side_field_is_informational_only():
     _register_set_status()
     ref = SharedStateRef()
     ref.state = {"db": {}}
-    action = create_apply_initialization_actions_action(ref)
+    action = create_apply_initialization_action(ref)
     result = asyncio.run(
         action.handler(
             None,
@@ -272,7 +275,7 @@ def test_rtvi_handler_missing_state_db_returns_error():
     _register_set_count()
     ref = SharedStateRef()
     ref.state = {}  # no db seeded
-    action = create_apply_initialization_actions_action(ref)
+    action = create_apply_initialization_action(ref)
     result = asyncio.run(
         action.handler(
             None,
@@ -292,7 +295,7 @@ def test_rtvi_handler_missing_state_db_returns_error():
 def test_rtvi_handler_with_non_list_actions_payload_returns_error():
     ref = SharedStateRef()
     ref.state = {"db": {}}
-    action = create_apply_initialization_actions_action(ref)
+    action = create_apply_initialization_action(ref)
     result = asyncio.run(
         action.handler(
             None,
