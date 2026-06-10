@@ -31,6 +31,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Persona,
     Resources,
     Scenario,
+    SuccessSignal,
     Task,
 )
 from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
@@ -70,6 +71,9 @@ def _load_eva_airline_dataset_index() -> dict:
 
 class EvaAirlineBaseScenario(Scenario):
     domain: str = "eva_airline"
+    # Eva ships a gold ``expected_scenario_db`` for every scenario. DB-hash
+    # equality is path-independent and deterministic — no LLM judge required.
+    success_signals = (SuccessSignal.DB_STATE_MATCH,)
 
     """Base class for airline scenarios ported from eva.
 

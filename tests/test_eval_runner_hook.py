@@ -35,6 +35,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Persona,
     Resources,
     Scenario,
+    SuccessSignal,
     Task,
 )
 from nemo_voice_agent.evaluation.utils import check_if_task_success
@@ -49,6 +50,9 @@ class _StubPerSideStateScenario(Scenario):
     """Test scenario that writes distinct per-side state values."""
 
     name = "test__stub_per_side_state"
+    # Not actually scored by this test; declaration satisfies the
+    # Scenario.__init_subclass__ non-empty check.
+    success_signals = (SuccessSignal.ACTION_MATCH,)
 
     def setup_shared_state(self, state: dict, side: str) -> None:
         if side == "agent":
@@ -101,6 +105,7 @@ def test_setup_shared_state_default_is_noop():
 
     class _Plain(Scenario):
         name = "test__plain"
+        success_signals = (SuccessSignal.ACTION_MATCH,)
 
         @property
         def user_persona(self) -> Persona:

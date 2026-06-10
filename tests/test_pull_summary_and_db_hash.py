@@ -41,6 +41,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Persona,
     Resources,
     Scenario,
+    SuccessSignal,
     Task,
 )
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
@@ -218,6 +219,7 @@ def _make_dummy_scenario(**kwargs) -> Scenario:
 
     class _Dummy(Scenario):
         name = "test__dummy"
+        success_signals = (SuccessSignal.ACTION_MATCH,)  # satisfies non-empty check
 
         @property
         def user_persona(self) -> Persona:
@@ -271,6 +273,7 @@ def test_scenario_expected_db_class_attribute_takes_precedence():
 
     class _WithClassAttr(Scenario):
         name = "with_attr"
+        success_signals = (SuccessSignal.ACTION_MATCH,)
         expected_scenario_db = {"reservations": {"X": {}}}
 
         @property

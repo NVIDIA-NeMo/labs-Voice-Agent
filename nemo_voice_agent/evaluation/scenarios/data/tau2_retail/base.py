@@ -29,7 +29,7 @@ Each scenario subclass only needs to set ``tau2_id`` (e.g. ``"0"``).
 from functools import cached_property
 from typing import Any, Dict, List, Optional
 
-from nemo_voice_agent.evaluation.scenarios.classes import Resources
+from nemo_voice_agent.evaluation.scenarios.classes import Resources, SuccessSignal
 from nemo_voice_agent.evaluation.scenarios.data.tau2_common import Tau2BaseScenario
 from nemo_voice_agent.evaluation.tools.tau2_retail_tools import TAU2_RETAIL_TOOL_NAME_TO_CLASS
 
@@ -55,6 +55,21 @@ class Tau2RetailBaseScenario(Tau2BaseScenario):
 
     # tau2_retail is single-side (agent only). Only telecom uses user_db.
     has_user_state: bool = False
+
+    @cached_property
+    def success_signals(self) -> tuple:
+        """DB-state hash + (when present) per-assertion NL judge verdicts.
+
+        40 of 114 retail tasks carry ``nl_assertions``; the rest don't. The
+        rule is mechanical — derive from ``self.nl_assertions`` so it
+        cannot drift from the per-task opt-in. ``JUDGE_PASSED`` (overall
+        judge score) is intentionally NOT gating: ``DB_STATE_MATCH`` is
+        deterministic, and ``NL_ASSERTION`` is already per-claim judge
+        verdicts when present — the overall judge becomes informational.
+        """
+        if self.nl_assertions:
+            return (SuccessSignal.DB_STATE_MATCH, SuccessSignal.NL_ASSERTION)
+        return (SuccessSignal.DB_STATE_MATCH,)
 
     def _build_tool_map(self, state: dict) -> Dict[str, Any]:
         """Instantiate one of each ported retail tool, bound to the given ``state``.

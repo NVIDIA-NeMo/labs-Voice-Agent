@@ -14,10 +14,34 @@
 
 import json
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, ClassVar, Dict, List, Optional, Sequence, Union
 
 from nemo_voice_agent.utils.audio import NoiseConfig
+
+
+class SuccessSignal(StrEnum):
+    """Per-scenario scoring signals that participate in the ``is_successful`` composite.
+
+    Single source of truth: scenarios reference these members in their
+    ``success_signals`` whitelist; the runner uses the same members as the
+    keys of its per-signal verdict dict. Values are the canonical JSON keys
+    written to ``metrics.json`` / ``success_breakdown`` — StrEnum members
+    are string-equal to their values so the on-disk format is byte-stable
+    across renames.
+
+    To rename a signal: edit the value here, update the corresponding
+    ``metrics.get(<old>)`` lookup in the runner, and every scenario
+    declaration auto-picks up the new value because they reference the
+    enum member (not the literal string).
+    """
+
+    ACTION_MATCH = "is_action_match"
+    DB_STATE_MATCH = "db_state_match"
+    DB_STATE_ASSERTION = "db_state_assertion"
+    NL_ASSERTION = "nl_assertion"
+    JUDGE_PASSED = "judge_passed"
 
 # Re-export ``GENERAL_PROMPT`` from its canonical home so existing imports
 # (``from nemo_voice_agent.evaluation.scenarios.classes import GENERAL_PROMPT``)
@@ -250,6 +274,91 @@ class Scenario:
     # (EndConversationTool, etc.) so a scenario in a specific domain still
     # picks up the generic-namespace tools alongside its own.
     domain: str = "default"
+
+    # Whitelist of signals that gate the ``is_successful`` composite for this
+    # scenario. Set on the domain base class (typically as a ClassVar tuple,
+    # or as a ``cached_property`` when the set depends on per-scenario opt-ins
+    # like ``nl_assertions``). Concrete scenarios (those declaring ``name``)
+    # MUST resolve this to a non-empty sequence — ``__init_subclass__``
+    # validates at class-definition time so authoring mistakes fail loud.
+    #
+    # Entries must be members of ``SuccessSignal``. Raw strings are tolerated
+    # (StrEnum members are str-equal to their values) but raw strings are
+    # rejected at runtime if they don't match a known signal name.
+    #
+    # ``None`` is the unconfigured sentinel — only valid on abstract base
+    # classes that have no ``name`` (i.e. domain bases). See
+    # ``compute_is_successful`` for the verdict computation.
+    success_signals: ClassVar[Optional[Sequence["SuccessSignal"]]] = None
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Concrete scenarios (those declaring a ``name`` class attribute) must
+        # have a non-empty ``success_signals`` whitelist resolvable from this
+        # class or one of its ancestors. Abstract domain bases (no ``name``)
+        # are skipped so they can declare the whitelist on a sibling property.
+        if "name" not in cls.__dict__:
+            return
+        signals = cls.success_signals
+        # ``success_signals`` may be a ``cached_property`` — skip the empty
+        # check in that case (we can't evaluate it without an instance, and
+        # the property body is the explicit declaration).
+        if isinstance(getattr(cls, "success_signals", None), property):
+            return
+        if not signals:
+            raise TypeError(
+                f"{cls.__name__}: success_signals must be a non-empty tuple of "
+                f"SuccessSignal members. Set it on the domain base class or "
+                f"override per-scenario."
+            )
+
+    def compute_is_successful(
+        self, signals: Dict["SuccessSignal", Optional[bool]]
+    ) -> Union[bool, str]:
+        """Combine per-signal verdicts into the composite ``is_successful``.
+
+        Default behavior: strict AND over the intersection of
+        ``self.success_signals`` and the signals that produced a non-None
+        value for this scenario.
+
+        Args:
+            signals: Mapping of every known ``SuccessSignal`` to its verdict
+                for this scenario. ``None`` means the signal was not
+                applicable (e.g., the scenario didn't opt in, or the run
+                config didn't enable it — judge disabled, etc.).
+
+        Returns:
+            ``True`` / ``False`` when at least one signal in
+            ``success_signals`` was applicable; the literal string
+            ``"N/A"`` when no whitelisted signal was applicable (run
+            cannot be scored).
+
+        Raises:
+            ValueError: if ``success_signals`` references a name that's
+                not a valid ``SuccessSignal`` member.
+        """
+        whitelist = self.success_signals
+        if not whitelist:
+            raise ValueError(
+                f"{type(self).__name__}: success_signals is empty. Set the "
+                f"whitelist on the domain base class."
+            )
+        valid_keys = set(SuccessSignal)
+        unknown = {s for s in whitelist if s not in valid_keys}
+        if unknown:
+            raise ValueError(
+                f"{type(self).__name__}: success_signals contains unknown "
+                f"keys: {sorted(str(s) for s in unknown)}. Valid signals: "
+                f"{sorted(s.value for s in SuccessSignal)}."
+            )
+        applicable = {
+            SuccessSignal(s): signals.get(SuccessSignal(s))
+            for s in whitelist
+            if signals.get(SuccessSignal(s)) is not None
+        }
+        if not applicable:
+            return "N/A"
+        return all(applicable.values())
 
     def __init__(
         self,
@@ -535,6 +644,7 @@ class Scenario:
         # save metadata
         metadata = {
             "name": self.name,
+            "domain": self.domain,
             "description": self.description,
             "max_duration": self.max_duration,
             "noise_config": self.noise_config.to_dict() if self.noise_config else None,
@@ -542,7 +652,25 @@ class Scenario:
             "ignore_punctuation": self.ignore_punctuation,
             "clean_text": self.clean_text,
             "disallow_extra_items": self.disallow_extra_items,
+            "success_signals": [str(s) for s in (self.success_signals or ())],
         }
+        # Include scenario-defining structured fields when present so the
+        # metadata file is self-sufficient for interpreting metrics.json.
+        if self.db_state_assertions:
+            metadata["db_state_assertions"] = self.db_state_assertions
+        if self.nl_assertions:
+            metadata["nl_assertions"] = self.nl_assertions
+        if self.initialization_actions:
+            metadata["initialization_actions"] = self.initialization_actions
+        # Expected-DB hashes — small, deterministic, and the gap operators
+        # need to diff against ``final_scenario_db_hash.txt`` to diagnose
+        # ``db_state_match`` failures without dropping into a REPL.
+        if self.expected_scenario_db is not None:
+            from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+            metadata["expected_db_hash"] = get_dict_hash(self.expected_scenario_db)
+        if getattr(self, "expected_user_db", None) is not None:
+            from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+            metadata["expected_user_db_hash"] = get_dict_hash(self.expected_user_db)
         with open(output_dir / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=4)
 

@@ -258,19 +258,37 @@ Saved per scenario as:
 
 The judge catches presentation issues and fabrications that deterministic comparators miss — but it's noisy enough that running it alongside deterministic signals (rather than instead of) gives the most reliable verdict.
 
-### Composite `is_successful` (strict conjunction)
+### Composite `is_successful` (per-scenario whitelist)
 
-`metrics.json["is_successful"]` is `True` iff **every applicable signal passes**:
+`metrics.json["is_successful"]` is the strict-AND of every **applicable** signal in the scenario's `success_signals` whitelist. Each domain declares which signals gate its verdict — see the `SuccessSignal` enum in `nemo_voice_agent/evaluation/scenarios/classes.py` for the canonical list (`ACTION_MATCH`, `DB_STATE_MATCH`, `DB_STATE_ASSERTION`, `NL_ASSERTION`, `JUDGE_PASSED`).
 
-- `is_action_match` is `True` (excluded if `"N/A"`).
-- `db_state_match` is `True` (excluded if `"N/A"`).
-- `db_state_assertion_pass_rate == 1.0` (every predicate passes).
-- `nl_assertion_pass_rate == 1.0` (every NL assertion passes).
-- `judge_passed` is `True` (excluded when `--judge-threshold` isn't set — `judge_score` alone never drives the verdict).
+**Per-domain `success_signals` matrix** (the authoritative wiring lives on each domain's base scenario):
 
-If none of those signals are applicable, `is_successful = "N/A"`. The breakdown — which signals passed, failed, or were not applicable — is available in `metrics.json["success_breakdown"]` so operators can see at-a-glance which dimension dragged the verdict down without comparing every field manually.
+| Domain | Gating signals | Rationale |
+|---|---|---|
+| `eva_airline` | `DB_STATE_MATCH` | Gold expected DB shipped per scenario; path-independent. |
+| `tau2_airline` | `DB_STATE_MATCH` | Same — derived expected DB; no judge dependency. |
+| `tau2_retail` | `DB_STATE_MATCH` + `NL_ASSERTION` (when set) | 40/114 tasks opt into NL claims; derived per-scenario. |
+| `tau2_telecom` / `_workflow` | `DB_STATE_ASSERTION` + `NL_ASSERTION` (when set) | Open solution space — whole-DB hash and action match are informational. |
+| `restaurant`, `customer_service`, legacy `fastbite` | `ACTION_MATCH` | Single canonical `reference_answer` (structured order / ticket / receipt) checked recursively. |
+| `qa`, legacy `simple_qa_*` | `JUDGE_PASSED` | Free-form text answers — LLM judge is the only principled signal. |
+
+**Principle:** `JUDGE_PASSED` gates only when no deterministic alternative exists. `NL_ASSERTION` still runs through the judge but contributes per-assertion verdicts, so it can gate when opted in. `ACTION_MATCH` is appropriate when the domain has a single canonical correct `reference_answer` (either a structured outcome summary OR a tool-call trajectory where only one sequence is considered successful); it's not appropriate when the solution space is open (multiple valid trajectories satisfying the same outcome — telecom-style). For domains that ship an `expected_scenario_db` (eva, tau2 airline, tau2 retail), we prefer `DB_STATE_MATCH` over `ACTION_MATCH` because it's path-independent — any sequence landing on the correct end state passes.
+
+If none of the whitelisted signals are applicable for a given scenario (e.g. a QA run without `--judge-url`), `is_successful = "N/A"`. The runner emits a warning at run start when any queued scenario references `JUDGE_PASSED` / `NL_ASSERTION` but the judge isn't configured.
+
+**`success_breakdown`** in `metrics.json` carries four buckets:
+
+- `passed` — whitelisted signals that returned `True`.
+- `failed` — whitelisted signals that returned `False` (these dragged the verdict down).
+- `not_applicable` — whitelisted signals that couldn't be evaluated for this scenario.
+- `excluded` — signals computed and saved but NOT in this scenario's whitelist (informational; useful for spotting "all gating signals passed but the agent took an unusual path").
 
 **Strict thresholds for float signals.** The float-valued pass rates (`db_state_assertion_pass_rate`, `nl_assertion_pass_rate`) must equal exactly `1.0` for the composite to pass. Rationale: every assertion is supposed to be true. A 95% pass rate means one assertion failed — that's a real defect to investigate, not noise to round away.
+
+**Authoring a new domain.** Concrete scenarios MUST declare a non-empty `success_signals` on themselves or an ancestor base — `Scenario.__init_subclass__` raises `TypeError` at class-definition time if a scenario with `name` set has nothing resolvable. For mixed-composition domains (some tasks have NL assertions, some don't), use a `cached_property` that derives from `self.nl_assertions` rather than per-scenario declarations. See [`EXTENDING.md`](EXTENDING.md).
+
+The per-scenario whitelist plus the scenario's `expected_db_hash` / `expected_user_db_hash` / `db_state_assertions` / `nl_assertions` / `initialization_actions` are also written to `scenario_config/metadata.json` per scenario, so an old eval run remains fully interpretable without re-loading the scenario class.
 
 ### Run-level aggregation
 
@@ -306,7 +324,7 @@ eval_results/eval_YYYYMMDD_HHMMSS/
     ├── conversation_log.wav        # Stereo audio: L=user→agent, R=agent→user
     ├── bridge_log.txt              # Bridge debug/info log
     ├── final_agent_response.json   # Bridge-pulled action list (or legacy <final_response> payloads)
-    ├── final_scenario_db_hash.txt   # Post-run DB hash(es): db_hash + user_db_hash (telecom only)
+    ├── final_scenario_db_hash.txt   # Post-run DB hash(es): db_hash + user_db_hash (if applicable)
     ├── metrics.json                # Per-scenario metrics — see Evaluation Metrics above for the full field list
     ├── judge_result.json           # LLM judge output (present only when --judge-url is set)
     ├── scenario_config/            # Snapshot of the scenario definition used for this run

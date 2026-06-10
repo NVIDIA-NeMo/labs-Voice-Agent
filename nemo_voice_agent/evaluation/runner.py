@@ -28,7 +28,7 @@ from typing import List, Optional
 from nemo_voice_agent.evaluation.bridge import VoiceAgentEvaluationBridge
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 from nemo_voice_agent.evaluation.db_state_predicates import evaluate_db_state_assertion
-from nemo_voice_agent.evaluation.scenarios.classes import Scenario
+from nemo_voice_agent.evaluation.scenarios.classes import Scenario, SuccessSignal
 from nemo_voice_agent.evaluation.utils import LLMJudge, check_if_task_success, normalize_scenario_payload
 from nemo_voice_agent.utils import FileLogger
 
@@ -81,6 +81,25 @@ async def run_dynamic_evaluation(
 
     os.makedirs(output_dir, exist_ok=True)
     global_timestamp = global_timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Warn early if any queued scenario's gating depends on the LLM judge but
+    # the judge isn't enabled for this run. ``NL_ASSERTION`` also runs through
+    # the judge so the same warning covers it.
+    if judge is None:
+        judge_dependent_signals = {SuccessSignal.JUDGE_PASSED, SuccessSignal.NL_ASSERTION}
+        needs_judge = [
+            s for s in scenarios
+            if any(SuccessSignal(sig) in judge_dependent_signals for sig in (s.success_signals or ()))
+        ]
+        if needs_judge:
+            domains_affected = sorted({s.domain for s in needs_judge})
+            logger.info(
+                f"WARNING: {len(needs_judge)} of {len(scenarios)} queued scenarios reference "
+                f"judge-dependent signals (JUDGE_PASSED / NL_ASSERTION) in their success_signals "
+                f"but no LLM judge is configured (domains: {domains_affected}). Those scenarios "
+                f"may produce is_successful='N/A' if no deterministic signal in their whitelist "
+                f"is applicable. Pass --judge-url / --judge-model / --judge-api-key to enable."
+            )
 
     bridge = VoiceAgentEvaluationBridge(
         user_url=user_url,
@@ -414,35 +433,32 @@ async def run_dynamic_evaluation(
                 db_state_assertion_results.append(passed)
                 per_domain_db_state_assertion.setdefault(domain, []).append(passed)
 
-        # ----- Composite is_successful (strict conjunction) ------------------
-        # ``is_successful`` is True iff every applicable signal passes:
-        # action-list match, db-state hash match, db-state assertions (==1.0),
-        # nl-assertions (==1.0), and judge_passed (when threshold is set).
-        # Signals that are "N/A" or absent are excluded from the conjunction.
-        # If no signals are applicable to this scenario, ``is_successful``
-        # falls back to "N/A".
-        #
-        # ``success_breakdown`` lists each signal's verdict so operators can
-        # see at-a-glance WHICH signal failed without comparing every field.
+        # ----- Composite is_successful (delegated to scenario) ---------------
+        # The scenario's ``success_signals`` whitelist drives which of the 5
+        # signals gate the verdict; the rest are computed and saved but land
+        # in ``success_breakdown.excluded`` (informational). Default behavior
+        # is strict-AND over applicable whitelist signals — see
+        # ``Scenario.compute_is_successful``. Domains override the whitelist
+        # to reflect their solution-space shape (e.g. tau2_telecom drops
+        # ``DB_STATE_MATCH`` and ``ACTION_MATCH`` because open-spec).
         signal_checks = {
-            "is_action_match": _signal_passes(metrics.get("is_action_match")),
-            "db_state_match": _signal_passes(metrics.get("db_state_match")),
-            "db_state_assertion": _signal_passes(metrics.get("db_state_assertion_pass_rate")),
-            "nl_assertion": _signal_passes(metrics.get("nl_assertion_pass_rate")),
-            "judge_passed": metrics.get("judge_passed"),  # already bool/None
+            SuccessSignal.ACTION_MATCH: _signal_passes(metrics.get("is_action_match")),
+            SuccessSignal.DB_STATE_MATCH: _signal_passes(metrics.get("db_state_match")),
+            SuccessSignal.DB_STATE_ASSERTION: _signal_passes(metrics.get("db_state_assertion_pass_rate")),
+            SuccessSignal.NL_ASSERTION: _signal_passes(metrics.get("nl_assertion_pass_rate")),
+            SuccessSignal.JUDGE_PASSED: metrics.get("judge_passed"),  # already bool/None
         }
-        applicable = {k: v for k, v in signal_checks.items() if v is not None}
+        whitelist = {SuccessSignal(s) for s in (scenario.success_signals or ())}
         metrics["success_breakdown"] = {
-            "passed": [k for k, v in applicable.items() if v],
-            "failed": [k for k, v in applicable.items() if not v],
-            "not_applicable": [k for k, v in signal_checks.items() if v is None],
+            "passed": [str(k) for k, v in signal_checks.items() if k in whitelist and v is True],
+            "failed": [str(k) for k, v in signal_checks.items() if k in whitelist and v is False],
+            "not_applicable": [str(k) for k, v in signal_checks.items() if k in whitelist and v is None],
+            "excluded": [str(k) for k, v in signal_checks.items() if k not in whitelist and v is not None],
         }
-        if applicable:
-            metrics["is_successful"] = all(applicable.values())
+        metrics["is_successful"] = scenario.compute_is_successful(signal_checks)
+        if isinstance(metrics["is_successful"], bool):
             success_results.append(metrics["is_successful"])
             per_domain_success.setdefault(domain, []).append(metrics["is_successful"])
-        else:
-            metrics["is_successful"] = "N/A"
 
         # Save metrics to file
         metrics_file = os.path.join(scenario_dir, "metrics.json")

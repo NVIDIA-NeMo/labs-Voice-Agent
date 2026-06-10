@@ -25,6 +25,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Persona,
     Resources,
     Scenario,
+    SuccessSignal,
     Task,
 )
 from nemo_voice_agent.evaluation.tools.customer_service_tools import (
@@ -40,6 +41,10 @@ class CustomerServiceBaseScenario(Scenario):
     Provides domain defaults for TechCorp customer service interactions.
     This class is NOT registered as a scenario itself.
     """
+
+    # Pattern B summary content (ticket result) checked against
+    # ``reference_answer`` via the recursive comparator.
+    success_signals = (SuccessSignal.ACTION_MATCH,)
 
     max_duration = 120
     ignore_capitalization = True

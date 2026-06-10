@@ -8,6 +8,7 @@ This guide is the author's reference for adding new scenarios, tools, and domain
 - [Scenario Structure](#scenario-structure)
   - [The 8 properties (per side: user and agent)](#the-8-properties-per-side-user-and-agent)
   - [Scenario-level fields](#scenario-level-fields)
+  - [Scoring contract (`success_signals`)](#scoring-contract-success_signals)
   - [Domain organization](#domain-organization)
 - [Creating a New Scenario](#creating-a-new-scenario)
   - [1. Pick or create a domain](#1-pick-or-create-a-domain)
@@ -49,6 +50,7 @@ A scenario fully specifies what both the user and the agent do during one evalua
 | `description` | Short human-readable summary. |
 | `max_duration` | Max scenario duration in seconds. Overrides the CLI default. |
 | `domain` | ClassVar string. Keys the per-domain tool registry namespace, the fixture subdir (e.g., `evaluation/data/{domain}/`), and the bridge's `tool_domain` argument to `update_system_prompt`. Set on the domain base class; subclasses inherit. Default is `"default"`. |
+| `success_signals` | **Required.** Tuple of `SuccessSignal` members that gate the `is_successful` composite for this scenario. Set as a ClassVar on the domain base when uniform across the domain, or as a `cached_property` deriving from `self.nl_assertions` / other per-scenario fields when the domain has a mixed composition. `Scenario.__init_subclass__` validates this is non-empty at class-definition time for any class declaring `name`. See [Scoring contract](#scoring-contract-success_signals) below. |
 | `reference_answer` | The expected action list (or `<final_response>` payload for legacy LLM-summary scenarios). Dict or list-of-dicts. Drives the action-list match signal. |
 | `expected_scenario_db` | Optional `cached_property`. End-state DB fixture used by the DB-state hash match signal. Path-independent. |
 | `db_state_assertions` | Optional list of deterministic predicate records. Used by the per-predicate `db_state_assertion_pass_rate` signal. See [Evaluation Metrics](README.md#evaluation-metrics). |
@@ -60,6 +62,46 @@ A scenario fully specifies what both the user and the agent do during one evalua
 | `noise_config` | Optional `NoiseConfig` to inject background noise into the user→agent channel. |
 
 Most subclasses only declare a handful of these — the rest are derived from a single `tau2_id` / `eva_id` ClassVar via `cached_property` on the domain base.
+
+### Scoring contract (`success_signals`)
+
+Every concrete scenario must resolve `success_signals` to a non-empty tuple of `SuccessSignal` members (the enum lives at `nemo_voice_agent.evaluation.scenarios.classes.SuccessSignal`):
+
+| Member | Canonical key | When to use |
+|---|---|---|
+| `ACTION_MATCH` | `is_action_match` | Recursive match of the agent's prediction against `reference_answer`. Appropriate when the domain has a single canonical correct payload — whether that's a structured outcome summary (restaurant order dict, customer-service ticket) OR a tool-call trajectory where only one sequence is considered successful. **Not** appropriate when the solution space is open (multiple valid trajectories satisfying the same outcome — telecom). For domains that ship an `expected_scenario_db`, prefer `DB_STATE_MATCH` over `ACTION_MATCH` — it's path-independent. |
+| `DB_STATE_MATCH` | `db_state_match` | Whole-DB SHA-256 equality against `expected_scenario_db`. Path-independent but trajectory-baking — appropriate when there's a single deterministic end state. |
+| `DB_STATE_ASSERTION` | `db_state_assertion` | Per-predicate verdicts against the bridge-pulled DB. Use when the solution space is open (multiple valid end states satisfy the same outcome predicates — telecom-style). |
+| `NL_ASSERTION` | `nl_assertion` | Per-claim LLM-judged verdicts on the transcript. Use when the domain has natural-language behavioral expectations. Requires `--judge-url`. |
+| `JUDGE_PASSED` | `judge_passed` | Overall LLM judge score (binarized via `--judge-threshold`). Use as the **only** signal for domains where no deterministic check applies (free-form QA). |
+
+**Principle:** `JUDGE_PASSED` gates only when no deterministic alternative exists. `ACTION_MATCH` gates only when the domain has a single canonical correct payload (open-spec domains use `DB_STATE_ASSERTION` instead). Signals NOT in `success_signals` are still computed and saved (visible in `metrics.json["success_breakdown"]["excluded"]`) — they just don't drive the verdict.
+
+**Override patterns:**
+
+```python
+# Uniform signals across the domain → ClassVar tuple on the base.
+class Tau2AirlineBaseScenario(Tau2BaseScenario):
+    success_signals = (SuccessSignal.DB_STATE_MATCH,)
+
+# Mixed composition (per-scenario opt-ins) → cached_property on the base.
+class Tau2RetailBaseScenario(Tau2BaseScenario):
+    @cached_property
+    def success_signals(self):
+        if self.nl_assertions:
+            return (SuccessSignal.DB_STATE_MATCH, SuccessSignal.NL_ASSERTION)
+        return (SuccessSignal.DB_STATE_MATCH,)
+
+# Per-scenario outlier → declare directly on the subclass.
+@register_eval_scenario
+class WeirdEdgeCase(SomeBase):
+    name = "..."
+    success_signals = (SuccessSignal.DB_STATE_ASSERTION,)  # overrides base
+```
+
+**Escape hatch — custom verdict logic.** If a scenario needs more than strict-AND (weighted majority, threshold gating, OR-of-some), override `compute_is_successful(self, signals)` directly. The default implementation lives on `Scenario` and reads `self.success_signals` to filter.
+
+**Authoring trap.** Forgetting `success_signals` on a new domain base raises `TypeError` at class-definition time (`Scenario.__init_subclass__` validation). An empty tuple `()` is also rejected — a scenario with zero gating signals is a bug, not a config.
 
 ### Domain organization
 
@@ -73,7 +115,7 @@ Scenarios are organized by domain using a **base class pattern**:
 
 ### 1. Pick or create a domain
 
-Existing domains: `eva_airline`, `tau2_airline`, `tau2_retail`, `tau2_telecom`, `tau2_telecom_workflow` (primary benchmarks); `restaurant`, `customer_service`, `qa`, `waitlist` (in-repo smoke sets); `default` (legacy / cross-domain harness tools).
+Existing domains: `eva_airline`, `tau2_airline`, `tau2_retail`, `tau2_telecom`, `tau2_telecom_workflow` (primary benchmarks); `restaurant`, `customer_service`, `qa` (in-repo smoke sets); `default` (legacy / cross-domain harness tools, including the legacy `fastbite` and `simple_qa_*` scenarios).
 
 - **Adding a scenario to an existing domain** — drop a new class into the matching file (`scenarios/data/{domain}.py`) or group module (`scenarios/data/{domain}/group_Nx.py` for packaged domains).
 - **Creating a new domain** — add `scenarios/data/{domain}/` (package) or `scenarios/data/{domain}.py` (single file) with a `{Domain}BaseScenario` base class. Set `domain = "{domain}"` as a ClassVar. Side-import the new module from `scenarios/data/__init__.py`. Add `tools/{domain}_tools.py` for any domain-specific tools and side-import it from `tools/__init__.py`.
@@ -141,6 +183,8 @@ class PizzaPepperoni(RestaurantBaseScenario):
             },
         )
 ```
+
+> **Note on `success_signals`** — this example inherits `(SuccessSignal.ACTION_MATCH,)` from `RestaurantBaseScenario`, so no declaration is needed. For a brand-new domain you'd set it on the base (or as a `cached_property` for mixed compositions); for a per-scenario outlier you'd declare it directly on the subclass. See [Scoring contract](#scoring-contract-success_signals) above.
 
 ### 3. Verify
 

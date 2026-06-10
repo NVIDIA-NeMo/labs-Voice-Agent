@@ -50,7 +50,7 @@ from functools import cached_property
 from typing import Any, ClassVar, Dict, List, Optional
 
 from nemo_voice_agent.evaluation import get_eval_data_root
-from nemo_voice_agent.evaluation.scenarios.classes import Actions, Resources
+from nemo_voice_agent.evaluation.scenarios.classes import Actions, Resources, SuccessSignal
 from nemo_voice_agent.evaluation.scenarios.data.tau2_common import (
     Tau2BaseScenario,
     _normalize_env_record,
@@ -199,6 +199,24 @@ class Tau2TelecomBaseScenario(Tau2BaseScenario):
     # Triggers dual-DB seeding in gold replay (``_gold_replay`` calls
     # ``setup_shared_state(state, side="user")`` when this is True).
     has_user_state: bool = True
+
+    @cached_property
+    def success_signals(self) -> tuple:
+        """Predicate-only gating; whole-DB hash and action match are informational.
+
+        Telecom has an open solution space — different valid action
+        sequences land in different whole-DB states but satisfy the
+        same outcome predicates. ``DB_STATE_ASSERTION`` (per-predicate,
+        intent-focused) is the authoritative outcome signal. ``NL_ASSERTION``
+        is added when a task opts in. ``DB_STATE_MATCH`` and ``ACTION_MATCH``
+        are computed and saved for diagnostics but DO NOT gate the verdict
+        (they appear in ``success_breakdown.excluded``). ``JUDGE_PASSED``
+        (overall) is also non-gating — when the judge is enabled it
+        contributes per-NL-assertion verdicts via ``NL_ASSERTION``.
+        """
+        if self.nl_assertions:
+            return (SuccessSignal.DB_STATE_ASSERTION, SuccessSignal.NL_ASSERTION)
+        return (SuccessSignal.DB_STATE_ASSERTION,)
 
     # Default policy variant. Upstream offers two — ``"manual"`` (long-form
     # documentation) and ``"workflow"`` (procedural step-by-step). Matches

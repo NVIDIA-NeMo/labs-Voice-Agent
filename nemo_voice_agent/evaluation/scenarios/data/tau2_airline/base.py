@@ -40,7 +40,7 @@ generator in ``nemo_experiments/``.
 from functools import cached_property
 from typing import Any, Dict
 
-from nemo_voice_agent.evaluation.scenarios.classes import Resources
+from nemo_voice_agent.evaluation.scenarios.classes import Resources, SuccessSignal
 from nemo_voice_agent.evaluation.scenarios.data.tau2_common import Tau2BaseScenario
 from nemo_voice_agent.evaluation.tools.tau2_airline_tools import TAU2_AIRLINE_TOOL_NAME_TO_CLASS
 
@@ -61,6 +61,10 @@ class Tau2AirlineBaseScenario(Tau2BaseScenario):
     """
 
     domain: str = "tau2_airline"
+    # Path-independent DB-hash equality is the principled outcome signal for
+    # tau2_airline. No predicates / NL assertions; judge becomes informational
+    # so the verdict doesn't depend on judge availability.
+    success_signals = (SuccessSignal.DB_STATE_MATCH,)
 
     # tau2_airline is single-side (agent only); user side is text-driven by the
     # user simulator but the tau2 toolset doesn't include user-side tools.
