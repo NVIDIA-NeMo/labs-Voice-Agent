@@ -69,8 +69,21 @@ def setup_rotating_log(
 class FileLogger:
     """Simple file+stdout logger with caller location tracking."""
 
-    def __init__(self, log_file: Optional[str] = None):
+    def __init__(self, log_file: Optional[str] = None, mode: str = "w"):
+        """
+        Args:
+            log_file: Path to write log lines to. ``None`` = stdout only.
+            mode: ``"w"`` (default) truncates the file at construction time so
+                each new run starts with a clean log. ``"a"`` preserves the
+                existing file's contents — used when resuming a previous
+                session into the same output directory.
+        """
         self.log_file = log_file
+        if log_file and mode == "w":
+            # Truncate so each fresh run starts clean. Individual log() writes
+            # still open in append mode so multiple loggers can share the
+            # same file within a run.
+            open(log_file, "w").close()
 
     def _get_caller_location(self) -> str:
         """Return file:function:line of the caller, skipping frames inside FileLogger."""

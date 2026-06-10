@@ -10,6 +10,7 @@ Evaluate a voice agent by having a simulated user (another voice agent) talk to 
   - [1. Start the two bot servers](#1-start-the-two-bot-servers)
   - [2. Run an evaluation](#2-run-an-evaluation)
   - [3. Scoring](#3-scoring)
+  - [4. Resuming a partial run](#4-resuming-a-partial-run)
 - [CLI Reference](#cli-reference)
   - [`run_evaluation.py` flags](#run_evaluationpy-flags)
   - [Bot server environment variables](#bot-server-environment-variables)
@@ -104,6 +105,31 @@ python run_evaluation.py \
 ### 3. Scoring
 
 Each scenario can be scored by up to **five orthogonal signals** — action-list match, DB-state hash match, DB-state assertions, NL assertions, and LLM judge — combined into a single `is_successful` composite via strict conjunction (every applicable signal must pass). Pass `--judge-url`, `--judge-model`, and `--judge-api-key` to enable the LLM judge alongside the deterministic signals; the judge runs independently and contributes its own verdict to the conjunction (when `--judge-threshold` is set). All signals + the composite + a per-scenario `success_breakdown` land in `metrics.json`; the LLM judge's full output (score, reason, per-assertion verdicts, verbatim prompt) lives in `judge_result.json`. See [Evaluation Metrics](#evaluation-metrics) for the full signal model.
+
+### 4. Resuming a partial run
+
+If a long run gets killed (or you killed it intentionally), re-invoke `run_evaluation.py` with `--resume <timestamp>` to pick up where it left off. The runner reuses the existing `eval_<timestamp>/` directory:
+
+```bash
+python run_evaluation.py \
+    --user-url ws://localhost:8766 --agent-url ws://localhost:8765 \
+    --domain tau2_retail \
+    --resume 20260609_181545
+```
+
+Per-scenario filesystem state determines what happens to each scenario:
+
+| State | What's on disk | Behavior |
+|---|---|---|
+| **Completed** | `metrics.json` exists and parses cleanly | Skipped. Metrics loaded from disk and folded into the run-level aggregate so `all_summary.txt` covers BOTH this and the previous session. |
+| **In-flight** | Subdir exists but no (or malformed) `metrics.json` | Moved to `<scenario>.killed.<resume_ts>/` (with a `__KILLED__` marker) for post-mortem; the scenario then re-runs fresh. |
+| **Fresh** | No subdir | Runs normally. |
+
+**Invocation history.** Every run writes `<session_dir>/run_args.json` recording the CLI invocation (parsed args, `argv`, resolved scenario list). Resume invocations append a new entry rather than overwrite, so the file shows the full history of the run dir. The LLM judge API key is redacted before writing.
+
+**Consistency soft-check.** On `--resume`, scoring-relevant flags (`--domain` / `--scenarios` / `--duration` / `--judge-*` / `--strict-match`) are compared against the previous invocation; mismatches log a warning but never block — the operator decides whether to proceed. Mixing flags across resumed sessions produces incoherent aggregates (some scenarios scored one way, some another), so for a clean comparison rerun from scratch.
+
+**Final aggregates always regenerate.** `all_metrics.json`, `all_summary.txt`, and `all_latencies.csv` are written fresh at the end of the resume session, covering every scenario in `all_results` (both freshly-run and loaded-from-disk).
 
 ## CLI Reference
 

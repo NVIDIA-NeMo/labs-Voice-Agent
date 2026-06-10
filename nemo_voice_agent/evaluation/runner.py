@@ -22,8 +22,9 @@ Accepts structured Scenario objects instead of raw dicts.
 import asyncio
 import json
 import os
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from nemo_voice_agent.evaluation.bridge import VoiceAgentEvaluationBridge
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
@@ -31,6 +32,127 @@ from nemo_voice_agent.evaluation.db_state_predicates import evaluate_db_state_as
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario, SuccessSignal
 from nemo_voice_agent.evaluation.utils import LLMJudge, check_if_task_success, normalize_scenario_payload
 from nemo_voice_agent.utils import FileLogger
+
+
+@dataclass
+class RunAggregator:
+    """Run-level metric accumulator.
+
+    Holds per-signal pass-rate buckets + per-domain breakdowns + per-side
+    token totals across all scenarios in a run. ``add_scenario(metrics, domain)``
+    folds a per-scenario metrics dict into all buckets uniformly — used by
+    both the freshly-run path (after computing metrics) and the resume-skip
+    path (after loading metrics.json from disk for an already-completed
+    scenario). Centralizing this logic guarantees the final ``all_summary.txt``
+    aggregate is identical regardless of whether a scenario ran live or was
+    loaded from a prior session.
+
+    Bucket lists are kept as flat ``List[bool|float]`` (not keyed by
+    ``SuccessSignal``) so the existing downstream consumers in
+    ``run_dynamic_evaluation`` (summary writer, per-domain rollups) can
+    reference them by name without changing 100+ call sites. Dict-key
+    lookups on incoming ``metrics`` use ``SuccessSignal.*`` members directly
+    (``StrEnum`` makes them str-equal to their JSON-key values).
+    """
+
+    success_results: List[bool] = field(default_factory=list)
+    action_match_results: List[bool] = field(default_factory=list)
+    judge_score_results: List[float] = field(default_factory=list)
+    judge_pass_results: List[bool] = field(default_factory=list)
+    db_state_results: List[bool] = field(default_factory=list)
+    nl_assertion_results: List[bool] = field(default_factory=list)
+    db_state_assertion_results: List[bool] = field(default_factory=list)
+
+    per_domain_success: Dict[str, List[bool]] = field(default_factory=dict)
+    per_domain_action_match: Dict[str, List[bool]] = field(default_factory=dict)
+    per_domain_judge_score: Dict[str, List[float]] = field(default_factory=dict)
+    per_domain_judge_pass: Dict[str, List[bool]] = field(default_factory=dict)
+    per_domain_db_state: Dict[str, List[bool]] = field(default_factory=dict)
+    per_domain_nl_assertion: Dict[str, List[bool]] = field(default_factory=dict)
+    per_domain_db_state_assertion: Dict[str, List[bool]] = field(default_factory=dict)
+
+    run_token_usage: dict = field(
+        default_factory=lambda: {
+            "agent": {"n_calls": 0, "prompt": 0, "completion": 0},
+            "user": {"n_calls": 0, "prompt": 0, "completion": 0},
+        }
+    )
+
+    def add_scenario(self, metrics: dict, domain: str) -> None:
+        """Append one scenario's metrics into all run-level + per-domain buckets.
+
+        Idempotent against incomplete metrics dicts — each signal is only
+        appended when its corresponding key is present and well-typed in
+        ``metrics``. Signals not opted into by the scenario (no
+        ``expected_scenario_db``, no NL assertions, etc.) simply don't
+        contribute to their bucket.
+
+        ``SuccessSignal`` enum members are used as the dict keys when
+        looking up signal values in ``metrics`` — StrEnum members compare
+        equal to their string values, so this preserves byte-stability of
+        the on-disk metrics.json format while pinning the lookup to a
+        typo-resistant symbol.
+        """
+        # SuccessSignal.ACTION_MATCH = "is_action_match" → either bool, "N/A", or absent.
+        v = metrics.get(SuccessSignal.ACTION_MATCH)
+        if isinstance(v, bool):
+            self.action_match_results.append(v)
+            self.per_domain_action_match.setdefault(domain, []).append(v)
+
+        # ``judge_score`` is the raw float; not a SuccessSignal member.
+        js = metrics.get("judge_score")
+        if isinstance(js, (int, float)):
+            self.judge_score_results.append(float(js))
+            self.per_domain_judge_score.setdefault(domain, []).append(float(js))
+
+        # SuccessSignal.JUDGE_PASSED = "judge_passed" → bool when --judge-threshold is set.
+        v = metrics.get(SuccessSignal.JUDGE_PASSED)
+        if isinstance(v, bool):
+            self.judge_pass_results.append(v)
+            self.per_domain_judge_pass.setdefault(domain, []).append(v)
+
+        # SuccessSignal.DB_STATE_MATCH = "db_state_match" → bool when expected_scenario_db is set.
+        v = metrics.get(SuccessSignal.DB_STATE_MATCH)
+        if isinstance(v, bool):
+            self.db_state_results.append(v)
+            self.per_domain_db_state.setdefault(domain, []).append(v)
+
+        # NL assertions: per-assertion verdicts are persisted only in judge_result.json,
+        # not in metrics.json itself. We pull them back out by file when the pass rate
+        # is present so the run-level rate is denominated in assertions, not scenarios.
+        if isinstance(metrics.get("nl_assertion_pass_rate"), (int, float)):
+            scen_dir = metrics.get("scenario_directory")
+            if scen_dir:
+                jrf = os.path.join(scen_dir, "judge_result.json")
+                if os.path.exists(jrf):
+                    try:
+                        with open(jrf) as f:
+                            jr = json.load(f)
+                        for v in jr.get("nl_assertion_verdicts") or []:
+                            passed = bool(v.get("passed"))
+                            self.nl_assertion_results.append(passed)
+                            self.per_domain_nl_assertion.setdefault(domain, []).append(passed)
+                    except (json.JSONDecodeError, OSError):
+                        pass
+
+        # DB-state assertions: per-predicate verdicts live in metrics.json directly.
+        for v in metrics.get("db_state_assertion_verdicts") or []:
+            passed = bool(v.get("passed"))
+            self.db_state_assertion_results.append(passed)
+            self.per_domain_db_state_assertion.setdefault(domain, []).append(passed)
+
+        # Composite is_successful. May be "N/A" when no whitelisted signal was applicable —
+        # skip those (the scenario can't be scored, so it shouldn't drag the run rate).
+        if isinstance(metrics.get("is_successful"), bool):
+            self.success_results.append(metrics["is_successful"])
+            self.per_domain_success.setdefault(domain, []).append(metrics["is_successful"])
+
+        # Per-side token usage rollup.
+        tu = metrics.get("token_usage") or {}
+        for side in ("agent", "user"):
+            sub = tu.get(side) or {}
+            for key in ("n_calls", "prompt", "completion"):
+                self.run_token_usage[side][key] += sub.get(key, 0)
 
 
 async def run_dynamic_evaluation(
@@ -114,55 +236,76 @@ async def run_dynamic_evaluation(
     )
 
     all_results = []
-    # Composite ``is_successful`` results (strict conjunction across all
-    # applicable signals — see ``_signal_passes`` below). One bool per
-    # scenario that had at least one applicable signal; scenarios where
-    # every signal was "N/A" don't append here.
-    success_results: List[bool] = []
-    # Action-list match results (deterministic comparator). Tracked
-    # independently of ``success_results`` so the per-signal breakdown
-    # can report action-match-only rates alongside the composite.
-    # One bool per scenario with a ``reference_answer``.
-    action_match_results: List[bool] = []
-    # LLM judge scores (raw 0-1 float). One entry per scenario when
-    # ``--judge-url`` is set. Used for the mean-score rollup.
-    judge_score_results: List[float] = []
-    # LLM judge pass results — one bool per scenario when both
-    # ``--judge-url`` and ``--judge-threshold`` are set.
-    judge_pass_results: List[bool] = []
-    # DB-state match results (only collected for scenarios with `expected_scenario_db`).
-    # Denominator is "scenarios that opted into DB-state scoring", not "all scenarios".
-    db_state_results: List[bool] = []
-    # Per-assertion verdicts flattened across scenarios with nl_assertions. Each entry
-    # is True/False for one assertion in one scenario; denominator is "total
-    # nl_assertions emitted in this run", not "scenarios". Empty when no scenario
-    # opts into nl-assertion scoring.
-    nl_assertion_results: List[bool] = []
-    # Per-predicate verdicts flattened across scenarios with db_state_assertions.
-    # Same shape as ``nl_assertion_results`` — each entry is True/False for one
-    # predicate in one scenario; denominator is "total db_state_assertions
-    # emitted in this run", not "scenarios". Empty when no scenario opts into
-    # DB-state-assertion scoring (currently only tau2-telecom).
-    db_state_assertion_results: List[bool] = []
-    # Per-side token usage accumulated across scenarios. Populated from each
-    # scenario's ``bridge.token_usage`` snapshot. The eval-result-analyzer skill
-    # used to recompute this from bridge_log.txt; this canonical source lets
-    # the runner print totals in all_summary.txt without log re-parsing.
-    run_token_usage: dict = {
-        "agent": {"n_calls": 0, "prompt": 0, "completion": 0},
-        "user": {"n_calls": 0, "prompt": 0, "completion": 0},
-    }
+    # All run-level signal buckets + per-domain breakdowns + token totals live
+    # on a single accumulator object. Local-alias every bucket back into the
+    # function scope so the existing 100+ inline ``*_results.append(...)`` and
+    # ``per_domain_*.setdefault(...)`` call sites continue to work unchanged —
+    # the aliases share the same list/dict identity with the aggregator
+    # fields. The aggregator's ``add_scenario`` method centralizes the
+    # equivalent logic for the resume-skip path (loaded-from-disk metrics).
+    aggregator = RunAggregator()
+    success_results = aggregator.success_results
+    action_match_results = aggregator.action_match_results
+    judge_score_results = aggregator.judge_score_results
+    judge_pass_results = aggregator.judge_pass_results
+    db_state_results = aggregator.db_state_results
+    nl_assertion_results = aggregator.nl_assertion_results
+    db_state_assertion_results = aggregator.db_state_assertion_results
     # Per-domain buckets keyed by ``scenario.name.split('__')[0]`` so a mixed run
-    # (eva_airline + tau2_airline + retail + …) reports success rates per source.
-    # Scenarios without a ``__`` separator (e.g. "fastbite", "simple_qa_1") fall
-    # under the scenario name itself.
-    per_domain_success: dict = {}
-    per_domain_action_match: dict = {}
-    per_domain_judge_score: dict = {}
-    per_domain_judge_pass: dict = {}
-    per_domain_db_state: dict = {}
-    per_domain_nl_assertion: dict = {}
-    per_domain_db_state_assertion: dict = {}
+    # (eva_airline + tau2_airline + retail + …) reports rates per source.
+    per_domain_success = aggregator.per_domain_success
+    per_domain_action_match = aggregator.per_domain_action_match
+    per_domain_judge_score = aggregator.per_domain_judge_score
+    per_domain_judge_pass = aggregator.per_domain_judge_pass
+    per_domain_db_state = aggregator.per_domain_db_state
+    per_domain_nl_assertion = aggregator.per_domain_nl_assertion
+    per_domain_db_state_assertion = aggregator.per_domain_db_state_assertion
+    run_token_usage = aggregator.run_token_usage
+
+    def _classify_resume_state(scenario_dir: str) -> str:
+        """Return ``"completed"`` / ``"in_flight"`` / ``"fresh"`` based on disk state."""
+        if not os.path.isdir(scenario_dir):
+            return "fresh"
+        mf = os.path.join(scenario_dir, "metrics.json")
+        if not os.path.exists(mf):
+            return "in_flight"
+        try:
+            with open(mf) as f:
+                json.load(f)
+            return "completed"
+        except (json.JSONDecodeError, OSError):
+            return "in_flight"
+
+    # Pre-loop classification pass: any scenario whose subdir already has a
+    # finalized ``metrics.json`` is loaded into ``all_results`` (and its
+    # signals folded into the run-level buckets) WITHOUT being re-run.
+    # In-flight subdirs (started, no metrics.json) are moved aside so the
+    # re-run starts clean. ``loaded_names`` is a set used by the main loop
+    # to skip the run-scenario step for completed entries.
+    resume_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    loaded_names = set()
+    for scenario in scenarios:
+        scen_dir = os.path.join(output_dir, scenario.name)
+        state = _classify_resume_state(scen_dir)
+        if state == "completed":
+            with open(os.path.join(scen_dir, "metrics.json")) as f:
+                m = json.load(f)
+            # Refresh the scenario_directory in case the dir was moved.
+            m["scenario_directory"] = scen_dir
+            all_results.append(m)
+            aggregator.add_scenario(m, scenario.name.split("__", 1)[0])
+            loaded_names.add(scenario.name)
+            logger.info(f"[SKIP] {scenario.name}: already complete, loaded metrics.json from disk.")
+        elif state == "in_flight":
+            backup = f"{scen_dir}.killed.{resume_timestamp}"
+            os.rename(scen_dir, backup)
+            # Leave a marker so the eval-result-analyzer skill won't mistake
+            # the moved directory for a real scenario subdir.
+            open(os.path.join(backup, "__KILLED__"), "w").close()
+            logger.info(
+                f"[CLEANUP] {scenario.name}: subdir was in-flight (no metrics.json); "
+                f"moved to {os.path.basename(backup)}/ and will re-run."
+            )
 
     def _signal_passes(value, *, pass_rate_threshold: float = 1.0):
         """Normalize a per-scenario signal to True / False / None (N/A).
@@ -188,6 +331,14 @@ async def run_dynamic_evaluation(
         return None
 
     for idx, scenario in enumerate(scenarios):
+        # Resume short-circuit: scenarios with a finalized metrics.json were
+        # already loaded into ``all_results`` and the run-level buckets above,
+        # so skip the live execution. Per-scenario artifacts on disk (bridge_log,
+        # bot_logs, judge_result) remain unchanged.
+        if scenario.name in loaded_names:
+            logger.info(f"[SKIP {idx+1}/{len(scenarios)}] {scenario.name} (loaded from previous run)")
+            continue
+
         logger.info(f"{'='*80}")
         logger.info(f"Starting Scenario {idx+1}/{len(scenarios)}: {scenario.name}")
         logger.info(f"{'='*80}\n")
