@@ -196,7 +196,7 @@ The runner emits up to **five orthogonal scoring signals** per scenario, plus a 
 | DB-state assertions | float ∈ [0, 1] | No | tau2_telecom (6 predicates) | `db_state_assertion_pass_rate` |
 | NL assertions | float ∈ [0, 1] | No (judged on transcript) | tau2_retail (40/114 tasks), tau2_telecom (a subset) | `nl_assertion_pass_rate` |
 | LLM judge score | float ∈ [0, 1] | — | Any run with `--judge-url` | `judge_score` (+ `judge_passed` when `--judge-threshold` set) |
-| **Composite (this scenario)** | `bool \| "N/A"` | — | Always computed | **`is_successful`** + `success_breakdown` |
+| **Composite (is_successful)** | `bool \| "N/A"` | — | Always computed | **`is_successful`** + `success_breakdown` |
 
 ### 1. Action-list match (deterministic)
 

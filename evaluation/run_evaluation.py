@@ -55,6 +55,15 @@ Examples:
       --agent-url ws://localhost:8766 \\
       --scenarios fastbite simple_qa_1 simple_qa_3
 
+  # Run all scenarios in a domain
+  python run_evaluation.py \\
+      --user-url ws://localhost:8765 \\
+      --agent-url ws://localhost:8766 \\
+      --domain eva_airline
+
+  # List available domains
+  python run_evaluation.py --list-domains
+
   # List available scenarios
   python run_evaluation.py --list
         """,

@@ -27,8 +27,45 @@ The input path can be either:
 |---|---|---|
 | **Single scenario** | A directory containing `judge_result.json` directly (e.g. `tau2_retail__16/`). | Analyze just that scenario; write `analysis_report.md` inside it. |
 | **Full run** | A directory containing `all_metrics.json` + `all_summary.txt` + per-scenario subdirectories. | Analyze every scenario subdir individually (write each per-scenario `analysis_report.md`), then write a run-level `analysis_report.md` at the top of the run dir that aggregates findings. |
+| **Partial run** | Scenario subdirectories exist but `all_summary.txt` / `all_metrics.json` are MISSING at the top level. | Same as Full run, with three additional steps: (1) disambiguate "still running" vs "killed" via `evaluation_log.txt` mtime, (2) aggregate every headline rate from per-scenario `metrics.json` files (not `all_summary.txt`), (3) stamp the run-level report's title with `(PARTIAL RUN — N scenarios analyzed)` plus either `did not complete normally` or `STILL RUNNING — snapshot at HH:MM` based on the mtime check. See [Partial-run handling](#partial-run-handling) below. |
 
-Detect mode by checking whether the path contains scenario subdirectories with `judge_result.json` (run-level) or has `judge_result.json` directly (scenario-level).
+Detect mode by checking whether the path contains scenario subdirectories with `judge_result.json` (run-level) or has `judge_result.json` directly (scenario-level). Distinguish **Full** vs **Partial** at the run level by whether `all_summary.txt` exists in the input directory — `all_summary.txt` and `all_metrics.json` are written only at the end of the run loop (`runner.py`'s final block), so their absence means the run either didn't complete OR is still actively running. The mtime of `evaluation_log.txt` disambiguates those two cases (see Partial-run handling step 1). Per-scenario `metrics.json` is written incrementally so each completed scenario has full per-scenario artifacts regardless.
+
+### Partial-run handling
+
+When `all_summary.txt` is absent:
+
+1. **Disambiguate "killed mid-run" vs "still actively running"** before anything else. The filesystem alone can't tell them apart — both produce identical "subdirs without top-level aggregates" shapes. Check `evaluation_log.txt`'s modification time:
+
+   ```bash
+   # Seconds since evaluation_log.txt was last modified.
+   echo $(( $(date +%s) - $(stat -c %Y evaluation_log.txt) ))
+   ```
+
+   - **< ~300 s** (5 minutes): the run is **STILL ACTIVE**. The runner writes a fresh log line at least every scenario start and during scenario execution; quiescence of <5 min effectively never happens between events while the run is alive. Surface this prominently in the report header (e.g. `(STILL RUNNING — snapshot at HH:MM)`), and tell the user explicitly that their counts will move; recommend re-invoking the skill after the run finishes (when `all_summary.txt` appears) for a final pass.
+   - **> ~300 s**: the run is **likely killed / errored / hung**. Proceed with normal partial-run aggregation. Optionally note in the report when the last log line was written and the in-flight scenario name (if any) so the operator knows where to resume.
+
+   The mtime heuristic is approximate — a slow LLM call (we've seen up to ~600 s user-side TTFB in real runs) can make an active run look quiescent. If the mtime is in the 5–15 min ambiguous band, hedge: "log idle for X min; the run is probably stalled but may be in a long LLM call". When in doubt, **prefer the still-running framing** — a false-positive "killed" claim is harder to walk back than a false-positive "still running" hedge.
+
+2. **Derive the intended N from `evaluation_log.txt` at the run-dir top level.** The runner logs `Starting Scenario K/N: <name>` for every scenario as it begins. The largest `K/N` line gives both the last-started scenario and the intended total N — even if the run died mid-scenario K. Use:
+
+   ```bash
+   grep -oE 'Starting Scenario [0-9]+/[0-9]+' evaluation_log.txt | tail -1
+   # → e.g. "Starting Scenario 67/114"   (intended N = 114, last started = 67)
+   ```
+
+   Count completed scenarios as the number of subdirs with a `metrics.json` (incrementally written *after* each scenario finishes), not the largest K from the log (which counts the in-flight scenario too). Report both: `N_completed / N_intended (X.X%) — Y unrun, 1 may be partially in-flight`. Fall back to `run_evaluation.sh` / CLI flags in the user's prompt only if `evaluation_log.txt` is missing or unparseable.
+
+   **Snapshot drift caveat for still-running runs**: the `N_completed` count is a point-in-time read. By the time the report is finalized, more scenarios may have completed. Either (a) re-aggregate immediately before writing the report so the numbers are as fresh as possible, OR (b) add a "Snapshot freshness" footer at the end of the report giving the re-aggregated numbers if they've drifted significantly. Patterns (dominant failure mode, anomalies, etc.) are typically stable across a few-scenario drift; exact rates are not.
+2. **Aggregate ALL rates from per-scenario `metrics.json` directly.** Don't try to read `all_summary.txt` — compute:
+   - `Overall Success Rate` — fraction of scenarios with `metrics.json["is_successful"] is True`, denominator = scenarios with at least one applicable signal (skip those where `is_successful == "N/A"`).
+   - `DB-State Match Rate` — fraction with `metrics.json["db_state_match"] is True`, denominator = scenarios with `db_state_match` present.
+   - `DB-State Assertion Pass Rate` — mean of `metrics.json["db_state_assertion_pass_rate"]` over scenarios that opt in.
+   - `NL-Assertion Pass Rate` — sum of passed assertions / sum of total assertions across scenarios with `nl_assertions`.
+   - `Mean Judge Score` — mean of `judge_result.json["score"]` over scenarios with a judge result.
+   - `Token usage` totals — sum of per-scenario `metrics.json["token_usage"]` blocks.
+3. **Surface the partial-run framing prominently** in the run-level report's opening paragraph so a reader doesn't mistake the numbers for a full sample. Example header: `# Run analysis: eval_20260610_HHMMSS (PARTIAL RUN — 100/114 scenarios analyzed, 87.7% completion)`.
+4. **Note: per-scenario analyses are unaffected.** Each completed scenario subdir still has its full artifact set (`metrics.json`, `judge_result.json`, `bot_logs_*`, `bridge_log.txt`, `scenario_config/`), so the per-scenario `analysis_report.md` is unchanged for Partial-run mode.
 
 ## File inventory — read ALL of these per scenario
 

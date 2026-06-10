@@ -81,6 +81,8 @@ def test_happy_path_two_passes_one_fail():
     assert len(result["nl_assertion_verdicts"]) == 3
     assert [v["passed"] for v in result["nl_assertion_verdicts"]] == [True, False, True]
     assert result["nl_assertion_pass_rate"] == 2 / 3
+    # Each verdict includes the assertion text — judge_result.json is self-describing.
+    assert [v["assertion"] for v in result["nl_assertion_verdicts"]] == ["A", "B", "C"]
 
 
 def test_missing_verdict_fills_with_false():

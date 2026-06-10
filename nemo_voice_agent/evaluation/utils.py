@@ -655,7 +655,16 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
                     v = by_index.get(i)
                     passed = bool(v and v.get("passed") is True)
                     reason_text = (v or {}).get("reason", "") if v else "Missing verdict; treated as failed."
-                    normalized.append({"index": i, "passed": passed, "reason": reason_text})
+                    # Include the assertion text itself so judge_result.json
+                    # is self-describing — operators can read a single file
+                    # to see what was claimed AND what the judge decided,
+                    # without cross-referencing scenario_config/metadata.json.
+                    normalized.append({
+                        "index": i,
+                        "assertion": nl_assertions[i - 1],
+                        "passed": passed,
+                        "reason": reason_text,
+                    })
                     if passed:
                         passes += 1
                 result["nl_assertion_verdicts"] = normalized
@@ -666,7 +675,8 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
             err_result = {"score": 0.0, "reason": f"Error: {e}", "judge_input": judge_input}
             if nl_assertions:
                 err_result["nl_assertion_verdicts"] = [
-                    {"index": i + 1, "passed": False, "reason": f"Judge error: {e}"} for i in range(len(nl_assertions))
+                    {"index": i + 1, "assertion": nl_assertions[i], "passed": False, "reason": f"Judge error: {e}"}
+                    for i in range(len(nl_assertions))
                 ]
                 err_result["nl_assertion_pass_rate"] = 0.0
             return err_result
