@@ -311,6 +311,62 @@ PY
 Also extract bot-server logs if available:
 - `evaluation/nemo_experiments/bot_agent_server.log` and `bot_user_server.log` carry per-side TTFB stats directly (`NvidiaLLMService#0 TTFB: <s>` format — that's the bot-side log pattern, distinct from the bridge's). Use only as a cross-check.
 
+#### LLM calls per turn — bridging TTFB and user-perceived latency
+
+**A single per-call TTFB does NOT equal "time until the user hears something."** TTFB on `NvidiaLLMService#0` measures the time from "we sent the prompt to the LLM endpoint" to "the LLM emitted its first response chunk" — but in a tool-calling cycle, that first chunk could be the opening of a `tool_call` delta, not user-facing text. For a turn where the agent does N tool calls before its final response, the user-perceived latency is approximately:
+
+```
+user_perceived_turn_latency ≈ Σ(TTFB_i + generation_i + tool_exec_i) for tool-call rounds
+                              + TTFB_final + (TTS pre-buffer time)
+```
+
+The TTFB-per-LLM-call stats above are ONE of those `TTFB_i` terms. The **per-turn response latency** (computed from `conversation_log.txt` start/end timestamps in the conversation-budget extractor) is the actual user-perceived value and captures the entire tool-call chain. Always cite both, and call out the gap.
+
+**Compute LLM calls per turn explicitly.** For each side, divide the count of `[AGENT/USER METRICS] ttfb processor=NvidiaLLMService#0` events by the count of non-interrupted turns on that side. Values close to 1.0 mean most turns are single-call (no tool chain); values > 1.5 mean a substantial fraction of turns involve tool calling.
+
+```bash
+.venv/bin/python << 'PY'
+import re, glob
+from pathlib import Path
+
+RUN_OR_SCEN = Path('<run_or_scenario_dir>')
+# Glob handles both single scenario (one bridge_log) and full run (many).
+log_paths = list(RUN_OR_SCEN.glob('bridge_log.txt')) or list(RUN_OR_SCEN.glob('*/bridge_log.txt'))
+conv_paths = list(RUN_OR_SCEN.glob('conversation_log.txt')) or list(RUN_OR_SCEN.glob('*/conversation_log.txt'))
+
+llm_ttfb_re = re.compile(r'\[(AGENT|USER) METRICS\] ttfb processor=NvidiaLLMService')
+llm_counts = {'agent': 0, 'user': 0}
+for f in log_paths:
+    for line in open(f):
+        m = llm_ttfb_re.search(line)
+        if m:
+            llm_counts[m.group(1).lower()] += 1
+
+turn_re = re.compile(r'^\[\s*[\d.]+s\s*-\s*[\d.]+s\]\s*\([\d.]+s\)\s*(AGENT|USER):\s*(.*)$', re.MULTILINE)
+turn_counts = {'agent': 0, 'user': 0}
+for f in conv_paths:
+    for m in turn_re.finditer(open(f).read()):
+        role, snip = m.groups()
+        if '[INTERRUPTED]' in snip: continue
+        turn_counts[role.lower()] += 1
+
+for side in ('agent', 'user'):
+    n_calls, n_turns = llm_counts[side], turn_counts[side]
+    ratio = n_calls / n_turns if n_turns else 0
+    print(f'  {side:>6}  LLM calls: {n_calls:>5}  turns: {n_turns:>5}  ratio: {ratio:.2f} calls/turn')
+PY
+```
+
+**Interpretation guide** (numbers are heuristics, calibrate against your domain):
+
+| `calls / turn` | What it means | Implication |
+|---|---|---|
+| ≈ 1.0 | Most turns single-call (greeting, simple Q&A, no tools). | Per-call TTFB ≈ user-perceived latency. Service health and UX track each other. |
+| 1.1 – 1.5 | Some turns have 1 tool call (lookup, then respond). | Per-call TTFB underreports user-perceived latency on the tool-using subset. Per-turn distribution is the right operator metric. |
+| > 1.5 | Many turns make 2+ tool calls before responding. | Per-call TTFB significantly underreports. Slow turns are likely tool-chain-driven, not single-LLM-call-driven. |
+
+The **per-turn vs per-call gap** is the canonical signal for tool-call overhead. Report `(per-turn mean) - (per-call mean)` as "tool-chain overhead per turn." If this gap is small (~1 s), tool calls aren't the bottleneck; if it's large (>5 s), tool-chain length is the dominant slowness factor.
+
 #### Latency report block
 
 Output structure:
@@ -327,13 +383,25 @@ Output structure:
 | User-sim response latency            | NNNs   | NN%       |
 | Other (VAD silence, interrupts, ...) | NNNs   | NN%       |
 
-**TTFB stats per side** (attributed from `bridge_log.txt` via the time-correlation helper above):
+**Per-turn response latency** (from `conversation_log.txt` — captures the full tool-call chain; this is the USER-PERCEIVED metric):
+| side  | n turns | sum(s) | mean(s) | p50(s) | p90(s) | p95(s) | max(s) |
+|-------|---------|--------|---------|--------|--------|--------|--------|
+| agent | …       | …      | …       | …      | …      | …      | …      |
+| user  | …       | …      | …       | …      | …      | …      | …      |
+
+**Per-LLM-call TTFB stats per side** (one event per LLM endpoint call — does NOT capture tool-call chains within a turn):
 | side | processor | n | sum(s) | mean(s) | p50(s) | p90(s) | p95(s) | max(s) |
 |---|---|---|---|---|---|---|---|---|
 | agent | NvidiaLLMService#0 | … | … | … | … | … | … | … |
 | agent | NemotronTTSService#0 | … | … | … | … | … | … | … |
 | user | NvidiaLLMService#0 | … | … | … | … | … | … | … |
 | user | NemotronTTSService#0 | … | … | … | … | … | … | … |
+
+**LLM-call-per-turn ratio** (gap between user-perceived turn latency and per-call TTFB = tool-chain overhead):
+| side  | LLM calls | non-interrupted turns | calls/turn | per-turn mean | per-call mean | gap (tool-chain overhead) |
+|-------|-----------|-----------------------|------------|---------------|---------------|---------------------------|
+| agent | …         | …                     | …          | …             | …             | …                         |
+| user  | …         | …                     | …          | …             | …             | …                         |
 
 **Token usage per side** (from `[AGENT METRICS] tokens prompt=N completion=N` events; one event per LLM call):
 | side  | n calls | prompt sum | prompt mean | prompt p90 | prompt max | completion sum | completion mean | completion p90 | completion max | total tokens |
@@ -343,11 +411,16 @@ Output structure:
 
 **Largest single LLM call**: side at t=NNNs with prompt=N completion=N total=N — cross-reference with the slowest-turns block; verbose completions typically correlate with the slowest turns.
 
-**Slowest 3 agent turns:** list with timestamp, latency, and snippet
-**Slowest 3 user turns:**  list with timestamp, latency, and snippet
+**Slowest 3 agent turns:** list with timestamp, per-turn latency, and snippet. **Also note the number of LLM calls that occurred during each slow turn** (count `[AGENT METRICS] ttfb` events whose offset falls between the previous user-turn-end and this agent-turn-start) — a 60 s turn with 5 LLM calls is a tool-chain overhead problem; the same 60 s with 1 LLM call is an LLM-service slowness problem.
+**Slowest 3 user turns:**  same shape.
 ```
 
-If any turn exceeded 60 s, call it out and identify the cause (long prompt → big TTFB? long completion? STT timeout?). Token-count correlation: pull `prompt_tokens`/`completion_tokens` from the bridge log for the slowest turns.
+**Interpreting slow turns**:
+- **High calls-per-turn + slow turns → tool-chain overhead.** Fix in the agent prompt ("chain fewer tool calls" or "issue parallel tool calls when possible"), or by adding tools that batch operations.
+- **Low calls-per-turn + slow turns → LLM service slowness.** The per-call TTFB max is informative here; if a single call took >30 s, the service had a slow window.
+- **High prompt tokens + slow turns → context bloat.** TTFB on the Nemotron 120B model scales sharply with prompt size; large prompts produce large TTFBs even on a healthy service.
+
+If any turn exceeded 60 s, call it out and identify the cause using the three categories above. Token-count correlation: pull `prompt_tokens`/`completion_tokens` from the bridge log for the slowest turns.
 
 ### Phase 3 — Tool-call execution trace
 
@@ -513,12 +586,21 @@ Run-level report uses the **structure below** (in this exact order):
 | user  | NvidiaLLMService#0       | …   | …      | …       | …      | …      | …      | …      |
 | user  | NemotronTTSService#0     | …   | …      | …       | …      | …      | …      | …      |
 
-**Per-turn response-latency distribution** (from `conversation_log.txt` of every scenario):
+**Per-turn response-latency distribution** (from `conversation_log.txt` of every scenario — this is the USER-PERCEIVED metric, includes full tool-call chains):
 
 | side  | n   | sum(s) | mean(s) | p50(s) | p90(s) | p95(s) | max(s) |
 |-------|-----|--------|---------|--------|--------|--------|--------|
 | agent | …   | …      | …       | …      | …      | …      | …      |
 | user  | …   | …      | …       | …      | …      | …      | …      |
+
+**LLM-call-per-turn ratio (run-level)** — cross-scenario aggregate of the per-call vs per-turn gap. A wide gap means tool-chain overhead dominates the user-perceived slowness; a narrow gap means per-call TTFB IS the user-perceived latency.
+
+| side  | total LLM calls | total turns (non-interrupted) | calls/turn | per-turn mean (s) | per-call mean (s) | gap (tool-chain overhead, s) |
+|-------|-----------------|-------------------------------|------------|-------------------|-------------------|-------------------------------|
+| agent | …               | …                             | …          | …                 | …                 | …                             |
+| user  | …               | …                             | …          | …                 | …                 | …                             |
+
+Interpretation: a `calls/turn > 1.5` with a large gap (>5 s) means the agent is making many tool calls per turn and that's the dominant slowness — fix in the agent prompt (chain fewer tools, batch where possible). A `calls/turn ≈ 1.0` with a large gap means TTS pre-buffering or post-LLM generation time is the slowness — different fix.
 
 **Conversation budget rollup (sum across all scenarios):**
 
