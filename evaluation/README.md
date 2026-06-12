@@ -27,7 +27,7 @@ Evaluate a voice agent by having a simulated user (another voice agent) talk to 
   - [Composite `is_successful` (strict conjunction)](#composite-is_successful-strict-conjunction)
   - [Run-level aggregation](#run-level-aggregation)
 - [Output Structure](#output-structure)
-- [Extending the System](#extending-the-system) — pointer to [`EXTENDING.md`](EXTENDING.md)
+- [Extending the System](#extending-the-system) — pointer to [`EXTENDING_DATA.md`](EXTENDING_DATA.md) + [`EXTENDING_PIPELINE.md`](EXTENDING_PIPELINE.md)
 - [Notes](#notes)
 
 ## Architecture
@@ -312,7 +312,7 @@ If none of the whitelisted signals are applicable for a given scenario (e.g. a Q
 
 **Strict thresholds for float signals.** The float-valued pass rates (`db_state_assertion_pass_rate`, `nl_assertion_pass_rate`) must equal exactly `1.0` for the composite to pass. Rationale: every assertion is supposed to be true. A 95% pass rate means one assertion failed — that's a real defect to investigate, not noise to round away.
 
-**Authoring a new domain.** Concrete scenarios MUST declare a non-empty `success_signals` on themselves or an ancestor base — `Scenario.__init_subclass__` raises `TypeError` at class-definition time if a scenario with `name` set has nothing resolvable. For mixed-composition domains (some tasks have NL assertions, some don't), use a `cached_property` that derives from `self.nl_assertions` rather than per-scenario declarations. See [`EXTENDING.md`](EXTENDING.md).
+**Authoring a new domain.** Concrete scenarios MUST declare a non-empty `success_signals` on themselves or an ancestor base — `Scenario.__init_subclass__` raises `TypeError` at class-definition time if a scenario with `name` set has nothing resolvable. For mixed-composition domains (some tasks have NL assertions, some don't), use a `cached_property` that derives from `self.nl_assertions` rather than per-scenario declarations. See [`EXTENDING_DATA.md`](EXTENDING_DATA.md).
 
 The per-scenario whitelist plus the scenario's `expected_db_hash` / `expected_user_db_hash` / `db_state_assertions` / `nl_assertions` / `initialization_actions` are also written to `scenario_config/metadata.json` per scenario, so an old eval run remains fully interpretable without re-loading the scenario class.
 
@@ -375,14 +375,20 @@ Key files to inspect:
 
 ## Extending the System
 
-Adding scenarios, tools, or whole domains has moved to a dedicated author's guide: **[`EXTENDING.md`](EXTENDING.md)**.
+Two dedicated guides cover the two axes of extension. Pick the one that matches what you're changing:
 
-It covers:
+**[`EXTENDING_DATA.md`](EXTENDING_DATA.md) — the data layer.** How to add scenarios, tools, and whole domains. Covers:
 
 - **Extension points** — at-a-glance index of new-scenario / new-tool / new-domain workflows.
 - **Scenario Structure** — the 8 per-side properties, scenario-level fields (`domain`, `reference_answer`, `expected_scenario_db`, `db_state_assertions`, `nl_assertions`, `initialization_actions`, ...), and the domain base-class pattern.
 - **Creating a New Scenario** — pick or create a domain, subclass the base, verify with `run_evaluation.py --list`.
 - **Tool System** — tool configuration, shared state, the two termination contract patterns (bridge-pull vs legacy LLM-summary), and the `@register_schema_tool_for_eval(domain="...")` registration flow.
+
+**[`EXTENDING_PIPELINE.md`](EXTENDING_PIPELINE.md) — the bot pipeline layer.** How to swap models, add a custom processor, or build a whole new pipecat pipeline. Covers:
+
+- **Tier 1 — YAML swap** — different LLM / TTS / STT model via `server_configs/*.yaml`, no Python.
+- **Tier 2 — Custom processor** — insert a `FrameProcessor` (e.g., Markdown sanitizer between LLM and TTS).
+- **Tier 3 — Whole new pipecat pipeline** — replace `run_bot_websocket()` entirely. The eval-compatibility contract is narrow: a pipecat WebSocket transport plus an `RTVIProcessor` registering five required actions. Everything else (services, processors, pipeline shape) is your choice.
 
 
 ## Notes

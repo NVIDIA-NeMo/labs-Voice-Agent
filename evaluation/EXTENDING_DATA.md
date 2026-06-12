@@ -1,6 +1,6 @@
-# Extending the NeMo Voice Agent Evaluator
+# Extending the Evaluator — Data Layer
 
-This guide is the author's reference for adding new scenarios, tools, and domains. For an operator's view (install, run, read results), see [`README.md`](README.md).
+This guide is the author's reference for adding new scenarios, tools, and domains — the **data layer**. For modifying the **bot compute layer** (swapping models, adding processors, building a new pipecat pipeline), see [`EXTENDING_PIPELINE.md`](EXTENDING_PIPELINE.md). For an operator's view (install, run, read results), see [`README.md`](README.md).
 
 ## Contents
 
