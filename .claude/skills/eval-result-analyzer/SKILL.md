@@ -77,7 +77,7 @@ Every file in a scenario directory is informative; skip none unless explicitly n
 | `final_agent_response.json` | The agent's recorded action list (one entry per `_record_action` call). Compare against reference. |
 | `final_scenario_db_hash.txt` | Actual post-run DB hash; compare against scenario's `expected_scenario_db` hash. |
 | `metrics.json` | `total_turns`, `scenario_duration`, `db_state_match`, `nl_assertion_pass_rate` (when applicable), `latency_stats`, full per-turn `latencies` list (one entry per agent response). |
-| `conversation_log.txt` | Human-readable turn-by-turn transcript: `[start_s - end_s] (duration_s) ROLE: text` plus `→ Response latency: NNNms` for agent turns. Also has `Stop reason: [EXIT \| TIMEOUT \| ...]`. |
+| `conversation_log.txt` | Human-readable turn-by-turn AUDIO transcript: `[start_s - end_s] (duration_s) ROLE: text` plus `→ Response latency: NNNms` for agent turns. Also has `Stop reason: [EXIT \| TIMEOUT \| ...]`. **Audio turns ONLY** — does NOT show tool calls, agent reasoning, system prompt, or anything that happened in the agent's processing time between audio turns. NEVER draw conclusions about tool-call behavior or agent reasoning from this file alone — those live in `bot_logs_agent/llm_context.json`. |
 | `conversation_log.seglst.json` | Same conversation in structured JSON (one entry per VAD segment); use when the text log isn't enough. |
 | `conversation_log.wav` | The full audio mix-down. **Do not read** — note its presence and offer to point the user to it if acoustic issues are suspected. |
 | `bridge_log.txt` | Lowest-level event log from the bridge orchestrator: TTFB metrics for `NvidiaLLMService`, `NemotronTTSService`, STT events, RTVI actions, tool-registration errors, prompt-token/completion-token counts. Use grep — it can be tens of thousands of lines. **Logs from bots that include the `_log_rtvi_event` helper carry side-tagged DEBUG lines**: `[AGENT EVENT] type=<X>` / `[USER EVENT] type=<X>` for every RTVI message type, plus expanded payload lines `[AGENT METRICS] ttfb processor=... value=...s`, `[AGENT METRICS] tokens prompt=... completion=...`, `[AGENT STT final|partial] '<text>'`, `[AGENT ACTION] <name>`. Always check for these tags first before falling back to time-correlation against the unstructured `ProtobufFrameSerializer:deserialize` dumps. |
@@ -115,21 +115,79 @@ Use this when an `actual` and `expected` DB hash disagree to understand which mu
 
 Execute these in order. Don't skip phases — each surfaces a different class of issue.
 
+### Phase 0 — Read the scenario's scoring contract FIRST
+
+Before judging any "missing" file or "absent" signal as a framework bug, read the scenario's `success_signals` whitelist. Different domains gate on different signals; treating an informational signal as a gating one (or vice versa) produces deeply misleading reports.
+
+```bash
+# The whitelist is persisted on every scenario alongside metadata.json:
+.venv/bin/python -c "
+import json
+m = json.load(open('<scenario_dir>/scenario_config/metadata.json'))
+print('success_signals:', m.get('success_signals'))
+print('domain:', m.get('domain'))
+"
+```
+
+Or import the scenario class (see [Cross-reference against the scenario class](#cross-reference-against-the-scenario-class-gold-replay)).
+
+**The five signals and what each requires on disk:**
+
+| Signal (enum value in `success_signals`) | Requires for scoring | Output file when scored |
+|---|---|---|
+| `is_action_match` (`ACTION_MATCH`) | `scenario_config/reference_answer.json` + `final_agent_response.json` (both exist + parseable) | `metrics.json["is_action_match"]` |
+| `db_state_match` (`DB_STATE_MATCH`) | `scenario.expected_scenario_db` (in-process) + `final_scenario_db_hash.txt` (from bridge pull) | `metrics.json["db_state_match"]` + `db_state_expected_hash` / `db_state_actual_hash` |
+| `db_state_assertion` (`DB_STATE_ASSERTION`) | `scenario.db_state_assertions` (in-process) + bridge-pulled inline DB | `metrics.json["db_state_assertion_pass_rate"]` + `db_state_assertion_verdicts` |
+| `nl_assertion` (`NL_ASSERTION`) | `scenario.nl_assertions` + judge configured + judge call succeeded | `judge_result.json["nl_assertion_verdicts"]` + `metrics.json["nl_assertion_pass_rate"]` |
+| `judge_passed` (`JUDGE_PASSED`) | `--judge-url` + `--judge-threshold` + `reference_answer.json` + `final_agent_response.json` | `judge_result.json["score"]` + `metrics.json["judge_passed"]` |
+
+**Critical rule — absent ≠ broken.** A signal that is *not* in the whitelist may legitimately produce no artifact on disk:
+
+- `reference_answer.json` **missing** is only a framework finding if `ACTION_MATCH` or `JUDGE_PASSED` is in the whitelist AND the scenario class returns a non-None `reference_answer`. For domains that gate purely on `DB_STATE_MATCH` (eva_airline, tau2_airline) or `DB_STATE_ASSERTION` (tau2_telecom), missing reference is expected — those domains may not author one at all, especially for scaffolded scenarios.
+- `judge_result.json` **missing** is only a framework finding if `JUDGE_PASSED` or `NL_ASSERTION` is in the whitelist AND `--judge-url` was passed AND the scenario has a `reference_answer`. Otherwise it's expected absence — the judge wasn't relevant to scoring.
+- `is_action_match` = `"N/A"` is only a framework finding if `ACTION_MATCH` is in the whitelist. For domains where it isn't, "N/A" is the correct value.
+
+**Practical implication for the report:** in Phase 1's headline table, label each row with `(gating)` or `(informational)` based on the whitelist. In Phase 7's root-cause attribution, never use the `framework` label for missing files that the scenario's contract doesn't require — those go in `agent` (the agent didn't do the work) or simply don't appear as findings.
+
+When in doubt, lean toward "this is expected absence" rather than "this is a framework bug." False-positive bug claims send the operator on goose chases.
+
+### Authoritative source per question type — DO NOT skip this table
+
+Different files answer different questions about what happened. Using the wrong file produces wrong conclusions. **Cross-reference the relevant authoritative file before drawing any conclusion** — especially before claiming the agent / user-sim didn't do something.
+
+| Question | Authoritative source | What NOT to use as primary source |
+|---|---|---|
+| **Did the agent call any tools? Which ones? With what arguments?** | `bot_logs_agent/llm_context.json` — walk `assistant` messages for `tool_calls` field. | NOT `conversation_log.txt`. Tool calls happen in the agent's processing time between audio turns and are INVISIBLE in the conversation log. The conversation log only shows audio TURNS. |
+| **What did the agent's LLM actually generate (incl. reasoning)?** | `bot_logs_agent/llm_context.json` — `assistant` messages with `content` and `reasoning_content` (when reasoning mode is on). | NOT `conversation_log.txt`. That shows post-STT-on-the-other-side text — agent reasoning + Markdown-stripped content is not preserved there. |
+| **What did the user-sim's LLM intend to say (pre-TTS)?** | `bot_logs_user/llm_context.json` — `assistant` messages. | NOT `conversation_log.txt`. The conversation log shows what STT delivered on the other side, not the user-sim's intent. |
+| **What did the agent's STT actually deliver (post-ASR)?** | `bot_logs_agent/llm_context.json` — `user` messages. Equivalently, `[AGENT STT final]` lines in `bridge_log.txt`. | The conversation log is OK for this BUT has been cleaned for human readability — for the LLM's actual STT input, use the agent's context. |
+| **How long did each audio turn last? Was there an interruption?** | `conversation_log.txt` — turn timestamps and `[INTERRUPTED]` markers. | NOT the LLM contexts (no timestamps on individual messages). |
+| **Why did the conversation end?** | `conversation_log.txt` final block — `Stop reason: [EXIT \| TIMEOUT \| ...]`. | |
+| **What was the per-LLM-call TTFB / token usage?** | `bridge_log.txt` — `[AGENT/USER METRICS] ttfb …` / `tokens …` events. | NOT `conversation_log.txt` (latency in the log is per-audio-turn, includes the full tool-call chain). |
+| **Did the DB end up in the right state?** | `metrics.json["db_state_match"]` + `final_scenario_db_hash.txt`. **But interpret carefully** — see the "Common pitfall" below. |  |
+
+**Common pitfall — DB-state match on read-only scenarios.** A scenario where `expected_scenario_db == initial_scenario_db` (policy-refusal / "deny the request" cases — common in eva_airline 5.x and 7.x) will report `db_state_match: True` whenever the agent makes no mutating tool calls. That is NOT the same as "the agent did the right thing" — an agent that crashed at greeting, looped in identity verification, or simply hung up would also pass. For these scenarios, the DB check alone is insufficient; verify by counting mutating tool calls in `bot_logs_agent/llm_context.json` AND looking at the agent's final assistant utterance to see whether it actually engaged with and refused the request, or just bailed.
+
+**Common pitfall — "no tool calls" claims.** If you're about to write "the agent never called any tool" or "the agent didn't engage," **first** count `tool_calls` in `bot_logs_agent/llm_context.json` (one-liner: `python -c "import json; print(sum(1 for m in json.load(open('SCEN/bot_logs_agent/llm_context.json')) if m.get('tool_calls')))"`). The conversation log may show only INTERRUPTED audio turns and look like the agent did nothing, but tool calls and tool results live in the context file. Audio-side silence ≠ agent inactivity.
+
 ### Phase 1 — Scoring summary
 
-Read `judge_result.json`, `final_agent_response.json`, `final_scenario_db_hash.txt`, `metrics.json`. Build the headline table:
+Read `judge_result.json`, `final_agent_response.json`, `final_scenario_db_hash.txt`, `metrics.json`. Build the headline table, **labeling each signal as `(gating)` or `(informational)` based on the `success_signals` whitelist from Phase 0**:
 
 | Signal | Value | Notes |
 |---|---|---|
-| Judge score | from `judge_result.json["score"]` | |
+| `is_successful` (composite verdict) | from `metrics.json["is_successful"]` | `True` / `False` / `"N/A"`. The verdict; everything else explains it. |
 | Stop reason | from `conversation_log.txt` last block | `[EXIT]` = good, `[TIMEOUT]` = bad, others = investigate |
-| DB-state match | from `metrics.json["db_state_match"]` | `True/False/N/A` |
-| NL-assertion pass rate | from `metrics.json["nl_assertion_pass_rate"]` | only when scenario has assertions |
+| Judge score | from `judge_result.json["score"]` if file exists | If `judge_result.json` is missing AND `JUDGE_PASSED`/`NL_ASSERTION` not in whitelist, this is **expected absence** — don't flag it. |
+| DB-state match | from `metrics.json["db_state_match"]` | `True/False/N/A`. Label `(gating)` for eva_airline / tau2_airline / tau2_retail; `(informational)` for tau2_telecom. |
+| DB-state assertion pass rate | from `metrics.json["db_state_assertion_pass_rate"]` | only when scenario opts in. Label `(gating)` for tau2_telecom. |
+| NL-assertion pass rate | from `metrics.json["nl_assertion_pass_rate"]` | only when scenario opts in. Label `(gating)` when in the whitelist. |
 | Total turns | from `metrics.json["total_turns"]` | |
 | Duration | from `metrics.json["scenario_duration"]` | seconds |
-| Agent tool calls emitted | count `tool_calls` across all `assistant` messages in `bot_logs_agent/llm_context.json` | **0 is a red flag** — the agent never used any tool |
-| Reference actions required | count `actions` in `final_agent_response.json` from gold replay or `scenario_config/reference_answer.json` | |
-| Actions matched | reference name match (allow arg-superset on agent side) | |
+| Agent tool calls emitted | **REQUIRED** — count `tool_calls` across all `assistant` messages in `bot_logs_agent/llm_context.json`. Do NOT skip this even on TIMEOUTed / heavily-interrupted scenarios; the context file always has the ground truth. | **0 is a red flag IF the scenario expected tool use** — check the scenario's `agent_resources.tools` first; QA scenarios legitimately have zero tool calls. Conversely, on read-only / policy-refusal scenarios where the agent might "win" by inaction (see Phase 0's common pitfalls), the count of mutating tool calls (versus read-only ones like `Get*Tool`) is the key diagnostic. |
+| Mutating vs read-only tool call breakdown | classify each tool call by whether it mutates `shared_state["db"]` (write tools subclass `WriteScenarioTool` for tau2; `*Place*`/`*Cancel*`/`*Modify*`/`*Return*`/`*Exchange*`/`*Refund*`/`*Rebook*`/`*Issue*` patterns for eva). | Critical for policy-refusal scenarios: if `db_state_match: True` AND zero mutating tool calls, the agent passed by inaction, NOT by correctly refusing the request. |
+| Reference actions required | count from `scenario_config/reference_answer.json` (if present) | Skip this row entirely if no reference file exists AND `ACTION_MATCH`/`JUDGE_PASSED` aren't in the whitelist — the scenario doesn't ship a reference by design. |
+| Actions matched | reference name match (allow arg-superset on agent side) | Same skip condition as above. |
 
 ### Phase 2 — Latency analysis (BOTH sides, always)
 
@@ -528,7 +586,7 @@ Every issue surfaced in Phases 3-6 gets one of four labels:
 | **user-sim** | The simulated user violated conversational flow (skipped confirmation, fabricated info not in known_info, dropped to silence prematurely). |
 | **agent** | The agent didn't call a needed tool, called a wrong tool, fabricated tool results in text, or summarized actions it didn't take. |
 | **ASR** | STT mistranscribed a user utterance (verified via Phase 4). When the agent then misacts on the mistranscription, primary fault is ASR, secondary is agent for not asking clarification on low-confidence input. |
-| **framework** | Tool registration failed, deadlock in pipecat, prompt failed to propagate, hash function diverges across sides, etc. Surfaces as systematic across scenarios. |
+| **framework** | Tool registration failed, deadlock in pipecat, prompt failed to propagate, hash function diverges across sides, etc. Surfaces as systematic across scenarios. **NEVER apply this label for missing `reference_answer.json` / `judge_result.json` / `is_action_match: "N/A"` without first checking the scenario's `success_signals` whitelist** — those files are only required when the corresponding signal is gating. See [Phase 0](#phase-0--read-the-scenarios-scoring-contract-first). False-positive framework claims send the operator on goose chases. |
 
 For each finding, give one label as the **primary** root cause and (when relevant) a **secondary** label.
 
@@ -685,6 +743,8 @@ This template is for single-scenario `analysis_report.md`s. The run-level struct
 
 ## Tips
 
+- **Never claim the agent "didn't do X" without checking `bot_logs_agent/llm_context.json` first.** The conversation_log shows audio turns only — tool calls, agent reasoning, and tool results all happen in the agent's processing time between audio turns and are completely absent from the conversation log. A scenario whose conversation_log shows 4 INTERRUPTED audio turns may still have a fully successful tool-call chain underneath. The same applies symmetrically to the user-sim — `bot_logs_user/llm_context.json` is the source of truth for what the user-sim's LLM generated, regardless of how much of it made it to TTS / STT / audio. See the [Authoritative source per question type](#authoritative-source-per-question-type--do-not-skip-this-table) table.
+- **Read `scenario_config/metadata.json` for `success_signals` before judging "missing" anything.** This is the single most common source of false-positive framework findings. The five signals (`is_action_match`, `db_state_match`, `db_state_assertion`, `nl_assertion`, `judge_passed`) split into two classes per scenario — gating (in the whitelist) and informational (not in the whitelist). Missing on-disk artifacts for an *informational* signal are not findings. Examples: a tau2_telecom run will have `is_action_match: False` on most scenarios and that's fine (open-spec; `DB_STATE_ASSERTION` is the gate). An eva_airline run will have no `reference_answer.json` on scaffolded scenarios and that's fine (only `DB_STATE_MATCH` is gating; the reference is informational). See [Phase 0](#phase-0--read-the-scenarios-scoring-contract-first).
 - **Prefer Bash + Python one-liners** over reading whole files when extracting numbers. `bridge_log.txt` can be 1 MB+; grep first, then parse.
 - **Never read `conversation_log.wav`.** Just note it's available for human listening.
 - **Don't trust `scenario_config/reference_answer.json` alone** — re-derive from the scenario class when DB hashes disagree, since the reference file is written at runtime from in-process state and may reflect older code if generated by a stale process.
