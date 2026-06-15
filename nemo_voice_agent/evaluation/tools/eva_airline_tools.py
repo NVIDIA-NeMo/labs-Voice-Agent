@@ -31,6 +31,7 @@ from pipecat.services.llm_service import FunctionCallParams
 from pydantic import ValidationError
 
 from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
+from nemo_voice_agent.evaluation.tools._write_tool_base import WriteScenarioTool
 from nemo_voice_agent.evaluation.tools.eva_airline_params import (
     AddBaggageAllowanceParams,
     AddMealRequestParams,
@@ -118,9 +119,7 @@ def _find_booking_segment(
     """
     booking_segments = booking.get("segments", [])
     if flight_number:
-        targets = [
-            fs for fs in booking_segments if fs.get("flight_number") == flight_number
-        ]
+        targets = [fs for fs in booking_segments if fs.get("flight_number") == flight_number]
         if not targets:
             return [], {
                 "status": "error",
@@ -199,39 +198,22 @@ def _db_not_initialized() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# WriteAirlineTool — base class for tools that record actions on success
+# WriteAirlineTool — thin subclass binding the eva-airline action vocabulary
+# to the shared WriteScenarioTool base (see tools/_write_tool_base.py).
 # ---------------------------------------------------------------------------
 
 
-class WriteAirlineTool(StandardSchemaTool):
-    """Base class for airline tools that mutate state and produce a recordable action.
+class WriteAirlineTool(WriteScenarioTool):
+    """Eva-airline subclass that binds ``ACTION_TYPES`` to ``AIRLINE_ACTION_TYPES``.
 
-    On a successful tool call, the subclass calls ``self._record_action(record)``
-    with a dict matching one of ``AIRLINE_ACTION_TYPES``. Records are accumulated
-    in ``shared_state["actions"]``; the bridge pulls them at end-of-scenario
-    via the ``get_scenario_summary`` RTVI action (no LLM-callable summary tool).
+    Inherits ``_record_action`` (validates ``action_type`` against ACTION_TYPES,
+    appends to ``shared_state["actions"]``) and ``_next_call_index`` (per-scenario
+    monotonic counter for tools that mint unique IDs) from the shared base.
 
-    Read tools subclass ``StandardSchemaTool`` directly — only writes record.
+    Read-only tools subclass ``StandardSchemaTool`` directly — only writes record.
     """
 
-    def _record_action(self, action: dict) -> None:
-        """Append a structured action record to shared_state['actions']."""
-        if action.get("action_type") not in AIRLINE_ACTION_TYPES:
-            logger.warning(
-                f"WriteAirlineTool._record_action: action_type "
-                f"{action.get('action_type')!r} not in AIRLINE_ACTION_TYPES"
-            )
-        self.state.setdefault("actions", []).append(action)
-
-    def _next_call_index(self, tool_name: str) -> int:
-        """Increment and return the call counter for ``tool_name``.
-
-        Replaces eva's ``call_index`` parameter — used by tools that mint unique
-        IDs (refund_id, transfer_id, etc.) and need a stable per-scenario counter.
-        """
-        counts = self.state.setdefault("_call_counts", {})
-        counts[tool_name] = counts.get(tool_name, 0) + 1
-        return counts[tool_name]
+    ACTION_TYPES = AIRLINE_ACTION_TYPES
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +221,7 @@ class WriteAirlineTool(StandardSchemaTool):
 # ---------------------------------------------------------------------------
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class GetReservationTool(StandardSchemaTool):
     """Retrieve flight reservation using confirmation number and passenger last name.
 
@@ -252,9 +234,7 @@ class GetReservationTool(StandardSchemaTool):
         "their flight numbers."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -280,9 +260,7 @@ class GetReservationTool(StandardSchemaTool):
         try:
             p = GetReservationParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, GetReservationParams)
-            )
+            await params.result_callback(validation_error_response(exc, GetReservationParams))
             return
 
         db = self.state.get("db")
@@ -300,10 +278,7 @@ class GetReservationTool(StandardSchemaTool):
 
         if last_name:
             passengers = reservation.get("passengers", [])
-            last_name_match = any(
-                p2.get("last_name", "").lower() == last_name.lower()
-                for p2 in passengers
-            )
+            last_name_match = any(p2.get("last_name", "").lower() == last_name.lower() for p2 in passengers)
             if not last_name_match:
                 await params.result_callback(
                     {
@@ -322,12 +297,10 @@ class GetReservationTool(StandardSchemaTool):
                 j.get("journey_id", ""),
             )
         )
-        await params.result_callback(
-            {"status": "success", "reservation": result_reservation}
-        )
+        await params.result_callback({"status": "success", "reservation": result_reservation})
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class GetFlightStatusTool(StandardSchemaTool):
     """Get current status of a specific flight (delays, cancellations, gate)."""
 
@@ -337,9 +310,7 @@ class GetFlightStatusTool(StandardSchemaTool):
         "flight number works."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -365,9 +336,7 @@ class GetFlightStatusTool(StandardSchemaTool):
         try:
             p = GetFlightStatusParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, GetFlightStatusParams)
-            )
+            await params.result_callback(validation_error_response(exc, GetFlightStatusParams))
             return
 
         db = self.state.get("db")
@@ -402,12 +371,10 @@ class GetFlightStatusTool(StandardSchemaTool):
             )
             return
 
-        await params.result_callback(
-            {"status": "success", "journey": copy.deepcopy(flight)}
-        )
+        await params.result_callback({"status": "success", "journey": copy.deepcopy(flight)})
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class GetDisruptionInfoTool(StandardSchemaTool):
     """Get IRROPS disruption details (cause, fee waiver, refund eligibility)."""
 
@@ -416,9 +383,7 @@ class GetDisruptionInfoTool(StandardSchemaTool):
         "Determines passenger rebooking entitlements based on disruption type and cause."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -444,9 +409,7 @@ class GetDisruptionInfoTool(StandardSchemaTool):
         try:
             p = GetDisruptionInfoParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, GetDisruptionInfoParams)
-            )
+            await params.result_callback(validation_error_response(exc, GetDisruptionInfoParams))
             return
 
         db = self.state.get("db")
@@ -477,12 +440,10 @@ class GetDisruptionInfoTool(StandardSchemaTool):
             )
             return
 
-        await params.result_callback(
-            {"status": "success", "disruption": copy.deepcopy(disruption)}
-        )
+        await params.result_callback({"status": "success", "disruption": copy.deepcopy(disruption)})
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class SearchRebookingOptionsTool(StandardSchemaTool):
     """Search available flights (origin/destination/date) filtered by seat availability."""
 
@@ -491,9 +452,7 @@ class SearchRebookingOptionsTool(StandardSchemaTool):
         "rebooking rules and seat availability."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -534,9 +493,7 @@ class SearchRebookingOptionsTool(StandardSchemaTool):
         try:
             p = SearchRebookingOptionsParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, SearchRebookingOptionsParams)
-            )
+            await params.result_callback(validation_error_response(exc, SearchRebookingOptionsParams))
             return
 
         db = self.state.get("db")
@@ -574,11 +531,7 @@ class SearchRebookingOptionsTool(StandardSchemaTool):
 
             available_seats = _get_journey_available_seats(flight)
             if fare_class == "any":
-                if not any(
-                    seats >= passenger_count
-                    for seats in available_seats.values()
-                    if seats is not None
-                ):
+                if not any(seats >= passenger_count for seats in available_seats.values() if seats is not None):
                     continue
             else:
                 if available_seats.get(fare_class, 0) < passenger_count:
@@ -590,8 +543,7 @@ class SearchRebookingOptionsTool(StandardSchemaTool):
                 available_cabins = [
                     (fc, journey_fares.get(fc))
                     for fc in all_fare_classes
-                    if available_seats.get(fc, 0) >= passenger_count
-                    and journey_fares.get(fc) is not None
+                    if available_seats.get(fc, 0) >= passenger_count and journey_fares.get(fc) is not None
                 ]
                 if available_cabins:
                     actual_fare_class = min(available_cabins, key=lambda x: x[1])[0]
@@ -605,15 +557,9 @@ class SearchRebookingOptionsTool(StandardSchemaTool):
                     "num_stops": flight.get("num_stops", 0),
                     "total_duration_minutes": flight.get("total_duration_minutes"),
                     "segments": segments,
-                    "departure_time": (
-                        segments[0]["scheduled_departure"] if segments else None
-                    ),
-                    "arrival_time": (
-                        segments[-1]["scheduled_arrival"] if segments else None
-                    ),
-                    "available_seats": {
-                        fc: available_seats.get(fc, 0) for fc in all_fare_classes
-                    },
+                    "departure_time": (segments[0]["scheduled_departure"] if segments else None),
+                    "arrival_time": (segments[-1]["scheduled_arrival"] if segments else None),
+                    "available_seats": {fc: available_seats.get(fc, 0) for fc in all_fare_classes},
                     "fare": journey_fares.get(actual_fare_class),
                 }
             )
@@ -634,7 +580,7 @@ class SearchRebookingOptionsTool(StandardSchemaTool):
 # ---------------------------------------------------------------------------
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class RebookFlightTool(WriteAirlineTool):
     """Rebook passenger(s) to a new flight (voluntary, IRROPS, partial)."""
 
@@ -646,9 +592,7 @@ class RebookFlightTool(WriteAirlineTool):
         "fare_difference, and total_collected to the caller before confirming."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -711,9 +655,7 @@ class RebookFlightTool(WriteAirlineTool):
         try:
             p = RebookFlightParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, RebookFlightParams)
-            )
+            await params.result_callback(validation_error_response(exc, RebookFlightParams))
             return
 
         db = self.state.get("db")
@@ -860,11 +802,7 @@ class RebookFlightTool(WriteAirlineTool):
 
         kept_segments_info = []
         if flight_number:
-            kept_segments = [
-                seg
-                for seg in booking.get("segments", [])
-                if seg.get("flight_number") != flight_number
-            ]
+            kept_segments = [seg for seg in booking.get("segments", []) if seg.get("flight_number") != flight_number]
             if kept_segments:
                 kept_booking = {
                     "journey_id": journey_id,
@@ -889,18 +827,14 @@ class RebookFlightTool(WriteAirlineTool):
 
         for seg in new_flight.get("segments", []):
             seg.setdefault("available_seats", {})
-            seg["available_seats"][target_fare_class] = (
-                seg["available_seats"].get(target_fare_class, 0) - 1
-            )
+            seg["available_seats"][target_fare_class] = seg["available_seats"].get(target_fare_class, 0) - 1
 
         old_journey_id = booking.get("journey_id")
         old_flight = journeys.get(old_journey_id)
         if old_flight:
             for seg in old_flight.get("segments", []):
                 seg.setdefault("available_seats", {})
-                seg["available_seats"][original_fare_class] = (
-                    seg["available_seats"].get(original_fare_class, 0) + 1
-                )
+                seg["available_seats"][original_fare_class] = seg["available_seats"].get(original_fare_class, 0) + 1
 
         response = {
             "status": "success",
@@ -910,15 +844,9 @@ class RebookFlightTool(WriteAirlineTool):
                 "num_stops": new_flight.get("num_stops", 0),
                 "segments": copy.deepcopy(new_flight.get("segments", [])),
                 "departure": (
-                    new_flight["segments"][0]["scheduled_departure"]
-                    if new_flight.get("segments")
-                    else None
+                    new_flight["segments"][0]["scheduled_departure"] if new_flight.get("segments") else None
                 ),
-                "arrival": (
-                    new_flight["segments"][-1]["scheduled_arrival"]
-                    if new_flight.get("segments")
-                    else None
-                ),
+                "arrival": (new_flight["segments"][-1]["scheduled_arrival"] if new_flight.get("segments") else None),
                 "origin": new_flight.get("origin"),
                 "destination": new_flight.get("destination"),
             },
@@ -933,11 +861,7 @@ class RebookFlightTool(WriteAirlineTool):
                 "fee_waived": is_irrops or waive_change_fee,
             },
             "message": f"Successfully rebooked to flight {new_journey_id}"
-            + (
-                f" in {target_fare_class}"
-                if original_fare_class != target_fare_class
-                else ""
-            ),
+            + (f" in {target_fare_class}" if original_fare_class != target_fare_class else ""),
         }
         if flight_number:
             response["partial_rebook"] = True
@@ -970,7 +894,7 @@ class RebookFlightTool(WriteAirlineTool):
         await params.result_callback(response)
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class CancelReservationTool(WriteAirlineTool):
     """Cancel a flight booking (single journey within a reservation)."""
 
@@ -979,9 +903,7 @@ class CancelReservationTool(WriteAirlineTool):
         "the reservation itself is marked cancelled. Returns refund and credit eligibility."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -999,8 +921,7 @@ class CancelReservationTool(WriteAirlineTool):
             "cancellation_reason": {
                 "type": "string",
                 "description": (
-                    "One of: voluntary, irrops_refund, 24_hour_rule, schedule_unacceptable, "
-                    "medical, bereavement."
+                    "One of: voluntary, irrops_refund, 24_hour_rule, schedule_unacceptable, " "medical, bereavement."
                 ),
             },
         }
@@ -1014,9 +935,7 @@ class CancelReservationTool(WriteAirlineTool):
         try:
             p = CancelReservationParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, CancelReservationParams)
-            )
+            await params.result_callback(validation_error_response(exc, CancelReservationParams))
             return
 
         db = self.state.get("db")
@@ -1054,10 +973,7 @@ class CancelReservationTool(WriteAirlineTool):
             CancellationReason.irrops_refund,
             CancellationReason.rule_24_hour,
         }
-        is_refundable = (
-            cancellation_reason in fee_waiving_reasons
-            or reservation.get("fare_type") == "refundable"
-        )
+        is_refundable = cancellation_reason in fee_waiving_reasons or reservation.get("fare_type") == "refundable"
         cancellation_fee = 0 if is_refundable else 100
 
         refund_amount = max(0, booking_fare - cancellation_fee) if is_refundable else 0
@@ -1071,13 +987,9 @@ class CancelReservationTool(WriteAirlineTool):
         if cancelled_flight:
             for seg in cancelled_flight.get("segments", []):
                 seg.setdefault("available_seats", {})
-                seg["available_seats"][fare_class] = (
-                    seg["available_seats"].get(fare_class, 0) + 1
-                )
+                seg["available_seats"][fare_class] = seg["available_seats"].get(fare_class, 0) + 1
 
-        all_cancelled = all(
-            seg.get("status") == "cancelled" for seg in reservation.get("bookings", [])
-        )
+        all_cancelled = all(seg.get("status") == "cancelled" for seg in reservation.get("bookings", []))
         if all_cancelled:
             reservation["status"] = "cancelled"
 
@@ -1108,7 +1020,7 @@ class CancelReservationTool(WriteAirlineTool):
         )
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class ProcessRefundTool(WriteAirlineTool):
     """Process a refund. Call once per refund type (fare and ancillary fees are separate)."""
 
@@ -1118,9 +1030,7 @@ class ProcessRefundTool(WriteAirlineTool):
         "ancillary fees must be separate calls. Never combine both into a single call."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -1150,9 +1060,7 @@ class ProcessRefundTool(WriteAirlineTool):
         try:
             p = ProcessRefundParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, ProcessRefundParams)
-            )
+            await params.result_callback(validation_error_response(exc, ProcessRefundParams))
             return
 
         db = self.state.get("db")
@@ -1215,7 +1123,7 @@ class ProcessRefundTool(WriteAirlineTool):
         )
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class AssignSeatTool(WriteAirlineTool):
     """Assign a seat (window/aisle/middle/no_preference) on a specific flight segment."""
 
@@ -1224,9 +1132,7 @@ class AssignSeatTool(WriteAirlineTool):
         "Always ask the passenger for their preference before calling — do not assume."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -1264,9 +1170,7 @@ class AssignSeatTool(WriteAirlineTool):
         try:
             p = AssignSeatParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, AssignSeatParams)
-            )
+            await params.result_callback(validation_error_response(exc, AssignSeatParams))
             return
 
         db = self.state.get("db")
@@ -1322,15 +1226,10 @@ class AssignSeatTool(WriteAirlineTool):
 
             raw_seat_types = journey_seg.get("available_seat_types")
             if raw_seat_types and isinstance(raw_seat_types, dict):
-                available_seat_types = raw_seat_types.get(
-                    fare_class, ["window", "aisle", "middle"]
-                )
+                available_seat_types = raw_seat_types.get(fare_class, ["window", "aisle", "middle"])
             else:
                 available_seat_types = ["window", "aisle", "middle"]
-            if (
-                seat_preference != "no_preference"
-                and seat_preference not in available_seat_types
-            ):
+            if seat_preference != "no_preference" and seat_preference not in available_seat_types:
                 await params.result_callback(
                     {
                         "status": "error",
@@ -1343,9 +1242,7 @@ class AssignSeatTool(WriteAirlineTool):
                 )
                 return
 
-        passenger_index = (
-            int(passenger_id[-3:]) if passenger_id and len(passenger_id) >= 3 else 0
-        )
+        passenger_index = int(passenger_id[-3:]) if passenger_id and len(passenger_id) >= 3 else 0
         base_row_map = {
             "basic_economy": 25,
             "main_cabin": 20,
@@ -1393,18 +1290,13 @@ class AssignSeatTool(WriteAirlineTool):
         )
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class AddBaggageAllowanceTool(WriteAirlineTool):
     """Add checked baggage (0-5 bags) to a flight segment."""
 
-    DESCRIPTION = (
-        "Add checked baggage allowance to a flight segment. Specify the exact number of "
-        "bags (0-5)."
-    )
+    DESCRIPTION = "Add checked baggage allowance to a flight segment. Specify the exact number of " "bags (0-5)."
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -1438,9 +1330,7 @@ class AddBaggageAllowanceTool(WriteAirlineTool):
         try:
             p = AddBaggageAllowanceParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, AddBaggageAllowanceParams)
-            )
+            await params.result_callback(validation_error_response(exc, AddBaggageAllowanceParams))
             return
 
         db = self.state.get("db")
@@ -1505,17 +1395,13 @@ class AddBaggageAllowanceTool(WriteAirlineTool):
         )
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class AddMealRequestTool(WriteAirlineTool):
     """Add or update a special meal request for a passenger on a flight segment."""
 
-    DESCRIPTION = (
-        "Add or update special meal request for a passenger on a flight segment."
-    )
+    DESCRIPTION = "Add or update special meal request for a passenger on a flight segment."
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -1556,9 +1442,7 @@ class AddMealRequestTool(WriteAirlineTool):
         try:
             p = AddMealRequestParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, AddMealRequestParams)
-            )
+            await params.result_callback(validation_error_response(exc, AddMealRequestParams))
             return
 
         db = self.state.get("db")
@@ -1616,15 +1500,13 @@ class AddMealRequestTool(WriteAirlineTool):
         )
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class AddToStandbyTool(WriteAirlineTool):
     """Add passenger(s) to standby list for a flight."""
 
     DESCRIPTION = "Add passenger(s) to the standby list for a flight."
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -1655,9 +1537,7 @@ class AddToStandbyTool(WriteAirlineTool):
         try:
             p = AddToStandbyParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, AddToStandbyParams)
-            )
+            await params.result_callback(validation_error_response(exc, AddToStandbyParams))
             return
 
         db = self.state.get("db")
@@ -1694,12 +1574,8 @@ class AddToStandbyTool(WriteAirlineTool):
 
         reservation = _lookup_reservation(db, confirmation_number)
         if reservation and passenger_ids:
-            valid_passenger_ids = {
-                p2.get("passenger_id") for p2 in reservation.get("passengers", [])
-            }
-            invalid_ids = [
-                pid for pid in passenger_ids if pid not in valid_passenger_ids
-            ]
+            valid_passenger_ids = {p2.get("passenger_id") for p2 in reservation.get("passengers", [])}
+            invalid_ids = [pid for pid in passenger_ids if pid not in valid_passenger_ids]
             if invalid_ids:
                 await params.result_callback(
                     {
@@ -1755,7 +1631,7 @@ class AddToStandbyTool(WriteAirlineTool):
         )
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class IssueTravelCreditTool(WriteAirlineTool):
     """Issue a travel credit (future-flight voucher) to a passenger."""
 
@@ -1764,9 +1640,7 @@ class IssueTravelCreditTool(WriteAirlineTool):
         "cancellations, fare-difference negatives, downgrades, or service recovery."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -1800,9 +1674,7 @@ class IssueTravelCreditTool(WriteAirlineTool):
         try:
             p = IssueTravelCreditParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, IssueTravelCreditParams)
-            )
+            await params.result_callback(validation_error_response(exc, IssueTravelCreditParams))
             return
 
         db = self.state.get("db")
@@ -1830,8 +1702,7 @@ class IssueTravelCreditTool(WriteAirlineTool):
             "amount": amount,
             "credit_reason": credit_reason,
             "issued_date": db["_current_date"],
-            "expiry_date": str(int(db["_current_date"][:4]) + 1)
-            + db["_current_date"][4:],
+            "expiry_date": str(int(db["_current_date"][:4]) + 1) + db["_current_date"][4:],
             "status": "active",
         }
 
@@ -1858,7 +1729,7 @@ class IssueTravelCreditTool(WriteAirlineTool):
         )
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class IssueHotelVoucherTool(WriteAirlineTool):
     """Issue a hotel voucher (1-3 nights) for IRROPS overnight situations."""
 
@@ -1867,9 +1738,7 @@ class IssueHotelVoucherTool(WriteAirlineTool):
         "confirmed (not before). Maximum 3 nights."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -1896,9 +1765,7 @@ class IssueHotelVoucherTool(WriteAirlineTool):
         try:
             p = IssueHotelVoucherParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, IssueHotelVoucherParams)
-            )
+            await params.result_callback(validation_error_response(exc, IssueHotelVoucherParams))
             return
 
         db = self.state.get("db")
@@ -1957,7 +1824,7 @@ class IssueHotelVoucherTool(WriteAirlineTool):
         )
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class IssueMealVoucherTool(WriteAirlineTool):
     """Issue a meal voucher for delays/cancellations that qualify per policy."""
 
@@ -1967,9 +1834,7 @@ class IssueMealVoucherTool(WriteAirlineTool):
         "cancellation_wait_same_day=$15, irrops_overnight=$25."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -1987,8 +1852,7 @@ class IssueMealVoucherTool(WriteAirlineTool):
             "voucher_reason": {
                 "type": "string",
                 "description": (
-                    "One of: delay_over_2_hours, delay_over_4_hours, "
-                    "cancellation_wait_same_day, irrops_overnight."
+                    "One of: delay_over_2_hours, delay_over_4_hours, " "cancellation_wait_same_day, irrops_overnight."
                 ),
             },
         }
@@ -2002,9 +1866,7 @@ class IssueMealVoucherTool(WriteAirlineTool):
         try:
             p = IssueMealVoucherParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, IssueMealVoucherParams)
-            )
+            await params.result_callback(validation_error_response(exc, IssueMealVoucherParams))
             return
 
         db = self.state.get("db")
@@ -2071,7 +1933,7 @@ class IssueMealVoucherTool(WriteAirlineTool):
 # ---------------------------------------------------------------------------
 
 
-@register_schema_tool_for_eval
+@register_schema_tool_for_eval(domain="eva_airline")
 class TransferToAgentTool(WriteAirlineTool):
     """Transfer the call to a live human agent (recordable terminal action)."""
 
@@ -2081,9 +1943,7 @@ class TransferToAgentTool(WriteAirlineTool):
         "for technical issues."
     )
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
 
@@ -2116,9 +1976,7 @@ class TransferToAgentTool(WriteAirlineTool):
         try:
             p = TransferToAgentParams.model_validate(params.arguments)
         except ValidationError as exc:
-            await params.result_callback(
-                validation_error_response(exc, TransferToAgentParams)
-            )
+            await params.result_callback(validation_error_response(exc, TransferToAgentParams))
             return
 
         db = self.state.get("db")

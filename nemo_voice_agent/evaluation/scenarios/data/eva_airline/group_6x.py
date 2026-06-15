@@ -23,6 +23,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import Actions, Persona, Task
 from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
     EvaAirlineBaseScenario,
 )
+from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
 # ---------------------------------------------------------------------------
 # eva 6.1.1: You want to get rebooked to Seattle on the first available flight tomorrow with a confirmed seat, an
@@ -70,7 +71,7 @@ class EvaAirline611(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is SOCATW (spelled out as S, O, C, A, T, W). Your last name is Walker.",
                 "Your booking: OAK (spelled out as O, A, K) to SEA (spelled out as S, E, A) on 2026-07-21 departing at 16:10.",
                 "Must-have: You are rebooked with a CONFIRMED seat on the first available flight tomorrow (2026-07-22) departing at 8:15 AM to SEA (Seattle).",
@@ -136,7 +137,7 @@ class EvaAirline614(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is R0SDRU (spelled out as R, zero, S, D, R, U). Your last name is Young. Your first name is Donna.",
                 "Your booking: SEA (spelled out as S, E, A) to SNA (spelled out as S, N, A) on 2026-06-17 departing at 14:10.",
                 "Must-have: You must be rebooked onto a flight departing on 2026-06-16 that arrives in the Orange County area today (arrives either SNA, LGB, or LAX on 2026-06-16).",
@@ -201,7 +202,7 @@ class EvaAirline631(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is E66N08 (spelled out as E, six, six, N, zero, eight). Your last name is Scott. Your first name is Sharon.",
                 "Your booking: DCA (spelled out as D, C, A) to LAX (spelled out as L, A, X) on 2026-05-10 departing at 09:10.",
                 "Must-have: You are transferred to a live human agent or supervisor during this contact (not just given advice to call back).",
@@ -267,7 +268,7 @@ class EvaAirline634(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is A83QV2 (spelled out as A, eight, three, Q, V, two). Your last name is Baker. Your first name is Dennis.",
                 "Your booking: SFO (spelled out as S, F, O) to SEA (spelled out as S, E, A) on 2026-06-05 departing at 15:00 (flight SK745 (spelled out as S, K, seven, four, five)).",
                 "Must-have: Receive a meal voucher worth exactly $15 for the delay, with a voucher code or other concrete issuance confirmation provided during the call",

@@ -28,6 +28,7 @@ Usage:
 
 import argparse
 import asyncio
+import json
 import os
 import sys
 from datetime import datetime
@@ -36,6 +37,89 @@ from nemo_voice_agent.evaluation.runner import run_dynamic_evaluation
 from nemo_voice_agent.evaluation.scenarios import get_eval_scenario, list_eval_scenarios
 from nemo_voice_agent.evaluation.utils import LLMJudge
 from nemo_voice_agent.utils import FileLogger
+
+
+# Args that materially affect scoring or scenario selection — diff these on resume
+# and emit a soft warning if they changed between the original invocation and the
+# resume invocation. Non-warning fields (output_dir, urls) are merely informational.
+_CONSISTENCY_CHECK_FIELDS = (
+    "domain",
+    "scenarios",
+    "duration",
+    "judge_url",
+    "judge_model",
+    "judge_threshold",
+    "strict_match",
+)
+
+
+def _build_invocation_record(args: argparse.Namespace, scenarios: list) -> dict:
+    """Snapshot the CLI invocation for ``run_args.json``.
+
+    Redacts ``judge_api_key`` so it never lands on disk.
+    """
+    parsed = {k: v for k, v in vars(args).items()}
+    if parsed.get("judge_api_key"):
+        parsed["judge_api_key"] = "<redacted>"
+    return {
+        "started_at": datetime.now().isoformat(timespec="seconds"),
+        "argv": list(sys.argv),
+        "parsed_args": parsed,
+        "resolved_scenario_count": len(scenarios),
+        "resolved_scenario_names": [s.name for s in scenarios],
+    }
+
+
+def _write_run_args(
+    session_dir: str,
+    args: argparse.Namespace,
+    scenarios: list,
+    is_resume: bool,
+    logger: FileLogger,
+) -> None:
+    """Write/append the invocation record to ``<session_dir>/run_args.json``.
+
+    Shape: ``{"invocations": [<record>, ...]}``. Fresh runs create a single-
+    entry list; resume invocations append. On resume, also soft-check the
+    fields in ``_CONSISTENCY_CHECK_FIELDS`` against the most recent prior
+    invocation and emit warnings on mismatch (operator decides what to do —
+    we never block).
+    """
+    args_path = os.path.join(session_dir, "run_args.json")
+    record = _build_invocation_record(args, scenarios)
+
+    history = {"invocations": []}
+    if is_resume and os.path.exists(args_path):
+        try:
+            with open(args_path) as f:
+                history = json.load(f)
+            if "invocations" not in history or not isinstance(history["invocations"], list):
+                # Older shape or malformed — start fresh but preserve as legacy entry.
+                history = {"invocations": [history] if history else []}
+        except (json.JSONDecodeError, OSError) as e:
+            logger.info(f"WARNING: existing run_args.json unreadable ({e}); starting a fresh list.")
+            history = {"invocations": []}
+
+    # Soft consistency check on resume.
+    if is_resume and history["invocations"]:
+        prior = history["invocations"][-1].get("parsed_args", {})
+        mismatches = []
+        for field in _CONSISTENCY_CHECK_FIELDS:
+            old, new = prior.get(field), getattr(args, field, None)
+            if old != new:
+                mismatches.append(f"  {field}: original={old!r} resume={new!r}")
+        if mismatches:
+            logger.info(
+                "WARNING: --resume invocation differs from the original run on these "
+                f"scoring-relevant fields:\n" + "\n".join(mismatches) + "\n"
+                "Proceeding — aggregate metrics may mix scenarios scored with different "
+                "settings. Re-run from scratch (omit --resume) for a clean comparison."
+            )
+        record["resumed_from_invocation"] = len(history["invocations"]) - 1
+
+    history["invocations"].append(record)
+    with open(args_path, "w") as f:
+        json.dump(history, f, indent=2)
 
 
 def main():
@@ -54,6 +138,15 @@ Examples:
       --user-url ws://localhost:8765 \\
       --agent-url ws://localhost:8766 \\
       --scenarios fastbite simple_qa_1 simple_qa_3
+
+  # Run all scenarios in a domain
+  python run_evaluation.py \\
+      --user-url ws://localhost:8765 \\
+      --agent-url ws://localhost:8766 \\
+      --domain eva_airline
+
+  # List available domains
+  python run_evaluation.py --list-domains
 
   # List available scenarios
   python run_evaluation.py --list
@@ -133,7 +226,7 @@ Examples:
     parser.add_argument(
         "--judge-threshold",
         type=float,
-        default=0.95,
+        default=0.9,
         help="Threshold for the LLM judge if binary result is desired",
     )
     parser.add_argument(
@@ -143,6 +236,19 @@ Examples:
             "Force disallow_extra_items=True on every scenario for this run "
             "(strict list-of-dicts comparator: lengths must match exactly). "
             "Overrides each scenario's own disallow_extra_items setting."
+        ),
+    )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        metavar="TIMESTAMP",
+        help=(
+            "Resume an existing run by reusing its eval_<TIMESTAMP> session directory "
+            "under --output-dir. Scenarios with a finalized metrics.json are skipped "
+            "(their metrics are loaded from disk into the final aggregate); scenarios "
+            "whose subdir exists but lacks metrics.json are treated as killed-mid-flight "
+            "(moved to <scenario>.killed.<resume_ts>/ and re-run); the rest run normally. "
+            "Example: --resume 20260609_181545"
         ),
     )
 
@@ -222,13 +328,35 @@ Examples:
             return 1
         scenarios.append(scenario)
 
-    # Set up output directory
-    session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    session_dir = os.path.join(args.output_dir, f"eval_{session_timestamp}")
-    os.makedirs(session_dir, exist_ok=True)
+    # Set up output directory.
+    # On resume, reuse the existing session dir; otherwise create a fresh one.
+    is_resume = bool(args.resume)
+    if is_resume:
+        session_timestamp = args.resume
+        session_dir = os.path.join(args.output_dir, f"eval_{session_timestamp}")
+        if not os.path.isdir(session_dir):
+            print(
+                f"ERROR: --resume {args.resume}: directory not found at {session_dir}",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        session_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        session_dir = os.path.join(args.output_dir, f"eval_{session_timestamp}")
+        os.makedirs(session_dir, exist_ok=True)
 
-    logger = FileLogger(os.path.join(session_dir, "evaluation_log.txt"))
-    logger.info(f"Running {len(scenarios)} scenario(s): {[s.name for s in scenarios]}")
+    # On resume, append to the existing evaluation_log.txt; otherwise truncate.
+    logger = FileLogger(
+        os.path.join(session_dir, "evaluation_log.txt"),
+        mode="a" if is_resume else "w",
+    )
+    if is_resume:
+        logger.info(f"=== RESUMING run eval_{session_timestamp} ===")
+    logger.info(f"Queued {len(scenarios)} scenario(s): {[s.name for s in scenarios]}")
+
+    # Persist the invocation args so the run dir is self-describing and so resume
+    # can soft-check consistency against the original invocation.
+    _write_run_args(session_dir, args, scenarios, is_resume, logger)
 
     if args.judge_url and args.judge_model:
         logger.info(f"Using LLM judge: {args.judge_url} with model: {args.judge_model}")
@@ -236,12 +364,12 @@ Examples:
             url=args.judge_url,
             model=args.judge_model,
             api_key=args.judge_api_key,
-            max_tokens=2048,
-            temperature=0.7,
+            max_tokens=8192,
+            temperature=1.0,
             top_p=0.95,
             seed=42,
             chat_template_kwargs={"enable_thinking": True},
-            thinking_token_budget=1800,
+            thinking_token_budget=4096,
         )
     else:
         judge = None

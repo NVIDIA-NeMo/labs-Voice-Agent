@@ -24,6 +24,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import Actions, Persona, Task
 from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
     EvaAirlineBaseScenario,
 )
+from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
 # ---------------------------------------------------------------------------
 # eva 1.1.3: You want to move only your outbound flight from Chicago (ORD) to Miami (MIA) to June 3, while keepin
@@ -71,7 +72,7 @@ class EvaAirline113(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is IM2XU4 (spelled out as I, M, two, X, U, four). Your last name is Okonkwo. Your first name is David.",
                 "Your booking: ORD (spelled out as O, R, D) to MIA (spelled out as M, I, A) on 2026-06-05 departing at 13:10.",
                 "Must-have: The return flight must remain unchanged on June 12 (no date change, no time change, and not rebooked onto a different return itinerary).",
@@ -138,7 +139,7 @@ class EvaAirline114(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is KOLTSF (spelled out as K, O, L, T, S, F). Your last name is Johansson. Your first name is Emily.",
                 "Your booking: SEA (spelled out as S, E, A) to BOS (spelled out as B, O, S) on 2026-08-14 departing at 08:10.",
                 "Must-have: Your outbound flight on 2026-08-14 must remain unchanged (same date and still confirmed).",
@@ -204,7 +205,7 @@ class EvaAirline115(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is YTM924 (spelled out as Y, T, M, nine, two, four). Your last name is Patel. Your first name is James.",
                 "Your booking: BOS (spelled out as B, O, S) to DEN (spelled out as D, E, N) on 2026-11-01 departing at 08:10.",
                 "Must-have: Your new outbound flight date must be 2026-11-03 from BOS to DEN and your new return flight date must be 2026-11-08 from DEN to BOS (do not accept any other dates).",
@@ -271,7 +272,7 @@ class EvaAirline121(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is 6VORJU (spelled out as six, V, O, R, J, U). Your last name is Thompson. Your first name is Kenji.",
                 "Your booking: LAX (spelled out as L, A, X) to SFO (spelled out as S, F, O) on 2026-06-18 departing at 17:30.",
                 "Must-have: New departure time is today (2026-06-18) and departs LAX before 2:00 PM Pacific.",
@@ -337,7 +338,7 @@ class EvaAirline122(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is 70RDH8 (spelled out as seven, zero, R, D, H, eight). Your last name is Martinez.",
                 "Your booking: DCA (spelled out as D, C, A) to ATL (spelled out as A, T, L) on 2026-05-05 departing at 07:00.",
                 "Must-have: New itinerary must arrive in ATL no later than 5:00 PM EST on 2026-05-05.",
@@ -403,7 +404,7 @@ class EvaAirline123(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is XXF6OH (spelled out as X, X, F, six, O, H). Your last name is Kim. Your first name is William.",
                 "Your booking: JFK (spelled out as J, F, K) to LAX (spelled out as L, A, X) on 2026-09-14 departing at 23:45.",
                 "Must-have: New flight must depart on the same travel date as your currently booked JFK→LAX trip.",
@@ -469,7 +470,7 @@ class EvaAirline131(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is MLATG2 (spelled out as M, L, A, T, G, two). Your last name is Andersen. Your first name is Sophia.",
                 "Your booking: SFO (spelled out as S, F, O) to ORD (spelled out as O, R, D) on 2026-08-20 departing at 08:10.",
                 "Must-have: New itinerary must arrive in Detroit (DTW) by 6:00 PM Eastern Time on the original travel date.",
@@ -536,7 +537,7 @@ class EvaAirline132(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is 2DS6M0 (spelled out as two, D, S, six, M, zero). Your last name is Volkov. Your first name is Alexander.",
                 "Your booking: JFK (spelled out as J, F, K) to LAX (spelled out as L, A, X) on 2026-07-22 departing at 10:30.",
                 "Must-have: New departure airport must be EWR (Newark).",

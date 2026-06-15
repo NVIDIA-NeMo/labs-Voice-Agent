@@ -835,6 +835,14 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
         llm_base_url = config.get("base_url", "https://integrate.api.nvidia.com/v1")
         llm_params = config.get("nvidia_generation_params", None)
         llm_default_headers = config.get("default_headers", None)
+
+        if llm_base_url == "https://inference-api.nvidia.com/v1":
+            llm_api_key = os.getenv("NVIDIA_INFERENCE_API_KEY", config.get("api_key", "None"))
+            if llm_api_key in ["None", None, ""]:
+                raise ValueError(
+                    "NVIDIA_INFERENCE_API_KEY is required for NVIDIA LLM at https://inference-api.nvidia.com/v1"
+                )
+
         if llm_base_url == "https://integrate.api.nvidia.com/v1" and llm_api_key in [
             "None",
             None,

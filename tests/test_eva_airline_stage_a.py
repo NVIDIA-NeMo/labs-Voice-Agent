@@ -54,7 +54,7 @@ class _FakeFunctionCallParams:
 
 def _load_fixture_state(eva_id: str) -> dict:
     """Mimic the action handler's db_path → db resolution server-side."""
-    path = get_eval_data_root() / "eva_airline_scenarios" / f"{eva_id}.json"
+    path = get_eval_data_root() / "eva_airline" / f"{eva_id}.json"
     return {"db": json.loads(path.read_text())}
 
 
@@ -96,9 +96,7 @@ def state_1_1_2():
 
 def test_get_reservation_success(state_1_1_2):
     tool = GetReservationTool(shared_state=state_1_1_2)
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"}
-    )
+    p = _FakeFunctionCallParams({"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "success"
     res = p.result["reservation"]
@@ -108,9 +106,7 @@ def test_get_reservation_success(state_1_1_2):
 
 def test_get_reservation_case_insensitive_confirmation(state_1_1_2):
     tool = GetReservationTool(shared_state=state_1_1_2)
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "zk3ffw", "last_name": "Rodriguez"}
-    )
+    p = _FakeFunctionCallParams({"confirmation_number": "zk3ffw", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "success"
 
@@ -125,9 +121,7 @@ def test_get_reservation_wrong_last_name(state_1_1_2):
 
 def test_get_reservation_missing(state_1_1_2):
     tool = GetReservationTool(shared_state=state_1_1_2)
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "AAAAAA", "last_name": "Rodriguez"}
-    )
+    p = _FakeFunctionCallParams({"confirmation_number": "AAAAAA", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "error"
     assert p.result["error_type"] == "not_found"
@@ -136,9 +130,7 @@ def test_get_reservation_missing(state_1_1_2):
 def test_get_reservation_malformed_confirmation(state_1_1_2):
     """5-char confirmation fails the Pydantic regex; loud validation error."""
     tool = GetReservationTool(shared_state=state_1_1_2)
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "ABC12", "last_name": "Rodriguez"}
-    )
+    p = _FakeFunctionCallParams({"confirmation_number": "ABC12", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "error"
     assert p.result["error_type"] == "invalid_confirmation_number_format"
@@ -147,9 +139,7 @@ def test_get_reservation_malformed_confirmation(state_1_1_2):
 def test_get_reservation_db_not_loaded():
     """If shared_state has no db (fixture didn't seed), return a clear error."""
     tool = GetReservationTool(shared_state={})
-    p = _FakeFunctionCallParams(
-        {"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"}
-    )
+    p = _FakeFunctionCallParams({"confirmation_number": "ZK3FFW", "last_name": "Rodriguez"})
     asyncio.run(tool._execute(p))
     assert p.result["status"] == "error"
     assert p.result["error_type"] == "db_not_initialized"
@@ -181,12 +171,8 @@ def test_write_airline_tool_records_action():
 
     state: dict = {}
     tool = _Dummy(state)
-    tool._record_action(
-        {"action_type": "rebook_flight", "confirmation_number": "ZK3FFW"}
-    )
-    tool._record_action(
-        {"action_type": "issue_meal_voucher", "confirmation_number": "ZK3FFW"}
-    )
+    tool._record_action({"action_type": "rebook_flight", "confirmation_number": "ZK3FFW"})
+    tool._record_action({"action_type": "issue_meal_voucher", "confirmation_number": "ZK3FFW"})
     assert state["actions"] == [
         {"action_type": "rebook_flight", "confirmation_number": "ZK3FFW"},
         {"action_type": "issue_meal_voucher", "confirmation_number": "ZK3FFW"},

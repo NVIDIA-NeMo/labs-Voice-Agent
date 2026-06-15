@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""One-shot scaffold generator for tau2_telecom scenarios (M6).
+
+Same shape as ``generate_tau2_retail_scaffolds.py`` / ``generate_tau2_airline_scaffolds.py``
+but adapted for telecom's descriptive task ids. Telecom task ids look like
+``[mms_issue]airplane_mode_on|bad_network_preference[PERSONA:Hard]`` — a
+category (in ``[]``), one or more issues (``|``-separated), and a persona
+suffix (``None`` / ``Easy`` / ``Hard``).
+
+Reads ``evaluation/data/tau2_telecom/split_tasks.json[base]`` (114 ids) and
+emits one ``@register_eval_scenario class Tau2Telecom<Snake>`` per task
+across ``group_Nx.py`` modules in
+``nemo_voice_agent/evaluation/scenarios/data/tau2_telecom/``. 10 tasks per
+group → 12 groups (last has 4).
+
+Naming convention:
+    tau2_id   = "[mms_issue]airplane_mode_on|data_mode_off[PERSONA:Easy]"
+    name      = "tau2_telecom__mms_issue__airplane_mode_on__data_mode_off__easy"
+    class     = "Tau2TelecomMmsIssueAirplaneModeOnDataModeOffEasy"
+
+When ``PERSONA:None``, the persona suffix is dropped from both the name and
+the class — matching the hand-authored seed scenario
+``tau2_telecom__mobile_data_issue__airplane_mode_on__data_mode_off``.
+
+Re-run only when
+the upstream ``tasks.json`` schema changes.
+
+Usage::
+
+    cd /path/to/NeMo-Voice-Agent
+    python scripts/prepare_tau2_data/generate_telecom_scaffolds.py
+
+Overwrites ``group_Nx.py`` files in the target directory and rewrites
+``__init__.py`` to side-import them.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+from typing import List, Tuple
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = REPO_ROOT / "evaluation" / "data" / "tau2_telecom"
+TARGET_PKG = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "scenarios" / "data" / "tau2_telecom"
+GROUP_SIZE = 10
+
+# Matches: [category]issue1|issue2|...|issueN[PERSONA:Persona]
+TAU2_ID_RE = re.compile(r"^\[([^\]]+)\](.*?)\[PERSONA:([^\]]+)\]$")
+
+
+def load_base_split_ids() -> List[str]:
+    """Return base-split task ids sorted alphabetically (telecom ids are not numeric)."""
+    splits = json.loads((DATA_DIR / "split_tasks.json").read_text())
+    base_ids = splits.get("base", [])
+    return sorted(base_ids)
+
+
+def parse_tau2_id(tau2_id: str) -> Tuple[str, List[str], str]:
+    """Parse ``[category]issue1|issue2[PERSONA:X]`` into (category, [issues], persona)."""
+    m = TAU2_ID_RE.match(tau2_id)
+    if not m:
+        raise ValueError(f"Unrecognized tau2_id shape: {tau2_id!r}")
+    category, issues_raw, persona = m.group(1), m.group(2), m.group(3)
+    issues = [i for i in issues_raw.split("|") if i]
+    return category, issues, persona
+
+
+def scenario_name_for(tau2_id: str, variant: str = "manual") -> str:
+    """Snake-case registry name. Drops ``PERSONA:None`` suffix to match the
+    hand-authored seed convention.
+
+    ``variant="manual"`` produces ``tau2_telecom__...`` (default);
+    ``variant="workflow"`` produces ``tau2_telecom_workflow__...``. Both
+    variants share the same upstream task — only the agent-prompt
+    policy file differs (``tech_support_manual.md`` vs
+    ``tech_support_workflow.md``).
+    """
+    category, issues, persona = parse_tau2_id(tau2_id)
+    parts = [category] + issues
+    if persona != "None":
+        parts.append(persona.lower())
+    prefix = "tau2_telecom_workflow" if variant == "workflow" else "tau2_telecom"
+    return prefix + "__" + "__".join(parts)
+
+
+def class_name_for(tau2_id: str, variant: str = "manual") -> str:
+    """PascalCase Python class name. Mirrors ``scenario_name_for`` but
+    drops separators. ``variant="workflow"`` inserts ``Workflow`` into
+    the class name to keep the two registrations distinct in Python."""
+    category, issues, persona = parse_tau2_id(tau2_id)
+
+    def camel(s: str) -> str:
+        return "".join(seg.capitalize() for seg in s.split("_") if seg)
+
+    parts = [camel(category)] + [camel(i) for i in issues]
+    if persona != "None":
+        parts.append(persona)
+    stem = "Tau2TelecomWorkflow" if variant == "workflow" else "Tau2Telecom"
+    return stem + "".join(parts)
+
+
+GROUP_HEADER = '''# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# AUTO-GENERATED by scripts/prepare_tau2_data/generate_telecom_scaffolds.py.
+# Do not hand-edit — re-run the generator after upstream schema changes.
+#
+# Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0
+# (MIT-licensed) — task ids correspond 1:1 with tau2's ``tasks.json``.
+#
+# Each upstream task is emitted as TWO scenario classes — one bound to
+# the "manual" policy variant (Tau2TelecomBaseScenario) and one bound
+# to the "workflow" policy variant (Tau2TelecomWorkflowBaseScenario).
+# Both share the same task data, reference actions, predicates, and
+# initialization actions; only the rendered agent policy differs
+# (tech_support_manual.md vs tech_support_workflow.md). Mirrors
+# upstream tau2's ``--domain telecom`` vs ``--domain telecom-workflow``
+# registration split.
+
+from nemo_voice_agent.evaluation.scenarios import register_eval_scenario
+from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
+    Tau2TelecomBaseScenario,
+    Tau2TelecomWorkflowBaseScenario,
+)
+
+
+'''
+
+
+def emit_group(ids: List[str]) -> str:
+    parts = [GROUP_HEADER]
+    for tid in ids:
+        # Paired emission: manual scenario class immediately followed by
+        # the workflow scenario class for the same upstream task. The
+        # adjacency makes it easy to spot when one variant drifts from
+        # the other on review.
+        for variant, base in (("manual", "Tau2TelecomBaseScenario"),
+                              ("workflow", "Tau2TelecomWorkflowBaseScenario")):
+            cls = class_name_for(tid, variant=variant)
+            name = scenario_name_for(tid, variant=variant)
+            parts.append(
+                f"@register_eval_scenario\n"
+                f"class {cls}({base}):\n"
+                f"    name = {name!r}\n"
+                f"    tau2_id = {tid!r}\n\n\n"
+            )
+    return "".join(parts).rstrip() + "\n"
+
+
+INIT_TEMPLATE = '''# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+# Licensed under the Apache License, Version 2.0.
+
+"""tau2_telecom scenarios package.
+
+``base.py`` holds ``Tau2TelecomBaseScenario``. ``group_Nx.py`` modules hold
+auto-scaffolded scenarios (see scripts/prepare_tau2_data/generate_telecom_scaffolds.py).
+Importing this package side-imports every group so registry decoration fires
+for all {n_total} base-split tau2_telecom scenarios.
+"""
+
+from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (  # noqa: F401
+    Tau2TelecomBaseScenario,
+)
+
+# Side-import groups so @register_eval_scenario fires.
+{import_lines}
+'''
+
+
+def main() -> int:
+    ids = load_base_split_ids()
+    n_total = len(ids)
+    print(f"Found {n_total} base-split tau2_telecom ids.")
+
+    # Sanity-check: every id parses cleanly; print one example per category.
+    categories_seen: dict = {}
+    for tid in ids:
+        category, _, _ = parse_tau2_id(tid)
+        categories_seen.setdefault(category, []).append(tid)
+    for cat, items in sorted(categories_seen.items()):
+        print(f"  {cat}: {len(items)} (e.g. {items[0]})")
+
+    # Detect class-name + scenario-name collisions before writing —
+    # same descriptive tau2_id is unique upstream, but the
+    # persona-dropping step could in principle collapse two ids with
+    # PERSONA:None into one. (In the current base split this doesn't
+    # happen, but the check is cheap.) Runs across BOTH variants so a
+    # collision between e.g. ``Tau2TelecomFoo`` and an unrelated
+    # ``Tau2TelecomWorkflowFoo`` collapsing to the same name surfaces here.
+    by_class: dict = {}
+    by_name: dict = {}
+    for tid in ids:
+        for variant in ("manual", "workflow"):
+            cls = class_name_for(tid, variant=variant)
+            name = scenario_name_for(tid, variant=variant)
+            if cls in by_class:
+                raise RuntimeError(
+                    f"Class-name collision: {cls!r} for ids "
+                    f"{by_class[cls]!r} and ({variant!r}, {tid!r})"
+                )
+            if name in by_name:
+                raise RuntimeError(
+                    f"Scenario-name collision: {name!r} for ids "
+                    f"{by_name[name]!r} and ({variant!r}, {tid!r})"
+                )
+            by_class[cls] = (variant, tid)
+            by_name[name] = (variant, tid)
+
+    # Chunk into groups of GROUP_SIZE; sequential chunk index (telecom ids
+    # aren't numeric so we can't use a decade-based filename like
+    # tau2_retail's group_0x.py / group_1x.py / ... — but we preserve the
+    # ``_x`` suffix for visual consistency with the other domains).
+    group_files: List[str] = []
+    for chunk_idx in range(0, n_total, GROUP_SIZE):
+        chunk_ids = ids[chunk_idx : chunk_idx + GROUP_SIZE]
+        group_idx = chunk_idx // GROUP_SIZE
+        group_filename = f"group_{group_idx}x.py"
+        group_files.append(group_filename)
+        path = TARGET_PKG / group_filename
+        path.write_text(emit_group(chunk_ids))
+        print(f"  wrote {group_filename}: {len(chunk_ids)} scenarios")
+
+    import_lines = "\n".join(
+        f"from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import {f[:-3]}  # noqa: F401"
+        for f in sorted(group_files, key=lambda s: int(s.split("_")[1].rstrip("x.py")))
+    )
+    (TARGET_PKG / "__init__.py").write_text(
+        INIT_TEMPLATE.format(n_total=n_total, import_lines=import_lines)
+    )
+    print(f"  wrote __init__.py with {len(group_files)} group side-imports")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

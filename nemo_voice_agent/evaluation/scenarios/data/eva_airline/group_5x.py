@@ -23,6 +23,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import Actions, Persona, Task
 from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
     EvaAirlineBaseScenario,
 )
+from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
 # ---------------------------------------------------------------------------
 # eva 5.1.2: You want to cancel your recent Basic Economy booking and get a full refund back to the original paym
@@ -70,7 +71,7 @@ class EvaAirline512(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is PZN19G (spelled out as P, Z, N, one, nine, G). Your last name is Clark. Your first name is Danielle.",
                 "Your booking: CLT (spelled out as C, L, T) to LGA (spelled out as L, G, A) on 2026-08-22 departing at 09:10.",
                 "Must-have: The reservation is canceled successfully under the 24-hour cancellation window (booked about 18 hours ago and more than 7 days before departure), with no cancellation fee.",
@@ -136,7 +137,7 @@ class EvaAirline513(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is Z5OROH (spelled out as Z, five, O, R, O, H). Your last name is White.",
                 "Your booking: SEA (spelled out as S, E, A) to SFO (spelled out as S, F, O) on 2026-04-20 departing at 12:40 (flight SK490 (spelled out as S, K, four, nine, zero)).",
                 "Must-have: The booking is canceled (or otherwise closed out) and the agent confirms a refund has been processed (not travel credit).",
@@ -202,7 +203,7 @@ class EvaAirline515(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is HEEWRM (spelled out as H, E, E, W, R, M). Your last name is Martin. Your first name is Charles.",
                 "Your booking: BOS (spelled out as B, O, S) to MIA (spelled out as M, I, A) on 2026-07-20 departing at 09:10.",
                 "Must-have: The outbound BOS→MIA flight remains active and unchanged after the agent completes the cancellation (no cancellation or rebooking of the outbound segment).",
@@ -268,7 +269,7 @@ class EvaAirline521(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is N5FZPR (spelled out as N, five, F, Z, P, R). Your last name is Thompson. Your first name is Angela.",
                 "Your booking: ORD (spelled out as O, R, D) to LGA (spelled out as L, G, A) on 2026-10-20 departing at 09:10.",
                 "Must-have: Your flight reservation is fully canceled and the agent explicitly confirms the cancellation is completed for your booking (confirmation code N5FZPR).",
@@ -330,7 +331,7 @@ class EvaAirline522(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is YP3GVQ (spelled out as Y, P, three, G, V, Q). Your last name is Garcia. Your first name is Kenneth.",
                 "Your booking: DFW (spelled out as D, F, W) to LGA (spelled out as L, G, A) on 2026-04-10 departing at 09:10.",
                 "Must-have: Your flight reservation under confirmation code YP3GVQ must be canceled successfully (not just discussed), and the agent must explicitly confirm it is canceled.",
@@ -394,7 +395,7 @@ class EvaAirline525(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is V062BJ (spelled out as V, zero, six, two, B, J). Your last name is Clark. Your first name is Heather.",
                 "Your booking: XNA (spelled out as X, N, A) to DEN (spelled out as D, E, N) on 2026-09-05 departing at 11:10.",
                 "Must-have: The agent acknowledges your medical emergency and treats your request as a medical-exception situation (not a routine cancellation), asking for the key details needed to document it (what happened and that you have hospital documentation).",
@@ -459,7 +460,7 @@ class EvaAirline526(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is RHL505 (spelled out as R, H, L, five, zero, five). Your last name is Lewis. Your first name is Scott.",
                 "Your booking: BOS (spelled out as B, O, S) to MCO (spelled out as M, C, O) on 2026-04-02 departing at 18:20.",
                 "Must-have: You receive a meal voucher that the agent confirms has been issued to you for this delay (not just promised).",

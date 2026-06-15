@@ -40,6 +40,8 @@ from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     TaskRef,
     create_get_context_history_action,
     create_get_scenario_summary_action,
+    create_apply_initialization_action,
+    create_apply_sync_delta_action,
     create_reset_context_action,
     create_update_system_prompt_action,
 )
@@ -176,7 +178,9 @@ async def run_bot_websocket(
         )
     )
     rtvi.register_action(create_get_context_history_action(task_ref, assistant_agg))
-    rtvi.register_action(create_get_scenario_summary_action(shared_state_ref))
+    rtvi.register_action(create_get_scenario_summary_action(task_ref, shared_state_ref))
+    rtvi.register_action(create_apply_initialization_action(shared_state_ref))
+    rtvi.register_action(create_apply_sync_delta_action(shared_state_ref))
 
     task = PipelineTask(
         pipeline,

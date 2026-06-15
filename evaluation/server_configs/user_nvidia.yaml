@@ -2,7 +2,7 @@
 # Please set NVIDIA_API_KEY in your environment.
 
 server:
-  log_file: "bot_agent_server.log"
+  log_file: "bot_user_server.log"
   log_level: "DEBUG"
   create_new_log: true
   overwrite_existing_log: true
@@ -68,7 +68,7 @@ tts:
   type: nvidia
   server: "grpc.nvcf.nvidia.com:443"
   model: "magpie_tts_ensemble-Magpie-Multilingual"
-  voice_id: "Magpie-Multilingual.EN-US.Aria"
+  voice_id: "Magpie-Multilingual.EN-US.Leo"
   language: "en-US"
   function_id: "877104f7-e885-42b9-8de8-f6e4c6303969"
 

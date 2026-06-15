@@ -16,14 +16,16 @@
 
 Covers two surface-level behaviors without spinning up an LLM or a bot server:
     1. ``Scenario.setup_shared_state`` propagates per-side state through the
-       runner-side serialization step into the bridge's ``scenario_dict``, with
-       the user-side and agent-side states kept separate.
+       bridge's per-side seeding step, with the user-side and agent-side
+       states kept separate.
     2. ``check_if_task_success`` honors ``disallow_extra_items``: extras pass
        in lenient mode, fail in strict mode; pred-shorter-than-ref fails in
        both modes.
 """
 
 import json
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -33,6 +35,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Persona,
     Resources,
     Scenario,
+    SuccessSignal,
     Task,
 )
 from nemo_voice_agent.evaluation.utils import check_if_task_success
@@ -47,6 +50,9 @@ class _StubPerSideStateScenario(Scenario):
     """Test scenario that writes distinct per-side state values."""
 
     name = "test__stub_per_side_state"
+    # Not actually scored by this test; declaration satisfies the
+    # Scenario.__init_subclass__ non-empty check.
+    success_signals = (SuccessSignal.ACTION_MATCH,)
 
     def setup_shared_state(self, state: dict, side: str) -> None:
         if side == "agent":
@@ -99,6 +105,7 @@ def test_setup_shared_state_default_is_noop():
 
     class _Plain(Scenario):
         name = "test__plain"
+        success_signals = (SuccessSignal.ACTION_MATCH,)
 
         @property
         def user_persona(self) -> Persona:
@@ -149,14 +156,11 @@ def test_setup_shared_state_per_side_isolation():
     assert user_state == {"marker": "user_value"}
     assert agent_state == {"marker": "agent_value", "db_path": "agent/fixture.json"}
 
-    # Runner serializes both into the scenario_dict; bridge's prepare_for_scenario
-    # will read these back via .get(...). Round-trip the JSON to confirm shape.
-    scenario_dict = {
-        "user_shared_state_init": json.dumps(user_state),
-        "agent_shared_state_init": json.dumps(agent_state),
-    }
-    assert json.loads(scenario_dict["user_shared_state_init"]) == user_state
-    assert json.loads(scenario_dict["agent_shared_state_init"]) == agent_state
+    # Each side's state JSON-round-trips intact (the bridge JSON-encodes
+    # them before sending to the bot via ``update_system_prompt``'s
+    # ``shared_state_init`` argument).
+    assert json.loads(json.dumps(user_state)) == user_state
+    assert json.loads(json.dumps(agent_state)) == agent_state
 
 
 def test_setup_shared_state_disallow_extra_items_default():
@@ -171,13 +175,24 @@ def test_setup_shared_state_disallow_extra_items_default():
 
 
 def test_eval_data_root_falls_back_to_repo_path(monkeypatch):
-    """Without env override, resolves under the repo's examples dir."""
+    """Without env override, resolves to <repo>/evaluation/data.
+
+    Was previously asserting against the old NeMo-main layout
+    (``examples/voice_agent/evaluation/data``); the eval framework now lives
+    in the standalone NeMo-Voice-Agent repo where the data root is one level
+    higher (``<repo>/evaluation/data``). Repo *name* isn't asserted because
+    users may clone into any directory. Existence + a known checked-in
+    fixture path is the meaningful invariant.
+    """
     monkeypatch.delenv("EVAL_DATA_ROOT", raising=False)
     root = get_eval_data_root()
     assert root.name == "data"
     assert root.parent.name == "evaluation"
-    assert root.parent.parent.name == "voice_agent"
-    assert root.parent.parent.parent.name == "examples"
+    assert root.is_dir(), f"eval data root {root} does not exist"
+    # eva_airline_dataset.jsonl is checked in at evaluation/data/eva_airline/.
+    assert (root / "eva_airline" / "eva_airline_dataset.jsonl").exists(), (
+        f"expected eva_airline/eva_airline_dataset.jsonl under {root}"
+    )
 
 
 def test_eval_data_root_honors_env_var(monkeypatch, tmp_path):
@@ -212,22 +227,14 @@ def test_lenient_accepts_pred_with_extras(tmp_path):
     ref = _write_json(tmp_path, "ref.json", [{"x": 1}, {"x": 2}])
     pred = _write_json(tmp_path, "pred.json", [{"x": 1}, {"x": 2}, {"x": 3}])
     assert check_if_task_success(reference=ref, prediction=pred) is True
-    assert (
-        check_if_task_success(
-            reference=ref, prediction=pred, disallow_extra_items=False
-        )
-        is True
-    )
+    assert check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=False) is True
 
 
 def test_strict_rejects_pred_with_extras(tmp_path):
     """Strict mode: pred=[A, B, C] vs ref=[A, B] fails (length mismatch)."""
     ref = _write_json(tmp_path, "ref.json", [{"x": 1}, {"x": 2}])
     pred = _write_json(tmp_path, "pred.json", [{"x": 1}, {"x": 2}, {"x": 3}])
-    assert (
-        check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True)
-        is False
-    )
+    assert check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True) is False
 
 
 def test_pred_shorter_than_ref_fails_both_modes(tmp_path):
@@ -235,20 +242,14 @@ def test_pred_shorter_than_ref_fails_both_modes(tmp_path):
     ref = _write_json(tmp_path, "ref.json", [{"x": 1}, {"x": 2}])
     pred = _write_json(tmp_path, "pred.json", [{"x": 1}])
     assert check_if_task_success(reference=ref, prediction=pred) is False
-    assert (
-        check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True)
-        is False
-    )
+    assert check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True) is False
 
 
 def test_strict_accepts_exact_bijection_unordered(tmp_path):
     """Strict mode: equal lengths + every ref matched ⇒ pass (order-independent)."""
     ref = _write_json(tmp_path, "ref.json", [{"x": 1}, {"x": 2}])
     pred = _write_json(tmp_path, "pred.json", [{"x": 2}, {"x": 1}])
-    assert (
-        check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True)
-        is True
-    )
+    assert check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True) is True
 
 
 def test_dict_reference_unaffected_by_strict(tmp_path):
@@ -256,10 +257,7 @@ def test_dict_reference_unaffected_by_strict(tmp_path):
     ref = _write_json(tmp_path, "ref.json", {"x": 1})
     pred = _write_json(tmp_path, "pred.json", {"x": 1, "y": 2})
     assert check_if_task_success(reference=ref, prediction=pred) is True
-    assert (
-        check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True)
-        is True
-    )
+    assert check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True) is True
 
 
 def test_situation_2_unaffected_by_strict(tmp_path):
@@ -268,10 +266,7 @@ def test_situation_2_unaffected_by_strict(tmp_path):
     pred = _write_json(tmp_path, "pred.json", [{"x": 1}, {"x": 2}])
     # Lenient: pred is reduced to [pred[-1]] before length check, so strict still passes
     assert check_if_task_success(reference=ref, prediction=pred) is True
-    assert (
-        check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True)
-        is True
-    )
+    assert check_if_task_success(reference=ref, prediction=pred, disallow_extra_items=True) is True
 
 
 if __name__ == "__main__":

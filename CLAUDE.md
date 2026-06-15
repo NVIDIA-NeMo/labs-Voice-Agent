@@ -128,11 +128,25 @@ The eval framework has evolved beyond a simple `<final_response>` capture. The p
 
 **Bridge-pull summary (not LLM-callable).** End-of-scenario state is **pulled** by the bridge after `<exit>`, not pushed by an LLM tool call. The bridge calls `_retrieve_scenario_summary(ws)` in `nemo_voice_agent/evaluation/bridge.py`, which sends an RTVI `get_scenario_summary` action; the handler (`create_get_scenario_summary_action`) returns `{"actions": [...], "db": {...}}` read straight from `shared_state`. This eliminates the previous double-emit / forgot-to-call / mid-conversation-call class of bugs. **Don't reintroduce a `SubmitTransactionSummaryTool`-style LLM-callable summary.**
 
-**DB-state hash matching (primary signal).** When a scenario sets `expected_scenario_db` (a `cached_property` on the class), the runner ignores the action-list comparator and instead hashes the agent's final `shared_state["db"]` via `get_dict_hash` (`nemo_voice_agent/evaluation/db_hash.py`, adapted from eva 0.1.3 / tau-2-bench style). The hash normalizes floats (`1.0 → 1`), `"none" → None`, and uses `ORDER_INDEPENDENT_LIST_FIELDS` for set-like fields; `HASH_EXCLUDED_KEYS = {"session"}` skips per-run noise. On mismatch the runner writes a structured `db_state_diff` (tables → records → fields) via `compute_db_diff` for debugging. The action-list (`reference_answer`) remains as a secondary signal. Aggregate: `db_state_success_rate` printed by the runner.
+**DB-state hash matching (primary signal).** When a scenario sets `expected_scenario_db` (a `cached_property` on the class), the runner compares **hashes** — the actual DB never crosses the WebSocket. The bot computes `get_dict_hash(shared_state["db"])` inside the `get_scenario_summary` RTVI handler and returns the SHA-256 string; the runner computes `get_dict_hash(scenario.expected_scenario_db)` from its in-process gold replay and compares strings. Same module on both sides (`nemo_voice_agent/evaluation/db_hash.py`), so the canonicalization (float `1.0 → 1`, `"none" → None`, `ORDER_INDEPENDENT_LIST_FIELDS`, `HASH_EXCLUDED_KEYS = {"session"}`) is identical. `compute_db_diff` is **no longer invoked on mismatch** — the runner has no actual DB to diff. The action-list (`reference_answer`) remains as a secondary signal. Aggregate: `db_state_success_rate` printed by the runner.
 
-**Auto-aggregated action records.** Each write tool extends `WriteAirlineTool` (in `nemo_voice_agent/evaluation/tools/eva_airline_tools.py`) and calls `self._record_action({...})` on success — the record is appended to `shared_state["actions"]` so the bridge picks it up via the pull. The action `type` must come from the locked `AIRLINE_ACTION_TYPES` vocabulary (1:1 with eva tool names). Read tools don't record.
+**Auto-aggregated action records.** Each write tool extends `WriteScenarioTool` (in `nemo_voice_agent/evaluation/tools/_write_tool_base.py`) and calls `self._record_action({...})` on success — the record is appended to `shared_state["actions"]` so the bridge picks it up via the pull. Each domain ships its own action-type vocabulary (`AIRLINE_ACTION_TYPES` for eva, `TAU2_AIRLINE_ACTION_TYPES` for tau2) and binds it via the subclass's `ACTION_TYPES` ClassVar. Read tools don't record. The bridge stamps `side="agent"` on each pulled record from the agent ws and `side="user"` on each pulled record from the user ws (telecom dual-pull). `_save_final_response` preserves any pre-stamped `side` field rather than overwriting it, so the user-side records keep their `"user"` tag through the merge.
 
-**Symmetric DB transfer.** The bridge sends the full original DB content (not a path) to the agent via `shared_state_init`. The agent mutates its in-memory copy through tools; the bridge pulls the full mutated DB back at end-of-scenario. There is also a `db_path` fallback for legacy paths — see the `state["db_path"]` branch in the action handler.
+Per-action emit (telecom cross-side sync). `_record_action` additionally pushes an `action-applied` `RTVIServerMessage` via `push_transport_message` when `shared_state["__rtvi__"]` is set (stashed by the `update_system_prompt` handler). The bridge listens for it to drive the cross-side sync pipeline — see the "Cross-side state sync" section below. Single-side domains receive the message harmlessly; their `Scenario.sync_state` is the inherited no-op so the pipeline early-exits.
+
+**DB transfer — path-in, hash-out (with opt-in inline DB for db_state_assertions).** Outbound to the bot: the bridge sends either inline DB content (small per-scenario fixtures, eva_airline) or a path string in `shared_state_init` (`state["db_path"]`, tau2 — its 7 MB shared DB exceeds pipecat's 1 MB WebSocket frame cap and triggers `ConnectionClosedError 1009` when inlined). The bot's `update_system_prompt` handler resolves `state["db_path"]` against `EVAL_DATA_ROOT` and replaces it with `state["db"]` before tools instantiate. The shared-state seeding happens regardless of `enable_tool_calling` (hoisted out of the tool-registration branch so user-sim bots with tool calling off — single-side domains — still get DBs loaded for `get_scenario_summary`). Inbound from the bot: `get_scenario_summary` returns `{actions, db_hash}` by default — never the inline DB. An opt-in `include_db: bool` arg makes the response also carry this bot's inline `db` dict so the runner can invoke `db_state_assertions` predicates on it; the bridge sets it when `scenario.db_state_assertions` is truthy (telecom-only today). Each bot returns only ITS OWN DB; the bridge dual-pulls (`get_scenario_summary` from BOTH `agent_ws` and `user_ws`, each pull happening inside that thread's `async with` block to avoid the cross-thread WS-close race) and labels the responses into `scenario_summary["db_hash"]` / `["db"]` (from agent) vs `["user_db_hash"]` / `["user_db"]` (from user). The merge runs in `run_scenario` after both threads join. Same `db_hash` module imported on both sides ensures byte-identical hashing.
+
+**`db_state_assertions` (per-predicate scoring; M4).** Third scoring signal alongside `db_state_match` (binary whole-DB hash equality) and `nl_assertions` (LLM-judged transcript predicates). Each entry is a deterministic predicate function `(db: dict, **arguments) -> bool` evaluated against the pulled DB and compared to an expected `assert_value`. Predicates are pure (no I/O, no randomness) and **side-agnostic** — they don't know which side's DB they're checking. They register flat under `(domain, func_name)` via `@register_db_state_predicate(domain="tau2_telecom")` in `nemo_voice_agent/evaluation/db_state_predicates.py`. Dispatch is **runner-side** (`evaluate_db_state_assertion(domain, assertion, db, user_db)`) — the dispatcher picks `db` vs `user_db` based on the assertion record's `side` field, then invokes the predicate on that single dict. Aggregation mirrors `nl_assertions`: per-scenario `db_state_assertion_pass_rate` in `metrics.json`, run-level `db_state_assertion_success_rate` in `all_summary.txt`. Used by telecom (M5+) where open solution spaces mean multiple valid action sequences land in different DBs but satisfy the same outcome predicates. **Upstream tau2-bench calls this `env_assertions`; we rename at the scenario translation boundary** for parallelism with `db_state_match` and `nl_assertions` (renamed `env_type` → `side`, `"assistant"` → `"agent"` for vocab consistency with the bridge's existing side-tagging).
+
+**`initialization_actions` + scenario state init (bot-side).** Bot-side counterpart to `db_state_assertions`. The single `apply_initialization` RTVI action (handler in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py:create_apply_initialization_action`) does three things in one call:
+
+1. **Merge `shared_state_init` JSON** (per-side payload from `Scenario.setup_shared_state`) into the bot's `shared_state` dict, preserving bot-side runtime sentinels (`__rtvi__`, `__tool_domain__`) that `update_system_prompt` stashed.
+2. **Resolve `db_path` → `db`**: if a `db_path` key is present in the merged state, load the JSON file from `EVAL_DATA_ROOT` and replace it under the `db` key. Idempotent — skipped when `db` is already present.
+3. **Apply init-function mutations**: each entry `{func_name, arguments}` in `actions` is dispatched against the now-loaded `db`. Init functions register flat under `(domain, func_name)` via `@register_initialization_function` in `nemo_voice_agent/evaluation/initialization_functions.py` with signature `(db: dict, **arguments) -> None` (mutates in place; side-agnostic — each bot owns one DB at `state["db"]`).
+
+The bridge's `_apply_initialization(scenario, ...)` always calls this on both bots — even when `scenario.initialization_actions` is empty — because steps (1) and (2) (state merge + DB load) must run for every tau2 scenario regardless. Per-side filtering by `side` happens bridge-side before dispatch; the bot dispatcher operates on its own `state["db"]` without side awareness. Mirrors upstream tau2-bench's `Environment.run_env_function_call` semantics. The handler aborts on any per-bot `success: false` so `prepare_for_scenario` fails loud rather than producing partial seeding.
+
+This action is **the** scenario-state initializer — `update_system_prompt` only handles prompt + tool registration + runtime sentinels; ALL scenario fixture data (`db_path`, custom shared-state keys, init mutations) flows through `apply_initialization`.
 
 ### `eva_airline` domain layout
 
@@ -156,14 +170,168 @@ Fixtures live in `evaluation/data/` at the repo root (resolved by `get_eval_data
 
 ### Scaffolding more eva scenarios
 
-The 5 seed scenarios in `base.py` are hand-authored; the rest are scaffolded from `eva_airline_dataset.jsonl` via a personal-scratch generator (kept outside this repo, in a `nemo_experiments/` dir you maintain yourself):
+The 5 seed scenarios in `base.py` are hand-authored; the rest are scaffolded from `eva_airline_dataset.jsonl` via the committed generator at `scripts/prepare_eva_data/generate_airline_scaffolds.py`. The 5 seeds are protected via an `ALREADY_PORTED` set inside the script so re-runs never overwrite their curated prose.
 
 ```bash
-python <your-scratch-dir>/generate_eva_airline_scaffolds.py --major 4 \
+# All major groups at once → stdout with section markers per group
+python scripts/prepare_eva_data/generate_airline_scaffolds.py > /tmp/all.py
+
+# One major group at a time → append to its group file, hand-review, commit
+python scripts/prepare_eva_data/generate_airline_scaffolds.py --major 4 \
     >> nemo_voice_agent/evaluation/scenarios/data/eva_airline/group_4x.py
 ```
 
-The generator emits one `@register_eval_scenario` class per dataset entry, applies the alphanumeric voice rule, and reads `must_have_criteria` / `negotiation_behavior` / `edge_cases` into guidelines. **The output is a starting point, not final** — hand-review prose and prune negotiation/edge-case bullets before committing.
+The generator emits one `@register_eval_scenario` class per dataset entry, applies the alphanumeric voice rule, and reads `must_have_criteria` / `negotiation_behavior` / `edge_cases` into guidelines. **The output is a starting point, not final** — hand-review prose and prune negotiation/edge-case bullets before committing. Unlike the tau2 generators (which overwrite group files wholesale), this one streams to stdout because eva scenarios carry curated prose that benefits from per-paste review.
+
+### Tool registry — per-domain namespaces
+
+The tool registry is **`Dict[domain → Dict[class_name → class]]`** (`ALL_SCHEMA_TOOLS_FOR_EVAL` in `tools/__init__.py`). Tool classes keep their natural short names (`CancelReservationTool`, `GetUserDetailsTool`, …); the same name in different domains coexists as distinct entries. Within a single domain, duplicate names raise `ValueError` at decoration time.
+
+Decorator (factory-style, takes a `domain` arg):
+```python
+@register_schema_tool_for_eval(domain="tau2_airline")
+class CancelReservationTool(_Tau2WriteTool): ...
+```
+Also accepts `@register_schema_tool_for_eval("tau2_airline")` (positional shortcut) and bare `@register_schema_tool_for_eval` (back-compat, registers into `"default"`).
+
+Lookup (`get_schema_tool_for_eval(name, domain="default", ...)`): exact match in the specified domain first; falls back to `"default"` with a warning when a shared harness tool (`EndConversationTool`, `SendScenarioSummaryTool`, …) is invoked from a non-default scenario domain; raises `KeyError` if absent from both.
+
+**Domain assignments:**
+- `eva_airline_tools.py` → `"eva_airline"`
+- `tau2_airline_tools.py` → `"tau2_airline"`
+- `tau2_retail_tools.py` → `"tau2_retail"`
+- `tau2_telecom_user_tools.py` + `tau2_telecom_tools.py` → `"tau2_telecom"` (split because telecom is the first dual-side domain; user-side tools live in their own file)
+- `basic_tools.py`, `customer_service_tools.py`, `restaurant_tools.py`, `rtvi_control.py`, `waitlist_tools.py` → `"default"` (no collisions today; split into per-domain namespaces if any emerge)
+
+**`Scenario.domain` is the namespace key** the bridge passes to the bots via `update_system_prompt`'s `tool_domain` argument. Set as a class attribute on each domain base: `EvaAirlineBaseScenario.domain = "eva_airline"`, `Tau2AirlineBaseScenario.domain = "tau2_airline"`, default `Scenario.domain = "default"`. For tau2, `domain` does dual duty — it's also the data subdir name (`evaluation/data/tau2_airline/`), so internal calls like `f"{self.domain}/db.json"` and `_load_tau2_voice_task_index(self.domain)` use it directly.
+
+**Action record's `name` field** (driven by `_record_action` inside each tool) stays as the upstream method name (`get_user_details`, `book_reservation`, …) — independent of class names. Class names exist for the registry; action names exist for paper-comparable action-list scoring. `TAU2_AIRLINE_TOOL_NAME_TO_CLASS` in `tau2_airline_tools.py` maps between them when needed.
+
+### `tau2_airline` domain layout
+
+```
+nemo_voice_agent/evaluation/
+├── scenarios/data/
+│   ├── tau2_common.py                  # Tau2BaseScenario + _load_tau2_voice_task_index
+│   └── tau2_airline/                   # package
+│       ├── __init__.py
+│       ├── base.py                     # Tau2AirlineBaseScenario
+│       └── group_{0..4}x.py            # 50 auto-scaffolded scenarios (10 each)
+├── tools/tau2_airline_tools.py         # 14 short-named tool ports under _Tau2InvokeMixin
+└── tools/tau2_airline_params.py        # Pydantic mirror of data_model.py + 14 tool-arg schemas
+```
+
+`Tau2AirlineBaseScenario` derives everything from a single `tau2_id` class attribute. Subclasses only declare `name` and `tau2_id`; `current_date` / `db` / `policy` / `tool_map` / `expected_scenario_db` / `reference_answer` / `user_persona` are all cached_property views on the upstream data.
+
+**get_agent_prompt is policy.md verbatim + a small "## Additional Notes to Follow" appendage** (`GENERAL_PROMPT` + `VOICE_ALPHANUMERIC_RULE` from `nemo_voice_agent.utils.voice_prompts`, plus `END_CONVERSATION_GUIDELINE` from `nemo_voice_agent.evaluation.scenarios`). The Persona/Task/Actions stubs exist for Scenario-contract introspection only — they do NOT participate in agent-prompt assembly (would silently edit Sierra's authored prompt and break paper-comparable scores).
+
+**user_persona.name is None on purpose.** Identity is owned by `known_info` from `tasks.json["user_scenario"]["instructions"]`. The tau2 `persona_name` (e.g., `"lisa_brenner"`) lives on `scenario.persona_name` for metric slicing only; it's an acoustic-slicing label, not a narrative name.
+
+**reference_answer wraps in `{"actions": [...]}`** to match eva's existing reference shape, so a single `check_if_task_success` Situation 2 path handles both domains.
+
+`_Tau2InvokeMixin` provides both `invoke(**kwargs)` (sync, used by `Tau2BaseScenario._gold_replay`) and `_execute(params)` (async, used by pipecat at live LLM call time), both routing through `_do_work(p)`. New tau2 tools should subclass `_Tau2ReadTool` or `_Tau2WriteTool` (which already wire the mixin) and only implement `_do_work` + `properties` + `required_properties` + `DESCRIPTION`.
+
+DB-key casing in `tau2_airline_tools.py`: reservation IDs and flight numbers are uppercase in `db.json`; user IDs are lowercase. The helper functions `_get_user_dict` / `_get_reservation_dict` / `_get_flight_dict` apply `.lower()` / `.upper()` normalization on the lookup key — voice ASR after letter-by-letter spelling tends to emit case inconsistently.
+
+### `tau2_retail` domain layout
+
+```
+nemo_voice_agent/evaluation/
+├── scenarios/data/tau2_retail/         # package
+│   ├── __init__.py
+│   ├── base.py                         # Tau2RetailBaseScenario
+│   └── group_{0..11}x.py               # 114 auto-scaffolded scenarios (10 each, last group has 4)
+├── tools/tau2_retail_tools.py          # 16 short-named tool ports under _Tau2InvokeMixin
+└── tools/tau2_retail_params.py         # Pydantic mirror of data_model.py + 16 tool-arg schemas
+```
+
+`Tau2RetailBaseScenario` mirrors the airline base — derives `db` / `policy` / `tool_map` / `expected_scenario_db` / `reference_answer` from `tau2_id` via `Tau2BaseScenario` machinery. Adds **one new property: `nl_assertions`** (cached, read from `evaluation_criteria.nl_assertions`). 40 of 114 retail tasks carry these natural-language claims (e.g. *"Agent should tell the user that there are 10 t-shirt options available."*); 73 are action-only; 1 is nl-only; 1 (task 57) is chitchat with neither signal. Empty/null upstream lists are normalized to `None` so the runner's truthy check correctly skips verdict aggregation.
+
+**nl_assertions LLM-judge integration.** When a scenario has `nl_assertions`, `LLMJudge.judge_scenario` extends its response to include `nl_assertion_verdicts` (one entry per assertion, `{index, passed, reason}`) and `nl_assertion_pass_rate`. The runner aggregates these into a new run-level `nl_assertion_success_rate` and per-domain breakdown alongside the existing `db_state_success_rate`. Malformed verdicts (missing entries, out-of-range indices, non-bool `passed`) get filled as `passed=False` with explanatory reason text — see `tests/test_llm_judge_nl_assertions.py` for the normalization edge cases.
+
+DB-key casing in `tau2_retail_tools.py`: order IDs are uppercase with a leading `#` (`#W0000000`), user IDs are lowercase, product/item IDs are case-sensitive integers (no normalization needed). `_get_order_dict` normalizes to uppercase + prepends `#` if dropped — speakers often omit the `#` when reading an order id aloud.
+
+### `tau2_telecom` domain layout
+
+```
+nemo_voice_agent/evaluation/
+├── scenarios/data/tau2_telecom/        # package
+│   ├── __init__.py
+│   ├── base.py                         # Tau2TelecomBaseScenario + Tau2TelecomWorkflowBaseScenario
+│   └── group_{0..11}x.py               # 228 auto-scaffolded scenarios (114 manual + 114 workflow, paired per upstream task)
+├── tools/tau2_telecom_user_tools.py    # 30 user-side LLM tools (phone controls + reads)
+├── tools/tau2_telecom_tools.py         # 13 agent-side LLM tools (lookup, billing, line mgmt, transfer)
+├── tools/tau2_telecom_params.py        # Pydantic data model (data_model.py + user_data_model.py) + 39 tool-arg schemas
+├── tools/tau2_telecom_init_functions.py    # 20 init-only mutation functions (no LLM exposure)
+├── tools/tau2_telecom_predicates.py    # 6 db_state predicates (deterministic outcome checks)
+└── tools/tau2_telecom_sync.py          # sync_telecom_state + apply_telecom_sync_delta (cross-side)
+```
+
+Telecom is the **first dual-side domain**: a separate user-side `TelecomUserDB` (mock phone attributes + user surroundings) lives alongside the agent-side `TelecomDB`. `Tau2TelecomBaseScenario.has_user_state = True` triggers user-side seeding in `_gold_replay` and bridge dual-pull at end of scenario. The 30 user-side tools are exposed to the user-sim's LLM (`enable_tool_calling: true` on the user bot); the 13 agent-side tools are exposed to the agent.
+
+**Multi-file policy.** The agent system prompt concatenates `main_policy.md` + `tech_support_{manual,workflow}.md` with a markdown `---` separator (no XML tags — drops the upstream's `<main_policy>`/`<tech_support_policy>` wrapping for parity with the airline/retail single-markdown convention). `policy_variant` ClassVar defaults to `"manual"`.
+
+**Policy variants — two parallel registrations.** Mirrors upstream tau2's `--domain telecom` vs `--domain telecom-workflow` registration split. Each base-split task is emitted as **two** scenario classes by the scaffold generator:
+
+- `tau2_telecom__X` (inherits `Tau2TelecomBaseScenario`, `policy_variant="manual"`) — uses `tech_support_manual.md` (long-form prose).
+- `tau2_telecom_workflow__X` (inherits `Tau2TelecomWorkflowBaseScenario`, `policy_variant="workflow"`) — uses `tech_support_workflow.md` (procedural step-by-step).
+
+Both share the same upstream task → identical `tau2_id`, `db`, `user_db`, `reference_answer`, `db_state_assertions`, `initialization_actions`, `nl_assertions`, agent/user tool surface, and sync_state logic. **Only the rendered policy file differs.** `Tau2TelecomWorkflowBaseScenario` inherits from `Tau2TelecomBaseScenario` and overrides only the `policy_variant` ClassVar. `scenario.domain` stays `"tau2_telecom"` on both variants so the tool registry, data files, sync applier, predicate registry, and init-function registry are all shared — no resource duplication. The split is purely organizational (different `--domain` filters + different output-dir prefixes via the `scenario.name` split), giving operators a clean A/B comparison knob over policy prose without doubling the rest of the framework.
+
+Total telecom scenarios registered: **228** (114 manual + 114 workflow). Run with `--domain tau2_telecom` or `--domain tau2_telecom_workflow`. `tests/test_tau2_telecom_scenarios.py` locks in the count + verifies the variants produce different `policy` text but identical `reference_answer`, `db_state_assertions`, and `initialization_actions`.
+
+**Three telecom-specific agent-prompt addenda** appended after the parent's voice-realization notes (in `get_agent_prompt`), compensating for structural gaps vs upstream tau2's text-mode evaluation:
+1. `TELECOM_AGENT_TOOL_AVAILABILITY_NOTE` — explicit enumeration of the 13 agent-callable tools vs the 30 user-controlled phone tools, by snake_case name matching `policy.md` references. Prevents the LLM from hallucinating user-side tool calls (which would return `unknown_tool` errors).
+2. `TELECOM_AGENT_STAY_ON_TASK_GUIDELINE` — instructs the agent to address the user's primary stated problem and not pivot to incidentally-discovered issues (overdue bills, sibling line suspensions) unless they're directly causing the symptom.
+3. `TELECOM_AGENT_HOME_NETWORK_NOTE` — states the home country (US, derived from data: US-format phone numbers, US-state addresses, USD billing) and frontloads a location-probe rule: ASK the user where they are physically located as the FIRST diagnostic question for any connectivity complaint, then check `line.roaming_enabled` if abroad. Addresses the failure mode where the user-sim doesn't volunteer "I'm in France" until prompted.
+
+**User-sim addenda** (in `user_actions`):
+- `TELECOM_USER_INSTRUCTIONS` — 4-step procedural script: greet + describe → follow agent's diagnostic steps → verbally report tool results → confirm + close.
+- `TELECOM_PASSIVE_TOOL_USE_GUIDELINE` — passive-only tool use; never call a phone tool unless the agent has just instructed a specific action. Prevents the user-sim from free-firing all phone tools on the agent's greeting turn.
+
+**Snake_case tool names.** Telecom tools declare a class-level `name = "snake_case"` attribute (`StandardSchemaTool` honors it). Single source of truth: registry key, LLM-visible function name, `_record_action["name"]`, and `_build_tool_map` gold-replay dispatch key all use the same snake_case identifier matching upstream method names + `policy.md` references. Other domains' tools (eva / airline / retail) don't set `name` and fall back to the class name as before.
+
+**DB-key casing in telecom**: phone numbers `555-NNN-NNNN`, customer IDs uppercase `C1001`, line IDs uppercase `L1002`, plan IDs uppercase `P1001`, bill IDs uppercase `B1001`, device IDs uppercase `D1001`. No normalization helpers needed (all upstream IDs are case-stable).
+
+### Cross-side state sync (telecom; `Environment.sync_tools` equivalent)
+
+Telecom is the first domain to opt into `Scenario.sync_state`, the voice-mode equivalent of upstream's `Environment.sync_tools()`. The framework is **domain-agnostic** at the bridge level — only the propagation logic is telecom-specific.
+
+**Why it's needed.** In voice mode each bot owns one DB (`shared_state["db"]`); the bridge has no shared `Environment` object. So when the agent's `refuel_data` mutates `line.data_refueling_gb`, the user-sim's `surroundings.mobile_data_usage_exceeded` doesn't automatically update — and the user-sim sees stale state. Without sync, ~62% of telecom base scenarios (those involving `refuel_data` / `enable_roaming` / `send_payment_request` / `resume_line`) would deadlock because the user-sim never observes the agent's fix.
+
+**Pipeline (3 invocation points mirror upstream's `sync_tools` call sites):**
+1. **Post-init (mirrors upstream `Environment.__init__` sync).** After `_apply_initialization` completes, bridge's `_setup_cross_side_sync` loads shadow DBs, replays init actions onto them, runs `scenario.sync_state` once, and dispatches the resulting per-side deltas to the bots so they start the conversation with coherent cross-side state (e.g. agent's `set_data_usage(15.1)` → user's `surroundings.mobile_data_usage_exceeded=True`).
+2. **Per-action (mirrors upstream `run_env_function_call` sync).** `WriteScenarioTool._record_action` emits an `action-applied` `RTVIServerMessage` via `push_transport_message`. Bridge listens for it in `_monitor_*_message`, replays the action onto the shadow DBs via the scenario's `_build_tool_map`'s sync `invoke()`, runs `scenario.sync_state`, and dispatches deltas via the `apply_sync_delta` RTVI action.
+3. **(Not yet exercised — would be per-LLM-turn).** Upstream also syncs in `get_response`; we don't need this for voice mode because all bot-side mutations land in `_record_action` and trigger #2.
+
+**Components:**
+- `Scenario.sync_state(agent_db, user_db) → {"agent": {...}, "user": {...}}` — default no-op on the base; telecom overrides to delegate to `sync_telecom_state` (pure function in `tau2_telecom_sync.py`).
+- `nemo_voice_agent/evaluation/sync_appliers.py` — per-domain applier registry (`@register_sync_applier(domain="...")`) + generic dotted-path default. Telecom registers `apply_telecom_sync_delta` which handles `surroundings.field` paths AND list-by-id paths (`bills[B1002].status`) AND triggers `_simulate_network_search` when surroundings change.
+- `apply_sync_delta` RTVI action handler (in `rtvi_actions.py`) — parallel to `apply_initialization`; receives `{domain, delta}` and dispatches via the applier registry.
+- Bridge state: `self.shadow_state`, `self.shadow_tool_map`, `self.sync_enabled`, `self.sync_lock` — only populated when `type(scenario).sync_state is not Scenario.sync_state` (i.e., the scenario opted in).
+
+**Five propagation paths** in `sync_telecom_state` (telecom-specific):
+1. `line.status` → `surroundings.line_active` (agent → user)
+2. `line.roaming_enabled` → `surroundings.roaming_allowed` (agent → user)
+3. `line.data_used_gb` + `data_refueling_gb` + `plan.data_limit_gb` → `surroundings.mobile_data_usage_exceeded` (agent → user)
+4. Any bill `AWAITING_PAYMENT` → `surroundings.payment_request = {bill_id, amount, paid: False}` (agent → user)
+5. User's `payment_request.paid = True` → `bills[id].status = Paid` (**user → agent**, reverse direction)
+
+**Contract for new dual-side domains.** Any scenario that overrides `sync_state` MUST also provide `_build_tool_map(state) → {name: tool}` where each tool has a sync `invoke(**kwargs)` method (used by the bridge for shadow-DB replay). Tau2 satisfies this via `_Tau2InvokeMixin`; EVA's tools have only `_execute` (async) and would need a sync wrapper if EVA ever became dual-side. Single-side domains keep the default no-op `sync_state` and skip the whole pipeline.
+
+**Validated** end-to-end against three scenarios covering all 5 propagation paths bidirectionally — see `tests/test_tau2_telecom_sync.py` for the unit-level coverage matrix (26 tests).
+
+### Scaffolding more tau2 scenarios
+
+One-shot generators live in `scripts/prepare_tau2_data/` (committed alongside `prepare_telecom.py`). They read upstream `tasks.json` + `split_tasks.json[base]` (+ `tasks_voice.json` where applicable) and emit one `@register_eval_scenario class Tau2<Domain><Id>` per task into `group_Nx.py` modules — overwriting existing files, so re-run only when upstream schema changes:
+
+```bash
+python scripts/prepare_tau2_data/generate_airline_scaffolds.py   # 50 scenarios → 5 groups
+python scripts/prepare_tau2_data/generate_retail_scaffolds.py    # 114 → 12 groups
+python scripts/prepare_tau2_data/generate_telecom_scaffolds.py   # 114 → 12 groups
+```
+
+Telecom is the odd one out: task ids are descriptive strings (`[mms_issue]airplane_mode_on|data_mode_off[PERSONA:Hard]`) rather than integers, so class/scenario names are derived from the parts (`Tau2TelecomMmsIssueAirplaneModeOnDataModeOffHard` / `tau2_telecom__mms_issue__airplane_mode_on__data_mode_off__hard`). `PERSONA:None` is dropped from both — matches the hand-authored seed convention. Eva's generator lives at `scripts/prepare_eva_data/generate_airline_scaffolds.py` and streams to stdout for hand-review (eva carries curated prose tau2 doesn't).
 
 ### Running a single eva_airline scenario
 
@@ -178,9 +346,10 @@ Scenario names map from eva ids: `"1.1.2" → "eva_airline__1_1_2"`, class names
 
 ### Known limitations
 
-- **Parakeet STT misrecognizes spelled alphanumerics.** Letter sequences and digit-words (`"for"` vs `"four"`, `"B Z I W"`) frequently get mangled. Diagnose by checking `bot_logs_user/llm_context.json` to confirm the user simulator emitted the correct text before blaming the user-side LLM.
-- **Action list lookups are case-sensitive.** Tool action `type` strings must match `AIRLINE_ACTION_TYPES` exactly.
-- **DB diff isn't shown unless `expected_scenario_db` is set.** Scenarios without a ground-truth DB fall back to action-list comparison only.
+- **Parakeet STT misrecognizes spelled alphanumerics.** Letter sequences and digit-words (`"for"` vs `"four"`, `"B Z I W"`) frequently get mangled. Diagnose by checking `bot_logs_user/llm_context.json` to confirm the user simulator emitted the correct text before blaming the user-side LLM. Per the path/hash transport design, the user-simulator-side log is the source of truth for what was actually said.
+- **VAD can fragment one logical utterance into multiple ASR segments** when the user TTS introduces natural inter-sentence pauses ≥ `VAD_STOP_SECS` (default 1.0 s). The pipeline aggregator can then drop the early segments if the user resumes speaking within ~150 ms (treated as an interruption). Symptom: spelled-out long IDs land in the agent's context truncated or with parts missing. Mitigations: bump `VAD_STOP_SECS` to 2.0 s, or shorten the user simulator's turns so each utterance is a single self-contained statement.
+- **DB diff isn't shown on mismatch.** The runner only sees the SHA-256 hash, not the actual DB (path/hash transport). For diagnostics, inspect `bot_logs_agent/llm_context.json` (agent's tool-call trace) and `bot_logs_user/llm_context.json` (user simulator's reasoning) side-by-side — the discrepancy usually pinpoints which reference action the agent skipped or mangled.
+- **Action-list lookups are case-sensitive on the action `type`.** Tool action `type` strings must match the domain's `ACTION_TYPES` list (`AIRLINE_ACTION_TYPES`, `TAU2_AIRLINE_ACTION_TYPES`) exactly. The `WriteScenarioTool._record_action` validation logs a warning on mismatch but still appends (recoverable, but the recorded action won't match any reference).
 
 ## Code style
 

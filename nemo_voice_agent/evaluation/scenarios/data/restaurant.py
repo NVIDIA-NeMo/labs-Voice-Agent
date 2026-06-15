@@ -25,6 +25,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Persona,
     Resources,
     Scenario,
+    SuccessSignal,
     Task,
 )
 from nemo_voice_agent.utils.audio import NoiseConfig
@@ -240,6 +241,11 @@ class RestaurantBaseScenario(Scenario):
     Provides sensible defaults for agent persona, agent task, and user resources
     so that concrete subclasses only need to override what differs.
     """
+
+    # Pattern B (legacy LLM-summary): the agent emits a structured
+    # ``<final_response>`` payload; ``is_action_match`` recursively
+    # compares it against ``reference_answer``. Only signal that applies.
+    success_signals = (SuccessSignal.ACTION_MATCH, SuccessSignal.CLEAN_EXIT)
 
     max_duration = 180
     ignore_capitalization = True

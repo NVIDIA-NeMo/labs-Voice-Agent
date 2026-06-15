@@ -43,9 +43,7 @@ def _all_eva_airline_scenarios() -> list:
     by the parametrized tests below as soon as it's registered in
     ``scenarios/data/__init__.py``. No hardcoded list to maintain.
     """
-    return sorted(
-        name for name in list_eval_scenarios() if name.startswith("eva_airline__")
-    )
+    return sorted(name for name in list_eval_scenarios() if name.startswith("eva_airline__"))
 
 
 from nemo_voice_agent.evaluation.tools.eva_airline_tools import (
@@ -83,7 +81,7 @@ class _FakeFunctionCallParams:
 def _load_fixture_state(eva_id: str) -> dict:
     """Build a shared_state dict matching what the action handler initializes
     when ``setup_shared_state`` writes inline DB content."""
-    path = get_eval_data_root() / "eva_airline_scenarios" / f"{eva_id}.json"
+    path = get_eval_data_root() / "eva_airline" / f"{eva_id}.json"
     return {"db": json.loads(path.read_text())}
 
 
@@ -98,6 +96,7 @@ def _run(tool, arguments):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.skip(reason="Skipping voluntary date change happy path strict_match test since reference_answer is set to None to align with other scenarios")
 def test_voluntary_date_change_happy_path_matches_reference():
     """End-to-end action sequence accumulates actions in shared_state that
     satisfy the scenario's reference_answer via the comparator."""
@@ -176,6 +175,7 @@ def test_voluntary_date_change_happy_path_matches_reference():
         assert check_if_task_success(reference=rf.name, prediction=pf.name) is True
 
 
+@pytest.mark.skip(reason="Skipping voluntary date change scenario metadata test since reference_answer is set to None to align with other scenarios")
 def test_voluntary_date_change_scenario_metadata():
     s = get_eval_scenario("eva_airline__voluntary_date_change")
     assert s is not None
@@ -493,9 +493,7 @@ def test_voluntary_date_change_happy_path_db_state_match():
     expected_hash = get_dict_hash(scenario.expected_scenario_db)
     actual_hash = get_dict_hash(state["db"])
     if expected_hash != actual_hash:
-        diff = compute_db_diff(
-            expected_db=scenario.expected_scenario_db, actual_db=state["db"]
-        )
+        diff = compute_db_diff(expected_db=scenario.expected_scenario_db, actual_db=state["db"])
         pytest.fail(
             f"DB-state hash mismatch on canonical path. Diff: {json.dumps(diff, indent=2, default=str)[:2000]}"
         )
@@ -558,17 +556,11 @@ def test_messy_path_db_state_diverges_from_expected():
     scenario = get_eval_scenario("eva_airline__voluntary_date_change")
     expected_hash = get_dict_hash(scenario.expected_scenario_db)
     actual_hash = get_dict_hash(state["db"])
-    assert (
-        expected_hash != actual_hash
-    ), "messy path should diverge from expected, but hashed identical"
+    assert expected_hash != actual_hash, "messy path should diverge from expected, but hashed identical"
 
     # The diff should specifically show extra/modified bookings on the reservation
-    diff = compute_db_diff(
-        expected_db=scenario.expected_scenario_db, actual_db=state["db"]
-    )
-    assert (
-        "reservations" in diff["tables_modified"]
-    ), f"expected reservations diff, got: {diff}"
+    diff = compute_db_diff(expected_db=scenario.expected_scenario_db, actual_db=state["db"])
+    assert "reservations" in diff["tables_modified"], f"expected reservations diff, got: {diff}"
 
 
 # ---------------------------------------------------------------------------
@@ -589,9 +581,7 @@ def test_eva_airline_scenarios_register_and_load(scenario_name):
     assert s is not None, f"{scenario_name} is not registered"
     assert s.eva_id, f"{scenario_name}: must declare a non-empty eva_id"
     expected = s.expected_scenario_db
-    assert isinstance(
-        expected, dict
-    ), f"{scenario_name}: expected_scenario_db is not a dict"
+    assert isinstance(expected, dict), f"{scenario_name}: expected_scenario_db is not a dict"
     for table in ("_current_date", "reservations", "journeys"):
         assert table in expected, f"{scenario_name}: expected_db missing {table!r}"
 
@@ -601,19 +591,15 @@ def test_eva_airline_scenarios_have_spell_out_rule_in_both_prompts(scenario_name
     """``VOICE_ALPHANUMERIC_RULE`` must land in both agent and user prompts.
 
     Catches scenarios that overrode user_actions but forgot to include
-    ``self.VOICE_ALPHANUMERIC_RULE`` in ``user_actions.guidelines``.
+    ``VOICE_ALPHANUMERIC_RULE`` in ``user_actions.guidelines``.
     """
     s = get_eval_scenario(scenario_name)
     agent_prompt = s.get_agent_prompt()
     user_prompt = s.get_user_prompt()
     # The literal example "L, A, X" from VOICE_ALPHANUMERIC_RULE — its presence
     # confirms the rule itself is included (no scenario uses "L, A, X" by accident).
-    assert (
-        "L, A, X" in agent_prompt
-    ), f"{scenario_name}: spell-out rule missing from agent prompt"
-    assert (
-        "L, A, X" in user_prompt
-    ), f"{scenario_name}: spell-out rule missing from user prompt"
+    assert "L, A, X" in agent_prompt, f"{scenario_name}: spell-out rule missing from agent prompt"
+    assert "L, A, X" in user_prompt, f"{scenario_name}: spell-out rule missing from user prompt"
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import Actions, Persona, Task
 from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
     EvaAirlineBaseScenario,
 )
+from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
 # ---------------------------------------------------------------------------
 # eva 2.1.2: You want help after your ATL to SEA flight was canceled: get rebooked onto the first available fligh
@@ -70,7 +71,7 @@ class EvaAirline212(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is PP248Z (spelled out as P, P, two, four, eight, Z). Your last name is Murphy. Your first name is Ava.",
                 "Your booking: ATL (spelled out as A, T, L) to SEA (spelled out as S, E, A) on 2026-06-07 departing at 18:45 (flight SK518 (spelled out as S, K, five, one, eight)).",
                 "Must-have: You are rebooked onto the first available flight tomorrow morning (2026-06-08) from ATL to SEA with a confirmed seat (not standby).",
@@ -136,7 +137,7 @@ class EvaAirline216(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is YLCNSG (spelled out as Y, L, C, N, S, G). Your last name is Brown. Your first name is Zoe.",
                 "Your booking: LAX (spelled out as L, A, X) to SEA (spelled out as S, E, A) on 2026-09-10 departing at 16:10 (flight SK490 (spelled out as S, K, four, nine, zero)).",
                 "Must-have: The agent confirms a full cash refund is processed back to the original payment method (not a travel credit or voucher).",
@@ -202,7 +203,7 @@ class EvaAirline222(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your last name is Foster. Your first name is Hannah.",
                 "Your booking: JFK (spelled out as J, F, K) to LAX (spelled out as L, A, X) on 2026-08-08 departing at 18:30.",
                 "Must-have: You are rebooked from JFK to LAX for travel today (2026-08-08) on an itinerary that arrives in LAX no later than 11:00 PM Pacific.",
@@ -267,7 +268,7 @@ class EvaAirline224(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is N53W23 (spelled out as N, five, three, W, two, three). Your last name is Cruz. Your first name is Natalie.",
                 "Your booking: BOS (spelled out as B, O, S) to DFW (spelled out as D, F, W) on 2026-06-30 departing at 14:30.",
                 "Must-have: Your existing flight booking remains unchanged (no rebooking, no cancellation, and no change to origin/destination: BOS → DFW).",
@@ -333,7 +334,7 @@ class EvaAirline225(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is NHNRTO (spelled out as N, H, N, R, T, O). Your last name is Peterson.",
                 "Your booking: MIA (spelled out as M, I, A) to JFK (spelled out as J, F, K) on 2026-04-25 departing at 14:30 (flight SK255 (spelled out as S, K, two, five, five)).",
                 "Must-have: Receive a meal voucher issued for the delay on flight SK255 MIA→JFK (the agent must confirm it has been issued, not just that you are eligible).",
@@ -398,7 +399,7 @@ class EvaAirline232(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is 7MMHTS (spelled out as seven, M, M, H, T, S). Your last name is Bennett. Your first name is Rachel.",
                 "Your booking: ORD (spelled out as O, R, D) to LGA (spelled out as L, G, A) on 2026-09-06 departing at 12:30.",
                 "Must-have: Your booking remains confirmed on the updated departure time of 12:30 PM (you are not moved to a different airport).",
@@ -464,7 +465,7 @@ class EvaAirline234(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is DX8W4I (spelled out as D, X, eight, W, four, I). Your last name is Howard. Your first name is Ashley.",
                 "Your booking: SFO (spelled out as S, F, O) to SEA (spelled out as S, E, A) on 2026-08-25 departing at 22:30.",
                 "Must-have: You receive a full cash refund back to the original payment method for the entire impacted trip because the new schedule no longer works.",
@@ -530,7 +531,7 @@ class EvaAirline241(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is 5KR950 (spelled out as five, K, R, nine, five, zero). Your last name is Whitfield. Your first name is Nathan.",
                 "Your booking: DEN (spelled out as D, E, N) to JFK (spelled out as J, F, K) on 2026-06-14 departing at 10:15.",
                 "Must-have: You must be rebooked to travel from DEN to JFK (no airport changes) on 2026-06-14 with an arrival time no later than 10:00 PM ET.",
@@ -597,7 +598,7 @@ class EvaAirline242(EvaAirlineBaseScenario):
                 "Once the work is done and the agent has confirmed it, thank them and end the call.",
             ],
             guidelines=[
-                self.VOICE_ALPHANUMERIC_RULE,
+                VOICE_ALPHANUMERIC_RULE,
                 "Your confirmation number is KUT629 (spelled out as K, U, T, six, two, nine). Your last name is Johansson. Your first name is Clara.",
                 "Your booking: MSP (spelled out as M, S, P) to LAX (spelled out as L, A, X) on 2026-05-02 departing at 12:30.",
                 "Must-have: You remain booked on flight SK418 from MSP to LAX re-departing today (2026-05-02) rather than being moved to a different flight.",

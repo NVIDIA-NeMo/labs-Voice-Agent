@@ -1,6 +1,34 @@
-# Voice Agent Evaluation System
+# NeMo Voice Agent Evaluator
 
-Evaluate a voice agent by having a simulated user (another voice agent) talk to it through a live audio connection. The bridge routes audio, measures latency, captures the agent's final structured response, and scores success against a reference answer.
+Evaluate a voice agent by having a simulated user (another voice agent) talk to it through a live audio connection. The bridge routes audio, measures latency, captures the agent's actions, propagates cross-side DB state when needed, and scores success across up to five orthogonal signals.
+
+## Contents
+
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+  - [0. Install dependencies](#0-install-dependencies)
+  - [1. Start the two bot servers](#1-start-the-two-bot-servers)
+  - [2. Run an evaluation](#2-run-an-evaluation)
+  - [3. Scoring](#3-scoring)
+  - [4. Resuming a partial run](#4-resuming-a-partial-run)
+- [CLI Reference](#cli-reference)
+  - [`run_evaluation.py` flags](#run_evaluationpy-flags)
+  - [Bot server environment variables](#bot-server-environment-variables)
+- [Available Scenarios](#available-scenarios)
+  - [eva_airline domain notes](#eva_airline-domain-notes)
+  - [tau2 domain notes](#tau2-domain-notes)
+- [Evaluation Metrics](#evaluation-metrics)
+  - [Signal matrix](#signal-matrix)
+  - [1. Action-list match (deterministic)](#1-action-list-match-deterministic)
+  - [2. DB-state hash match (deterministic, path-independent)](#2-db-state-hash-match-deterministic-path-independent)
+  - [3. DB-state assertions (deterministic, per-predicate)](#3-db-state-assertions-deterministic-per-predicate)
+  - [4. NL assertions (LLM-judged, per-assertion)](#4-nl-assertions-llm-judged-per-assertion)
+  - [5. LLM judge (soft overall signal)](#5-llm-judge-soft-overall-signal)
+  - [Composite `is_successful` (strict conjunction)](#composite-is_successful-strict-conjunction)
+  - [Run-level aggregation](#run-level-aggregation)
+- [Output Structure](#output-structure)
+- [Extending the System](#extending-the-system) — pointer to [`EXTENDING_DATA.md`](EXTENDING_DATA.md) + [`EXTENDING_PIPELINE.md`](EXTENDING_PIPELINE.md)
+- [Notes](#notes)
 
 ## Architecture
 
@@ -11,34 +39,41 @@ Evaluate a voice agent by having a simulated user (another voice agent) talk to 
 │                      │                       │                      │                     │                      │
 │  ASR → LLM → TTS     │                       │  Audio routing       │                     │  ASR → LLM → TTS     │
 │  WebSocket on 8766   │                       │  Latency metrics     │                     │  WebSocket on 8765   │
-└──────────────────────┘                       │  Transcript capture  │                     └──────────────────────┘
-                                               │  <final_response>    │
-                                               │  <exit> detection    │
-                                               │  RTVI prompt updates │
+│                      │                       │  Transcript capture  │                     │                      │
+│  shared_state["db"]  │                       │  <exit> detection    │                     │  shared_state["db"]  │
+│  (user-side DB:      │                       │  RTVI prompt updates │                     │  (agent-side DB:     │
+│   phone state for    │                       │  Init action replay  │                     │   reservations,      │
+│   telecom user-sim)  │                       │  Cross-side sync     │                     │   bills, lines, ...) │
+└──────────────────────┘                       │  (telecom only)      │                     └──────────────────────┘
+                                               │  Dual-pull at end    │
                                                └──────────────────────┘
 ```
 
-- **Two independent WebSocket bot servers.** Each runs its own Pipecat pipeline (NeMo ASR → LLM → TTS) and speaks RTVI.
-- **Bridge process.** Opens a WebSocket client to each bot, runs two threads (one per bot), and shuttles audio between them via thread-safe queues. Resamples audio at the source to match each bot's sample rate. Monitors RTVI events for transcripts, turn timing, `<final_response>` (structured result), and `<exit>` (graceful termination signal).
-- **Control plane.** The bridge uses RTVI `update_system_prompt` (inject scenario prompts and tool configs), `reset` (clear context between scenarios), and `get_context_history` (retrieve final LLM context for current scenario).
+- **Two independent WebSocket bot servers.** Each runs its own Pipecat pipeline (NeMo ASR → LLM → TTS), speaks RTVI, and holds a per-scenario `shared_state` dict on its side. For dual-side domains (telecom), the user bot's `shared_state["db"]` is a separate mock-phone DB (`TelecomUserDB`) from the agent bot's customer/billing DB (`TelecomDB`).
+- **Bridge process.** Opens a WebSocket client to each bot, runs two threads (one per bot), and shuttles audio between them via thread-safe queues. Resamples audio at the source to match each bot's sample rate. Monitors RTVI events for transcripts, turn timing, `<final_response>` (legacy structured result), `<exit>` (graceful termination), and `action-applied` (per-write-tool event that drives the cross-side sync pipeline for telecom).
+- **Scenario-state init.** Per scenario, the bridge sends `update_system_prompt` (sets prompt + registers tools + clears prior shared_state) followed by `apply_initialization` (merges scenario fixture data into `shared_state`, resolves `db_path` to a loaded DB, dispatches any per-side init function mutations like `set_data_usage` / `turn_airplane_mode_on`). Both bots always receive `apply_initialization`, even when no init mutations are needed — the DB-load step runs regardless.
+- **Cross-side state sync.** When the agent's write tool fires (e.g., `enable_roaming`, `refuel_data`, `send_payment_request` in `tau2_telecom`), the bot emits an `action-applied` RTVI event. The bridge replays the action onto in-process shadow DBs, runs `scenario.sync_state(agent_db, user_db)`, and pushes the resulting per-side delta to the *other* bot via the `apply_sync_delta` RTVI action. Mirrors upstream tau2's `Environment.sync_tools()` across three invocation points (post-init, per-action, plus reverse direction when the user-sim makes a payment). Single-side domains (`eva_airline`, `tau2_airline`, `tau2_retail`) skip this pipeline entirely — `Scenario.sync_state` is the inherited no-op default.
+- **End-of-scenario pull.** The bridge dual-pulls scenario summaries from BOTH bots via `get_scenario_summary` — each pull happens *inside* its thread's `async with` WebSocket scope to avoid the cross-thread close race. The merged result carries `db_hash` + per-side action records (`side="agent"` / `side="user"` tagged at merge time) for the runner's scoring pass. For telecom scenarios with `db_state_assertions`, the inline `user_db` dict also comes back so the runner can evaluate predicates on it.
 
 ## Quick Start
 
 ### 0. Install dependencies
+
+From the repo root (`NeMo-Voice-Agent/`):
+
 ```bash
-cd examples/voice_agent/
 uv sync
+source .venv/bin/activate
 ```
 
-Then you can activate the environment via `source .venv/bin/activate`.
+`nemo_voice_agent` is pip-installable — no `PYTHONPATH` gymnastics are required. The eval scripts below still expect a repo checkout because they read YAML configs and fixtures from repo-relative paths.
 
 ### 1. Start the two bot servers
 
 **Terminal 1 — Simulated User**
 
 ```bash
-cd examples/voice_agent/evaluation
-export PYTHONPATH=/path/to/NeMo:$PYTHONPATH
+cd evaluation
 export SERVER_CONFIG_PATH=server_configs/user.yaml
 export WEBSOCKET_PORT=8766
 export CUDA_VISIBLE_DEVICES=0
@@ -48,8 +83,7 @@ python bot_server.py
 **Terminal 2 — Agent Under Test**
 
 ```bash
-cd examples/voice_agent/evaluation
-export PYTHONPATH=/path/to/NeMo:$PYTHONPATH
+cd evaluation
 export SERVER_CONFIG_PATH=server_configs/agent.yaml
 export WEBSOCKET_PORT=8765
 export CUDA_VISIBLE_DEVICES=1
@@ -61,7 +95,7 @@ python bot_server.py
 **Terminal 3 — Evaluation Bridge**
 
 ```bash
-cd examples/voice_agent/evaluation
+cd evaluation
 python run_evaluation.py \
     --user-url ws://localhost:8766 \
     --agent-url ws://localhost:8765 \
@@ -70,7 +104,32 @@ python run_evaluation.py \
 
 ### 3. Scoring
 
-By default, each scenario is scored by **strict dictionary comparison** between its `reference_answer` and the agent's `<final_response>` payload — every key/value in the reference must be present and matching in the prediction (extra keys in the prediction are allowed). Pass `--judge-url`, `--judge-model`, and `--judge-api-key` to additionally run an **LLM judge** that scores each scenario 0–1 using the full conversation and tool context. Both results are saved in `metrics.json` and `judge_result.json` respectively. See [Evaluation Methods](#evaluation-methods) for details.
+Each scenario can be scored by up to **five orthogonal signals** — action-list match, DB-state hash match, DB-state assertions, NL assertions, and LLM judge — combined into a single `is_successful` composite via strict conjunction (every applicable signal must pass). Pass `--judge-url`, `--judge-model`, and `--judge-api-key` to enable the LLM judge alongside the deterministic signals; the judge runs independently and contributes its own verdict to the conjunction (when `--judge-threshold` is set). All signals + the composite + a per-scenario `success_breakdown` land in `metrics.json`; the LLM judge's full output (score, reason, per-assertion verdicts, verbatim prompt) lives in `judge_result.json`. See [Evaluation Metrics](#evaluation-metrics) for the full signal model.
+
+### 4. Resuming a partial run
+
+If a long run gets killed (or you killed it intentionally), re-invoke `run_evaluation.py` with `--resume <timestamp>` to pick up where it left off. The runner reuses the existing `eval_<timestamp>/` directory:
+
+```bash
+python run_evaluation.py \
+    --user-url ws://localhost:8766 --agent-url ws://localhost:8765 \
+    --domain tau2_retail \
+    --resume 20260609_181545
+```
+
+Per-scenario filesystem state determines what happens to each scenario:
+
+| State | What's on disk | Behavior |
+|---|---|---|
+| **Completed** | `metrics.json` exists and parses cleanly | Skipped. Metrics loaded from disk and folded into the run-level aggregate so `all_summary.txt` covers BOTH this and the previous session. |
+| **In-flight** | Subdir exists but no (or malformed) `metrics.json` | Moved to `<scenario>.killed.<resume_ts>/` (with a `__KILLED__` marker) for post-mortem; the scenario then re-runs fresh. |
+| **Fresh** | No subdir | Runs normally. |
+
+**Invocation history.** Every run writes `<session_dir>/run_args.json` recording the CLI invocation (parsed args, `argv`, resolved scenario list). Resume invocations append a new entry rather than overwrite, so the file shows the full history of the run dir. The LLM judge API key is redacted before writing.
+
+**Consistency soft-check.** On `--resume`, scoring-relevant flags (`--domain` / `--scenarios` / `--duration` / `--judge-*` / `--strict-match`) are compared against the previous invocation; mismatches log a warning but never block — the operator decides whether to proceed. Mixing flags across resumed sessions produces incoherent aggregates (some scenarios scored one way, some another), so for a clean comparison rerun from scratch.
+
+**Final aggregates always regenerate.** `all_metrics.json`, `all_summary.txt`, and `all_latencies.csv` are written fresh at the end of the resume session, covering every scenario in `all_results` (both freshly-run and loaded-from-disk).
 
 ## CLI Reference
 
@@ -104,17 +163,21 @@ If neither `--scenarios` nor `--domain` is given, all registered scenarios run.
 | `SERVER_HOST` | Host to bind | `0.0.0.0` |
 | `WEBSOCKET_PORT` | Pipecat WebSocket port | `8765` (agent) / `8766` (user) |
 
-## Available Scenarios
+## Available Domains and Scenarios
 
-Current scnarios are relatively simple, usually contains no more than 3 tool calls and less than 5 turns. More complex scenarios will be added later.
 
+**Primary benchmarks** (eva_airline + tau2_*) come first — these are the ported, externally-comparable evaluation sets. The simpler in-repo domains (`restaurant` / `customer_service` / `qa`) below them serve as smoke tests + integration examples, not headline benchmarks.
 
 | Domain | Count | Summary tool | Description |
 |--------|-------|--------------|-------------|
-| `restaurant` | 11 | `PlaceOrderTool`, `JoinWaitListTool` / `DropWaitListTool` | Ordering food at pizza, burger, and deli restaurants, plus a waitlist join/drop scenario (demonstrates shared state across tools). |
-| `customer_service` | 10 | `ResolveTicketTool` | TechCorp customer service — billing disputes, order delays, defective returns, plan upgrades, account access, warranty claims, subscription cancellations, wrong items, and service outages. |
-| `qa` | 10 | `SaveQuestionAnswerTool` | Single-turn Q&A — geography, math, science, history, literature, weather (uses `GetCityWeatherTool`), and general knowledge. |
 | `eva_airline` | 2 | bridge-pulled (no LLM summary tool) | SkyWay Airlines voice agent — flight changes, IRROPS, refunds, vouchers. Full 15-tool eva surface ported from [ServiceNow/eva](https://github.com/ServiceNow/eva/tree/0.1.3) (MIT). Action records are auto-aggregated by write tools and pulled by the bridge at end-of-scenario via the `get_scenario_summary` RTVI action — not emitted by an LLM-callable tool. Currently: `eva_airline__smoke` (auth + exit), `eva_airline__voluntary_date_change`. See [eva_airline domain notes](#eva_airline-domain-notes) below. |
+| `tau2_airline` | 50 | bridge-pulled | Airline reservation flows (cancel / refund / rebook / upgrade) ported from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0) (MIT). 13 LLM-callable agent tools + DB-state hash scoring. See [tau2 domain notes](#tau2-domain-notes) below. |
+| `tau2_retail` | 114 | bridge-pulled | Online retail customer service — order cancel / exchange / return, address changes, partial-fulfillment edge cases. Same upstream source. 16 agent tools. 40 of 114 tasks also carry `nl_assertions` natural-language claims judged by the LLM. |
+| `tau2_telecom` | 114 | bridge-pulled | Telecom tech support — mobile data troubleshooting, MMS issues, line suspension + payment recovery. **First dual-side domain**: the user-sim has its own 30 phone-control tools (toggle airplane mode, run speed test, etc.) alongside the agent's 13 lookup/billing/line-management tools. Cross-side state-propagation pipeline mirrors upstream's `Environment.sync_tools()`. Uses the `manual` policy variant. |
+| `tau2_telecom_workflow` | 114 | bridge-pulled | Same 114 telecom tasks but the agent receives `tech_support_workflow.md` (procedural step-by-step) instead of `tech_support_manual.md`. Pure A/B knob over policy prose — every other framework piece is shared with `tau2_telecom`. |
+| `restaurant` | 11 | `PlaceOrderTool`, `JoinWaitListTool` / `DropWaitListTool` | Ordering food at pizza, burger, and deli restaurants, plus a waitlist join/drop scenario (demonstrates shared state across tools). Integration example for the in-repo scenario authoring pattern. |
+| `customer_service` | 10 | `ResolveTicketTool` | TechCorp customer service — billing disputes, order delays, defective returns, plan upgrades, account access, warranty claims, subscription cancellations, wrong items, and service outages. In-repo smoke set. |
+| `qa` | 10 | `SaveQuestionAnswerTool` | Single-turn Q&A — geography, math, science, history, literature, weather (uses `GetCityWeatherTool`), and general knowledge. In-repo smoke set. |
 | *legacy (no domain)* | 4 | — | `fastbite`, `simple_qa_1`, `simple_qa_2`, `simple_qa_3` — original scenarios kept for backward compatibility. |
 
 Run `python run_evaluation.py --list` for the full list of scenario names, or `--list-domains` for just the domain summary.
@@ -123,72 +186,156 @@ Run `python run_evaluation.py --list` for the full list of scenario names, or `-
 
 The `eva_airline` domain is the first port from an external scenario library and introduces a few patterns worth knowing:
 
-- **Symmetric inline DB transfer.** Each scenario's `setup_shared_state` writes the full scenario DB content (`data/eva_airline_scenarios/{eva_id}.json`) into `state["db"]`. The runner serializes this in the `update_system_prompt` RTVI message and the bot server uses it as-is — no filesystem coupling on the server side. At end-of-scenario the bridge pulls the (mutated) DB back via `get_scenario_summary`. Full content travels both ways. (A path-based fallback in the action handler remains for any future domain whose fixture is too large to ship inline — see [`data/README.md`](../evaluation/data/README.md).)
+- **Symmetric inline DB transfer.** Each scenario's `setup_shared_state` writes the full scenario DB content (`data/eva_airline/{eva_id}.json`) into `state["db"]`. The runner serializes this in the `update_system_prompt` RTVI message and the bot server uses it as-is — no filesystem coupling on the server side. At end-of-scenario the bridge pulls the (mutated) DB back via `get_scenario_summary`. Full content travels both ways. (A path-based fallback in the action handler remains for any future domain whose fixture is too large to ship inline — see [`data/README.md`](../evaluation/data/README.md).)
 - **Auto-aggregated action records, bridge-pulled.** Write tools subclass `WriteAirlineTool` and call `self._record_action(...)` on success, populating `shared_state["actions"]`. There is **no LLM-callable summary tool**; the bridge pulls `{"actions": ..., "db": ...}` at end-of-scenario via the `get_scenario_summary` RTVI action (mirrors `get_context_history`). This eliminates summary-tool failure modes (forget-to-call, double-call, mid-conversation call) and a class of hallucinations (mis-formatted numbers, dropped fields, wrong enum values). Scoring measures what tools actually did.
 - **DB-state hash matching (path-independent scoring).** Each scenario binds to an `expected_scenario_db` via a `cached_property` that reads from `eva_airline_dataset.jsonl`'s `ground_truth.expected_scenario_db` field. The bridge pulls the post-run DB; the runner SHA-256-hashes both states and compares. Path-independent: any sequence of agent actions that lands in the right end state passes. Verified empirically on `eva_airline__voluntary_date_change` — a canonical happy path produces a DB whose hash matches eva's expected state exactly. Action-list comparison still runs alongside as a separate signal — useful when you want to specifically score "did the agent perform action X" vs. "did the world end up in state Y". Scenarios that don't mutate state can opt out of DB-state scoring by setting `expected_scenario_db = None`. (Hash utility adapted from eva's `task_completion` metric.)
 - **Single-source-of-truth metadata.** Each scenario subclass declares only `eva_id`. `current_date` is a `cached_property` derived from the bound JSON's `_current_date` — no manual mirror, no drift.
 - **`disallow_extra_items` opt-in.** Off by default for airline scenarios (lenient — agent extras like reverted-then-redone rebooks pass). Enable per-scenario for clean-path runs where first-attempt correctness matters.
 - **ASR speakability.** Confirmation numbers (e.g., `ZK3FFW`) and flight numbers (e.g., `SK703`) round-trip poorly through ASR/TTS. The user persona is instructed to spell every character (e.g., "Z, K, three, F, F, W"), and the agent guideline forbids reading internal journey IDs aloud.
+- **Tuning `max_duration`.** `EvaAirlineBaseScenario.max_duration = 900` (15 minutes) is the domain default; the `--duration` CLI flag overrides per run. Voice round-trips are slow (~30–40s/turn on a healthy run), so leave plenty of headroom. The closing protocol alone (confirm + ask anything else + goodbye) costs 3–4 turns after the work is done.
+- **Known STT limitations.** Parakeet STT mis-recognizes spelled-out alphanumerics (homophones like "four" / "for", letter sequences sometimes collapsed into a single word). When a scenario fails, compare the user-sim's text in `bot_logs_user/llm_context.json` against the agent-side STT output in `bot_logs_agent/llm_context.json` to distinguish user-simulator prompt-following failures from voice-pipeline accuracy issues.
 - **Attribution.** Tool function bodies and Pydantic param models are adapted from [ServiceNow/eva](https://github.com/ServiceNow/eva/tree/0.1.3) (MIT). Inline `# Adapted from ...` comments are present at each ported block; see [`evaluation/data/README.md`](../evaluation/data/README.md) for the full source/license inventory.
 
-#### Running an eva_airline scenario
+### tau2 domain notes
 
-Same three-terminal flow as the Quick Start, but use `--domain eva_airline` (or `--scenarios <name>`). Pick a single scenario to iterate on:
+The `tau2_airline`, `tau2_retail`, `tau2_telecom`, and `tau2_telecom_workflow` domains are ports of [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0) (commit `17e07b1`, MIT-licensed). They share patterns introduced by eva_airline but add several new ones — full architectural details live in `CLAUDE.md` under "Eval framework key concepts" and the per-domain layout sections; the highlights:
 
-```bash
-# Terminal 3 — bridge
-cd examples/voice_agent/evaluation
-python run_evaluation.py \
-    --user-url ws://localhost:8766 \
-    --agent-url ws://localhost:8765 \
-    --scenarios eva_airline__voluntary_date_change \
-    --judge-url <openai-compat-endpoint> \
-    --judge-model <model-name>
-```
+- **Path-based DB transfer (vs. eva's inline).** Tau2 DBs are large (the agent-side `db.json` for telecom is ~7 MB — well over pipecat's 1 MB WebSocket frame cap). `Scenario.setup_shared_state` writes a relative `db_path` into `state`; the bot's `apply_initialization` RTVI handler resolves it against `EVAL_DATA_ROOT` and loads the JSON before tools instantiate. Inbound is hash-only (`get_scenario_summary` returns `{actions, db_hash}` by default). Predicate evaluation is the one exception — when `scenario.db_state_assertions` is truthy, the bridge sets `include_db=True` and the bot inlines the (smaller, telecom-only) `user_db` so the runner can call predicate functions on it.
+- **Dual-side architecture (telecom only).** `Tau2TelecomBaseScenario.has_user_state=True` activates a parallel user-side `TelecomUserDB` (mock phone state) seeded from `user_db.json`. The user-sim's LLM has 30 phone-control tools (toggle airplane mode, run speed test, check status bar, etc.). The bridge dual-pulls both sides' state at end-of-scenario; the merged action list carries `side="agent"` / `side="user"` tags.
+- **Cross-side state-propagation (telecom only).** When the agent's `refuel_data` mutates `line.data_refueling_gb` (agent DB), the user-sim's `surroundings.mobile_data_usage_exceeded` (user DB) needs to flip — but the two bots run in separate processes. Bridge implements an in-process shadow + per-action `action-applied` RTVI event + `apply_sync_delta` push-back mechanism that mirrors upstream's `Environment.sync_tools()` across the three invocation points (post-init, per-write-action). See `evaluation/sync_appliers.py` + `tools/tau2_telecom_sync.py`.
+- **Policy variants (telecom only).** Each base-split telecom task is registered TWICE: `tau2_telecom__X` (uses `tech_support_manual.md`) and `tau2_telecom_workflow__X` (uses `tech_support_workflow.md`). Same task, same reference actions, same predicates — only the agent's policy text differs. Pure A/B knob over policy prose.
+- **Per-domain agent-prompt addenda (telecom only).** Three blocks appended after the upstream-verbatim policy: a tool-availability disclaimer (so the LLM doesn't hallucinate user-side tool names that the agent's tool surface doesn't include), a stay-on-task guideline, and a home-network/location-probe rule that tells the agent the telecom is US-based and to ask the user's location first when diagnosing connectivity issues. See `nemo_voice_agent/evaluation/scenarios/data/tau2_telecom/base.py` for the constants.
+- **Multi-signal scoring.** Tau2 domains opt into more scoring signals than eva_airline alone — see [Evaluation Metrics](#evaluation-metrics) below for the full signal model and how the composite `is_successful` is derived as a strict conjunction across applicable signals.
+- **Scaffold generators are committed.** `scripts/prepare_tau2_data/generate_{airline,retail,telecom}_scaffolds.py` regenerate `nemo_voice_agent/evaluation/scenarios/data/tau2_*/group_*x.py` from upstream `tasks.json` + `split_tasks.json[base]`. Run them only when the upstream schema or scaffold template changes. The telecom generator emits paired manual+workflow classes per upstream task.
+- **Data import script.** `scripts/prepare_tau2_data/prepare_telecom.py` does TOML→JSON conversion for the telecom upstream (airline/retail ship as JSON; only telecom needs conversion). See `scripts/prepare_tau2_data/README.md` for details.
 
-Or run the whole domain (5 scenarios; expect ~50 minutes at current pacing):
+## Evaluation Metrics
 
-```bash
-python run_evaluation.py \
-    --user-url ws://localhost:8766 \
-    --agent-url ws://localhost:8765 \
-    --domain eva_airline \
-    --judge-url <...> --judge-model <...>
-```
+The runner emits up to **five orthogonal scoring signals** per scenario, plus a composite `is_successful` derived from them via strict conjunction. Each signal is independently opt-in at the scenario level — most domains use 2–3, telecom uses 4 plus the judge. All five (and the composite) land in `metrics.json` per scenario and roll up in `all_summary.txt` per run.
 
-**Inspecting results.** Each scenario writes to `eval_results/<timestamp>/<scenario>/`:
+### Signal matrix
 
-- `metrics.json` — has both `is_successful` (action-list comparator) and `db_state_match` (DB-state hash). When `db_state_match` is False, `db_state_diff` shows a structured tables → records → fields diff against eva's expected end-state. That's the first place to look when a scenario fails.
-- `final_agent_response.json` — `[{"actions": [...]}]` auto-aggregated by write tools and bridge-pulled.
-- `final_scenario_db.json` — full post-run DB; hash against `dataset.jsonl`'s `ground_truth.expected_scenario_db` for the matching `eva_id`.
-- `bot_logs_agent/llm_context.json` — the agent's full conversation, tool calls, and tool results. The first place to look when behavior is unexpected.
-- `bot_logs_user/llm_context.json` — the user-simulator's side. Useful for distinguishing user-simulator behavior from agent-side STT errors (compare the user-sim's text vs. what the agent's STT decoded it as).
+| Signal | Type | Path-dependent? | Opted in by | `metrics.json` field |
+|---|---|---|---|---|
+| Action-list match | `bool \| "N/A"` | **Yes** (action sequence) | Any scenario with a `reference_answer` | `is_action_match` |
+| DB-state hash match | `bool \| "N/A"` | No (end state only) | eva_airline + all tau2 domains | `db_state_match` |
+| DB-state assertions | float ∈ [0, 1] | No | tau2_telecom (6 predicates) | `db_state_assertion_pass_rate` |
+| NL assertions | float ∈ [0, 1] | No (judged on transcript) | tau2_retail (40/114 tasks), tau2_telecom (a subset) | `nl_assertion_pass_rate` |
+| LLM judge score | float ∈ [0, 1] | — | Any run with `--judge-url` | `judge_score` (+ `judge_passed` when `--judge-threshold` set) |
+| **Clean exit** | `bool` | No | **Every domain** — closure discipline is universal | `clean_exit` (+ `stop_reason`) |
+| **Composite (is_successful)** | `bool \| "N/A"` | — | Always computed | **`is_successful`** + `success_breakdown` |
 
-**Tuning `max_duration`.** `EvaAirlineBaseScenario.max_duration = 900` (15 minutes) is the domain default; the `--duration` CLI flag overrides per run. Voice round-trips are slow (~30–40s/turn on a healthy run), so leave plenty of headroom. The closing protocol alone (confirm + ask anything else + goodbye) costs 3–4 turns after the work is done.
+### 1. Action-list match (deterministic)
 
-**Known limitations.** Parakeet STT mis-recognizes spelled-out alphanumerics (homophones like "four" / "for", letter sequences sometimes collapsed into a single word). When a scenario fails, **compare the user-sim's text in `bot_logs_user/llm_context.json` against the agent-side STT output in `bot_logs_agent/llm_context.json`** to distinguish user-simulator prompt-following failures from voice-pipeline accuracy issues.
-
-## Evaluation Methods
-
-### 1. Strict dictionary comparison (default)
-
-`check_if_task_success` performs a recursive comparison between each scenario's `reference_answer` and the agent's `<final_response>` payload:
+`check_if_task_success` performs a recursive comparison between each scenario's `reference_answer` and the agent's bridge-pulled action list (or its `<final_response>` for legacy scenarios that still use an LLM-callable summary tool):
 
 - **Dict vs. Dict** — every key/value in the reference must be present and match in the prediction. Extra keys in the prediction are allowed.
 - **Dict vs. List-of-Dicts** — the reference dict must match the **last** dict in the prediction list.
 - **List-of-Dicts vs. List-of-Dicts** — every dict in the reference must find a matching dict in the prediction (order-independent, each prediction can match at most one reference).
 
-String matching respects the scenario's `ignore_capitalization`, `ignore_punctuation`, and `clean_text` flags. Numeric values are compared with `np.isclose`.
+String matching respects the scenario's `ignore_capitalization`, `ignore_punctuation`, and `clean_text` flags. Numeric values are compared with `np.isclose`. Set `disallow_extra_items=True` on the scenario (or pass `--strict-match` globally) to require length-match between lists.
 
-The boolean result is saved as `is_successful` in `metrics.json`. If LLM judge is enabled, the result is overwritten by the judge's score.
+**Path-DEPENDENT.** Two scenarios that land on the same final DB state but via different tool sequences will score differently — useful when you specifically want to verify the agent took the "right" steps.
 
-### 2. LLM judge (optional)
+Saved as `metrics.json["is_action_match"]` (bool, or `"N/A"` when no reference exists).
 
-When `--judge-url` and `--judge-model` are provided, an additional `LLMJudge` scores each scenario on a 0–1 scale. It receives the `reference_answer`, the `final_agent_response`, the full conversation turn list, and the LLM context history, then returns a score with a short reasoning string.
+### 2. DB-state hash match (deterministic, path-independent)
 
-The judge is robust to extra conversational content the agent produces (apologies, pleasantries, paraphrased information) that would fail strict matching but still correctly accomplishes the task.
+Each scenario can declare an `expected_scenario_db` `cached_property` (a dict). The bot computes `get_dict_hash(state["db"])` inside the `get_scenario_summary` RTVI handler and returns the SHA-256 string only; the runner computes `get_dict_hash(scenario.expected_scenario_db)` and compares.
 
-Output: `judge_result.json` per scenario with `{score: float, reason: str}`.
+**Path-INDEPENDENT.** Any sequence of agent actions that lands in the right end state passes. Useful for open-ended scenarios where multiple action sequences are all valid.
+
+The hash module is canonical (lives at `evaluation/db_hash.py`) and imported by both bridge and bot side, so the canonicalization (float `1.0 → 1`, `"none" → None`, `ORDER_INDEPENDENT_LIST_FIELDS`, `HASH_EXCLUDED_KEYS = {"session"}`) is identical.
+
+For telecom (dual-side), the bridge dual-pulls both `db_hash` (agent) and `user_db_hash` (user-sim); a scenario passes both hash checks for `db_state_match=True`.
+
+Saved as `metrics.json["db_state_match"]` (bool, or `"N/A"` when scenario doesn't define `expected_scenario_db`).
+
+### 3. DB-state assertions (deterministic, per-predicate)
+
+Each scenario can declare a `db_state_assertions: List[dict]` `cached_property` — a list of `{func_name, arguments, assert_value, side}` records evaluated against the pulled post-run DB. Each predicate is a pure `(db: dict, **arguments) -> bool` function registered flat under `(domain, func_name)` in `evaluation/db_state_predicates.py`. Side-aware dispatch: `side="user"` runs on `user_db`, `side="agent"` on `db`.
+
+Useful when **multiple end states** all satisfy the same outcome predicates — e.g., "data refueling amount ≥ 2 GB on line L1002" doesn't care which specific bill ID got the corresponding charge, so the whole-DB hash match can fail (legitimate variation) while the predicate still passes.
+
+Saved as `metrics.json["db_state_assertion_pass_rate"]` (float in [0, 1]) plus `metrics.json["db_state_assertion_verdicts"]` (one entry per predicate, `{func_name, side, passed, actual, error}`). Currently used by `tau2_telecom`.
+
+### 4. NL assertions (LLM-judged, per-assertion)
+
+Each scenario can declare a `nl_assertions: List[str]` `cached_property` — natural-language claims about what the conversation must demonstrate (e.g., *"Agent should tell the user that there are 10 t-shirt options available."*). When the LLM judge runs, it extends its response with `nl_assertion_verdicts` (one entry per assertion, `{index, passed, reason}`).
+
+Used by `tau2_retail` (40 of 114 tasks) and `tau2_telecom` (a subset of tasks ported from upstream's voice-user-sim-v1.0).
+
+Saved as `metrics.json["nl_assertion_pass_rate"]` (float in [0, 1]) plus the per-assertion verdicts in `judge_result.json["nl_assertion_verdicts"]`. Only populated when both the scenario has `nl_assertions` AND the judge ran.
+
+### 5. LLM judge (soft overall signal)
+
+When `--judge-url` and `--judge-model` are provided, `LLMJudge.judge_scenario` scores each scenario on a 0–1 scale. The judge receives:
+
+- `<reference>` — the gold action list / DB outcome.
+- `<prediction>` — the agent's recorded actions.
+- `<agent_context_history>` — the agent bot's LLM context (system prompt + every turn + every tool call).
+- `<user_context_history>` — the user-sim bot's LLM context (essential for dual-side domains where reference actions are performed by the user-sim, not the agent).
+- `<nl_assertions>` — numbered list when the scenario declares them.
+
+The judge prompt is **side-aware**: it knows about `side="user"` vs `side="agent"` reference actions and scores accordingly (user-side actions are scored on the agent's guidance quality, not on whether the agent invoked the tool itself — since user-side tools aren't in the agent's surface). The full prompt + user content is preserved in `judge_result.json["judge_input"]` for triage.
+
+Saved per scenario as:
+- `metrics.json["judge_score"]` — raw 0–1 float (always set when judge ran).
+- `metrics.json["judge_passed"]` — bool (`score >= --judge-threshold`). Only set when both `--judge-url` and `--judge-threshold` are provided.
+
+The judge catches presentation issues and fabrications that deterministic comparators miss — but it's noisy enough that running it alongside deterministic signals (rather than instead of) gives the most reliable verdict.
+
+### Composite `is_successful` (per-scenario whitelist)
+
+`metrics.json["is_successful"]` is the strict-AND of every **applicable** signal in the scenario's `success_signals` whitelist. Each domain declares which signals gate its verdict — see the `SuccessSignal` enum in `nemo_voice_agent/evaluation/scenarios/classes.py` for the canonical list (`ACTION_MATCH`, `DB_STATE_MATCH`, `DB_STATE_ASSERTION`, `NL_ASSERTION`, `JUDGE_PASSED`, `CLEAN_EXIT`).
+
+**Per-domain `success_signals` matrix** (the authoritative wiring lives on each domain's base scenario):
+
+| Domain | Gating signals | Rationale |
+|---|---|---|
+| `eva_airline` | `DB_STATE_MATCH` + `CLEAN_EXIT` | Gold expected DB shipped per scenario; path-independent. |
+| `tau2_airline` | `DB_STATE_MATCH` + `CLEAN_EXIT` | Same — derived expected DB; no judge dependency. |
+| `tau2_retail` | `DB_STATE_MATCH` + `NL_ASSERTION` (when set) + `CLEAN_EXIT` | 40/114 tasks opt into NL claims; derived per-scenario. |
+| `tau2_telecom` / `_workflow` | `DB_STATE_ASSERTION` + `NL_ASSERTION` (when set) + `CLEAN_EXIT` | Open solution space — whole-DB hash and action match are informational. |
+| `restaurant`, `customer_service`, legacy `fastbite` | `ACTION_MATCH` + `CLEAN_EXIT` | Single canonical `reference_answer` (structured order / ticket / receipt) checked recursively. |
+| `qa`, legacy `simple_qa_*` | `JUDGE_PASSED` + `CLEAN_EXIT` | Free-form text answers — LLM judge is the only principled signal. |
+
+**`CLEAN_EXIT` is in every domain's whitelist.** A scenario passes only when the agent called `EndConversationTool` voluntarily (stop reason `[EXIT]`); `[TIMEOUT]` always fails. Closure discipline is universal — an agent that does the right work but then never stops talking is not a successful agent (real callers would have hung up, and a 1800 s "successful" TIMEOUT consumes 5-10× the compute of a clean exit). For the cases where another gating signal already failed, `CLEAN_EXIT` is redundant; it only changes the verdict when the outcome was right but closure was wrong. Most notably this catches **policy-refusal scenarios** where `expected_scenario_db == initial_scenario_db` and an agent that crashed at greeting would otherwise pass `DB_STATE_MATCH` "by inaction." A regression test (`test_every_concrete_scenario_includes_clean_exit`) prevents future domains from silently omitting it.
+
+**Principle:** `JUDGE_PASSED` gates only when no deterministic alternative exists. `NL_ASSERTION` still runs through the judge but contributes per-assertion verdicts, so it can gate when opted in. `ACTION_MATCH` is appropriate when the domain has a single canonical correct `reference_answer` (either a structured outcome summary OR a tool-call trajectory where only one sequence is considered successful); it's not appropriate when the solution space is open (multiple valid trajectories satisfying the same outcome — telecom-style). For domains that ship an `expected_scenario_db` (eva, tau2 airline, tau2 retail), we prefer `DB_STATE_MATCH` over `ACTION_MATCH` because it's path-independent — any sequence landing on the correct end state passes.
+
+If none of the whitelisted signals are applicable for a given scenario (e.g. a QA run without `--judge-url`), `is_successful = "N/A"`. The runner emits a warning at run start when any queued scenario references `JUDGE_PASSED` / `NL_ASSERTION` but the judge isn't configured.
+
+**`success_breakdown`** in `metrics.json` carries four buckets:
+
+- `passed` — whitelisted signals that returned `True`.
+- `failed` — whitelisted signals that returned `False` (these dragged the verdict down).
+- `not_applicable` — whitelisted signals that couldn't be evaluated for this scenario.
+- `excluded` — signals computed and saved but NOT in this scenario's whitelist (informational; useful for spotting "all gating signals passed but the agent took an unusual path").
+
+**Strict thresholds for float signals.** The float-valued pass rates (`db_state_assertion_pass_rate`, `nl_assertion_pass_rate`) must equal exactly `1.0` for the composite to pass. Rationale: every assertion is supposed to be true. A 95% pass rate means one assertion failed — that's a real defect to investigate, not noise to round away.
+
+**Authoring a new domain.** Concrete scenarios MUST declare a non-empty `success_signals` on themselves or an ancestor base — `Scenario.__init_subclass__` raises `TypeError` at class-definition time if a scenario with `name` set has nothing resolvable. For mixed-composition domains (some tasks have NL assertions, some don't), use a `cached_property` that derives from `self.nl_assertions` rather than per-scenario declarations. See [`EXTENDING_DATA.md`](EXTENDING_DATA.md).
+
+The per-scenario whitelist plus the scenario's `expected_db_hash` / `expected_user_db_hash` / `db_state_assertions` / `nl_assertions` / `initialization_actions` are also written to `scenario_config/metadata.json` per scenario, so an old eval run remains fully interpretable without re-loading the scenario class.
+
+### Run-level aggregation
+
+`all_summary.txt` shows the composite headline plus the per-signal breakdown so a 60% `Overall Success Rate` doesn't hide that 4/5 deterministic signals are at 100%:
+
+```
+Overall Success Rate: 60.00% (3/5 scenarios — strict conjunction across all applicable signals)
+
+Per-signal pass rates:
+  Action-list match:           100.00% (5/5 scenarios)
+  DB-State match:               80.00% (4/5 scenarios)
+  DB-State-Assertion pass:     100.00% (3/3 predicates)
+  NL-Assertion pass:            75.00% (3/4 assertions)
+  Judge score mean:              0.880 (across 5 scenarios)
+  Judge passed (>= threshold):  80.00% (4/5 scenarios)
+```
+
+Per-domain breakdowns (`Per-Domain Success Rate`, etc.) print when a run spans more than one domain.
 
 ## Output Structure
 
@@ -205,9 +352,10 @@ eval_results/eval_YYYYMMDD_HHMMSS/
     ├── conversation_log.seglst.json  # segLST-format speaker segments
     ├── conversation_log.wav        # Stereo audio: L=user→agent, R=agent→user
     ├── bridge_log.txt              # Bridge debug/info log
-    ├── final_agent_response.json   # All <final_response> payloads captured from the agent
-    ├── metrics.json                # Per-scenario metrics + is_successful flag
-    ├── judge_result.json           # LLM judge output (present only if LLM judge was enabled)
+    ├── final_agent_response.json   # Bridge-pulled action list (or legacy <final_response> payloads)
+    ├── final_scenario_db_hash.txt   # Post-run DB hash(es): db_hash + user_db_hash (if applicable)
+    ├── metrics.json                # Per-scenario metrics — see Evaluation Metrics above for the full field list
+    ├── judge_result.json           # LLM judge output (present only when --judge-url is set)
     ├── scenario_config/            # Snapshot of the scenario definition used for this run
     │   ├── metadata.json           # name, description, max_duration, matching flags, noise config
     │   ├── reference_answer.json   # The expected answer that was compared against
@@ -222,184 +370,28 @@ eval_results/eval_YYYYMMDD_HHMMSS/
 ```
 
 Key files to inspect:
-- **`metrics.json`** — turn count, duration, latency stats (mean/P50/P95/min/max), individual latencies, `is_successful`.
-- **`final_agent_response.json`** — what the agent actually produced (a list of all summary tool payloads in order).
+- **`metrics.json`** — turn count, duration, latency stats (mean/P50/P95/min/max), per-turn latencies, every signal under [Evaluation Metrics](#evaluation-metrics) (`is_action_match`, `db_state_match`, `db_state_assertion_pass_rate`, `nl_assertion_pass_rate`, `judge_score`, `judge_passed`), the composite `is_successful`, and the `success_breakdown` of which signals passed / failed / weren't applicable.
+- **`final_agent_response.json`** — what the agent (and, for telecom, the user-sim) actually did. Bridge-pulled action records with `side` tags for dual-side domains.
+- **`judge_result.json`** — when judge ran: `score`, `reason`, per-assertion `nl_assertion_verdicts`, and `judge_input` (the verbatim prompt + user content) for triage.
 - **`conversation_log.wav`** — listen to the actual conversation.
-- **`bot_logs_{user,agent}/llm_context.json`** — full LLM conversation including tool calls and results, useful for debugging agent behavior.
+- **`bot_logs_{user,agent}/llm_context.json`** — full LLM conversation including tool calls and results, useful for debugging agent behavior. For dual-side telecom scenarios, both files are essential — user-sim's tool calls (`toggle_data`, etc.) live on the user side, not the agent side.
 
 ## Extending the System
 
-Three extension points, in increasing order of scope. Each links to the detailed reference below.
+Two dedicated guides cover the two axes of extension. Pick the one that matches what you're changing:
 
-1. **[New scenario](#scenario-structure)** — subclass an existing domain base and override the properties that differ. ~30–60 lines.
-2. **[New tool](#tool-system)** — subclass `StandardSchemaTool` or `SendScenarioSummaryTool`, register with `@register_schema_tool_for_eval`, import the module in `tools/__init__.py`.
-3. **[New domain](#creating-a-new-scenario)** — create a `{Domain}BaseScenario` in `scenarios/data/{domain}.py` that sets domain defaults (persona, guidelines, tool defaults including a domain summary tool + `EndConversationTool`), add a `tools/{domain}_tools.py` if the domain needs its own tools, and import the new module in `scenarios/data/__init__.py`.
+**[`EXTENDING_DATA.md`](EXTENDING_DATA.md) — the data layer.** How to add scenarios, tools, and whole domains. Covers:
 
-## Scenario Structure
+- **Extension points** — at-a-glance index of new-scenario / new-tool / new-domain workflows.
+- **Scenario Structure** — the 8 per-side properties, scenario-level fields (`domain`, `reference_answer`, `expected_scenario_db`, `db_state_assertions`, `nl_assertions`, `initialization_actions`, ...), and the domain base-class pattern.
+- **Creating a New Scenario** — pick or create a domain, subclass the base, verify with `run_evaluation.py --list`.
+- **Tool System** — tool configuration, shared state, the two termination contract patterns (bridge-pull vs legacy LLM-summary), and the `@register_schema_tool_for_eval(domain="...")` registration flow.
 
-A scenario fully specifies what both the user and the agent do during one evaluation run. Each is a Python class with 8 properties plus some scenario-level fields.
+**[`EXTENDING_PIPELINE.md`](EXTENDING_PIPELINE.md) — the bot pipeline layer.** How to swap models, add a custom processor, or build a whole new pipecat pipeline. Covers:
 
-### The 8 properties (per side: user and agent)
-
-| Property | Type | Purpose |
-|----------|------|---------|
-| `{side}_persona` | `Persona` | `role`, `name`, `background`, `personality`, optional `language`/`accent`. Rendered as the opening lines of the system prompt. |
-| `{side}_task` | `Task` | `goal` and `background`. The single objective this side is trying to achieve. |
-| `{side}_actions` | `Actions` | Ordered `instructions` (step-by-step script) and persistent `guidelines` (always-apply rules). |
-| `{side}_resources` | `Resources` | `tools` dict (tool class name → constructor kwargs), `documents`, free-form `information` strings. |
-
-### Scenario-level fields
-
-| Field | Purpose |
-|-------|---------|
-| `name` | Unique scenario ID. Convention: `{domain}__{scenario_name}` (e.g., `restaurant__pizza_pepperoni`). |
-| `description` | Short human-readable summary. |
-| `max_duration` | Max scenario duration in seconds. Overrides the CLI default. |
-| `reference_answer` | The expected `<final_response>` payload. Dict or list-of-dicts. |
-| `ignore_capitalization` | String matching: case-insensitive. |
-| `ignore_punctuation` | String matching: strip punctuation. |
-| `clean_text` | String matching: apply ASR text cleaning. |
-| `noise_config` | Optional `NoiseConfig` to inject background noise into the user→agent channel. |
-
-### Domain organization
-
-Scenarios are organized by domain using a **base class pattern**:
-
-- A domain base class (e.g., `RestaurantBaseScenario`, `CustomerServiceBaseScenario`, `QABaseScenario`) implements all 8 properties with domain-level defaults. It is **not** registered.
-- Concrete scenarios inherit the base and override only the properties that differ — typically `user_persona`, `user_task`, `user_actions`, `agent_actions`, `agent_resources`, and `reference_answer`.
-- Each domain lives in one file under `nemo/agents/voice_agent/evaluation/scenarios/data/` (e.g., `restaurant.py`, `customer_service.py`, `qa.py`).
-
-## Creating a New Scenario
-
-### 1. Pick or create a domain
-
-Existing domains: `restaurant`, `customer_service`, `qa`. Add new scenarios to the matching file. For a brand-new domain, create a new file with a `{Domain}BaseScenario` base class and register an import in `scenarios/data/__init__.py`.
-
-### 2. Subclass the domain base
-
-Override only what's specific to your scenario. Inherited properties come from the base.
-
-```python
-from nemo_voice_agent.evaluation.scenarios import register_eval_scenario
-from nemo_voice_agent.evaluation.scenarios.classes import Actions, Persona, Resources, Task
-from nemo_voice_agent.evaluation.scenarios.data.restaurant import RestaurantBaseScenario
-
-PIZZA_PALACE_MENU = """
-## Pizza Palace Menu
-Pepperoni Pizza - $9.99
-Extra Cheese - $1.50
-"""
-
-@register_eval_scenario
-class PizzaPepperoni(RestaurantBaseScenario):
-    name = "restaurant__pizza_pepperoni"
-    description = "Order a pepperoni pizza with extra cheese at Pizza Palace"
-    reference_answer = {
-        "items": [
-            {"name": "Pepperoni Pizza", "unit_price": "9.99", "quantity": "1"},
-            {"name": "Extra Cheese", "unit_price": "1.50", "quantity": "1"},
-        ],
-        "customer_name": "Charlie",
-        "customer_phone": "314-527-8960",
-        "total_price": "11.49",
-    }
-
-    @property
-    def user_persona(self) -> Persona:
-        return Persona(
-            role="human user",
-            name="Charlie",
-            background="You work as a teacher. Your phone number is 314-527-8960.",
-            personality="Communicative, friendly, decisive.",
-        )
-
-    @property
-    def user_task(self) -> Task:
-        return Task(goal="Order a pepperoni pizza with extra cheese.")
-
-    @property
-    def user_actions(self) -> Actions:
-        return Actions(
-            instructions=[
-                "Ask for pizza options.",
-                "Order one pepperoni pizza.",
-                "Ask if extra cheese is available and add it.",
-                "Finish the order and ask for the price.",
-            ],
-        )
-
-    @property
-    def agent_resources(self) -> Resources:
-        return Resources(
-            tools={
-                "GetMenuTool": {"menu": PIZZA_PALACE_MENU},
-                "PlaceOrderTool": {"auto_validate": "False"},
-                "EndConversationTool": {},
-            },
-        )
-```
-
-### 3. Verify
-
-```bash
-python run_evaluation.py --list
-# → restaurant__pizza_pepperoni should appear
-
-python run_evaluation.py --scenarios restaurant__pizza_pepperoni
-```
-
-## Tool System
-
-### Tool configuration
-
-Tools are referenced by class name in `Resources.tools` as `{tool_name: constructor_kwargs}`. The bridge serializes this to JSON and the bot server instantiates each tool by calling `TheTool(**tool_args)`. Different scenarios can pass different kwargs to the same tool class — e.g., `GetMenuTool({"menu": PIZZA_PALACE_MENU})` vs. `GetMenuTool({"menu": BURGER_BARN_MENU})`.
-
-### Shared state
-
-Tools in the same scenario can share mutable state via a `shared_state` dict that is injected into their constructors if they declare it. The bridge creates one fresh dict per scenario and passes the same reference to every tool that accepts it.
-
-Example: `JoinWaitListTool`, `DropWaitListTool`, and `GetWaitlistTool` all read and write `shared_state["waitlist"]`, so when the agent joins a customer via one tool, checking the list via another returns the updated data.
-
-### Mandatory tools per scenario
-
-Every scenario must include:
-
-1. **A summary tool** that inherits `SendScenarioSummaryTool`. This tool wraps the agent's final structured result in `<final_response>` tags so the bridge captures it in `final_agent_response.json`. Examples: `PlaceOrderTool` (restaurant), `ResolveTicketTool` (customer service), `SaveQuestionAnswerTool` (QA), `JoinWaitListTool` / `DropWaitListTool` (waitlist). Without a summary tool, scoring has nothing to evaluate against.
-
-2. **`EndConversationTool`** — sends an `<exit>` tag that triggers the bridge to stop the scenario early. Without it, the bridge waits for the full `max_duration`, which can cause server-side WebSocket keepalive timeouts during idle periods.
-
-The domain base class should always include both in `agent_resources.tools` and instruct the agent (via `agent_actions.guidelines`) to call them.
-
-### Creating a new tool
-
-Subclass `StandardSchemaTool` (or `SendScenarioSummaryTool` for summary tools) and register with `@register_schema_tool_for_eval`:
-
-```python
-from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
-from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
-
-@register_schema_tool_for_eval
-class GetMenuTool(StandardSchemaTool):
-    def __init__(self, *, menu: str = "", description: Optional[str] = None):
-        super().__init__(description=description or "Get the restaurant menu.")
-        self.menu = menu
-
-    @property
-    def properties(self):
-        return {}
-
-    @property
-    def required_properties(self):
-        return []
-
-    async def _execute(self, params):
-        await params.result_callback({"menu": self.menu})
-```
-
-Add the module to `tools/__init__.py` so its `@register_schema_tool_for_eval` decorator fires. The constructor can accept:
-- Any number of data kwargs (e.g., `menu`, `accounts`, `orders`)
-- `shared_state: Optional[dict]` — auto-injected if declared
-- `rtvi: Optional[RTVIProcessor]` — auto-injected if declared (needed for summary tools)
+- **Tier 1 — YAML swap** — different LLM / TTS / STT model via `server_configs/*.yaml`, no Python.
+- **Tier 2 — Custom processor** — insert a `FrameProcessor` (e.g., Markdown sanitizer between LLM and TTS).
+- **Tier 3 — Whole new pipecat pipeline** — replace `run_bot_websocket()` entirely. The eval-compatibility contract is narrow: a pipecat WebSocket transport plus an `RTVIProcessor` registering five required actions. Everything else (services, processors, pipeline shape) is your choice.
 
 
 ## Notes

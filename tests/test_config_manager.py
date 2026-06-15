@@ -26,20 +26,11 @@ from nemo_voice_agent.utils.config_manager import ConfigManager
 
 @pytest.fixture
 def voice_agent_server_base_path():
-    """Retrieve the NeMo root path from __file__ variable"""
-    nemo_root_path = Path(__file__).resolve().parents[3]
-
-    # Check if the expected directories exist in the NeMo root
-    expected_dirs = ["nemo", "tests", "examples", "requirements"]
-    existing_dirs = [d.name for d in nemo_root_path.iterdir() if d.is_dir()]
-
-    if not all(sub in existing_dirs for sub in expected_dirs):
-        raise ValueError(
-            f"{nemo_root_path} is not a NeMo root path. Expected dirs: {expected_dirs}, Found dirs: {existing_dirs}"
-        )
+    """Retrieve the repo root path from __file__ variable"""
+    repo_root_path = Path(__file__).resolve().parents[1]
 
     voice_agent_root_path = os.path.join(
-        nemo_root_path, "examples", "voice_agent", "server"
+        repo_root_path, "examples", "generic_voice_agent", "server"
     )
     return voice_agent_root_path
 

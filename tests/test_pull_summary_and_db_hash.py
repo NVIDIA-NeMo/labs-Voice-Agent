@@ -41,6 +41,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Persona,
     Resources,
     Scenario,
+    SuccessSignal,
     Task,
 )
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
@@ -151,38 +152,61 @@ def test_shared_state_ref_default_empty():
     assert ref.state == {}
 
 
-def test_get_scenario_summary_action_returns_state_contents():
+def test_get_scenario_summary_action_returns_actions_and_hash():
+    """Handler returns the action list verbatim + the SHA-256 of the DB.
+
+    The DB itself does NOT travel through the response — only its hash —
+    so the response stays small regardless of DB size (tau2's 7MB DB
+    would exceed the 1MB WebSocket frame limit if sent inline).
+    """
+    from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+
+    db_contents = {"reservations": {"R1": {}}}
     ref = SharedStateRef()
     ref.state = {
         "actions": [{"action_type": "rebook_flight", "x": 1}],
-        "db": {"reservations": {"R1": {}}},
-        "_call_counts": {
-            "rebook_flight": 1
-        },  # internal marker not in returned dict's hash, but visible
+        "db": db_contents,
+        "_call_counts": {"rebook_flight": 1},  # internal marker, not in response
     }
-    action = create_get_scenario_summary_action(ref)
+    action = create_get_scenario_summary_action(None, ref)
     result = asyncio.run(action.handler(None, "context", {}))
     assert result["actions"] == [{"action_type": "rebook_flight", "x": 1}]
-    assert result["db"] == {"reservations": {"R1": {}}}
-    # The "_call_counts" internal marker isn't returned (handler only pulls actions+db)
+    assert result["db_hash"] == get_dict_hash(db_contents)
+    # Each bot returns only its own db; user_db labeling happens at the
+    # bridge boundary when the bridge dual-pulls (added with the telecom
+    # port). No `user_db_hash` in the per-bot response.
+    assert "user_db_hash" not in result
+    # Internal markers stay on the bot — not in the response payload.
+    assert "db" not in result
     assert "_call_counts" not in result
 
 
 def test_get_scenario_summary_action_uninitialized_state():
-    """Empty state ref returns ``{"actions": [], "db": {}}``."""
+    """Empty state returns ``{actions: [], db_hash: None}`` — minimal shape."""
     ref = SharedStateRef()
-    action = create_get_scenario_summary_action(ref)
+    action = create_get_scenario_summary_action(None, ref)
     result = asyncio.run(action.handler(None, "context", {}))
-    assert result == {"actions": [], "db": {}}
+    assert result == {"actions": [], "db_hash": None}
 
 
 def test_get_scenario_summary_action_metadata():
-    """Action declares the correct service / action / no-args schema."""
+    """Action declares the correct service / action / argument schema.
+
+    The single optional ``include_db: bool`` argument (default ``False``)
+    lets the runner ask the bot to inline this bot's ``db`` dict (not
+    just the hash) when a scenario carries ``db_state_assertions``. Each
+    bot returns only its own DB; the bridge labels them by source.
+    """
     ref = SharedStateRef()
-    action = create_get_scenario_summary_action(ref)
+    action = create_get_scenario_summary_action(None, ref)
     assert action.service == "context"
     assert action.action == "get_scenario_summary"
-    assert action.arguments == []
+    assert len(action.arguments) == 1
+    arg = action.arguments[0]
+    assert arg.name == "include_db"
+    assert arg.type == "bool"
+    # Default ``include_db=False`` preserves retail's hash-out behavior;
+    # only opt-in domains (telecom) ask for the inline DB.
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +219,7 @@ def _make_dummy_scenario(**kwargs) -> Scenario:
 
     class _Dummy(Scenario):
         name = "test__dummy"
+        success_signals = (SuccessSignal.ACTION_MATCH,)  # satisfies non-empty check
 
         @property
         def user_persona(self) -> Persona:
@@ -248,6 +273,7 @@ def test_scenario_expected_db_class_attribute_takes_precedence():
 
     class _WithClassAttr(Scenario):
         name = "with_attr"
+        success_signals = (SuccessSignal.ACTION_MATCH,)
         expected_scenario_db = {"reservations": {"X": {}}}
 
         @property

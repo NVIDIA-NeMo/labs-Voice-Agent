@@ -15,7 +15,7 @@
 import json
 import os
 import re
-from typing import Optional, Union
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import requests
@@ -54,9 +54,7 @@ def match_str_and_float(
     if is_string:
         ref_value = str(ref_value)
         pred_value = str(pred_value)
-        logger.debug(
-            f"before processing: ref_value: {ref_value}, pred_value: {pred_value}"
-        )
+        logger.debug(f"before processing: ref_value: {ref_value}, pred_value: {pred_value}")
         if ignore_capitalization:
             ref_value = ref_value.lower()
             pred_value = pred_value.lower()
@@ -76,9 +74,7 @@ def match_str_and_float(
                 num_to_words=False,
                 lowercase=ignore_capitalization,
             )
-        logger.debug(
-            f"after processing: ref_value: {ref_value}, pred_value: {pred_value}"
-        )
+        logger.debug(f"after processing: ref_value: {ref_value}, pred_value: {pred_value}")
         return ref_value == pred_value
     else:
         try:
@@ -88,9 +84,7 @@ def match_str_and_float(
                 is_close = all(is_close)
             return bool(is_close)
         except Exception as e:
-            logger.error(
-                f"Error checking for np.isclose(ref_value: {ref_value}, pred_value: {pred_value}): {e}"
-            )
+            logger.error(f"Error checking for np.isclose(ref_value: {ref_value}, pred_value: {pred_value}): {e}")
             return False
 
 
@@ -192,6 +186,28 @@ def match_list(
     return True
 
 
+def normalize_scenario_payload(payload):
+    """Normalize a scenario payload (reference or prediction) to a canonical shape.
+
+    Rules:
+      - **List of exactly one dict** → unwrap to that single dict.
+      - **Single dict** → return as-is.
+      - **List of multiple dicts** → return as-is (legitimate push-path output:
+        each entry is a separate ``<final_response>`` emission).
+      - **Anything else** (scalar, ``None``, list of non-dicts) → return as-is.
+
+    Used by both the deterministic comparator (``check_if_task_success``) and
+    the LLM judge prep path (``runner.run_dynamic_evaluation``) so they apply
+    the same shape-equivalence rule. Without this, the LLM judge reads the raw
+    file text and deducts for cosmetic ``{...}`` vs. ``[{...}]`` differences
+    that the deterministic comparator already treats as equivalent (its old
+    "Situation 2" logic). One source of truth, applied to both scoring paths.
+    """
+    if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], dict):
+        return payload[0]
+    return payload
+
+
 def check_if_task_success(
     *,
     reference: str,
@@ -221,6 +237,10 @@ def check_if_task_success(
       - If ``disallow_extra_items`` is True, the lengths must also match exactly
         (exact bijection — no extra prediction items tolerated).
 
+    Both inputs are first passed through ``normalize_scenario_payload`` to
+    collapse the list-of-1-dict / single-dict shape difference. The remaining
+    situations 1-3 then handle the post-normalization shapes cleanly.
+
     Args:
         reference: The path to the reference json file.
         prediction: The path to the prediction json file.
@@ -239,6 +259,11 @@ def check_if_task_success(
         reference_answer = json.load(f)
     with open(prediction, "r") as f:
         prediction_answer = json.load(f)
+
+    # Apply the shape normalizer (list-of-1-dict → single dict) on both sides
+    # so cosmetic wrapping doesn't bias the comparison or the downstream judge.
+    reference_answer = normalize_scenario_payload(reference_answer)
+    prediction_answer = normalize_scenario_payload(prediction_answer)
 
     # Situation 1: If the reference is a dictionary, and the prediction is a dictionary,
     # Convert to Situation 3
@@ -291,6 +316,45 @@ def check_if_task_success(
     return result
 
 
+def _filtered_args(args: dict, compare_args: Optional[List[str]]) -> dict:
+    """Filter a tool-call arguments dict by tau2's ``compare_args`` semantics.
+
+    ``compare_args=None``  → return ``args`` verbatim (compare all).
+    ``compare_args=[]``    → return ``{}`` (name-only match — empty == empty).
+    ``compare_args=[k...]``→ return ``{k: args.get(k) for k in compare_args}``.
+
+    Pitfall: do NOT write ``compare_args or "all"``-style fallbacks — ``[]`` is
+    falsy and would silently collapse name-only matches into compare-all.
+    Tau2 stores ``compare_args: None`` explicitly (the key is present), so
+    ``ref.get("compare_args", "all")`` also doesn't fire the default. The
+    explicit ``is None`` check below is the only safe sentinel.
+    """
+    if compare_args is None:
+        return args
+    return {k: args.get(k) for k in compare_args}
+
+
+def _match_action(ref: dict, pred: dict) -> bool:
+    """Deterministic action-record match honoring tau2's ``compare_args`` field.
+
+    Name must always match. Argument comparison is delegated to ``_filtered_args``
+    which applies the ``compare_args`` filter to both sides before equality.
+
+    Reference records that omit ``compare_args`` (e.g. eva_airline records) get
+    the default ``None`` from ``ref.get("compare_args")``, which means "compare
+    all arguments" — preserving existing behavior for non-tau2 domains.
+
+    Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0
+        src/tau2/data_model/tasks.py:175-182
+    """
+    if ref.get("name") != pred.get("name"):
+        return False
+    compare_args = ref.get("compare_args")
+    return _filtered_args(ref.get("arguments", {}), compare_args) == _filtered_args(
+        pred.get("arguments", {}), compare_args
+    )
+
+
 class LLMJudge:
     """
     LLM-based judge for evaluating voice agent responses.
@@ -313,25 +377,56 @@ Judge how well the prediction matches the reference in terms of correctness and 
 is not present in the reference, it means that the field is not required to check and can be ignored. 
 Return a score between 0 and 1, where 0 means completely wrong and 1 means a perfect match.
 You MUST return ONLY a JSON object in the following format, with no other text:
-{"score": <score>, "reason": "<brief explanation>"}"""
+{"score": <score>, "reason": "<explanation of the score, also concrete with quoted evidence>"}"""
 
     SCENARIO_PROMPT = """You are a judge that evaluates voice agent performance in a conversational scenario.
-You will be given:
-- A reference answer (the expected outcome)
-- A prediction (the actual agent output)
-- The full conversation transcript between the user and the agent
-- The LLM context history, which includes tool/function calls made by the agent
+You will be given some or all of the following XML-tagged inputs (only those available are included):
+- <reference>: The reference answer (the expected outcome).
+- <prediction>: The actual agent output (the "final response" the agent produced).
+- <conversation>: The transcribed conversation turns between the user and the agent.
+- <agent_context_history>: The agent's LLM context history, including system prompt and tool/function calls with their arguments and results.
+- <user_context_history>: The simulated user's LLM context history, including the user-sim's own tool calls (e.g., phone-control tools in telecom scenarios where the user toggles airplane mode / data themselves).
+- <nl_assertions>: A numbered list of natural-language assertions to consider when scoring.
+
+Action `side` semantics. Each action in <reference> and <prediction> may carry a `side` field with one of two values:
+- `side="agent"` — performed by the agent under test using its own LLM-callable tool. Score the agent on whether the corresponding tool call appears in <agent_context_history> with matching arguments.
+- `side="user"` — performed by the simulated user using its own environment tool (e.g., telecom phone controls like `toggle_data`, `toggle_airplane_mode`). The agent does NOT have this tool and is NOT expected to invoke it. Score the agent on **guidance quality** — did it correctly diagnose the issue and clearly instruct the user to perform the action? Confirm the user-sim actually performed it by checking <user_context_history> for the corresponding tool call.
+When `side` is absent on a reference action, default to `side="agent"` (legacy single-side domains: eva, tau2_airline, tau2_retail).
+
+Strict attribution rule. Tool calls visible in <user_context_history> were made by the **simulated user**, NOT by the agent. Do NOT attribute them to the agent in your reasoning or deductions. The agent's tool calls live ONLY in <agent_context_history>. If a tool name appears in <user_context_history> but not in <agent_context_history>, the agent did NOT call it — treat it as the user-sim's action. Common cross-attribution mistake to avoid: claiming "the agent made an unnecessary call to `check_status_bar`" when that call actually appears only in <user_context_history>. Before deducting for any agent tool call, verify the call is in <agent_context_history> and quote its index.
 
 Evaluate how well the agent performed by considering:
-1. Whether the prediction matches the reference answer
-2. Whether the agent followed instructions correctly during the conversation
-3. Whether the agent called the correct tools with the correct arguments at the right time
-4. Whether the agent avoided unnecessary or incorrect tool calls
-5. Whether the agent handled the conversation naturally and helpfully
+1. Whether <prediction> matches <reference>.
+2. Whether the agent followed instructions correctly during the conversation.
+3. For `side="agent"` reference actions: whether the agent called the corresponding tool with the correct arguments at the right time (use <agent_context_history> when present).
+4. For `side="user"` reference actions: whether the agent correctly guided the user to perform that action (clear diagnosis + instruction). Do NOT deduct because "the agent didn't call the tool" — the agent has no such tool. Use <user_context_history> to confirm the user-sim actually executed the action.
+5. Whether the agent avoided unnecessary or incorrect tool calls.
+6. Whether the agent handled the conversation naturally and helpfully.
+7. If <nl_assertions> is present, judge EACH numbered assertion independently against <conversation>, <agent_context_history>, and <user_context_history>. Emit a per-assertion verdict for each one.
+
+Presentation-issue deduction cap. The following are "presentation issues" — they affect how the agent speaks, not whether the agent did the right thing:
+- Missing or skipped `EndConversationTool` call. This is a voice-harness termination signal, not a domain policy requirement; the framework tracks termination separately via the conversation's stop reason.
+
+When the agent successfully completed the task (reference actions matched, DB state correct, nl_assertions satisfied), **all presentation issues combined must not deduct more than 0.05 from the score**. Treat them as a single category capped at 0.05 total, regardless of how many individual presentation issues you find. The minimum score after only presentation issues is 0.95.
+
+Minor issues that DO NOT deduct points from the score:
+- Voice-realization violations: not spelling alphanumeric identifiers character-by-character (e.g. flight numbers, confirmation numbers, user IDs spoken as ordinary words instead of "S, K, seven, zero, three"), missing brand-specific farewells, prosody/formatting nits, etc.
+
+Reason field requirements. The `reason` field MUST be concrete and debuggable:
+- For each deduction, quote the specific phrase from <conversation> or <prediction> that was wrong (e.g. *Agent said "Flight SK703" instead of spelling it as "S, K, seven, zero, three"*).
+- Cite the expected form alongside (e.g. *expected: "S, K, seven, zero, three"*).
+- Group multiple instances of the same class of issue (e.g. "spelled 3 flight numbers and 2 confirmation numbers as ordinary words") instead of listing each individually, then quote 1-2 representative examples.
+- Do NOT use vague phrases like "minor presentation issues" or "did not follow guidelines" without naming the specific guideline and the specific phrase that violated it.
+- When deducting on a `side="user"` action: quote the agent's misguidance (e.g. *Agent said "Go to your phone's Settings..." instead of cuing the user to use `toggle_airplane_mode`*) — do NOT phrase the deduction as "the agent didn't call the tool", since the agent has no such tool.
 
 Return a score between 0 and 1, where 0 means complete failure and 1 means perfect performance.
-You MUST return ONLY a JSON object in the following format, with no other text:
-{"score": <score>, "reason": "<brief explanation>"}"""
+
+When <nl_assertions> is NOT present, return ONLY a JSON object with no other text:
+{"score": <score>, "reason": "<explanation of the score, also concrete with quoted evidence>"}
+
+When <nl_assertions> IS present, return ONLY a JSON object with no other text in this extended format:
+{"score": <score>, "reason": "<explanation of the score, also concrete with quoted evidence>", "nl_assertion_verdicts": [{"index": <1-based assertion index>, "passed": <true|false>, "reason": "<per-assertion explanation, also concrete with quoted evidence>"}, ...]}
+The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion, with ``index`` matching the assertion's numbered position. ``passed`` is a strict boolean — only ``true`` if the assertion clearly holds given the evidence. Per-assertion ``reason`` follows the same concreteness rule: quote the specific evidence from the conversation, don't paraphrase."""
 
     def __init__(
         self,
@@ -401,9 +496,7 @@ You MUST return ONLY a JSON object in the following format, with no other text:
 
         raise ValueError(f"Could not parse judgement JSON from LLM response: {content}")
 
-    def judge(
-        self, reference: str, prediction: str, prompt: Optional[str] = None
-    ) -> dict:
+    def judge(self, reference: str, prediction: str, prompt: Optional[str] = None) -> dict:
         """
         Judge the similarity between a reference and a prediction.
 
@@ -417,21 +510,25 @@ You MUST return ONLY a JSON object in the following format, with no other text:
         """
         user_content = f"<reference>\n{reference}\n</reference>\n\n<prediction>\n{prediction}\n</prediction>"
         payload = self._get_payload(user_content, prompt)
+        # Attached to the returned dict (and saved into ``judge_result.json``
+        # by the runner) so the exact text the judge saw is debuggable
+        # without re-deriving from the source files — useful for triaging
+        # surprising scores or iterating on the prompt.
+        judge_input = {"system_prompt": prompt or self.default_prompt, "user_content": user_content}
         try:
             response = requests.post(self.url, headers=self.headers, json=payload)
             result = self._parse_response(response)
             result["score"] = float(result["score"])
             if "reason" not in result:
                 result["reason"] = ""
+            result["judge_input"] = judge_input
             logger.debug(f"LLMJudge result: {result}")
             return result
         except Exception as e:
             logger.error(f"LLMJudge error: {e}")
-            return {"score": 0.0, "reason": f"Error: {e}"}
+            return {"score": 0.0, "reason": f"Error: {e}", "judge_input": judge_input}
 
-    def judge_file(
-        self, reference: str, prediction: str, prompt: Optional[str] = None
-    ) -> dict:
+    def judge_file(self, reference: str, prediction: str, prompt: Optional[str] = None) -> dict:
         """
         Judge the similarity between a reference file and a prediction file.
 
@@ -464,7 +561,9 @@ You MUST return ONLY a JSON object in the following format, with no other text:
         reference: str,
         prediction: str,
         conversation: Optional[list] = None,
-        context_history: Optional[list] = None,
+        agent_context_history: Optional[list] = None,
+        user_context_history: Optional[list] = None,
+        nl_assertions: Optional[List[str]] = None,
         prompt: Optional[str] = None,
     ) -> dict:
         """
@@ -474,10 +573,28 @@ You MUST return ONLY a JSON object in the following format, with no other text:
             reference: The reference answer string (or JSON string).
             prediction: The prediction answer string (or JSON string).
             conversation: List of conversation turns, each a dict with "role" and "text" keys.
-            context_history: LLM context messages (from _retrieve_context_history).
+            agent_context_history: Agent's LLM context messages (from
+                ``bot_logs_agent/llm_context.json``). Contains the agent's
+                tool calls + results. Rendered as ``<agent_context_history>``.
+            user_context_history: Simulated user's LLM context messages
+                (from ``bot_logs_user/llm_context.json``). Contains the
+                user-sim's own tool calls — essential for dual-side
+                domains like telecom where reference actions with
+                ``side="user"`` are executed by the user-sim, not the
+                agent. Rendered as ``<user_context_history>``.
+            nl_assertions: Optional natural-language assertions (tau2 retail). When provided,
+                each assertion is appended to the prompt and the LLM is instructed to emit
+                a per-assertion verdict list. The returned dict gains a
+                ``nl_assertion_verdicts`` field (one entry per assertion, ``{index, passed,
+                reason}``) plus ``nl_assertion_pass_rate``. Missing/malformed verdicts are
+                filled with ``passed=False`` so the runner can still aggregate cleanly.
+                When ``None`` (or empty), the returned shape is the basic
+                ``{score, reason}`` dict — no per-assertion fields.
             prompt: Optional custom system prompt. Uses SCENARIO_PROMPT if not provided.
         Returns:
-            A dict with "score" (float between 0 and 1) and "reason" (str).
+            A dict with "score" (float between 0 and 1) and "reason" (str). When
+            ``nl_assertions`` is non-empty, also includes ``nl_assertion_verdicts``
+            (list of ``{index, passed, reason}``) and ``nl_assertion_pass_rate`` (float).
         """
         if not prompt:
             prompt = self.SCENARIO_PROMPT
@@ -488,25 +605,78 @@ You MUST return ONLY a JSON object in the following format, with no other text:
         ]
 
         if conversation:
-            turns_text = "\n".join(
-                f"[{turn.get('role', 'unknown')}]: {turn.get('text', '')}"
-                for turn in conversation
-            )
+            turns_text = "\n".join(f"[{turn.get('role', 'unknown')}]: {turn.get('text', '')}" for turn in conversation)
             sections.append(f"<conversation>\n{turns_text}\n</conversation>")
 
-        if context_history:
+        if nl_assertions:
+            numbered = "\n".join(f"{i+1}. {a}" for i, a in enumerate(nl_assertions))
+            sections.append(f"<nl_assertions>\n{numbered}\n</nl_assertions>")
+
+        if agent_context_history:
             sections.append(
-                f"<context_history>\n{json.dumps(context_history, indent=2)}\n</context_history>"
+                f"<agent_context_history>\n{json.dumps(agent_context_history, indent=2)}\n</agent_context_history>"
+            )
+        if user_context_history:
+            sections.append(
+                f"<user_context_history>\n{json.dumps(user_context_history, indent=2)}\n</user_context_history>"
             )
 
         user_content = "\n\n".join(sections)
         payload = self._get_payload(user_content, prompt)
+        # Attached to the returned dict (and saved into ``judge_result.json``
+        # by the runner) so the exact text the judge saw is debuggable
+        # without re-deriving from the source files — useful for triaging
+        # surprising scores or iterating on the prompt.
+        judge_input = {"system_prompt": prompt, "user_content": user_content}
         try:
             response = requests.post(self.url, headers=self.headers, json=payload)
             result = self._parse_response(response)
             result["score"] = float(result["score"])
             result.setdefault("reason", "")
+            result["judge_input"] = judge_input
+            if nl_assertions:
+                # Normalize per-assertion verdicts: ensure exactly len(nl_assertions)
+                # entries, in numbered order, with passed=False for any missing or
+                # malformed entries (so the runner can aggregate without surprises).
+                raw_verdicts = result.get("nl_assertion_verdicts") or []
+                normalized: List[dict] = []
+                by_index: Dict[int, dict] = {}
+                for v in raw_verdicts:
+                    if not isinstance(v, dict):
+                        continue
+                    try:
+                        idx = int(v.get("index"))
+                    except (TypeError, ValueError):
+                        continue
+                    if 1 <= idx <= len(nl_assertions):
+                        by_index[idx] = v
+                passes = 0
+                for i in range(1, len(nl_assertions) + 1):
+                    v = by_index.get(i)
+                    passed = bool(v and v.get("passed") is True)
+                    reason_text = (v or {}).get("reason", "") if v else "Missing verdict; treated as failed."
+                    # Include the assertion text itself so judge_result.json
+                    # is self-describing — operators can read a single file
+                    # to see what was claimed AND what the judge decided,
+                    # without cross-referencing scenario_config/metadata.json.
+                    normalized.append({
+                        "index": i,
+                        "assertion": nl_assertions[i - 1],
+                        "passed": passed,
+                        "reason": reason_text,
+                    })
+                    if passed:
+                        passes += 1
+                result["nl_assertion_verdicts"] = normalized
+                result["nl_assertion_pass_rate"] = passes / len(nl_assertions)
             return result
         except Exception as e:
             logger.error(f"LLMJudge error: {e}")
-            return {"score": 0.0, "reason": f"Error: {e}"}
+            err_result = {"score": 0.0, "reason": f"Error: {e}", "judge_input": judge_input}
+            if nl_assertions:
+                err_result["nl_assertion_verdicts"] = [
+                    {"index": i + 1, "assertion": nl_assertions[i], "passed": False, "reason": f"Judge error: {e}"}
+                    for i in range(len(nl_assertions))
+                ]
+                err_result["nl_assertion_pass_rate"] = 0.0
+            return err_result

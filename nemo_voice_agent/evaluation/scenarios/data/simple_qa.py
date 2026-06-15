@@ -23,6 +23,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Persona,
     Resources,
     Scenario,
+    SuccessSignal,
     Task,
 )
 
@@ -44,6 +45,10 @@ class SimpleQA(Scenario):
     ignore_capitalization = True
     ignore_punctuation = True
     clean_text = True
+
+    # Free-form text answers — LLM judge only (same as the qa domain).
+    # Inherited by SimpleQA2 / SimpleQA3.
+    success_signals = (SuccessSignal.JUDGE_PASSED, SuccessSignal.CLEAN_EXIT)
 
     # User section
     @property

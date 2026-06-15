@@ -14,18 +14,42 @@
 
 import json
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, ClassVar, Dict, List, Optional, Sequence, Union
 
 from nemo_voice_agent.utils.audio import NoiseConfig
 
-GENERAL_PROMPT = (
-    "Keep your responses concise and conversational since they will be spoken aloud. "
-    "Avoid special characters. Use only simple, plain text sentences. "
-    "Always punctuate your responses using standard sentence punctuation: "
-    "commas, periods, question marks, exclamation points, etc. "
-    "Always spell out numbers as words. Avoid using emojis. "
-)
+
+class SuccessSignal(StrEnum):
+    """Per-scenario scoring signals that participate in the ``is_successful`` composite.
+
+    Single source of truth: scenarios reference these members in their
+    ``success_signals`` whitelist; the runner uses the same members as the
+    keys of its per-signal verdict dict. Values are the canonical JSON keys
+    written to ``metrics.json`` / ``success_breakdown`` — StrEnum members
+    are string-equal to their values so the on-disk format is byte-stable
+    across renames.
+
+    To rename a signal: edit the value here, update the corresponding
+    ``metrics.get(<old>)`` lookup in the runner, and every scenario
+    declaration auto-picks up the new value because they reference the
+    enum member (not the literal string).
+    """
+
+    ACTION_MATCH = "is_action_match"
+    DB_STATE_MATCH = "db_state_match"
+    DB_STATE_ASSERTION = "db_state_assertion"
+    NL_ASSERTION = "nl_assertion"
+    JUDGE_PASSED = "judge_passed"
+    CLEAN_EXIT = "clean_exit"
+
+# Re-export ``GENERAL_PROMPT`` from its canonical home so existing imports
+# (``from nemo_voice_agent.evaluation.scenarios.classes import GENERAL_PROMPT``)
+# keep working after the constant moved to ``utils.voice_prompts`` for cross-
+# layer reusability. New code should import directly from
+# ``nemo_voice_agent.utils.voice_prompts``.
+from nemo_voice_agent.utils.voice_prompts import GENERAL_PROMPT  # noqa: F401
 
 
 @dataclass
@@ -59,18 +83,32 @@ class Persona:
         accent: The accent of the persona if any, e.g. "American", "British", "Australian", etc.
             Only used for TTS generation. If provided, the prompt will have additional information
             about the accent.
+        behavior_config: Pipeline-layer persona knobs that the LLM alone cannot realize —
+            e.g. interrupt_tendency, enable_interruptions, backchannel_min_threshold,
+            use_llm_backchannel. Currently parked: not consumed by ``to_prompt_section`` and
+            not wired into the turn-taking pipeline. Future work; preserved here as a
+            metric-slicing label and as a forward-compatible carrier for tau2-derived
+            persona configs.
+        voice_config: TTS-layer acoustic/voice knobs (persona_name voice binding,
+            channel/source/speech_effects, telephony_enabled, environment,
+            background_noise_file, etc.). Currently parked: not consumed by
+            ``to_prompt_section`` and not wired into TTS. Future work.
     """
 
     role: str
-    name: str
-    background: str
-    personality: str
+    name: Optional[str] = None
+    background: Optional[str] = None
+    personality: Optional[str] = None
     language: Optional[str] = None
     accent: Optional[str] = None
+    behavior_config: Optional[Dict[str, Any]] = None
+    voice_config: Optional[Dict[str, Any]] = None
 
     def to_prompt_section(self) -> str:
         """Render this persona as a prompt section."""
-        lines = [f"You are a {self.role} named {self.name}."]
+        lines = [f"You are a {self.role}. "]
+        if self.name:
+            lines.append(f"Your name is {self.name}. ")
         general_prompt = (
             "You need to stick to your designated role and complete your task "
             f"by following the information below. {GENERAL_PROMPT}"
@@ -101,28 +139,41 @@ class Resources:
             the value is a file path. The file can be read by using a `read_file` tool.
         information: A list of additional information strings. For example, the agent will have
             some FAQs or other information that is relevant to the scenario.
+        info_sections: Optional structured info, rendered as ``### <key>`` blocks
+            under ``## Additional Information``. Used by tau2 to expose
+            ``known_info`` / ``unknown_info`` as separate ``Things you know`` /
+            ``Things you don't know`` subsections so the simulator stops
+            fabricating facts it doesn't have (see eval_20260603_072747 audit:
+            user-sim invented order IDs because ``unknown_info`` was being
+            silently dropped). ``None`` (default) preserves existing flat-list
+            rendering for eva/customer_service/restaurant/qa/etc.
     """
 
     tools: Dict[str, Dict[str, str]] = field(default_factory=dict)
     documents: Dict[str, str] = field(default_factory=dict)
     information: List[str] = field(default_factory=list)
+    info_sections: Optional[Dict[str, str]] = None
 
     def to_prompt_section(self) -> str:
         """Render this resource set as a prompt section."""
         sections = ["# Resources"]
         if self.documents:
-            doc_list = "\n".join(
-                f"- {name}: {path}" for name, path in self.documents.items()
-            )
+            doc_list = "\n".join(f"- {name}: {path}" for name, path in self.documents.items())
             sections.append(
                 f"## Available Documents\nYou can read the following documents by using tools:\n{doc_list}"
             )
-        if self.information:
-            info_list = "\n".join(f"- {info}" for info in self.information)
-            sections.append(
-                "## Additional Information\n"
-                f"You can use the following information for reference:\n{info_list}"
-            )
+        if self.information or self.info_sections:
+            block_lines: List[str] = ["## Additional Information"]
+            if self.information:
+                info_list = "\n".join(f"- {info}" for info in self.information)
+                block_lines.append("You can use the following information for reference:")
+                block_lines.append(info_list)
+            if self.info_sections:
+                for heading, body in self.info_sections.items():
+                    if not body:
+                        continue
+                    block_lines.append(f"\n### {heading}\n{body}")
+            sections.append("\n".join(block_lines))
         return "\n\n".join(sections)
 
     def to_tools_json_string(self) -> str:
@@ -152,8 +203,9 @@ class Task:
         """Render this task as a prompt section."""
         prompt = "# Task\n\n"
         if self.background:
-            prompt += self.background + "\n"
-        prompt += f"Your goal is to: {self.goal}"
+            prompt += self.background + "\n\n"
+        if self.goal:
+            prompt += f"Your goal is to: {self.goal}\n\n"
         return prompt
 
 
@@ -204,9 +256,7 @@ class Actions:
                 "You must follow the following instructions step by step in the given order "
                 "to complete the task, do not perform multiple instructions in a single turn:\n"
             )
-            numbered = "\n".join(
-                f"Step {i+1}: {inst}" for i, inst in enumerate(self.instructions)
-            )
+            numbered = "\n".join(f"Step {i+1}: {inst}" for i, inst in enumerate(self.instructions))
             sections.append(f"## Instructions\n{header}{numbered}")
         if self.guidelines:
             header = "You must always comply with the following guidelines during the task:\n"
@@ -217,6 +267,99 @@ class Actions:
 
 class Scenario:
     """Base class for all evaluation scenarios."""
+
+    # Registry namespace the bot servers should consult when looking up tool
+    # classes by name (see ``nemo_voice_agent.evaluation.tools.get_schema_tool_for_eval``).
+    # Subclasses override (e.g. ``"eva_airline"``, ``"tau2_airline"``). The bot
+    # server falls back to ``"default"`` per-tool for shared harness tools
+    # (EndConversationTool, etc.) so a scenario in a specific domain still
+    # picks up the generic-namespace tools alongside its own.
+    domain: str = "default"
+
+    # Whitelist of signals that gate the ``is_successful`` composite for this
+    # scenario. Set on the domain base class (typically as a ClassVar tuple,
+    # or as a ``cached_property`` when the set depends on per-scenario opt-ins
+    # like ``nl_assertions``). Concrete scenarios (those declaring ``name``)
+    # MUST resolve this to a non-empty sequence — ``__init_subclass__``
+    # validates at class-definition time so authoring mistakes fail loud.
+    #
+    # Entries must be members of ``SuccessSignal``. Raw strings are tolerated
+    # (StrEnum members are str-equal to their values) but raw strings are
+    # rejected at runtime if they don't match a known signal name.
+    #
+    # ``None`` is the unconfigured sentinel — only valid on abstract base
+    # classes that have no ``name`` (i.e. domain bases). See
+    # ``compute_is_successful`` for the verdict computation.
+    success_signals: ClassVar[Optional[Sequence["SuccessSignal"]]] = None
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Concrete scenarios (those declaring a ``name`` class attribute) must
+        # have a non-empty ``success_signals`` whitelist resolvable from this
+        # class or one of its ancestors. Abstract domain bases (no ``name``)
+        # are skipped so they can declare the whitelist on a sibling property.
+        if "name" not in cls.__dict__:
+            return
+        signals = cls.success_signals
+        # ``success_signals`` may be a ``cached_property`` — skip the empty
+        # check in that case (we can't evaluate it without an instance, and
+        # the property body is the explicit declaration).
+        if isinstance(getattr(cls, "success_signals", None), property):
+            return
+        if not signals:
+            raise TypeError(
+                f"{cls.__name__}: success_signals must be a non-empty tuple of "
+                f"SuccessSignal members. Set it on the domain base class or "
+                f"override per-scenario."
+            )
+
+    def compute_is_successful(
+        self, signals: Dict["SuccessSignal", Optional[bool]]
+    ) -> Union[bool, str]:
+        """Combine per-signal verdicts into the composite ``is_successful``.
+
+        Default behavior: strict AND over the intersection of
+        ``self.success_signals`` and the signals that produced a non-None
+        value for this scenario.
+
+        Args:
+            signals: Mapping of every known ``SuccessSignal`` to its verdict
+                for this scenario. ``None`` means the signal was not
+                applicable (e.g., the scenario didn't opt in, or the run
+                config didn't enable it — judge disabled, etc.).
+
+        Returns:
+            ``True`` / ``False`` when at least one signal in
+            ``success_signals`` was applicable; the literal string
+            ``"N/A"`` when no whitelisted signal was applicable (run
+            cannot be scored).
+
+        Raises:
+            ValueError: if ``success_signals`` references a name that's
+                not a valid ``SuccessSignal`` member.
+        """
+        whitelist = self.success_signals
+        if not whitelist:
+            raise ValueError(
+                f"{type(self).__name__}: success_signals is empty. Set the "
+                f"whitelist on the domain base class."
+            )
+        valid_keys = set(SuccessSignal)
+        unknown = {s for s in whitelist if s not in valid_keys}
+        if unknown:
+            raise ValueError(
+                f"{type(self).__name__}: success_signals contains unknown "
+                f"keys: {sorted(str(s) for s in unknown)}. Valid signals: "
+                f"{sorted(s.value for s in SuccessSignal)}."
+            )
+        applicable = {
+            SuccessSignal(s): signals.get(SuccessSignal(s))
+            for s in whitelist
+            if signals.get(SuccessSignal(s)) is not None
+        }
+        if not applicable:
+            return "N/A"
+        return all(applicable.values())
 
     def __init__(
         self,
@@ -231,6 +374,10 @@ class Scenario:
         clean_text: Optional[bool] = False,
         disallow_extra_items: Optional[bool] = False,
         expected_scenario_db: Optional[Dict[str, Any]] = None,
+        nl_assertions: Optional[List[str]] = None,
+        db_state_assertions: Optional[List[Dict[str, Any]]] = None,
+        initialization_actions: Optional[List[Dict[str, Any]]] = None,
+        expected_user_db: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the scenario.
@@ -251,12 +398,41 @@ class Scenario:
             disallow_extra_items: When True, the list-of-dicts comparator requires
                 ``len(reference) == len(prediction)`` (exact bijection). Default False
                 preserves the existing lenient behavior where agent extras pass.
-            expected_scenario_db: Optional expected post-run DB state. When set,
+            expected_scenario_db: Optional expected post-run DB state from the agent side. When set,
                 the runner additionally scores the scenario by SHA-256-hashing this
                 against the bridge-pulled ``final_scenario_db.json`` (path-independent
                 end-state correctness — see ``evaluation/db_hash.py``). Subclasses
                 that derive the expected DB from a fixture file should expose this
                 as a ``cached_property`` instead of passing it through ``__init__``.
+            nl_assertions: Natural-language assertions evaluated by the LLM judge
+                (e.g., tau2-retail). Each string is judged independently against the conversation
+                transcript; aggregate score is ``passed / total``. Default ``None``
+                disables NL-assertion scoring.
+            db_state_assertions: Per-predicate DB-state assertion records evaluated
+                runner-side against the bridge-pulled ``shared_state["user_db"]`` or
+                ``shared_state["db"]`` post-run (e.g., tau2-telecom). Each entry has
+                shape ``{"side": "user"|"agent", "func_name": str, "arguments": dict,
+                "assert_value": Any, "message": Optional[str]}`` and dispatches through
+                ``nemo_voice_agent.evaluation.db_state_predicates.evaluate_db_state_assertion``.
+                Sibling to ``db_state_match`` (whole-DB hash) and ``nl_assertions``
+                (LLM-judged transcript predicates); per-predicate verdict shape mirrors
+                ``nl_assertion_verdicts``. Default ``None`` disables
+                DB-state-assertion scoring. **Upstream tau2-bench calls this surface
+                ``env_assertions`` and uses ``env_type`` ∈ {"user", "assistant"};
+                we rename to ``side`` ∈ {"user", "agent"} at the scenario translation
+                boundary (e.g., ``Tau2TelecomBaseScenario._gold_replay``) for
+                consistency with the bridge's existing side-tagging of action
+                records.**
+            initialization_actions: Action records replayed against shared_state
+                before the scenario starts (e.g., tau2-telecom). Each entry has
+                shape ``{"side": "user"|"agent", "func_name": str, "arguments":
+                dict}``. Dispatched bot-side via the ``apply_initialization``
+                RTVI action. Default ``None`` skips replay. Same renames as
+                ``db_state_assertions``: upstream key ``env_type`` → ``side``,
+                value ``"assistant"`` → ``"agent"``.
+            expected_user_db: Optional expected post-run user-side DB state (e.g., tau2-telecom).
+                Hashed against the bridge-pulled user-side DB. Default ``None`` disables
+                dual-DB scoring.
         """
         if not hasattr(self, "name"):
             self.name = name
@@ -281,6 +457,48 @@ class Scenario:
             self.disallow_extra_items = disallow_extra_items
         if not hasattr(self, "expected_scenario_db"):
             self.expected_scenario_db = expected_scenario_db
+        if not hasattr(self, "nl_assertions"):
+            self.nl_assertions = nl_assertions
+        if not hasattr(self, "db_state_assertions"):
+            self.db_state_assertions = db_state_assertions
+        if not hasattr(self, "initialization_actions"):
+            self.initialization_actions = initialization_actions
+        if not hasattr(self, "expected_user_db"):
+            self.expected_user_db = expected_user_db
+
+    def sync_state(self, agent_db: dict, user_db: dict) -> Dict[str, Dict[str, Any]]:
+        """Reconcile cross-side state after a write action fired on either side.
+
+        Mirrors upstream tau2's ``Environment.sync_tools()`` — both DBs
+        live in different processes in voice mode (each bot owns one),
+        so this function runs on the bridge's in-process shadow copies
+        and returns per-side deltas the bridge pushes back to the bots.
+
+        Default no-op: returns ``{"agent": {}, "user": {}}``. Single-side
+        domains (eva, tau2_airline, tau2_retail) keep the default —
+        their scenarios never have user-side LLM tools so there's
+        nothing to propagate.
+
+        **Contract for overrides** (currently only ``Tau2TelecomBaseScenario``):
+
+        - Inputs ``agent_db`` and ``user_db`` are the bridge's shadow
+          dicts, already updated by replaying the just-fired action.
+        - The override MAY mutate both dicts in place AND MUST return
+          the per-side delta dicts the bridge dispatches via
+          ``apply_sync_delta``.
+        - A scenario that overrides ``sync_state`` MUST also provide
+          ``_build_tool_map(state) → {name: tool}`` where each tool has
+          a sync ``invoke(**kwargs)`` method. The bridge uses this to
+          replay actions onto the shadow DBs before calling
+          ``sync_state``. Tau2 satisfies this via ``_Tau2InvokeMixin``.
+
+        Delta shape is **domain-defined** — the bridge transports it
+        verbatim to the registered ``apply_sync_delta`` applier on the
+        receiving bot. See ``evaluation/sync_appliers.py`` for the
+        generic default applier (dotted-path field set) and per-domain
+        ports (e.g. ``tau2_telecom_sync.apply_telecom_sync_delta``).
+        """
+        return {"agent": {}, "user": {}}
 
     def setup_shared_state(self, state: dict, side: str) -> None:
         """Populate per-side ``shared_state`` before tools are instantiated.
@@ -367,58 +585,42 @@ class Scenario:
     @property
     def user_task(self) -> Task:
         """The Task for the simulated user. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the user task."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the user task.")
 
     @property
     def agent_task(self) -> Task:
         """The Task for the agent under test. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the agent task."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the agent task.")
 
     @property
     def user_resources(self) -> Resources:
         """Resources (tools, documents, information) available to the user. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the user resources."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the user resources.")
 
     @property
     def agent_resources(self) -> Resources:
         """Resources (tools, documents, information) available to the agent. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the agent resources."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the agent resources.")
 
     @property
     def user_actions(self) -> Actions:
         """Instructions and guidelines for the user. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the user actions."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the user actions.")
 
     @property
     def agent_actions(self) -> Actions:
         """Instructions and guidelines for the agent. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the agent actions."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the agent actions.")
 
     @property
     def user_persona(self) -> Persona:
         """Persona for the simulated user. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the user persona."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the user persona.")
 
     @property
     def agent_persona(self) -> Persona:
         """Persona for the agent under test. Override in subclasses."""
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the agent persona."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the agent persona.")
 
     def save(self, output_dir: str):
         """Save the scenario to a file."""
@@ -443,6 +645,7 @@ class Scenario:
         # save metadata
         metadata = {
             "name": self.name,
+            "domain": self.domain,
             "description": self.description,
             "max_duration": self.max_duration,
             "noise_config": self.noise_config.to_dict() if self.noise_config else None,
@@ -450,7 +653,25 @@ class Scenario:
             "ignore_punctuation": self.ignore_punctuation,
             "clean_text": self.clean_text,
             "disallow_extra_items": self.disallow_extra_items,
+            "success_signals": [str(s) for s in (self.success_signals or ())],
         }
+        # Include scenario-defining structured fields when present so the
+        # metadata file is self-sufficient for interpreting metrics.json.
+        if self.db_state_assertions:
+            metadata["db_state_assertions"] = self.db_state_assertions
+        if self.nl_assertions:
+            metadata["nl_assertions"] = self.nl_assertions
+        if self.initialization_actions:
+            metadata["initialization_actions"] = self.initialization_actions
+        # Expected-DB hashes — small, deterministic, and the gap operators
+        # need to diff against ``final_scenario_db_hash.txt`` to diagnose
+        # ``db_state_match`` failures without dropping into a REPL.
+        if self.expected_scenario_db is not None:
+            from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+            metadata["expected_db_hash"] = get_dict_hash(self.expected_scenario_db)
+        if getattr(self, "expected_user_db", None) is not None:
+            from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+            metadata["expected_user_db_hash"] = get_dict_hash(self.expected_user_db)
         with open(output_dir / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=4)
 
