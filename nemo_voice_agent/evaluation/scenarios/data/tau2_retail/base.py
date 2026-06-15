@@ -68,8 +68,8 @@ class Tau2RetailBaseScenario(Tau2BaseScenario):
         verdicts when present — the overall judge becomes informational.
         """
         if self.nl_assertions:
-            return (SuccessSignal.DB_STATE_MATCH, SuccessSignal.NL_ASSERTION)
-        return (SuccessSignal.DB_STATE_MATCH,)
+            return (SuccessSignal.DB_STATE_MATCH, SuccessSignal.NL_ASSERTION, SuccessSignal.CLEAN_EXIT)
+        return (SuccessSignal.DB_STATE_MATCH, SuccessSignal.CLEAN_EXIT)
 
     def _build_tool_map(self, state: dict) -> Dict[str, Any]:
         """Instantiate one of each ported retail tool, bound to the given ``state``.

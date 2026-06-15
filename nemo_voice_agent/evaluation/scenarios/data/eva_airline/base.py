@@ -73,7 +73,7 @@ class EvaAirlineBaseScenario(Scenario):
     domain: str = "eva_airline"
     # Eva ships a gold ``expected_scenario_db`` for every scenario. DB-hash
     # equality is path-independent and deterministic — no LLM judge required.
-    success_signals = (SuccessSignal.DB_STATE_MATCH,)
+    success_signals = (SuccessSignal.DB_STATE_MATCH, SuccessSignal.CLEAN_EXIT)
 
     """Base class for airline scenarios ported from eva.
 

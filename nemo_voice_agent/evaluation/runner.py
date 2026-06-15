@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from nemo_voice_agent.evaluation.bridge import VoiceAgentEvaluationBridge
+from nemo_voice_agent.evaluation.bridge import STOP_REASON_EXIT, VoiceAgentEvaluationBridge
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 from nemo_voice_agent.evaluation.db_state_predicates import evaluate_db_state_assertion
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario, SuccessSignal
@@ -62,6 +62,7 @@ class RunAggregator:
     db_state_results: List[bool] = field(default_factory=list)
     nl_assertion_results: List[bool] = field(default_factory=list)
     db_state_assertion_results: List[bool] = field(default_factory=list)
+    clean_exit_results: List[bool] = field(default_factory=list)
 
     per_domain_success: Dict[str, List[bool]] = field(default_factory=dict)
     per_domain_action_match: Dict[str, List[bool]] = field(default_factory=dict)
@@ -70,6 +71,7 @@ class RunAggregator:
     per_domain_db_state: Dict[str, List[bool]] = field(default_factory=dict)
     per_domain_nl_assertion: Dict[str, List[bool]] = field(default_factory=dict)
     per_domain_db_state_assertion: Dict[str, List[bool]] = field(default_factory=dict)
+    per_domain_clean_exit: Dict[str, List[bool]] = field(default_factory=dict)
 
     run_token_usage: dict = field(
         default_factory=lambda: {
@@ -116,6 +118,15 @@ class RunAggregator:
         if isinstance(v, bool):
             self.db_state_results.append(v)
             self.per_domain_db_state.setdefault(domain, []).append(v)
+
+        # SuccessSignal.CLEAN_EXIT = "clean_exit" → bool. Always present for live runs
+        # (derived from bridge.stop_reason). Always-True or always-False on loaded-from-disk
+        # metrics that pre-date the field — old runs land in the "missing" branch and
+        # contribute nothing to the bucket.
+        v = metrics.get(SuccessSignal.CLEAN_EXIT)
+        if isinstance(v, bool):
+            self.clean_exit_results.append(v)
+            self.per_domain_clean_exit.setdefault(domain, []).append(v)
 
         # NL assertions: per-assertion verdicts are persisted only in judge_result.json,
         # not in metrics.json itself. We pull them back out by file when the pass rate
@@ -251,6 +262,7 @@ async def run_dynamic_evaluation(
     db_state_results = aggregator.db_state_results
     nl_assertion_results = aggregator.nl_assertion_results
     db_state_assertion_results = aggregator.db_state_assertion_results
+    clean_exit_results = aggregator.clean_exit_results
     # Per-domain buckets keyed by ``scenario.name.split('__')[0]`` so a mixed run
     # (eva_airline + tau2_airline + retail + …) reports rates per source.
     per_domain_success = aggregator.per_domain_success
@@ -260,6 +272,7 @@ async def run_dynamic_evaluation(
     per_domain_db_state = aggregator.per_domain_db_state
     per_domain_nl_assertion = aggregator.per_domain_nl_assertion
     per_domain_db_state_assertion = aggregator.per_domain_db_state_assertion
+    per_domain_clean_exit = aggregator.per_domain_clean_exit
     run_token_usage = aggregator.run_token_usage
 
     def _classify_resume_state(scenario_dir: str) -> str:
@@ -489,6 +502,13 @@ async def run_dynamic_evaluation(
         metrics["scenario_name"] = scenario.name
         metrics["scenario_directory"] = scenario_dir
         metrics["scenario_duration"] = (scenario_end - scenario_start).total_seconds()
+        # Closure-discipline signal: True iff the agent called EndConversationTool
+        # voluntarily (stop_reason == [EXIT]). False on TIMEOUT or any other
+        # non-clean termination. Drives the optional CLEAN_EXIT gating signal.
+        metrics["stop_reason"] = bridge.stop_reason
+        metrics["clean_exit"] = bridge.stop_reason == STOP_REASON_EXIT
+        clean_exit_results.append(metrics["clean_exit"])
+        per_domain_clean_exit.setdefault(domain, []).append(metrics["clean_exit"])
         metrics["is_action_match"] = is_action_match
         if judge_score is not None:
             metrics["judge_score"] = judge_score
@@ -598,6 +618,7 @@ async def run_dynamic_evaluation(
             SuccessSignal.DB_STATE_ASSERTION: _signal_passes(metrics.get("db_state_assertion_pass_rate")),
             SuccessSignal.NL_ASSERTION: _signal_passes(metrics.get("nl_assertion_pass_rate")),
             SuccessSignal.JUDGE_PASSED: metrics.get("judge_passed"),  # already bool/None
+            SuccessSignal.CLEAN_EXIT: metrics.get("clean_exit"),  # already bool
         }
         whitelist = {SuccessSignal(s) for s in (scenario.success_signals or ())}
         metrics["success_breakdown"] = {
@@ -808,6 +829,12 @@ async def run_dynamic_evaluation(
             f.write(
                 f"  Judge passed (>= threshold): {judge_pass_rate*100:6.2f}% "
                 f"({sum(judge_pass_results)}/{len(judge_pass_results)} scenarios)\n"
+            )
+        if clean_exit_results:
+            clean_exit_rate = sum(clean_exit_results) / len(clean_exit_results)
+            f.write(
+                f"  Clean exit (EndConversationTool called): {clean_exit_rate*100:6.2f}% "
+                f"({sum(clean_exit_results)}/{len(clean_exit_results)} scenarios)\n"
             )
 
         # Token usage rollup — only printed when there's at least one

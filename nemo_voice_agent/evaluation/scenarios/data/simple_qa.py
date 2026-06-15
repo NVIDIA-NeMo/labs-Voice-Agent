@@ -48,7 +48,7 @@ class SimpleQA(Scenario):
 
     # Free-form text answers — LLM judge only (same as the qa domain).
     # Inherited by SimpleQA2 / SimpleQA3.
-    success_signals = (SuccessSignal.JUDGE_PASSED,)
+    success_signals = (SuccessSignal.JUDGE_PASSED, SuccessSignal.CLEAN_EXIT)
 
     # User section
     @property

@@ -42,7 +42,7 @@ class QABaseScenario(Scenario):
     # string match (ACTION_MATCH) fails on "Paris" vs "The capital is Paris."
     # LLM-judge is the only principled scoring signal here. Consequence:
     # running QA scenarios without --judge-url produces is_successful="N/A".
-    success_signals = (SuccessSignal.JUDGE_PASSED,)
+    success_signals = (SuccessSignal.JUDGE_PASSED, SuccessSignal.CLEAN_EXIT)
     clean_text = True
 
     # Subclasses must override these

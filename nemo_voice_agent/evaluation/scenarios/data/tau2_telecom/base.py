@@ -215,8 +215,8 @@ class Tau2TelecomBaseScenario(Tau2BaseScenario):
         contributes per-NL-assertion verdicts via ``NL_ASSERTION``.
         """
         if self.nl_assertions:
-            return (SuccessSignal.DB_STATE_ASSERTION, SuccessSignal.NL_ASSERTION)
-        return (SuccessSignal.DB_STATE_ASSERTION,)
+            return (SuccessSignal.DB_STATE_ASSERTION, SuccessSignal.NL_ASSERTION, SuccessSignal.CLEAN_EXIT)
+        return (SuccessSignal.DB_STATE_ASSERTION, SuccessSignal.CLEAN_EXIT)
 
     # Default policy variant. Upstream offers two — ``"manual"`` (long-form
     # documentation) and ``"workflow"`` (procedural step-by-step). Matches

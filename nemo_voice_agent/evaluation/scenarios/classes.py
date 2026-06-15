@@ -42,6 +42,7 @@ class SuccessSignal(StrEnum):
     DB_STATE_ASSERTION = "db_state_assertion"
     NL_ASSERTION = "nl_assertion"
     JUDGE_PASSED = "judge_passed"
+    CLEAN_EXIT = "clean_exit"
 
 # Re-export ``GENERAL_PROMPT`` from its canonical home so existing imports
 # (``from nemo_voice_agent.evaluation.scenarios.classes import GENERAL_PROMPT``)

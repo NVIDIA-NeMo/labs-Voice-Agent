@@ -64,7 +64,7 @@ class Tau2AirlineBaseScenario(Tau2BaseScenario):
     # Path-independent DB-hash equality is the principled outcome signal for
     # tau2_airline. No predicates / NL assertions; judge becomes informational
     # so the verdict doesn't depend on judge availability.
-    success_signals = (SuccessSignal.DB_STATE_MATCH,)
+    success_signals = (SuccessSignal.DB_STATE_MATCH, SuccessSignal.CLEAN_EXIT)
 
     # tau2_airline is single-side (agent only); user side is text-driven by the
     # user simulator but the tau2 toolset doesn't include user-side tools.

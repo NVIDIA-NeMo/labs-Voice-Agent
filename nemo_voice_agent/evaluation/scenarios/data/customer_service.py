@@ -44,7 +44,7 @@ class CustomerServiceBaseScenario(Scenario):
 
     # Pattern B summary content (ticket result) checked against
     # ``reference_answer`` via the recursive comparator.
-    success_signals = (SuccessSignal.ACTION_MATCH,)
+    success_signals = (SuccessSignal.ACTION_MATCH, SuccessSignal.CLEAN_EXIT)
 
     max_duration = 120
     ignore_capitalization = True

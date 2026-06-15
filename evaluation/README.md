@@ -222,6 +222,7 @@ The runner emits up to **five orthogonal scoring signals** per scenario, plus a 
 | DB-state assertions | float ∈ [0, 1] | No | tau2_telecom (6 predicates) | `db_state_assertion_pass_rate` |
 | NL assertions | float ∈ [0, 1] | No (judged on transcript) | tau2_retail (40/114 tasks), tau2_telecom (a subset) | `nl_assertion_pass_rate` |
 | LLM judge score | float ∈ [0, 1] | — | Any run with `--judge-url` | `judge_score` (+ `judge_passed` when `--judge-threshold` set) |
+| **Clean exit** | `bool` | No | **Every domain** — closure discipline is universal | `clean_exit` (+ `stop_reason`) |
 | **Composite (is_successful)** | `bool \| "N/A"` | — | Always computed | **`is_successful`** + `success_breakdown` |
 
 ### 1. Action-list match (deterministic)
@@ -286,18 +287,20 @@ The judge catches presentation issues and fabrications that deterministic compar
 
 ### Composite `is_successful` (per-scenario whitelist)
 
-`metrics.json["is_successful"]` is the strict-AND of every **applicable** signal in the scenario's `success_signals` whitelist. Each domain declares which signals gate its verdict — see the `SuccessSignal` enum in `nemo_voice_agent/evaluation/scenarios/classes.py` for the canonical list (`ACTION_MATCH`, `DB_STATE_MATCH`, `DB_STATE_ASSERTION`, `NL_ASSERTION`, `JUDGE_PASSED`).
+`metrics.json["is_successful"]` is the strict-AND of every **applicable** signal in the scenario's `success_signals` whitelist. Each domain declares which signals gate its verdict — see the `SuccessSignal` enum in `nemo_voice_agent/evaluation/scenarios/classes.py` for the canonical list (`ACTION_MATCH`, `DB_STATE_MATCH`, `DB_STATE_ASSERTION`, `NL_ASSERTION`, `JUDGE_PASSED`, `CLEAN_EXIT`).
 
 **Per-domain `success_signals` matrix** (the authoritative wiring lives on each domain's base scenario):
 
 | Domain | Gating signals | Rationale |
 |---|---|---|
-| `eva_airline` | `DB_STATE_MATCH` | Gold expected DB shipped per scenario; path-independent. |
-| `tau2_airline` | `DB_STATE_MATCH` | Same — derived expected DB; no judge dependency. |
-| `tau2_retail` | `DB_STATE_MATCH` + `NL_ASSERTION` (when set) | 40/114 tasks opt into NL claims; derived per-scenario. |
-| `tau2_telecom` / `_workflow` | `DB_STATE_ASSERTION` + `NL_ASSERTION` (when set) | Open solution space — whole-DB hash and action match are informational. |
-| `restaurant`, `customer_service`, legacy `fastbite` | `ACTION_MATCH` | Single canonical `reference_answer` (structured order / ticket / receipt) checked recursively. |
-| `qa`, legacy `simple_qa_*` | `JUDGE_PASSED` | Free-form text answers — LLM judge is the only principled signal. |
+| `eva_airline` | `DB_STATE_MATCH` + `CLEAN_EXIT` | Gold expected DB shipped per scenario; path-independent. |
+| `tau2_airline` | `DB_STATE_MATCH` + `CLEAN_EXIT` | Same — derived expected DB; no judge dependency. |
+| `tau2_retail` | `DB_STATE_MATCH` + `NL_ASSERTION` (when set) + `CLEAN_EXIT` | 40/114 tasks opt into NL claims; derived per-scenario. |
+| `tau2_telecom` / `_workflow` | `DB_STATE_ASSERTION` + `NL_ASSERTION` (when set) + `CLEAN_EXIT` | Open solution space — whole-DB hash and action match are informational. |
+| `restaurant`, `customer_service`, legacy `fastbite` | `ACTION_MATCH` + `CLEAN_EXIT` | Single canonical `reference_answer` (structured order / ticket / receipt) checked recursively. |
+| `qa`, legacy `simple_qa_*` | `JUDGE_PASSED` + `CLEAN_EXIT` | Free-form text answers — LLM judge is the only principled signal. |
+
+**`CLEAN_EXIT` is in every domain's whitelist.** A scenario passes only when the agent called `EndConversationTool` voluntarily (stop reason `[EXIT]`); `[TIMEOUT]` always fails. Closure discipline is universal — an agent that does the right work but then never stops talking is not a successful agent (real callers would have hung up, and a 1800 s "successful" TIMEOUT consumes 5-10× the compute of a clean exit). For the cases where another gating signal already failed, `CLEAN_EXIT` is redundant; it only changes the verdict when the outcome was right but closure was wrong. Most notably this catches **policy-refusal scenarios** where `expected_scenario_db == initial_scenario_db` and an agent that crashed at greeting would otherwise pass `DB_STATE_MATCH` "by inaction." A regression test (`test_every_concrete_scenario_includes_clean_exit`) prevents future domains from silently omitting it.
 
 **Principle:** `JUDGE_PASSED` gates only when no deterministic alternative exists. `NL_ASSERTION` still runs through the judge but contributes per-assertion verdicts, so it can gate when opted in. `ACTION_MATCH` is appropriate when the domain has a single canonical correct `reference_answer` (either a structured outcome summary OR a tool-call trajectory where only one sequence is considered successful); it's not appropriate when the solution space is open (multiple valid trajectories satisfying the same outcome — telecom-style). For domains that ship an `expected_scenario_db` (eva, tau2 airline, tau2 retail), we prefer `DB_STATE_MATCH` over `ACTION_MATCH` because it's path-independent — any sequence landing on the correct end state passes.
 

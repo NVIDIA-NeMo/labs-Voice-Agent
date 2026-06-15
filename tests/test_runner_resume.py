@@ -238,6 +238,7 @@ def test_run_aggregator_fold_freshly_run_and_loaded_metrics(tmp_path):
         "db_state_match": True,
         "judge_score": 0.95,
         "judge_passed": True,
+        "clean_exit": True,
         "is_successful": True,
         "token_usage": {
             "agent": {"n_calls": 5, "prompt": 10_000, "completion": 500},
@@ -252,6 +253,7 @@ def test_run_aggregator_fold_freshly_run_and_loaded_metrics(tmp_path):
         "db_state_match": False,
         "judge_score": 0.30,
         "judge_passed": False,
+        "clean_exit": False,
         "is_successful": False,
         "token_usage": {
             "agent": {"n_calls": 7, "prompt": 14_000, "completion": 700},
@@ -275,6 +277,7 @@ def test_run_aggregator_fold_freshly_run_and_loaded_metrics(tmp_path):
     assert agg.success_results == [True, False]
     # Per-predicate verdicts flattened across both scenarios: 2 + 3 = 5 entries.
     assert agg.db_state_assertion_results == [True, False, True, True, False]
+    assert agg.clean_exit_results == [True, False]
 
     # Per-domain matches whole-run because both scenarios share the domain.
     assert agg.per_domain_action_match["tau2_retail"] == [True, False]

@@ -245,7 +245,7 @@ class RestaurantBaseScenario(Scenario):
     # Pattern B (legacy LLM-summary): the agent emits a structured
     # ``<final_response>`` payload; ``is_action_match`` recursively
     # compares it against ``reference_answer``. Only signal that applies.
-    success_signals = (SuccessSignal.ACTION_MATCH,)
+    success_signals = (SuccessSignal.ACTION_MATCH, SuccessSignal.CLEAN_EXIT)
 
     max_duration = 180
     ignore_capitalization = True

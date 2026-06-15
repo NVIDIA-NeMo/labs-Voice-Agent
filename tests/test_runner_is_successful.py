@@ -209,6 +209,58 @@ def test_retail_style_cached_property_derives_from_nl_assertions():
     )
 
 
+def test_clean_exit_gates_when_in_whitelist():
+    """A scenario with CLEAN_EXIT in success_signals fails if stop reason wasn't [EXIT].
+
+    Regression: prior to the CLEAN_EXIT signal, scenarios where the agent landed on
+    the correct end-state DB but TIMEOUTed (never called EndConversationTool) were
+    incorrectly marked successful. The most concrete case was eva_airline
+    policy-refusal scenarios where ``expected_scenario_db == initial_scenario_db``,
+    making `db_state_match=True` a "win by inaction" — `CLEAN_EXIT` plugs that gap.
+    """
+    scenario = _make_minimal_scenario(
+        (SuccessSignal.DB_STATE_MATCH, SuccessSignal.CLEAN_EXIT)
+    )
+    # DB matches BUT conversation TIMEOUTed — CLEAN_EXIT=False → composite=False.
+    signals = {
+        SuccessSignal.ACTION_MATCH: None,
+        SuccessSignal.DB_STATE_MATCH: True,
+        SuccessSignal.DB_STATE_ASSERTION: None,
+        SuccessSignal.NL_ASSERTION: None,
+        SuccessSignal.JUDGE_PASSED: None,
+        SuccessSignal.CLEAN_EXIT: False,
+    }
+    assert scenario.compute_is_successful(signals) is False
+    # Same DB pass + clean exit → True.
+    signals[SuccessSignal.CLEAN_EXIT] = True
+    assert scenario.compute_is_successful(signals) is True
+
+
+def test_every_concrete_scenario_includes_clean_exit():
+    """Closure discipline is universal — every domain's whitelist must include CLEAN_EXIT.
+
+    Regression guard: if a future domain is added without CLEAN_EXIT, this test fails
+    so the author has to make the choice explicitly (with a documented exception)
+    rather than silently drop the gate.
+    """
+    import nemo_voice_agent.evaluation.scenarios.data  # populates ALL_EVAL_SCENARIOS  # noqa: F401
+    from nemo_voice_agent.evaluation.scenarios import ALL_EVAL_SCENARIOS
+
+    missing = []
+    for name, cls in ALL_EVAL_SCENARIOS.items():
+        inst = cls()
+        signals = inst.success_signals or ()
+        if SuccessSignal.CLEAN_EXIT not in signals:
+            missing.append(name)
+    assert not missing, (
+        f"{len(missing)} scenarios do not include CLEAN_EXIT in their success_signals. "
+        f"If a future domain genuinely shouldn't gate on closure (e.g., a streaming-Q&A "
+        f"interaction with no explicit termination), add an opt-out comment in the "
+        f"domain base class. Otherwise add CLEAN_EXIT to the whitelist. "
+        f"Examples: {sorted(missing)[:5]}"
+    )
+
+
 def test_unknown_signal_in_whitelist_raises():
     """A whitelist entry that isn't a valid ``SuccessSignal`` value raises."""
 

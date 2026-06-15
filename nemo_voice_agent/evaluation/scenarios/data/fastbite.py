@@ -107,7 +107,7 @@ class FastBiteScenario(Scenario):
     name = "fastbite"
     description = "FastBite example scenario"
     # Pattern B structured order summary checked against reference_answer.
-    success_signals = (SuccessSignal.ACTION_MATCH,)
+    success_signals = (SuccessSignal.ACTION_MATCH, SuccessSignal.CLEAN_EXIT)
     reference_answer = {
         "items": [
             {"name": "Crispy Chicken Sandwich", "unit_price": "6.49", "quantity": "1"},
