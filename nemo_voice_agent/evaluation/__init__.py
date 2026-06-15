@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import os
 from pathlib import Path
+from typing import Any, Dict, Union
 
 
 def get_eval_data_root() -> Path:
@@ -32,3 +34,40 @@ def get_eval_data_root() -> Path:
         return Path(env)
     # parents[2]: __init__.py → evaluation → nemo_voice_agent → repo root
     return Path(__file__).resolve().parents[2] / "evaluation" / "data"
+
+
+def load_db_artifact(path: Union[str, Path]) -> Dict[str, Any]:
+    """Load a tau2-style DB artifact, transparently handling sharded form.
+
+    Some upstream ``db.json`` files exceed file size limits (e.g., 
+    5 MB per-file cap), so they're sharded into ``<name>/<table>.json``
+    one-file-per-top-level-key. This helper accepts either form:
+
+    - ``<path>.json`` file → ``json.loads(read_text())``
+    - ``<path>/`` directory → ``{stem: json.loads(read_text())}`` for
+      every ``*.json`` file under it (top-level only; no recursion).
+
+    The two layouts are byte-equivalent at the in-memory ``dict`` level
+    so callers (gold replay, bot-side state, predicates) don't care
+    which on-disk shape a given domain uses.
+
+    The caller passes a path WITHOUT the ``.json`` suffix (the artifact
+    name). For backward compatibility with callers that still include
+    ``.json``, the suffix is stripped before probing.
+
+    Raises ``FileNotFoundError`` if neither form exists.
+    """
+    p = Path(path)
+    if p.suffix == ".json":
+        p = p.with_suffix("")
+    file_form = p.with_suffix(".json")
+    if file_form.is_file():
+        return json.loads(file_form.read_text())
+    if p.is_dir():
+        out: Dict[str, Any] = {}
+        for shard in sorted(p.glob("*.json")):
+            out[shard.stem] = json.loads(shard.read_text())
+        return out
+    raise FileNotFoundError(
+        f"No DB artifact at {file_form} or {p}/ (tried single-file and sharded forms)."
+    )

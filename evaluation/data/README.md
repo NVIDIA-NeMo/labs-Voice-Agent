@@ -38,10 +38,17 @@ that scenarios from different upstream libraries don't collide.
   not a commit SHA — see `nemo_experiments/add_tau2_domains_plan.md` §1 + §7 item 8).
 - **License**: MIT (Sierra Research, 2025)
 - **Contents** (verbatim copy, no local modifications):
-  - `tau2_airline/db.json` (~7 MB) — the full shared airline DB
-    (`flights`, `users`, `reservations`, etc.). Used as the seeded state for
-    every airline scenario; mutations land in a per-scenario deep copy.
-    Source: `data/tau2/domains/airline/db.json`.
+  - `tau2_airline/db/` (sharded, ~4.7 MB total) — the full shared airline DB
+    split into one file per top-level table (`flights.json`, `users.json`,
+    `reservations.json`). The single upstream `db.json` is ~6.8 MB which
+    exceeds the GitLab mirror's 5 MB per-file cap; the sharded layout
+    reassembles into a byte-identical in-memory dict via
+    `nemo_voice_agent.evaluation.load_db_artifact`, so DB hashes and gold
+    replays are unchanged. Re-shard with
+    `python scripts/prepare_tau2_data/shard_db.py <path/to/db.json>` after
+    a fresh upstream pull. Used as the seeded state for every airline
+    scenario; mutations land in a per-scenario deep copy. Source:
+    `data/tau2/domains/airline/db.json`.
   - `tau2_airline/tasks.json` (50 tasks) — task definitions
     (`description`, `user_scenario`, `initial_state`, `evaluation_criteria`,
     `annotations`). Used to derive expected_scenario_db + reference_answer

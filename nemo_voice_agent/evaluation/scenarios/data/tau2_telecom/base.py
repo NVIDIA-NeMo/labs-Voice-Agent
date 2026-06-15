@@ -45,11 +45,10 @@ derives from the upstream task JSON.
 # pylint: disable=line-too-long
 # flake8: noqa: E501
 
-import json
 from functools import cached_property
 from typing import Any, ClassVar, Dict, List, Optional
 
-from nemo_voice_agent.evaluation import get_eval_data_root
+from nemo_voice_agent.evaluation import get_eval_data_root, load_db_artifact
 from nemo_voice_agent.evaluation.scenarios.classes import Actions, Resources, SuccessSignal
 from nemo_voice_agent.evaluation.scenarios.data.tau2_common import (
     Tau2BaseScenario,
@@ -264,7 +263,7 @@ class Tau2TelecomBaseScenario(Tau2BaseScenario):
         ``setup_shared_state`` deepcopies this when seeding user-side
         state so per-scenario mutations don't leak.
         """
-        return json.loads((get_eval_data_root() / self.domain / "user_db.json").read_text())
+        return load_db_artifact(get_eval_data_root() / self.domain / "user_db")
 
     # -----------------------------------------------------------------------
     # db_state_assertions / initialization_actions — translate upstream shape

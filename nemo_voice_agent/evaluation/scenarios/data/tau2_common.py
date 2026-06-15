@@ -50,7 +50,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
-from nemo_voice_agent.evaluation import get_eval_data_root
+from nemo_voice_agent.evaluation import get_eval_data_root, load_db_artifact
 from nemo_voice_agent.evaluation.scenarios import END_CONVERSATION_GUIDELINE, EXECUTION_HONESTY_GUIDELINE
 from nemo_voice_agent.evaluation.scenarios.classes import (
     Actions,
@@ -238,7 +238,7 @@ class Tau2BaseScenario(Scenario):
         Returns the raw parsed dict. ``setup_shared_state`` deep-copies this on
         every scenario instantiation so per-scenario mutations don't leak.
         """
-        return json.loads((get_eval_data_root() / self.domain / "db.json").read_text())
+        return load_db_artifact(get_eval_data_root() / self.domain / "db")
 
     # ---- gold-env replay (single source of truth for expected_db + reference_answer) ----
 

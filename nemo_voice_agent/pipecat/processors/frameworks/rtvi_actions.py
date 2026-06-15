@@ -540,17 +540,19 @@ def create_apply_initialization_action(
             #    than a path), skip the load. Missing files raise loudly.
             if "db_path" in shared_state and "db" not in shared_state:
                 # Lazy import to avoid coupling rtvi_actions to evaluation/.
-                from nemo_voice_agent.evaluation import get_eval_data_root
+                from nemo_voice_agent.evaluation import get_eval_data_root, load_db_artifact
 
                 db_path = shared_state.pop("db_path")
                 full_path = get_eval_data_root() / db_path
-                if not full_path.exists():
+                try:
+                    shared_state["db"] = load_db_artifact(full_path)
+                except FileNotFoundError as exc:
                     raise FileNotFoundError(
-                        f"Scenario DB not found at {full_path} (from db_path={db_path!r}). "
-                        f"Check EVAL_DATA_ROOT (currently resolves to {get_eval_data_root()})."
-                    )
-                shared_state["db"] = json.loads(full_path.read_text())
-                logger.info(f"Loaded scenario DB from {full_path} into shared_state['db']")
+                        f"Scenario DB not found for db_path={db_path!r}. "
+                        f"Check EVAL_DATA_ROOT (currently resolves to {get_eval_data_root()}). "
+                        f"Underlying error: {exc}"
+                    ) from exc
+                logger.info(f"Loaded scenario DB for db_path={db_path!r} into shared_state['db']")
             elif "db_path" in shared_state:
                 # ``db`` already present — drop the now-redundant path so
                 # subsequent calls don't keep trying to resolve it.
