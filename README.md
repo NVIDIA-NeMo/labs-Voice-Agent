@@ -32,7 +32,7 @@ As of now, we only support English input and output, but more languages will be 
 - Speaker diarization up to 4 speakers in different user turns.
 - WebSocket server for easy deployment.
 - Tool calling for LLMs to use external tools and adjust its own behavior.
-- Voice-agent evaluation harness with deterministic + LLM-judged scoring, and 442 scenarios across 4 primary benchmark domains (eva_airline, tau2_airline, tau2_retail, tau2_telecom). See [📊 Evaluation](#-evaluation).
+- Voice-agent evaluation harness with deterministic + LLM-judged scoring, and 328 scenarios across 4 primary benchmark domains (eva_airline, tau2_airline, tau2_retail, tau2_telecom). See [📊 Evaluation](#-evaluation).
 
 
 ## 💡 Upcoming Next
@@ -41,10 +41,10 @@ As of now, we only support English input and output, but more languages will be 
 
 
 ## 📅 Latest Updates
-- 2026-06-13: Voice-agent evaluation harness shipped — three primary benchmark domains ported (tau2-bench airline 50 / retail 114 / telecom 228 dual-side), plus eva_airline (50) from ServiceNow/eva. Per-scenario `success_signals` scoring, resumable runs via `--resume`, retrospective `analysis_report.md` generation. See [📊 Evaluation](#-evaluation).
-- 2026-05-15: Added support for [Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4).
+- 2026-06-13: Voice-agent evaluation harness shipped — three primary benchmark domains ported (tau2-bench airline 50 / retail 114 / telecom 114 dual-side), plus eva_airline (50) from ServiceNow/eva. Per-scenario `success_signals` scoring, resumable runs via `--resume`, retrospective `analysis_report.md` generation. See [📊 Evaluation](#-evaluation).
+- 2026-05-15: Added support for [Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4). See  [🤖 Multi-modal LLMs](#-multi-modal-llms).
 - 2026-01-26: Added support for [NVIDIA-Nemotron-3-Nano-30B-A3B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16) LLM model, and support for [magpie_tts_multilingual_357m](https://huggingface.co/nvidia/magpie_tts_multilingual_357m) TTS model.
-- 2025-12-31: Added examples for [tool calling](#tool-calling), such as changing the speaking speed, switching between male/female voices and British/American accents, and getting the current weather of a city. Diarization model is updated to [nvidia/diar_streaming_sortformer_4spk-v2.1](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1) with improved performance.
+- 2025-12-31: Added examples for [tool calling](#tool-calling), such as changing the speaking speed, switching between male/female voices and British/American accents (with [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M)), and getting the current weather of a city (with `python_weather`). Diarization model is updated to [nvidia/diar_streaming_sortformer_4spk-v2.1](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1) with improved performance.
 - 2025-11-14: Added support for joint ASR and EOU detection with [Parakeet-realtime-eou-120m](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1) model.
 - 2025-10-10: Added support for [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) TTS model.
 - 2025-10-03: Add support for serving LLM with vLLM and auto-switch between vLLM and HuggingFace, add [nvidia/NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2) as default LLM.
@@ -296,14 +296,14 @@ Sometimes, after answering a question related to the tools, the LLM might refuse
 
 The repo ships a full evaluation harness for voice agents under [`evaluation/`](evaluation/). It runs your agent against a **simulated user** (a second voice agent that role-plays the customer), routes audio between the two bots over WebSocket, and scores each scenario along up to six orthogonal signals — action-list match, DB-state hash match, per-predicate DB-state assertions, LLM-judged NL claims, overall LLM judge score, and clean-exit discipline — combined into a per-scenario `is_successful` composite via a scenario-declared `success_signals` whitelist.
 
-**Benchmark coverage** — 442 scenarios across four primary domains:
+**Benchmark coverage** — 328 scenarios across four primary domains:
 
 | Domain | Scenarios | Source |
 |---|---|---|
 | `eva_airline` | 50 | Airline customer service flows ported from [ServiceNow/eva](https://github.com/ServiceNow/eva/tree/0.1.3) (MIT). |
 | `tau2_airline` | 50 | Airline reservation flows from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0) (MIT). |
 | `tau2_retail` | 114 | Online retail customer service from the same tau2-bench source. |
-| `tau2_telecom` / `_workflow` | 228 (114 paired across two policy variants) | Telecom tech support — first **dual-side** domain with cross-side state sync between user-sim and agent. |
+| `tau2_telecom` | 114 | Telecom tech support — first **dual-side** domain with cross-side state sync between user-sim and agent. The companion `tau2_telecom_workflow` registration pairs each task with an alternate policy variant for A/B comparison (not counted in the totals above). |
 
 Plus in-repo smoke sets (`restaurant`, `customer_service`, `qa`, `waitlist`) and legacy scenarios for backward compatibility.
 
@@ -361,7 +361,7 @@ For details of available NVIDIA NIM services, please refer to:
 
 - This example uses the [Pipecat](https://github.com/pipecat-ai/pipecat) orchestrator framework.
 - The `eva_airline` evaluation domain (50 airline customer-service scenarios) is adapted from [ServiceNow/eva](https://github.com/ServiceNow/eva) (MIT-licensed, version `0.1.3`). Per-scenario fixtures and tool function bodies carry inline `# Adapted from ...` attribution; see [`evaluation/data/README.md`](evaluation/data/README.md) for the full source/license inventory.
-- The `tau2_airline`, `tau2_retail`, and `tau2_telecom` evaluation domains (392 scenarios total) are ported from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) (MIT-licensed) at the `voice-user-sim-v1.0` branch (commit `17e07b1`). Upstream tasks, DBs, and policies are imported via the scripts under [`scripts/prepare_tau2_data/`](scripts/prepare_tau2_data/); generated scenario classes carry inline attribution headers.
+- The `tau2_airline`, `tau2_retail`, and `tau2_telecom` evaluation domains (278 scenarios total) are ported from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) (MIT-licensed) at the `voice-user-sim-v1.0` branch (commit `17e07b1`). Upstream tasks, DBs, and policies are imported via the scripts under [`scripts/prepare_tau2_data/`](scripts/prepare_tau2_data/); generated scenario classes carry inline attribution headers. The companion `tau2_telecom_workflow` registration pairs each telecom task with an alternate policy variant for A/B comparison; it shares the underlying 114 tasks with `tau2_telecom` and is not counted separately.
 
 
 
