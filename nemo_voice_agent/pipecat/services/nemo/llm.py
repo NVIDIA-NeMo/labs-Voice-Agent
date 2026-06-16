@@ -37,15 +37,16 @@ from pipecat.frames.frames import (
     LLMTextFrame,
 )
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.services.nvidia.llm import NvidiaLLMService
 from pipecat.services.openai.llm import OpenAILLMService
 from transformers import AsyncTextIteratorStreamer, AutoModelForCausalLM, AutoTokenizer
 from vllm.config import ModelConfig as vllmModelConfig
 
+from nemo_voice_agent.pipecat.services.nvidia_llm_traced import NvidiaLLMService
+
 DEFAULT_GENERATION_KWARGS = {
     "max_new_tokens": 256,
     "temperature": 0.7,
-    "top_p": 0.9,
+    "top_p": 0.95,
     "do_sample": True,
 }
 
@@ -53,18 +54,12 @@ DEFAULT_GENERATION_KWARGS = {
 class LLMUtilsMixin:
     """Utils for local LLM services."""
 
-    def _maybe_add_user_message(
-        self, messages: List[ChatCompletionMessageParam]
-    ) -> List[ChatCompletionMessageParam]:
+    def _maybe_add_user_message(self, messages: List[ChatCompletionMessageParam]) -> List[ChatCompletionMessageParam]:
         """
         Some LLMs like "nvidia/Llama-3.1-Nemotron-Nano-8B-v1" requires a user turn after the system prompt,
         this function is used to add a dummy user turn if the system prompt is followed by an assistant turn.
         """
-        if (
-            len(messages) > 1
-            and messages[0]["role"] == "system"
-            and messages[1]["role"] == "assistant"
-        ):
+        if len(messages) > 1 and messages[0]["role"] == "system" and messages[1]["role"] == "assistant":
             message = {"role": "user", "content": "Hi"}
             messages.insert(1, message)
         elif len(messages) == 1 and messages[0]["role"] == "system":
@@ -127,14 +122,10 @@ class HuggingFaceLLMLocalService(LLMUtilsMixin):
             model, device_map=device, dtype=dtype, trust_remote_code=True
         )  # type: AutoModelForCausalLM
 
-        self.generation_kwargs = (
-            generation_kwargs if generation_kwargs else DEFAULT_GENERATION_KWARGS
-        )
+        self.generation_kwargs = generation_kwargs if generation_kwargs else DEFAULT_GENERATION_KWARGS
         logger.debug(f"LLM generation kwargs: {self.generation_kwargs}")
 
-        self.apply_chat_template_kwargs = (
-            apply_chat_template_kwargs if apply_chat_template_kwargs else {}
-        )
+        self.apply_chat_template_kwargs = apply_chat_template_kwargs if apply_chat_template_kwargs else {}
         if "tokenize" in self.apply_chat_template_kwargs:
             if self.apply_chat_template_kwargs["tokenize"] is not False:
                 logger.warning(
@@ -143,21 +134,15 @@ class HuggingFaceLLMLocalService(LLMUtilsMixin):
                 )
             self.apply_chat_template_kwargs.pop("tokenize")
 
-        logger.debug(
-            f"LLM apply_chat_template kwargs: {self.apply_chat_template_kwargs}"
-        )
+        logger.debug(f"LLM apply_chat_template kwargs: {self.apply_chat_template_kwargs}")
 
     def _apply_chat_template(self, messages: List[ChatCompletionMessageParam]) -> str:
         """
         Apply the chat template to the messages.
         """
-        return self.tokenizer.apply_chat_template(
-            messages, tokenize=False, **self.apply_chat_template_kwargs
-        )
+        return self.tokenizer.apply_chat_template(messages, tokenize=False, **self.apply_chat_template_kwargs)
 
-    def _get_prompt_from_messages(
-        self, messages: List[ChatCompletionMessageParam]
-    ) -> str:
+    def _get_prompt_from_messages(self, messages: List[ChatCompletionMessageParam]) -> str:
         """
         Get the formatted prompt from the conversation history messages.
         This function also tries to fix the messages if the LLM cannot handle consecutive turns of the same role,
@@ -170,31 +155,19 @@ class HuggingFaceLLMLocalService(LLMUtilsMixin):
             logger.warning(f"Got TemplateError: {e}.")
 
         logger.debug(f"Input LLM messages: {messages}")
-        if (
-            len(messages) > 1
-            and messages[0]["role"] == "system"
-            and messages[1]["role"] == "assistant"
-        ):
-            logger.warning(
-                "Trying to fix by adding dummy user message after system prompt..."
-            )
+        if len(messages) > 1 and messages[0]["role"] == "system" and messages[1]["role"] == "assistant":
+            logger.warning("Trying to fix by adding dummy user message after system prompt...")
             try:
                 messages = self._maybe_add_user_message(messages)
-                logger.debug(
-                    f"LLM messages after adding dummy user message: {messages}"
-                )
+                logger.debug(f"LLM messages after adding dummy user message: {messages}")
                 prompt = self._apply_chat_template(messages)
                 return prompt
             except TemplateError as e:
-                logger.warning(
-                    f"Got TemplateError: {e}. Trying to fix by merging consecutive turns if possible."
-                )
+                logger.warning(f"Got TemplateError: {e}. Trying to fix by merging consecutive turns if possible.")
 
         try:
             new_messages = self._maybe_merge_consecutive_user_turns(messages)
-            logger.debug(
-                f"LLM messages after merging consecutive user turns: {new_messages}"
-            )
+            logger.debug(f"LLM messages after merging consecutive user turns: {new_messages}")
             prompt = self._apply_chat_template(new_messages)
             # Update the messages in place if successful
             messages.clear()
@@ -215,14 +188,10 @@ class HuggingFaceLLMLocalService(LLMUtilsMixin):
 
         logger.debug(f"LLM prompt: {prompt}")
 
-        inputs = self.tokenizer(
-            prompt, add_special_tokens=False, return_tensors="pt"
-        ).to(self.device)
+        inputs = self.tokenizer(prompt, add_special_tokens=False, return_tensors="pt").to(self.device)
 
         # Generate with streaming
-        streamer = AsyncTextIteratorStreamer(
-            self.tokenizer, skip_prompt=True, skip_special_tokens=True
-        )
+        streamer = AsyncTextIteratorStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
         generation_kwargs = {
             **inputs,
             "streamer": streamer,
@@ -241,9 +210,7 @@ class HuggingFaceLLMLocalService(LLMUtilsMixin):
             # logger.debug(f"Streamer yielded text: {text}")
             chunk = ChatCompletionChunk(
                 id="hf-" + str(uuid.uuid4()),
-                choices=[
-                    {"delta": {"content": text}, "finish_reason": None, "index": 0}
-                ],
+                choices=[{"delta": {"content": text}, "finish_reason": None, "index": 0}],
                 created=int(time.time()),
                 model=self.model.config._name_or_path,
                 object="chat.completion.chunk",
@@ -271,14 +238,8 @@ class HuggingFaceLLMService(OpenAILLMService):
         self._device = device
         self._dtype = dtype
         self._reasoning_budget = reasoning_budget
-        self._generation_kwargs = (
-            generation_kwargs
-            if generation_kwargs is not None
-            else DEFAULT_GENERATION_KWARGS
-        )
-        self._apply_chat_template_kwargs = (
-            apply_chat_template_kwargs if apply_chat_template_kwargs is not None else {}
-        )
+        self._generation_kwargs = generation_kwargs if generation_kwargs is not None else DEFAULT_GENERATION_KWARGS
+        self._apply_chat_template_kwargs = apply_chat_template_kwargs if apply_chat_template_kwargs is not None else {}
         super().__init__(model=model, **kwargs)
 
     def create_client(self, api_key=None, base_url=None, **kwargs):
@@ -430,9 +391,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
                                 requested_port = param_port
                         break
                     except ValueError:
-                        logger.warning(
-                            f"Invalid port number: {params_list[i + 1]}, using default 8000"
-                        )
+                        logger.warning(f"Invalid port number: {params_list[i + 1]}, using default 8000")
 
         if requested_port is None:
             # try to use default port
@@ -447,9 +406,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
                         return port
                 except OSError:
                     continue
-            raise RuntimeError(
-                f"Could not find an available port starting from {start_port}"
-            )
+            raise RuntimeError(f"Could not find an available port starting from {start_port}")
 
         def get_pid_on_port(port: int) -> Optional[int]:
             for conn in psutil.net_connections(kind="inet"):
@@ -483,9 +440,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         if is_running:
             if served_model == model:
                 final_base_url = f"http://localhost:{requested_port}/v1"
-                logger.info(
-                    f"vLLM server is already running at {final_base_url} with the correct model: {model}"
-                )
+                logger.info(f"vLLM server is already running at {final_base_url} with the correct model: {model}")
                 return final_base_url
             else:
                 logger.warning(
@@ -503,9 +458,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         # Check if there's already a vLLM process running on the same port and model
         for proc in psutil.process_iter(["pid", "name", "cmdline"]):
             try:
-                if proc.info["cmdline"] and any(
-                    "vllm" in arg and "serve" in arg for arg in proc.info["cmdline"]
-                ):
+                if proc.info["cmdline"] and any("vllm" in arg and "serve" in arg for arg in proc.info["cmdline"]):
                     # Check if this process is using the same port and model
                     cmdline_str = " ".join(proc.info["cmdline"])
                     if f"--port {port}" in cmdline_str:
@@ -568,9 +521,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
             cmd_parts.extend(["--port", str(port)])
 
         logger.info(f"Starting vLLM server with command: {' '.join(cmd_parts)}")
-        logger.warning(
-            "It will take a while to download the model if it's not already downloaded."
-        )
+        logger.warning("It will take a while to download the model if it's not already downloaded.")
         # Set up environment variables for device configuration
         env = os.environ.copy()
         if self._device and self._device != "cpu":
@@ -598,9 +549,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
                 stderr=subprocess.PIPE,
                 text=True,
                 env=env,
-                preexec_fn=(
-                    os.setsid if os.name != "nt" else None
-                ),  # Create new process group
+                preexec_fn=(os.setsid if os.name != "nt" else None),  # Create new process group
             )
 
             # Store the process for potential cleanup later
@@ -615,9 +564,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
             while waited_time < max_wait_time:
                 is_running, served_model = check_server_model(port)
                 if is_running and served_model == model:
-                    logger.info(
-                        f"vLLM server started successfully at {final_base_url} serving model: {model}"
-                    )
+                    logger.info(f"vLLM server started successfully at {final_base_url} serving model: {model}")
                     return final_base_url
                 elif is_running and served_model != model:
                     logger.warning(
@@ -629,25 +576,17 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
                 if process.poll() is not None:
                     # Process has terminated
                     stdout, stderr = process.communicate()
-                    logger.error(
-                        f"vLLM server process terminated unexpectedly. stdout: {stdout}, stderr: {stderr}"
-                    )
+                    logger.error(f"vLLM server process terminated unexpectedly. stdout: {stdout}, stderr: {stderr}")
                     raise RuntimeError(f"Failed to start vLLM server: {stderr}")
 
                 time.sleep(check_interval)
                 waited_time += check_interval
-                logger.debug(
-                    f"Still waiting for vLLM server on port {port}... ({waited_time}s)"
-                )
+                logger.debug(f"Still waiting for vLLM server on port {port}... ({waited_time}s)")
 
             # If we get here, server didn't start in time
-            logger.error(
-                f"vLLM server failed to start within {max_wait_time} seconds on port {port}"
-            )
+            logger.error(f"vLLM server failed to start within {max_wait_time} seconds on port {port}")
             process.terminate()
-            raise RuntimeError(
-                f"vLLM server failed to start within {max_wait_time} seconds on port {port}"
-            )
+            raise RuntimeError(f"vLLM server failed to start within {max_wait_time} seconds on port {port}")
 
         except FileNotFoundError:
             logger.error("vLLM not found. Please install vLLM: pip install vllm")
@@ -752,9 +691,7 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
         try:
             _ = vllmModelConfig(model_name, trust_remote_code=True)
             backend = "vllm"
-            logger.info(
-                f"Auto-detected vLLM as the best backend for model {model_name}"
-            )
+            logger.info(f"Auto-detected vLLM as the best backend for model {model_name}")
         except Exception as e:
             logger.info(
                 f"The LLM doesn't seem to be supported by vLLM yet (error: {e}), using HuggingFace as the backend"
@@ -769,14 +706,10 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
         llm_dtype = config.dtype
         llm_generation_kwargs = config.get("generation_kwargs", {})
         if llm_generation_kwargs is not None:
-            llm_generation_kwargs = OmegaConf.to_container(
-                llm_generation_kwargs, resolve=True
-            )
+            llm_generation_kwargs = OmegaConf.to_container(llm_generation_kwargs, resolve=True)
         llm_apply_chat_template_kwargs = config.get("apply_chat_template_kwargs", None)
         if llm_apply_chat_template_kwargs is not None:
-            llm_apply_chat_template_kwargs = OmegaConf.to_container(
-                llm_apply_chat_template_kwargs, resolve=True
-            )
+            llm_apply_chat_template_kwargs = OmegaConf.to_container(llm_apply_chat_template_kwargs, resolve=True)
         llm_reasoning_budget = config.get("reasoning_budget", 0)
         return HuggingFaceLLMService(
             model=llm_model,
@@ -794,18 +727,14 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
         llm_project = config.get("project", "None")
         llm_default_headers = config.get("default_headers", None)
         if llm_default_headers is not None:
-            llm_default_headers = OmegaConf.to_container(
-                llm_default_headers, resolve=True
-            )
+            llm_default_headers = OmegaConf.to_container(llm_default_headers, resolve=True)
         llm_params = config.get("vllm_generation_params", None)
         llm_dtype = config.dtype
         vllm_server_params = config.get("vllm_server_params", None)
         if vllm_server_params is not None:
             if "dtype" not in vllm_server_params:
                 vllm_server_params = f"--dtype {llm_dtype} {vllm_server_params}"
-                logger.info(
-                    f"Adding dtype {llm_dtype} to vllm_server_params: {vllm_server_params}"
-                )
+                logger.info(f"Adding dtype {llm_dtype} to vllm_server_params: {vllm_server_params}")
         if llm_params is not None:
             # cast into OpenAILLMService.InputParams object
             llm_params = OmegaConf.to_container(llm_params, resolve=True)
@@ -848,13 +777,9 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
             None,
             "",
         ]:
-            raise ValueError(
-                "NVIDIA_API_KEY is required for NVIDIA LLM at https://integrate.api.nvidia.com/v1"
-            )
+            raise ValueError("NVIDIA_API_KEY is required for NVIDIA LLM at https://integrate.api.nvidia.com/v1")
         if llm_default_headers is not None:
-            llm_default_headers = OmegaConf.to_container(
-                llm_default_headers, resolve=True
-            )
+            llm_default_headers = OmegaConf.to_container(llm_default_headers, resolve=True)
         if llm_params is not None:
             # cast into OpenAILLMService.InputParams object
             llm_params = OmegaConf.to_container(llm_params, resolve=True)

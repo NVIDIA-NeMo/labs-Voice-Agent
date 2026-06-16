@@ -221,7 +221,8 @@ async def run_dynamic_evaluation(
     if judge is None:
         judge_dependent_signals = {SuccessSignal.JUDGE_PASSED, SuccessSignal.NL_ASSERTION}
         needs_judge = [
-            s for s in scenarios
+            s
+            for s in scenarios
             if any(SuccessSignal(sig) in judge_dependent_signals for sig in (s.success_signals or ()))
         ]
         if needs_judge:
@@ -650,9 +651,7 @@ async def run_dynamic_evaluation(
         if "db_state_match" in metrics:
             logger.info(f"    DB-state match: {metrics['db_state_match']}")
         if "db_state_assertion_pass_rate" in metrics:
-            logger.info(
-                f"    DB-state-assertion pass rate: {metrics['db_state_assertion_pass_rate']*100:.2f}%"
-            )
+            logger.info(f"    DB-state-assertion pass rate: {metrics['db_state_assertion_pass_rate']*100:.2f}%")
         if "nl_assertion_pass_rate" in metrics:
             logger.info(f"    NL-assertion pass rate: {metrics['nl_assertion_pass_rate']*100:.2f}%")
         if "judge_score" in metrics:
@@ -693,31 +692,21 @@ async def run_dynamic_evaluation(
     success_rate = sum(success_results) / len(success_results) if len(success_results) > 0 else 0
     # Per-signal rates so the headline can be broken down. Denominators
     # are per-signal: only scenarios that opted into each signal count.
-    action_match_rate = (
-        sum(action_match_results) / len(action_match_results) if action_match_results else None
-    )
-    judge_score_mean = (
-        sum(judge_score_results) / len(judge_score_results) if judge_score_results else None
-    )
-    judge_pass_rate = (
-        sum(judge_pass_results) / len(judge_pass_results) if judge_pass_results else None
-    )
+    action_match_rate = sum(action_match_results) / len(action_match_results) if action_match_results else None
+    judge_score_mean = sum(judge_score_results) / len(judge_score_results) if judge_score_results else None
+    judge_pass_rate = sum(judge_pass_results) / len(judge_pass_results) if judge_pass_results else None
     # Denominator is "scenarios with expected_scenario_db", not all scenarios.
     # None when no scenario in the run opted into DB-state scoring.
     db_state_success_rate = sum(db_state_results) / len(db_state_results) if db_state_results else None
     # Denominator is "assertions emitted in this run", not scenarios. None when no
     # scenario carried nl_assertions (eva / tau2_airline / tau2_telecom only have
     # action/DB-state signal).
-    nl_assertion_success_rate = (
-        sum(nl_assertion_results) / len(nl_assertion_results) if nl_assertion_results else None
-    )
+    nl_assertion_success_rate = sum(nl_assertion_results) / len(nl_assertion_results) if nl_assertion_results else None
     # Denominator is "db_state_assertions emitted in this run", not scenarios.
     # None when no scenario carried db_state_assertions (currently only
     # tau2-telecom does).
     db_state_assertion_success_rate = (
-        sum(db_state_assertion_results) / len(db_state_assertion_results)
-        if db_state_assertion_results
-        else None
+        sum(db_state_assertion_results) / len(db_state_assertion_results) if db_state_assertion_results else None
     )
     all_latencies = []
     for result in all_results:
@@ -736,10 +725,10 @@ async def run_dynamic_evaluation(
         f.write("=" * 80 + "\n\n")
 
         total_turns = sum(r["total_turns"] for r in all_results)
-        total_duration = sum(r["scenario_duration"] for r in all_results)
+        total_duration_mins = sum(r["scenario_duration"] for r in all_results) / 60
 
         f.write(f"Total Scenarios: {len(scenarios)}\n")
-        f.write(f"Total Duration: {total_duration:.1f}s\n")
+        f.write(f"Total Duration: {total_duration_mins:.1f}mins\n")
         f.write(f"Total Turns: {total_turns}\n\n")
 
         f.write("Per-Scenario Results:\n")
@@ -752,10 +741,7 @@ async def run_dynamic_evaluation(
             if "db_state_match" in result:
                 f.write(f"    DB-state match: {result['db_state_match']}\n")
             if "db_state_assertion_pass_rate" in result:
-                f.write(
-                    f"    DB-state-assertion pass rate: "
-                    f"{result['db_state_assertion_pass_rate']*100:.2f}%\n"
-                )
+                f.write(f"    DB-state-assertion pass rate: " f"{result['db_state_assertion_pass_rate']*100:.2f}%\n")
             if "nl_assertion_pass_rate" in result:
                 f.write(f"    NL-assertion pass rate: {result['nl_assertion_pass_rate']*100:.2f}%\n")
             if "judge_score" in result:
@@ -833,7 +819,7 @@ async def run_dynamic_evaluation(
         if clean_exit_results:
             clean_exit_rate = sum(clean_exit_results) / len(clean_exit_results)
             f.write(
-                f"  Clean exit (EndConversationTool called): {clean_exit_rate*100:6.2f}% "
+                f"  Clean exit: {clean_exit_rate*100:6.2f}% "
                 f"({sum(clean_exit_results)}/{len(clean_exit_results)} scenarios)\n"
             )
 
@@ -922,18 +908,17 @@ async def run_dynamic_evaluation(
             f"({sum(nl_assertion_results)}/{len(nl_assertion_results)} assertions)"
         )
     if judge_score_mean is not None:
-        logger.info(
-            f"  Judge score mean: {judge_score_mean:.3f} "
-            f"(across {len(judge_score_results)} scenarios)"
-        )
+        logger.info(f"  Judge score mean: {judge_score_mean:.3f} " f"(across {len(judge_score_results)} scenarios)")
     if judge_pass_rate is not None:
         logger.info(
             f"  Judge passed: {judge_pass_rate*100:.2f}% "
             f"({sum(judge_pass_results)}/{len(judge_pass_results)} scenarios)"
         )
     run_token_total = (
-        run_token_usage["agent"]["prompt"] + run_token_usage["agent"]["completion"]
-        + run_token_usage["user"]["prompt"] + run_token_usage["user"]["completion"]
+        run_token_usage["agent"]["prompt"]
+        + run_token_usage["agent"]["completion"]
+        + run_token_usage["user"]["prompt"]
+        + run_token_usage["user"]["completion"]
     )
     if run_token_total > 0:
         logger.info(
@@ -960,9 +945,7 @@ async def run_dynamic_evaluation(
         for d in sorted(per_domain_db_state_assertion):
             results = per_domain_db_state_assertion[d]
             rate = sum(results) / len(results) if results else 0
-            logger.info(
-                f"  [{d}] DB-State-Assertion: {rate*100:.2f}% ({sum(results)}/{len(results)})"
-            )
+            logger.info(f"  [{d}] DB-State-Assertion: {rate*100:.2f}% ({sum(results)}/{len(results)})")
     logger.info(f"Overall Latency P95: {overall_latency_stats['p95_ms']:.1f}ms")
     logger.info(f"Overall Latency P50: {overall_latency_stats['p50_ms']:.1f}ms")
     logger.info(f"Results saved to: {results_file}")
@@ -971,6 +954,6 @@ async def run_dynamic_evaluation(
     logger.info("\nScenario directories:")
     for result in all_results:
         logger.info(f"  {result['scenario_name']}: {result['scenario_directory']}")
-    logger.info(f"\nTotal: {len(scenarios)} scenarios, {total_turns} turns, {total_duration:.1f}s")
+    logger.info(f"\nTotal: {len(scenarios)} scenarios, {total_turns} turns, {total_duration_mins:.1f}mins")
 
     return all_results

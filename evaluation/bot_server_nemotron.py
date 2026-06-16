@@ -22,12 +22,8 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 from loguru import logger
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-    OTLPSpanExporter as OTLPSpanExporterGRPC,
-)
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-    OTLPSpanExporter as OTLPSpanExporterHTTP,
-)
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter as OTLPSpanExporterGRPC
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLPSpanExporterHTTP
 from pipecat.audio.vad.silero import SileroVADAnalyzer, VADParams
 from pipecat.frames.frames import LLMRunFrame
 from pipecat.observers.loggers.user_bot_latency_log_observer import (
@@ -37,7 +33,6 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIProcessor
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
-from pipecat.services.nvidia.llm import NvidiaLLMService
 from pipecat.services.openai.base_llm import BaseOpenAILLMService
 from pipecat.transports.websocket.server import (
     WebsocketServerParams,
@@ -59,10 +54,10 @@ from nemo_voice_agent.pipecat.processors.frameworks.rtvi import RTVIObserver
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     SharedStateRef,
     TaskRef,
-    create_get_context_history_action,
-    create_get_scenario_summary_action,
     create_apply_initialization_action,
     create_apply_sync_delta_action,
+    create_get_context_history_action,
+    create_get_scenario_summary_action,
     create_reset_context_action,
     create_update_system_prompt_action,
 )
@@ -70,6 +65,7 @@ from nemo_voice_agent.pipecat.processors.nvidia_context_aggregator import (
     NvidiaTTSResponseCacher,
     create_nvidia_context_aggregator,
 )
+from nemo_voice_agent.pipecat.services.nvidia_llm_traced import NvidiaLLMService
 from nemo_voice_agent.pipecat.services.riva_speech import (
     NemotronASRService,
     NemotronTTSService,
@@ -125,12 +121,8 @@ MAX_TOKENS = int(os.getenv("MAX_TOKENS", "2048"))
 
 ASR_SERVER_URL = os.getenv("ASR_SERVER_URL", "grpc.nvcf.nvidia.com:443")
 ASR_LANGUAGE = os.getenv("ASR_LANGUAGE", "en-US")
-ASR_MODEL_NAME = os.getenv(
-    "ASR_MODEL_NAME", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer"
-)
-ASR_CLOUD_FUNCTION_ID = os.getenv(
-    "ASR_CLOUD_FUNCTION_ID", "1598d209-5e27-4d3c-8079-4751568b1081"
-)
+ASR_MODEL_NAME = os.getenv("ASR_MODEL_NAME", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer")
+ASR_CLOUD_FUNCTION_ID = os.getenv("ASR_CLOUD_FUNCTION_ID", "1598d209-5e27-4d3c-8079-4751568b1081")
 
 ENABLE_TTS_TEXT_FILTER = os.getenv("ENABLE_TTS_TEXT_FILTER", "true").lower() == "true"
 TTS_SERVER_URL = os.getenv("TTS_SERVER_URL", "grpc.nvcf.nvidia.com:443")
@@ -141,9 +133,7 @@ ZERO_SHOT_AUDIO_PROMPT = os.getenv("ZERO_SHOT_AUDIO_PROMPT")
 
 SYSTEM_PROMPT_SELECTOR = os.getenv("SYSTEM_PROMPT_SELECTOR")
 
-ENABLE_SPECULATIVE_SPEECH = (
-    os.getenv("ENABLE_SPECULATIVE_SPEECH", "true").lower() == "true"
-)
+ENABLE_SPECULATIVE_SPEECH = os.getenv("ENABLE_SPECULATIVE_SPEECH", "true").lower() == "true"
 CHAT_HISTORY_LIMIT = int(os.getenv("CHAT_HISTORY_LIMIT", -1))
 
 
@@ -347,9 +337,7 @@ async def run_bot_websocket(
         model=TTS_MODEL_NAME,
         language=TTS_LANGUAGE,
         sample_rate=22050,
-        zero_shot_audio_prompt_file=(
-            Path(ZERO_SHOT_AUDIO_PROMPT) if ZERO_SHOT_AUDIO_PROMPT else None
-        ),
+        zero_shot_audio_prompt_file=(Path(ZERO_SHOT_AUDIO_PROMPT) if ZERO_SHOT_AUDIO_PROMPT else None),
         custom_dictionary=ipa_dict,
         text_filters=[RivaTextFilter()] if enable_riva_text_filter else [],
     )
@@ -357,9 +345,7 @@ async def run_bot_websocket(
     def _validated_selector(raw_value: str | None, default: str) -> str:
         selector = (raw_value or "").strip() or default
         if "/" not in selector:
-            raise ValueError(
-                "SYSTEM_PROMPT_SELECTOR must be in '<model>/<prompt>' format"
-            )
+            raise ValueError("SYSTEM_PROMPT_SELECTOR must be in '<model>/<prompt>' format")
         return selector
 
     if ENABLE_MULTILINGUAL:
@@ -372,15 +358,11 @@ async def run_bot_websocket(
         messages = [
             {
                 "role": msg["role"],
-                "content": _inject_prompt_variables(
-                    msg["content"], lang_codes=lang_codes
-                ),
+                "content": _inject_prompt_variables(msg["content"], lang_codes=lang_codes),
             }
             for msg in messages
         ]
-        logger.info(
-            f"Loaded multilingual prompt: {prompt_selector} with languages: {lang_codes}"
-        )
+        logger.info(f"Loaded multilingual prompt: {prompt_selector} with languages: {lang_codes}")
     else:
         prompt_selector = _validated_selector(
             SYSTEM_PROMPT_SELECTOR,
@@ -391,9 +373,7 @@ async def run_bot_websocket(
 
     # Defensive check to ensure the resolved prompt is not empty
     if not messages:
-        raise ValueError(
-            f"Resolved system prompt has no messages for selector: {prompt_selector}"
-        )
+        raise ValueError(f"Resolved system prompt has no messages for selector: {prompt_selector}")
 
     if TALK_FIRST:
         messages.append({"role": "user", "content": "Hello"})
@@ -457,11 +437,7 @@ async def run_bot_websocket(
     resettable = []
     task_ref = TaskRef()
     shared_state_ref = SharedStateRef()
-    rtvi.register_action(
-        create_reset_context_action(
-            task_ref, user_agg, assistant_agg, original_messages, resettable
-        )
-    )
+    rtvi.register_action(create_reset_context_action(task_ref, user_agg, assistant_agg, original_messages, resettable))
     rtvi.register_action(
         create_update_system_prompt_action(
             task_ref,
