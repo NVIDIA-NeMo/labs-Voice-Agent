@@ -132,25 +132,26 @@ If you want to use a different port for client connection, you can modify `examp
 
 Most LLMs from HuggingFace are supported. A few examples are:
 - [nvidia/NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2) (default)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v2.yaml` as the server config.
+    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v2.yaml` in the server config.
     - Tool calling is enabled for this model.
 - [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3.yaml` as the server config. It needs more than 60GB VRAM to host the model, thus the config by default is set to use tensor parallelism of 2. Expect additional 5GB for kv-cache and other components in the voice agent. To better monitor the vllm status, `start_vllm_on_init` is set to `false`, so that you can manually start the vllm server in another terminal via: 
+    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3.yaml` in the server config. It needs more than 60GB VRAM to host the model, thus the config by default is set to use tensor parallelism of 2. Expect additional 5GB for kv-cache and other components in the voice agent. To better monitor the vllm status, `start_vllm_on_init` is set to `false`, so that you can manually start the vllm server in another terminal via: 
     ```bash
         vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
             --trust-remote-code --max-num-seqs 1 --gpu-memory-utilization 0.8 --max-model-len 8192 \
             --tensor-parallel-size 2 --enable-auto-tool-choice --tool-call-parser qwen3_coder --enable-prefix-caching \
-            --reasoning-parser nemotron_v3
+            --reasoning-parser nemotron_v3 \
+            --reasoning-config '{"reasoning_start_str": "<think>", "reasoning_end_str": "\nI have to finalize the answer now.</think>"}'
     ```
-    - If you have a GPU with FP8 support, the VRAM requirement is reduced to about 30GB. You can switch to [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8) by modifying the llm config accordingly.
+    - If you have a GPU with FP8 support, the VRAM requirement is reduced. You can switch to [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8) or [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4) by modifying the LLM config accordingly.
     - Tool calling is enabled for this model.
 - [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/qwen2.5-7B.yaml` as the server config.
+    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/qwen2.5-7B.yaml` in the server config.
 - [Qwen/Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/qwen3-8B.yaml` as the server config.
+    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/qwen3-8B.yaml` in the server config.
     - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/qwen3-8B_think.yaml` if you want to enable thinking mode.
 - [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/llama3.1-8B-instruct.yaml` as the server config.
+    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/llama3.1-8B-instruct.yaml` in the server config.
     - Note that you need to get access to the model first, and specify `export HF_TOKEN="hf_..."` when launching the server.
 - [nvidia/Llama-3.1-Nemotron-Nano-8B-v1](https://huggingface.co/nvidia/Llama-3.1-Nemotron-Nano-8B-v1) 
 - [nvidia/Nemotron-Mini-4B-Instruct](https://huggingface.co/nvidia/Nemotron-Mini-4B-Instruct)
@@ -158,7 +159,7 @@ Most LLMs from HuggingFace are supported. A few examples are:
 
 ### 🤖 Multi-modal LLMs
 - [nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3_omni.yaml` as the server config. To better monitor the vllm status, `start_vllm_on_init` is set to `false`, so that you can manually start the vllm server separately via: 
+    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3_omni.yaml` in the server config. To better monitor the vllm status, `start_vllm_on_init` is set to `false`, so that you can manually start the vllm server separately via: 
     ```bash
         # vllm serve nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16 \
         # vllm serve nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8 \
@@ -226,11 +227,11 @@ Please note that in some circumstances, the diarization model might not work wel
 
 Here are the supported TTS models:
 - [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) is a lightweight TTS model. This model is the default speech generation backend.
-    - Please use `examples/generic_voice_agent/server/server_configs/tts_configs/kokoro_82M.yaml` as the server config.
+    - Please use `examples/generic_voice_agent/server/server_configs/tts_configs/kokoro_82M.yaml` in the server config.
 - [FastPitch-HiFiGAN](https://huggingface.co/nvidia/tts_en_fastpitch) is an NVIDIA-NeMo TTS model. It only supports English output. 
-    - Please use `examples/generic_voice_agent/server/server_configs/tts_configs/nemo_fastpitch-hifigan.yaml` as the server config.
+    - Please use `examples/generic_voice_agent/server/server_configs/tts_configs/nemo_fastpitch-hifigan.yaml` in the server config.
 - [magpie_tts_multilingual_357m](https://huggingface.co/nvidia/magpie_tts_multilingual_357m) is a multilingual TTS model.
-    - Please use `examples/generic_voice_agent/server/server_configs/tts_configs/magpie_tts_multilingual_357m.yaml` as the server config.
+    - Please use `examples/generic_voice_agent/server/server_configs/tts_configs/magpie_tts_multilingual_357m.yaml` in the server config.
 We will support more TTS models in the future.
 
 
