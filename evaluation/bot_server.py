@@ -66,6 +66,8 @@ SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
 WEBSOCKET_PORT = int(os.getenv("WEBSOCKET_PORT", 8765))
 FASTAPI_PORT = int(os.getenv("FASTAPI_PORT", 7860))
 SERVER_CONFIG_PATH = os.getenv("SERVER_CONFIG_PATH", "server_configs/agent.yaml")
+SERVER_PUBLIC_HOST = os.getenv("SERVER_PUBLIC_HOST", "127.0.0.1")
+WEBSOCKET_SCHEME = os.getenv("WEBSOCKET_SCHEME", "ws")
 
 
 async def run_bot_websocket(
@@ -212,7 +214,7 @@ async def run_bot_websocket(
     )
 
 
-app = create_fastapi_app(WEBSOCKET_PORT)
+app = create_fastapi_app(WEBSOCKET_PORT, SERVER_PUBLIC_HOST, WEBSOCKET_SCHEME)
 
 
 async def main():

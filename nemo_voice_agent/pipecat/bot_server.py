@@ -30,7 +30,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import uvicorn
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pipecat.frames.frames import EndTaskFrame, Frame
@@ -39,6 +39,7 @@ from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
 
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import TaskRef
+from nemo_voice_agent.utils.websocket_url import build_websocket_url
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
 from nemo_voice_agent.pipecat.transports.network.websocket_server import (
     WebsocketServerTransport,
@@ -151,7 +152,7 @@ async def run_bot_websocket_server(
         logger.info("Pipeline runner stopped")
 
 
-def create_fastapi_app(websocket_port: int) -> FastAPI:
+def create_fastapi_app(websocket_port: int, public_host: str = "127.0.0.1", ws_scheme: str = "ws") -> FastAPI:
     """FastAPI app with CORS + ``/connect`` + a stub ``/ws`` endpoint.
 
     ``/connect`` returns the ws URL the pipecat client should dial. ``/ws`` is
@@ -182,12 +183,8 @@ def create_fastapi_app(websocket_port: int) -> FastAPI:
             logger.info(f"Exception in run_bot: {e}")
 
     @app.post("/connect")
-    async def bot_connect(request: Request) -> Dict[Any, Any]:
-        logger.info("Received /connect request")
-        server_host = (
-            request.url.hostname or request.headers.get("host", "").split(":")[0]
-        )
-        ws_url = f"ws://{server_host}:{websocket_port}"
+    async def bot_connect() -> Dict[Any, Any]:
+        ws_url = build_websocket_url(public_host, websocket_port, ws_scheme)
         logger.info(f"Returning WebSocket URL: {ws_url}")
         return {"ws_url": ws_url}
 
