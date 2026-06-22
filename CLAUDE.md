@@ -27,38 +27,6 @@ evaluation/                          # run_evaluation.py, bot_server.py, server_
 tests/                               # pytest suites
 ```
 
-## Install & run
-
-```bash
-# One-shot install (apt deps + uv + venv): bash install.sh
-uv sync
-source .venv/bin/activate
-
-# Server (terminal 1)
-# export SERVER_CONFIG_PATH=examples/generic_voice_agent/server/server_configs/default.yaml   # override default
-# export HF_TOKEN=hf_...                          # for gated HF models
-python examples/generic_voice_agent/server/server.py
-
-# Client (terminal 2)
-cd examples/generic_voice_agent/client && npm install && npm run dev   # vite on http://localhost:5173
-```
-
-`pip install nemo_voice_agent` is enough to use the library from elsewhere — no `PYTHONPATH` gymnastics needed. The server/client/eval scripts still expect a repo checkout because they read YAML configs and fixtures from repo-relative paths.
-
-The server binds two ports: a **WebSocket** for the audio pipeline (`WEBSOCKET_PORT`, default `8765`) and a **FastAPI** control plane (`FASTAPI_PORT`, default `7860`). Bind addresses come from `SERVER_HOST` (default `0.0.0.0`).
-
-Browsers block mic access on plain HTTP — Chrome users must allow-list `http://<host>:5173/` via `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
-
-## Tests
-
-```bash
-pytest tests/ -v                                          # all
-pytest tests/test_config_manager.py -v                    # config loader
-pytest tests/test_reasoning_budget_logits_processor.py    # vLLM reasoning-budget processor (needs CUDA + tokenizer download)
-```
-
-Tests import the installed `nemo_voice_agent` package, so a fresh `uv sync` is enough to run them.
-
 ## Server architecture
 
 `examples/generic_voice_agent/server/server.py:run_bot_websocket()` is the whole show — it loads a YAML config and assembles a Pipecat pipeline:
@@ -77,18 +45,7 @@ Key cross-cutting concepts:
 - **Backchannels.** `turn_taking.backchannel_phrases_path` (or an inline list) prevents short utterances like "uh-huh" from interrupting the bot. Set to `null` to make any speech interrupt.
 - **Single-connection server.** A new WebSocket connection disconnects the previous one (LLM context is preserved). Don't add multi-tenant logic here; this example is single-user by design.
 
-## Config layout (`examples/generic_voice_agent/server/server_configs/`)
-
-```
-default.yaml                          # top-level: server/transport/vad/stt/diar/turn_taking/llm/tts
-llm_configs/<model>.yaml              # per-model llm sub-config (HF + vLLM params)
-llm_configs/<model>_think.yaml        # reasoning-mode variant of the same model
-tts_configs/<model>.yaml              # kokoro / fastpitch-hifigan / magpie
-stt_configs/nemo_cache_aware_streaming.yaml
-NVIDIA_NeMo_models.yaml               # extra NeMo-hosted model defs
-```
-
-`examples/generic_voice_agent/server/example_prompts/*.txt` holds reusable system prompts referenceable from `llm.system_prompt` (path-or-literal).
+`examples/generic_voice_agent/server/server_configs/` has `default.yaml` (top-level) plus `llm_configs/`, `tts_configs/`, `stt_configs/` sub-configs and `NVIDIA_NeMo_models.yaml`. `example_prompts/*.txt` holds reusable system prompts referenceable from `llm.system_prompt` (path-or-literal).
 
 ## Tool calling
 
@@ -97,14 +54,6 @@ Two extension points (only works with `llm.type: vllm` + a model whose vLLM tool
 1. **Direct functions** — write an async function and pass it to `register_direct_tools_to_llm(...)` in `server.py`. Example: `tool_get_city_weather` from `nemo_voice_agent/utils/tool_calling/basic_tools.py`.
 2. **Component-owned tools** — mix `ToolCallingMixin` into a service (STT/TTS/Diar/LLM/TurnTaking) and implement `setup_tool_calling()`. The mixin lives at `nemo_voice_agent/utils/tool_calling/mixins.py`; `KokoroTTSService` in `nemo_voice_agent/pipecat/services/nemo/tts.py` is the canonical example (e.g. "speak faster", "switch to British accent").
 
-## vLLM plugins (tool / reasoning parsers, logits processors)
-
-The tool-parser plugins, reasoning-parser plugins, and the reasoning-budget logits processor live inside the installable package at `nemo_voice_agent/vllm/v1/`:
-
-- `nemo_voice_agent/vllm/v1/parsers/` — tool-parser + reasoning-parser plugins (`--tool-parser-plugin`, `--reasoning-parser-plugin`).
-- `nemo_voice_agent/vllm/v1/sample/` — reasoning-budget logits processor.
-
-They run **inside the vLLM process**, not the bot server, so logging/imports there have a different runtime than the rest of the codebase. Because they ship with the package, point vLLM at the installed-package path rather than a repo-relative path — resolve at runtime via something like `importlib.util.find_spec("nemo_voice_agent.vllm.v1.parsers").submodule_search_locations[0]`.
 
 ## Evaluation harness (`evaluation/`)
 
@@ -148,40 +97,13 @@ The bridge's `_apply_initialization(scenario, ...)` always calls this on both bo
 
 This action is **the** scenario-state initializer — `update_system_prompt` only handles prompt + tool registration + runtime sentinels; ALL scenario fixture data (`db_path`, custom shared-state keys, init mutations) flows through `apply_initialization`.
 
-### `eva_airline` domain layout
-
-```
-nemo_voice_agent/evaluation/
-├── scenarios/data/eva_airline/      # package, not a single file
-│   ├── __init__.py                  # re-exports EvaAirlineBaseScenario; imports group_Nx
-│   ├── base.py                      # EvaAirlineBaseScenario + 5 hand-authored seeds
-│   │                                # (1.1.2, 2.1.1, 3.1.3, 5.1.1, 7.2.1)
-│   └── group_{1..7}x.py             # auto-scaffolded scenarios per eva sub-flow
-├── tools/eva_airline_tools.py       # 15 ported tools + WriteAirlineTool base
-├── tools/eva_airline_params.py      # Pydantic schemas for tool args
-└── db_hash.py                       # eva-compatible normalize + hash
-```
+### `eva_airline` domain
 
 `EvaAirlineBaseScenario` derives everything from a single class attribute `eva_id` (e.g. `"1.1.2"`) via `cached_property`: `current_date`, `_scenario_db`, `expected_scenario_db`. The dataset metadata is read once per process via `_load_eva_airline_dataset_index()` (cached at module level). Subclasses only declare `name`, `eva_id`, `description`, `user_persona`, `user_task`, `user_actions`.
 
 Voice-readability rule on `EvaAirlineBaseScenario.VOICE_ALPHANUMERIC_RULE`: alphanumerics are spelled **canonical-first**: `EPXYEK (spelled out as E, P, X, Y, E, K)`. Use this constant in both agent and user guidelines.
 
 Fixtures live in `evaluation/data/` at the repo root (resolved by `get_eval_data_root()`, override via `EVAL_DATA_ROOT`). The directory has a `README.md` recording upstream source + license for each domain — append a section when adding a new source. The `get_eval_data_root()` helper is at `nemo_voice_agent/evaluation/__init__.py` and uses `parents[2]` to walk from `nemo_voice_agent/evaluation/__init__.py` to the repo root.
-
-### Scaffolding more eva scenarios
-
-The 5 seed scenarios in `base.py` are hand-authored; the rest are scaffolded from `eva_airline_dataset.jsonl` via the committed generator at `scripts/prepare_eva_data/generate_airline_scaffolds.py`. The 5 seeds are protected via an `ALREADY_PORTED` set inside the script so re-runs never overwrite their curated prose.
-
-```bash
-# All major groups at once → stdout with section markers per group
-python scripts/prepare_eva_data/generate_airline_scaffolds.py > /tmp/all.py
-
-# One major group at a time → append to its group file, hand-review, commit
-python scripts/prepare_eva_data/generate_airline_scaffolds.py --major 4 \
-    >> nemo_voice_agent/evaluation/scenarios/data/eva_airline/group_4x.py
-```
-
-The generator emits one `@register_eval_scenario` class per dataset entry, applies the alphanumeric voice rule, and reads `must_have_criteria` / `negotiation_behavior` / `edge_cases` into guidelines. **The output is a starting point, not final** — hand-review prose and prune negotiation/edge-case bullets before committing. Unlike the tau2 generators (which overwrite group files wholesale), this one streams to stdout because eva scenarios carry curated prose that benefits from per-paste review.
 
 ### Tool registry — per-domain namespaces
 
@@ -207,19 +129,7 @@ Lookup (`get_schema_tool_for_eval(name, domain="default", ...)`): exact match in
 
 **Action record's `name` field** (driven by `_record_action` inside each tool) stays as the upstream method name (`get_user_details`, `book_reservation`, …) — independent of class names. Class names exist for the registry; action names exist for paper-comparable action-list scoring. `TAU2_AIRLINE_TOOL_NAME_TO_CLASS` in `tau2_airline_tools.py` maps between them when needed.
 
-### `tau2_airline` domain layout
-
-```
-nemo_voice_agent/evaluation/
-├── scenarios/data/
-│   ├── tau2_common.py                  # Tau2BaseScenario + _load_tau2_voice_task_index
-│   └── tau2_airline/                   # package
-│       ├── __init__.py
-│       ├── base.py                     # Tau2AirlineBaseScenario
-│       └── group_{0..4}x.py            # 50 auto-scaffolded scenarios (10 each)
-├── tools/tau2_airline_tools.py         # 14 short-named tool ports under _Tau2InvokeMixin
-└── tools/tau2_airline_params.py        # Pydantic mirror of data_model.py + 14 tool-arg schemas
-```
+### `tau2_airline` domain
 
 `Tau2AirlineBaseScenario` derives everything from a single `tau2_id` class attribute. Subclasses only declare `name` and `tau2_id`; `current_date` / `db` / `policy` / `tool_map` / `expected_scenario_db` / `reference_answer` / `user_persona` are all cached_property views on the upstream data.
 
@@ -233,17 +143,7 @@ nemo_voice_agent/evaluation/
 
 DB-key casing in `tau2_airline_tools.py`: reservation IDs and flight numbers are uppercase in `db.json`; user IDs are lowercase. The helper functions `_get_user_dict` / `_get_reservation_dict` / `_get_flight_dict` apply `.lower()` / `.upper()` normalization on the lookup key — voice ASR after letter-by-letter spelling tends to emit case inconsistently.
 
-### `tau2_retail` domain layout
-
-```
-nemo_voice_agent/evaluation/
-├── scenarios/data/tau2_retail/         # package
-│   ├── __init__.py
-│   ├── base.py                         # Tau2RetailBaseScenario
-│   └── group_{0..11}x.py               # 114 auto-scaffolded scenarios (10 each, last group has 4)
-├── tools/tau2_retail_tools.py          # 16 short-named tool ports under _Tau2InvokeMixin
-└── tools/tau2_retail_params.py         # Pydantic mirror of data_model.py + 16 tool-arg schemas
-```
+### `tau2_retail` domain
 
 `Tau2RetailBaseScenario` mirrors the airline base — derives `db` / `policy` / `tool_map` / `expected_scenario_db` / `reference_answer` from `tau2_id` via `Tau2BaseScenario` machinery. Adds **one new property: `nl_assertions`** (cached, read from `evaluation_criteria.nl_assertions`). 40 of 114 retail tasks carry these natural-language claims (e.g. *"Agent should tell the user that there are 10 t-shirt options available."*); 73 are action-only; 1 is nl-only; 1 (task 57) is chitchat with neither signal. Empty/null upstream lists are normalized to `None` so the runner's truthy check correctly skips verdict aggregation.
 
@@ -251,34 +151,16 @@ nemo_voice_agent/evaluation/
 
 DB-key casing in `tau2_retail_tools.py`: order IDs are uppercase with a leading `#` (`#W0000000`), user IDs are lowercase, product/item IDs are case-sensitive integers (no normalization needed). `_get_order_dict` normalizes to uppercase + prepends `#` if dropped — speakers often omit the `#` when reading an order id aloud.
 
-### `tau2_telecom` domain layout
-
-```
-nemo_voice_agent/evaluation/
-├── scenarios/data/tau2_telecom/        # package
-│   ├── __init__.py
-│   ├── base.py                         # Tau2TelecomBaseScenario + Tau2TelecomWorkflowBaseScenario
-│   └── group_{0..11}x.py               # 228 auto-scaffolded scenarios (114 manual + 114 workflow, paired per upstream task)
-├── tools/tau2_telecom_user_tools.py    # 30 user-side LLM tools (phone controls + reads)
-├── tools/tau2_telecom_tools.py         # 13 agent-side LLM tools (lookup, billing, line mgmt, transfer)
-├── tools/tau2_telecom_params.py        # Pydantic data model (data_model.py + user_data_model.py) + 39 tool-arg schemas
-├── tools/tau2_telecom_init_functions.py    # 20 init-only mutation functions (no LLM exposure)
-├── tools/tau2_telecom_predicates.py    # 6 db_state predicates (deterministic outcome checks)
-└── tools/tau2_telecom_sync.py          # sync_telecom_state + apply_telecom_sync_delta (cross-side)
-```
+### `tau2_telecom` domain
 
 Telecom is the **first dual-side domain**: a separate user-side `TelecomUserDB` (mock phone attributes + user surroundings) lives alongside the agent-side `TelecomDB`. `Tau2TelecomBaseScenario.has_user_state = True` triggers user-side seeding in `_gold_replay` and bridge dual-pull at end of scenario. The 30 user-side tools are exposed to the user-sim's LLM (`enable_tool_calling: true` on the user bot); the 13 agent-side tools are exposed to the agent.
-
-**Multi-file policy.** The agent system prompt concatenates `main_policy.md` + `tech_support_{manual,workflow}.md` with a markdown `---` separator (no XML tags — drops the upstream's `<main_policy>`/`<tech_support_policy>` wrapping for parity with the airline/retail single-markdown convention). `policy_variant` ClassVar defaults to `"manual"`.
 
 **Policy variants — two parallel registrations.** Mirrors upstream tau2's `--domain telecom` vs `--domain telecom-workflow` registration split. Each base-split task is emitted as **two** scenario classes by the scaffold generator:
 
 - `tau2_telecom__X` (inherits `Tau2TelecomBaseScenario`, `policy_variant="manual"`) — uses `tech_support_manual.md` (long-form prose).
 - `tau2_telecom_workflow__X` (inherits `Tau2TelecomWorkflowBaseScenario`, `policy_variant="workflow"`) — uses `tech_support_workflow.md` (procedural step-by-step).
 
-Both share the same upstream task → identical `tau2_id`, `db`, `user_db`, `reference_answer`, `db_state_assertions`, `initialization_actions`, `nl_assertions`, agent/user tool surface, and sync_state logic. **Only the rendered policy file differs.** `Tau2TelecomWorkflowBaseScenario` inherits from `Tau2TelecomBaseScenario` and overrides only the `policy_variant` ClassVar. `scenario.domain` stays `"tau2_telecom"` on both variants so the tool registry, data files, sync applier, predicate registry, and init-function registry are all shared — no resource duplication. The split is purely organizational (different `--domain` filters + different output-dir prefixes via the `scenario.name` split), giving operators a clean A/B comparison knob over policy prose without doubling the rest of the framework.
-
-Total telecom scenarios registered: **228** (114 manual + 114 workflow). Run with `--domain tau2_telecom` or `--domain tau2_telecom_workflow`. `tests/test_tau2_telecom_scenarios.py` locks in the count + verifies the variants produce different `policy` text but identical `reference_answer`, `db_state_assertions`, and `initialization_actions`.
+Both share the same upstream task → identical `tau2_id`, `db`, `user_db`, `reference_answer`, `db_state_assertions`, `initialization_actions`, `nl_assertions`, agent/user tool surface, and sync_state logic. **Only the rendered policy file differs.** 
 
 **Three telecom-specific agent-prompt addenda** appended after the parent's voice-realization notes (in `get_agent_prompt`), compensating for structural gaps vs upstream tau2's text-mode evaluation:
 1. `TELECOM_AGENT_TOOL_AVAILABILITY_NOTE` — explicit enumeration of the 13 agent-callable tools vs the 30 user-controlled phone tools, by snake_case name matching `policy.md` references. Prevents the LLM from hallucinating user-side tool calls (which would return `unknown_tool` errors).
@@ -321,35 +203,6 @@ Telecom is the first domain to opt into `Scenario.sync_state`, the voice-mode eq
 
 **Validated** end-to-end against three scenarios covering all 5 propagation paths bidirectionally — see `tests/test_tau2_telecom_sync.py` for the unit-level coverage matrix (26 tests).
 
-### Scaffolding more tau2 scenarios
-
-One-shot generators live in `scripts/prepare_tau2_data/` (committed alongside `prepare_telecom.py`). They read upstream `tasks.json` + `split_tasks.json[base]` (+ `tasks_voice.json` where applicable) and emit one `@register_eval_scenario class Tau2<Domain><Id>` per task into `group_Nx.py` modules — overwriting existing files, so re-run only when upstream schema changes:
-
-```bash
-python scripts/prepare_tau2_data/generate_airline_scaffolds.py   # 50 scenarios → 5 groups
-python scripts/prepare_tau2_data/generate_retail_scaffolds.py    # 114 → 12 groups
-python scripts/prepare_tau2_data/generate_telecom_scaffolds.py   # 114 → 12 groups
-```
-
-Telecom is the odd one out: task ids are descriptive strings (`[mms_issue]airplane_mode_on|data_mode_off[PERSONA:Hard]`) rather than integers, so class/scenario names are derived from the parts (`Tau2TelecomMmsIssueAirplaneModeOnDataModeOffHard` / `tau2_telecom__mms_issue__airplane_mode_on__data_mode_off__hard`). `PERSONA:None` is dropped from both — matches the hand-authored seed convention. Eva's generator lives at `scripts/prepare_eva_data/generate_airline_scaffolds.py` and streams to stdout for hand-review (eva carries curated prose tau2 doesn't).
-
-### Running a single eva_airline scenario
-
-```bash
-# After both bots are running (see Quick Start above):
-python evaluation/run_evaluation.py \
-    --scenarios eva_airline__1_1_2 \
-    --duration 900                    # bump from default 600s — voice round-trips are ~10× slower than text
-```
-
-Scenario names map from eva ids: `"1.1.2" → "eva_airline__1_1_2"`, class names `"1.1.2" → "EvaAirline112"`.
-
-### Known limitations
-
-- **Parakeet STT misrecognizes spelled alphanumerics.** Letter sequences and digit-words (`"for"` vs `"four"`, `"B Z I W"`) frequently get mangled. Diagnose by checking `bot_logs_user/llm_context.json` to confirm the user simulator emitted the correct text before blaming the user-side LLM. Per the path/hash transport design, the user-simulator-side log is the source of truth for what was actually said.
-- **VAD can fragment one logical utterance into multiple ASR segments** when the user TTS introduces natural inter-sentence pauses ≥ `VAD_STOP_SECS` (default 1.0 s). The pipeline aggregator can then drop the early segments if the user resumes speaking within ~150 ms (treated as an interruption). Symptom: spelled-out long IDs land in the agent's context truncated or with parts missing. Mitigations: bump `VAD_STOP_SECS` to 2.0 s, or shorten the user simulator's turns so each utterance is a single self-contained statement.
-- **DB diff isn't shown on mismatch.** The runner only sees the SHA-256 hash, not the actual DB (path/hash transport). For diagnostics, inspect `bot_logs_agent/llm_context.json` (agent's tool-call trace) and `bot_logs_user/llm_context.json` (user simulator's reasoning) side-by-side — the discrepancy usually pinpoints which reference action the agent skipped or mangled.
-- **Action-list lookups are case-sensitive on the action `type`.** Tool action `type` strings must match the domain's `ACTION_TYPES` list (`AIRLINE_ACTION_TYPES`, `TAU2_AIRLINE_ACTION_TYPES`) exactly. The `WriteScenarioTool._record_action` validation logs a warning on mismatch but still appends (recoverable, but the recorded action won't match any reference).
 
 ## Code style
 
