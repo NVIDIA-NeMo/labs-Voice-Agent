@@ -56,6 +56,7 @@ class RunAggregator:
     """
 
     success_results: List[bool] = field(default_factory=list)
+    task_success_results: List[bool] = field(default_factory=list)
     action_match_results: List[bool] = field(default_factory=list)
     judge_score_results: List[float] = field(default_factory=list)
     judge_pass_results: List[bool] = field(default_factory=list)
@@ -65,6 +66,7 @@ class RunAggregator:
     clean_exit_results: List[bool] = field(default_factory=list)
 
     per_domain_success: Dict[str, List[bool]] = field(default_factory=dict)
+    per_domain_task_success: Dict[str, List[bool]] = field(default_factory=dict)
     per_domain_action_match: Dict[str, List[bool]] = field(default_factory=dict)
     per_domain_judge_score: Dict[str, List[float]] = field(default_factory=dict)
     per_domain_judge_pass: Dict[str, List[bool]] = field(default_factory=dict)
@@ -157,6 +159,15 @@ class RunAggregator:
         if isinstance(metrics.get("is_successful"), bool):
             self.success_results.append(metrics["is_successful"])
             self.per_domain_success.setdefault(domain, []).append(metrics["is_successful"])
+
+        # Task success: same conjunction but ignoring clean_exit. Uses the same N/A
+        # guard as is_successful so scenarios with no applicable signals are excluded.
+        if isinstance(metrics.get("is_successful"), bool):
+            bd = metrics.get("success_breakdown") or {}
+            failed_excl_exit = [f for f in bd.get("failed", []) if f != str(SuccessSignal.CLEAN_EXIT)]
+            task_success = len(failed_excl_exit) == 0
+            self.task_success_results.append(task_success)
+            self.per_domain_task_success.setdefault(domain, []).append(task_success)
 
         # Per-side token usage rollup.
         tu = metrics.get("token_usage") or {}
@@ -257,6 +268,7 @@ async def run_dynamic_evaluation(
     # equivalent logic for the resume-skip path (loaded-from-disk metrics).
     aggregator = RunAggregator()
     success_results = aggregator.success_results
+    task_success_results = aggregator.task_success_results
     action_match_results = aggregator.action_match_results
     judge_score_results = aggregator.judge_score_results
     judge_pass_results = aggregator.judge_pass_results
@@ -274,6 +286,7 @@ async def run_dynamic_evaluation(
     per_domain_nl_assertion = aggregator.per_domain_nl_assertion
     per_domain_db_state_assertion = aggregator.per_domain_db_state_assertion
     per_domain_clean_exit = aggregator.per_domain_clean_exit
+    per_domain_task_success = aggregator.per_domain_task_success
     run_token_usage = aggregator.run_token_usage
 
     def _classify_resume_state(scenario_dir: str) -> str:
@@ -637,6 +650,15 @@ async def run_dynamic_evaluation(
             success_results.append(metrics["is_successful"])
             per_domain_success.setdefault(domain, []).append(metrics["is_successful"])
 
+        # Task success: conjunction over whitelisted signals excluding clean_exit.
+        if isinstance(metrics["is_successful"], bool):
+            failed_excl_exit = [
+                f for f in metrics["success_breakdown"].get("failed", []) if f != str(SuccessSignal.CLEAN_EXIT)
+            ]
+            metrics["is_task_successful"] = len(failed_excl_exit) == 0
+            task_success_results.append(metrics["is_task_successful"])
+            per_domain_task_success.setdefault(domain, []).append(metrics["is_task_successful"])
+
         # Save metrics to file
         metrics_file = os.path.join(scenario_dir, "metrics.json")
         with open(metrics_file, "w") as f:
@@ -694,6 +716,7 @@ async def run_dynamic_evaluation(
     # signal passed (strict conjunction). See ``success_breakdown`` per
     # scenario for which signal failed.
     success_rate = sum(success_results) / len(success_results) if len(success_results) > 0 else 0
+    task_success_rate = sum(task_success_results) / len(task_success_results) if task_success_results else None
     # Per-signal rates so the headline can be broken down. Denominators
     # are per-signal: only scenarios that opted into each signal count.
     action_match_rate = sum(action_match_results) / len(action_match_results) if action_match_results else None
@@ -741,6 +764,8 @@ async def run_dynamic_evaluation(
             stats = result["latency_stats"]
             f.write(f"\n====== {result['scenario_name']} ======:\n")
             f.write(f"  Is successful: {result['is_successful']}\n")
+            if "is_task_successful" in result:
+                f.write(f"  Is task-successful (excl. clean_exit): {result['is_task_successful']}\n")
             f.write(f"    Action-list match: {result['is_action_match']}\n")
             if "db_state_match" in result:
                 f.write(f"    DB-state match: {result['db_state_match']}\n")
@@ -786,6 +811,11 @@ async def run_dynamic_evaluation(
                 f"({sum(success_results)}/{len(success_results)} scenarios — strict conjunction "
                 f"across all applicable signals)\n"
             )
+            if task_success_rate is not None:
+                f.write(
+                    f"Task Success Rate (excl. clean_exit): {task_success_rate*100:.2f}% "
+                    f"({sum(task_success_results)}/{len(task_success_results)} scenarios)\n"
+                )
         else:
             f.write("\n\nOverall Success Rate: N/A (no scenarios had any applicable signal)\n")
 
@@ -858,6 +888,13 @@ async def run_dynamic_evaluation(
                 results = per_domain_success[d]
                 rate = sum(results) / len(results) if results else 0
                 f.write(f"  {d}: {rate*100:.2f}% ({sum(results):g}/{len(results)})\n")
+        if len(per_domain_task_success) > 1:
+            f.write("\nPer-Domain Task Success Rate (excl. clean_exit):\n")
+            f.write("-" * 80 + "\n")
+            for d in sorted(per_domain_task_success):
+                results = per_domain_task_success[d]
+                rate = sum(results) / len(results) if results else 0
+                f.write(f"  {d}: {rate*100:.2f}% ({sum(results):g}/{len(results)})\n")
         if len(per_domain_db_state) > 1:
             f.write("\nPer-Domain DB-State Match Rate:\n")
             f.write("-" * 80 + "\n")
@@ -889,6 +926,11 @@ async def run_dynamic_evaluation(
             f"({sum(success_results)}/{len(success_results)} scenarios — "
             f"strict conjunction across all applicable signals)"
         )
+        if task_success_rate is not None:
+            logger.info(
+                f"Task Success Rate (excl. clean_exit): {task_success_rate*100:.2f}% "
+                f"({sum(task_success_results)}/{len(task_success_results)} scenarios)"
+            )
     else:
         logger.info("Overall Success Rate: N/A (no scenarios had any applicable signal)")
     if action_match_rate is not None:
@@ -935,6 +977,11 @@ async def run_dynamic_evaluation(
             results = per_domain_success[d]
             rate = sum(results) / len(results) if results else 0
             logger.info(f"  [{d}] Success Rate: {rate*100:.2f}% ({sum(results):g}/{len(results)})")
+    if len(per_domain_task_success) > 1:
+        for d in sorted(per_domain_task_success):
+            results = per_domain_task_success[d]
+            rate = sum(results) / len(results) if results else 0
+            logger.info(f"  [{d}] Task Success Rate (excl. clean_exit): {rate*100:.2f}% ({sum(results):g}/{len(results)})")
     if len(per_domain_db_state) > 1:
         for d in sorted(per_domain_db_state):
             results = per_domain_db_state[d]
