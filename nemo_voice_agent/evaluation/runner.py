@@ -285,7 +285,11 @@ async def run_dynamic_evaluation(
             return "in_flight"
         try:
             with open(mf) as f:
-                json.load(f)
+                m = json.load(f)
+            # 0-turn scenarios indicate the bot crashed before any audio was
+            # exchanged — treat them as killed so they get re-run.
+            if m.get("total_turns", 0) == 0:
+                return "in_flight"
             return "completed"
         except (json.JSONDecodeError, OSError):
             return "in_flight"
