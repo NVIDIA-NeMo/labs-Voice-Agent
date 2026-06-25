@@ -27,7 +27,7 @@ from nemo_voice_agent.utils.config_manager import ConfigManager
 @pytest.fixture
 def voice_agent_server_base_path():
     """Retrieve the repo root path from __file__ variable"""
-    repo_root_path = Path(__file__).resolve().parents[1]
+    repo_root_path = Path(__file__).resolve().parents[2]
 
     voice_agent_root_path = os.path.join(
         repo_root_path, "examples", "generic_voice_agent", "server"

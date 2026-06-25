@@ -40,6 +40,7 @@ from nemo_voice_agent.vllm.v1.sample.logits_processor.reasoning_budget_logits_pr
 
 MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 DEVICE = torch.device("cuda:0")
+pytestmark = [pytest.mark.functional, pytest.mark.gpu]
 
 # Real prompts used for testing.
 MESSAGES = [
