@@ -81,6 +81,7 @@ jobs:
     needs: [pre-flight, lint-check]
     if: |
       always()
+      && !cancelled()
       && !(needs.lint-check.result == 'failure'
       || needs.lint-check.result == 'cancelled')
       && !(needs.pre-flight.outputs.docs_only == 'true'
