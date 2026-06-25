@@ -32,6 +32,7 @@
 #
 # Required configuration:
 # - Organization secret: DOCS_FERN_TOKEN (from `fern token` for the nvidia Fern org)
+# - Repository or organization variable: PUBLISH_FERN_PREVIEWS=true
 
 name: Publish Fern Docs
 
@@ -64,12 +65,14 @@ concurrency:
 env:
   YQ_VERSION: v4.53.2
   MAX_VERSIONS: 3
+  PUBLISH_FERN_PREVIEWS: ${{ vars.PUBLISH_FERN_PREVIEWS || 'false' }}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     # runs-on: linux-amd64-cpu8  # NVIDIA self-hosted runner
     timeout-minutes: 20
+    if: env.PUBLISH_FERN_PREVIEWS == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
