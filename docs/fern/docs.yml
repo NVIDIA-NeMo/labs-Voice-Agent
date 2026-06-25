@@ -27,7 +27,7 @@ metadata:
 products:
   - display-name: NeMo Voice Agent
     slug: /
-    path: ../docs/index.yml
+    path: ../index.yml
     versions: []
 
 redirects:

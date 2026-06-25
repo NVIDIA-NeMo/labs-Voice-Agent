@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Validates Fern docs configuration on pull requests that touch docs or fern/.
+# Validates Fern docs configuration on pull requests that touch docs/.
 
 name: Fern Docs CI
 
@@ -20,7 +20,6 @@ on:
   pull_request:
     paths:
       - 'docs/**'
-      - 'fern/**'
       - '.github/workflows/fern-docs-ci.yml'
   workflow_dispatch: {}
   ## --- OPTION: NVIDIA copy-PR-bot trigger ---
@@ -30,7 +29,6 @@ on:
   #     - "pull-request/[0-9]+"
   #   paths:
   #     - 'docs/**'
-  #     - 'fern/**'
   #     - '.github/workflows/fern-docs-ci.yml'
   ## and add the changed-files gating job below (uncomment the full block).
 
@@ -102,11 +100,11 @@ jobs:
           node-version: '20'
 
       - name: Install Fern CLI
-        run: npm install -g fern-api@$(jq -r .version fern/fern.config.json)
+        run: npm install -g fern-api@$(jq -r .version docs/fern/fern.config.json)
 
       - name: Check MDX safety
         run: |
-          BAD=$(grep -rn '<img\b[^>]*[^/]>\|<img>' docs/ fern/ --include="*.md" --include="*.mdx" || true)
+          BAD=$(grep -rn '<img\b[^>]*[^/]>\|<img>' docs/ --include="*.md" --include="*.mdx" || true)
           if [ -n "$BAD" ]; then
             echo "::error::Non-self-closing <img> tags found (MDX requires <img ... />):"
             echo "$BAD"
@@ -114,6 +112,7 @@ jobs:
           fi
 
       - name: Fern check
+        working-directory: ./docs/fern
         run: fern check
 
       - name: Check links
