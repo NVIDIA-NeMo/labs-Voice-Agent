@@ -38,11 +38,11 @@ curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
 uv --version
 EOF
 
-COPY pyproject.toml uv.lock README.md LICENSE ./
-COPY nemo_voice_agent ./nemo_voice_agent
-COPY evaluation ./evaluation
-COPY examples ./examples
-COPY scripts ./scripts
-COPY tests ./tests
+COPY pyproject.toml uv.lock ./
+COPY nemo_voice_agent/__init__.py nemo_voice_agent/package_info.py ./nemo_voice_agent/
+
+RUN uv sync --link-mode copy --locked --all-extras --group test --no-install-project
+
+COPY . .
 
 RUN uv sync --link-mode copy --locked --all-extras --group test
