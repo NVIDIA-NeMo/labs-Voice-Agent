@@ -114,7 +114,7 @@ jobs:
         with:
           image: ${{ env.CI_IMAGE }}
           script: Launch_Unit_Tests
-          script-dir: tests/unit_tests
+          script-dir: tests/unit/launch_scripts
           timeout: "60"
           coverage-prefix: unit-test
 
@@ -139,7 +139,7 @@ jobs:
         with:
           image: ${{ env.CI_IMAGE }}
           script: ${{ matrix.script }}
-          script-dir: tests/functional_tests/launch_scripts/h100/active
+          script-dir: tests/functional/launch_scripts/h100/active
           timeout: "120"
           coverage-prefix: e2e
 
