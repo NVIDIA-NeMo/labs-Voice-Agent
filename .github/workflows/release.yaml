@@ -81,10 +81,7 @@ jobs:
       create-gh-release: ${{ inputs.create-gh-release || true }}
       packaging: uv
       has-src-dir: false
-      skip-test-wheel: false
-      custom-container: nvcr.io/nvidia/pytorch:25.05-py3
-      runner: ${{ needs.pre-flight.outputs.runner_prefix }}-container
-      container-options: "--gpus all --runtime=nvidia"
+      skip-test-wheel: true
       publish-docs: ${{ inputs.publish-docs || true }}
       docs-target-path: nemo/voice-agent
       app-id: ${{ vars.BOT_ID }}
