@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: CICD Voice Agent
+name: CICD NeMo
 
 on:
   push:
@@ -20,8 +20,6 @@ on:
       - main
       - "pull-request/[0-9]+"
       - "deploy-release/*"
-  merge_group:
-    types: [checks_requested]
   workflow_dispatch:
     inputs:
       test_suite:
