@@ -30,5 +30,5 @@ jobs:
     secrets:
       PAT: ${{ secrets.PAT }}
       NVIDIA_MANAGEMENT_ORG_PAT: ${{ secrets.NVIDIA_MANAGEMENT_ORG_PAT }}
-      SLACK_CI_CHANNEL_WEBHOOK: ${{ secrets.SLACK_GITHUB_CI_WEBHOOK }}
+      SLACK_CI_CHANNEL_WEBHOOK: ${{ secrets.SLACK_CI_CHANNEL_WEBHOOK }}
       SLACK_TEAM_GROUP_ID: ${{ secrets.SLACK_TEAM_GROUP_ID }}
