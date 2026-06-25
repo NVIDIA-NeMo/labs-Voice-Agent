@@ -79,7 +79,6 @@ jobs:
       dry-run: ${{ inputs.dry-run || false }}
       version-bump-branch: ${{ inputs.version-bump-branch || github.ref_name }}
       create-gh-release: ${{ inputs.create-gh-release || true }}
-      packaging: uv
       has-src-dir: false
       skip-test-wheel: true
       publish-docs: ${{ inputs.publish-docs || true }}
