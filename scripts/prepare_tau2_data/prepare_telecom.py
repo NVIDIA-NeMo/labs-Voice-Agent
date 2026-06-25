@@ -16,7 +16,7 @@
 """Prepare tau2-bench telecom domain data for the eval framework.
 
 Reads upstream tau2-bench's ``data/tau2/domains/telecom/`` and writes a
-normalized copy under ``evaluation/data/tau2_telecom/``. Three transformations:
+normalized copy under ``nemo_voice_agent/evaluation/data/tau2_telecom/``. Three transformations:
 
 1. ``db.toml`` and ``user_db.toml`` are parsed via ``tomllib`` (stdlib in
    Python 3.11+), validated through the ``TelecomDB`` / ``TelecomUserDB``
@@ -256,14 +256,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--dest",
         type=Path,
         default=None,
-        help="Destination root (default: evaluation/data/tau2_telecom/ relative to repo root)",
+        help="Destination root (default: nemo_voice_agent/evaluation/data/tau2_telecom/ relative to repo root)",
     )
     args = parser.parse_args(argv)
 
     # Resolve destination relative to repo root (parent-of-parent of this
     # script: scripts/prepare_tau2_data/prepare_telecom.py → repo root).
     repo_root = Path(__file__).resolve().parents[2]
-    dest = args.dest or (repo_root / "evaluation" / "data" / "tau2_telecom")
+    dest = args.dest or (repo_root / "nemo_voice_agent" / "evaluation" / "data" / "tau2_telecom")
 
     source = args.source.resolve()
     source_telecom = source / "data" / "tau2" / "domains" / "telecom"
@@ -354,7 +354,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"Done. {len(TOML_TO_JSON)} conversions + {len(VERBATIM_FILES)} files + {len(VERBATIM_DIRS)} dirs.")
     print(f"Output dir: {dest}")
     print()
-    print("Next: append a tau2_telecom section to evaluation/data/README.md "
+    print("Next: append a tau2_telecom section to nemo_voice_agent/evaluation/data/README.md "
           "(source URL, license, commit pin) if this is a first import.")
     return 0
 

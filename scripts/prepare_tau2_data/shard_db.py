@@ -24,8 +24,8 @@ shards from the source file if one is present, otherwise no-ops.
 
 Usage::
 
-    python scripts/prepare_tau2_data/shard_db.py evaluation/data/tau2_airline/db.json
-    # → writes evaluation/data/tau2_airline/db/{flights,users,reservations}.json
+    python scripts/prepare_tau2_data/shard_db.py nemo_voice_agent/evaluation/data/tau2_airline/db.json
+    # → writes nemo_voice_agent/evaluation/data/tau2_airline/db/{flights,users,reservations}.json
     # → deletes the original db.json (unless --keep-source is passed)
 
 The matching loader is ``nemo_voice_agent.evaluation.load_db_artifact``

@@ -100,7 +100,7 @@ def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, D
 
     ``domain`` is the registry namespace string (``"tau2_airline"``, ``"tau2_retail"``,
     ``"tau2_telecom"``) — it also serves as the data subdirectory name under
-    ``evaluation/data/``.
+    ``nemo_voice_agent/evaluation/data/``.
 
     Filtering pipeline (intersection):
       1. ids = ``tasks_voice.json["configs"].keys()``        (voice-eligible)
@@ -117,7 +117,7 @@ def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, D
     label only (no voice binding).
 
     Cached via ``functools.cache`` so the join runs at most once per
-    (domain, split) per process. The data dir (``evaluation/data/tau2_<domain>/``)
+    (domain, split) per process. The data dir (``nemo_voice_agent/evaluation/data/tau2_<domain>/``)
     must exist for the requested domain — until it's populated, this
     function raises ``FileNotFoundError``, which is the desired behavior
     for not-yet-ported domains.

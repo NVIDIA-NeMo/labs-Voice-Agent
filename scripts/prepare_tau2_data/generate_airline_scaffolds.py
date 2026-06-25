@@ -15,7 +15,7 @@
 
 """One-shot scaffold generator for tau2_airline scenarios (M2.5).
 
-Reads ``evaluation/data/tau2_airline/{tasks,tasks_voice,split_tasks}.json``,
+Reads ``nemo_voice_agent/evaluation/data/tau2_airline/{tasks,tasks_voice,split_tasks}.json``,
 filters to the base-split voice-eligible ids, and emits one
 ``@register_eval_scenario`` class per task across ``group_Nx.py`` modules in
 ``nemo_voice_agent/evaluation/scenarios/data/tau2_airline/``. 10 tasks per group.
@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import List
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = REPO_ROOT / "evaluation" / "data" / "tau2_airline"
+DATA_DIR = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "data" / "tau2_airline"
 TARGET_PKG = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "scenarios" / "data" / "tau2_airline"
 GROUP_SIZE = 10  # 50 base tasks → 5 groups of 10
 

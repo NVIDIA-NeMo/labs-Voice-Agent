@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Scenario fixtures live under evaluation/data/tau2_telecom/ — adapted from
+# Scenario fixtures live under nemo_voice_agent/evaluation/data/tau2_telecom/ — adapted from
 # https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0
-# (MIT-licensed). See evaluation/data/README.md for the upstream pin
+# (MIT-licensed). See nemo_voice_agent/evaluation/data/README.md for the upstream pin
 # (commit 17e07b1).
 
 """Tau2-telecom scenario base.
@@ -549,7 +549,7 @@ class Tau2TelecomWorkflowBaseScenario(Tau2TelecomBaseScenario):
     (long-form documentation).
 
     ``domain`` stays ``"tau2_telecom"`` (inherited) so tool registry
-    lookup, data-file paths (``evaluation/data/tau2_telecom/``),
+    lookup, data-file paths (``nemo_voice_agent/evaluation/data/tau2_telecom/``),
     sync-applier dispatch, and predicate / init-function registries
     are all unchanged. Only ``scenario.name`` (the
     organizational-bucket key derived from
