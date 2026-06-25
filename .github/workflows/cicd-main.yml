@@ -41,10 +41,13 @@ concurrency:
 permissions:
   contents: read
   id-token: write
+  pull-requests: read
   statuses: write
 
 env:
   CI_IMAGE: ${{ vars.CONTAINER_REGISTRY || '766267172432.dkr.ecr.us-east-1.amazonaws.com' }}/nemo-speech:voice-agent-${{ github.sha }}
+  CI_REGISTRY: ${{ vars.CONTAINER_REGISTRY || '766267172432.dkr.ecr.us-east-1.amazonaws.com' }}
+  CI_IMAGE_NAME: nemo-speech
   RUN_LINT_CHECK: ${{ vars.RUN_LINT_CHECK || 'false' }}
   UPLOAD_CODECOV: ${{ vars.UPLOAD_CODECOV || 'false' }}
 
@@ -88,15 +91,95 @@ jobs:
       - uses: actions/checkout@v6
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+      - name: Get recently merged PR cache refs
+        id: recent-pr-cache-refs
+        uses: actions/github-script@v8
+        env:
+          REGISTRY: ${{ env.CI_REGISTRY }}
+          IMAGE_NAME: ${{ env.CI_IMAGE_NAME }}
+        with:
+          script: |
+            const [owner, repo] = process.env.GITHUB_REPOSITORY.split("/");
+            const result = await github.graphql(`
+              query($owner: String!, $repo: String!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequests(states: MERGED, first: 100, orderBy: {field: UPDATED_AT, direction: DESC}) {
+                    nodes {
+                      number
+                    }
+                  }
+                }
+              }
+            `, { owner, repo });
+
+            const refs = result.repository.pullRequests.nodes
+              .map(({ number }) => `type=registry,ref=${process.env.REGISTRY}/${process.env.IMAGE_NAME}:voice-agent-pr-${number}-buildcache,mode=max`)
+              .join("\n");
+
+            core.setOutput("cache-from", refs);
+            core.info(`Found ${result.repository.pullRequests.nodes.length} recently merged PR cache refs.`);
+      - name: Compute build metadata
+        id: build-meta
+        env:
+          REGISTRY: ${{ env.CI_REGISTRY }}
+          IMAGE_NAME: ${{ env.CI_IMAGE_NAME }}
+          RUN_ID: ${{ github.run_id }}
+          GH_REF: ${{ github.ref }}
+          GH_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          PR_NUMBER=""
+          if [[ "$GH_REF" =~ refs/heads/pull-request/([0-9]+) ]]; then
+            PR_NUMBER="${BASH_REMATCH[1]}"
+          fi
+
+          TAGS=(
+            "${{ env.CI_IMAGE }}"
+            "$REGISTRY/$IMAGE_NAME:voice-agent-$RUN_ID"
+          )
+          if [[ "$GH_REF" == "refs/heads/main" ]]; then
+            CACHE_KEY="main"
+            TAGS+=("$REGISTRY/$IMAGE_NAME:voice-agent-main")
+          elif [[ -n "$PR_NUMBER" ]]; then
+            CACHE_KEY="pr-$PR_NUMBER"
+            TAGS+=("$REGISTRY/$IMAGE_NAME:voice-agent-pr-$PR_NUMBER")
+          else
+            CACHE_KEY=$(printf '%s' "${GH_REF_NAME:-$RUN_ID}" | tr '/' '-' | tr -cd '[:alnum:]._-')
+            if [[ -z "$CACHE_KEY" ]]; then
+              CACHE_KEY="$RUN_ID"
+            fi
+          fi
+
+          CACHE_FROM=(
+            "type=registry,ref=$REGISTRY/$IMAGE_NAME:voice-agent-main-buildcache,mode=max"
+          )
+          if [[ "$CACHE_KEY" != "main" ]]; then
+            CACHE_FROM+=("type=registry,ref=$REGISTRY/$IMAGE_NAME:voice-agent-$CACHE_KEY-buildcache,mode=max")
+          fi
+
+          {
+            echo "tags<<EOF"
+            printf '%s\n' "${TAGS[@]}"
+            echo "EOF"
+            echo "cache-from<<EOF"
+            printf '%s\n' "${CACHE_FROM[@]}"
+            echo "EOF"
+            echo "cache-to=type=registry,ref=$REGISTRY/$IMAGE_NAME:voice-agent-$CACHE_KEY-buildcache,mode=max"
+          } >> "$GITHUB_OUTPUT"
       - name: Build CI image
         uses: docker/build-push-action@v5
         with:
           file: docker/Dockerfile.ci
           context: .
           push: true
+          cache-from: |
+            ${{ steps.build-meta.outputs.cache-from }}
+            ${{ steps.recent-pr-cache-refs.outputs.cache-from }}
+          cache-to: ${{ steps.build-meta.outputs.cache-to }}
+          no-cache: false
           tags: |
-            ${{ env.CI_IMAGE }}
-            ${{ vars.CONTAINER_REGISTRY || '766267172432.dkr.ecr.us-east-1.amazonaws.com' }}/nemo-speech:voice-agent-${{ github.run_id }}
+            ${{ steps.build-meta.outputs.tags }}
 
   unit-tests:
     runs-on: ${{ needs.pre-flight.outputs.runner_prefix }}
