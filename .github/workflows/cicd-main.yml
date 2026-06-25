@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [pre-flight]
     if: |
-      env.RUN_LINT_CHECK == 'true'
+      (vars.RUN_LINT_CHECK || 'false') == 'true'
       && needs.pre-flight.outputs.is_deployment_workflow != 'true'
     steps:
       - uses: actions/checkout@v6
