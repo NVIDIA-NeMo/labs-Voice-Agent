@@ -334,7 +334,7 @@ async def run_dynamic_evaluation(
             # the moved directory for a real scenario subdir.
             open(os.path.join(backup, "__KILLED__"), "w").close()
             logger.info(
-                f"[CLEANUP] {scenario.name}: subdir was in-flight (no metrics.json); "
+                f"[CLEANUP] {scenario.name}: subdir was in-flight (no metrics.json or no turns completed); "
                 f"moved to {os.path.basename(backup)}/ and will re-run."
             )
 
