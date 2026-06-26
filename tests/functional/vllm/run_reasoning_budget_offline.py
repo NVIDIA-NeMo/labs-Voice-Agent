@@ -25,15 +25,15 @@ from nemo_voice_agent.vllm.v1.sample.logits_processor.reasoning_budget_logits_pr
     ReasoningBudgetLogitsProcessor,
 )
 
-MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
 
 MESSAGES = [
-    {"role": "system", "content": "You are a helpful assistant. /think"},
+    {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "Write a haiku about a cat"},
 ]
 
 MESSAGES_MATH = [
-    {"role": "system", "content": "You are a helpful assistant. /think"},
+    {"role": "system", "content": "You are a helpful assistant."},
     {"role": "user", "content": "What is 25 * 37?"},
 ]
 
@@ -47,15 +47,16 @@ def main():
         model=MODEL_NAME,
         logits_processors=[ReasoningBudgetLogitsProcessor],
         trust_remote_code=True,
-        gpu_memory_utilization=0.8,
-        max_model_len=10000,
+        gpu_memory_utilization=0.9,
+        max_model_len=4096,
+        max_num_seqs=1,
     )
 
     # ------------------------------------------------------------------
     # Test 1: Single prompt with thinking_budget=64
     # ------------------------------------------------------------------
     prompt = tok.apply_chat_template(
-        MESSAGES, tokenize=False, add_generation_prompt=True
+        MESSAGES, tokenize=False, add_generation_prompt=True, enable_thinking=True
     )
 
     sampling_params = SamplingParams(
