@@ -38,7 +38,7 @@ from nemo_voice_agent.vllm.v1.sample.logits_processor.reasoning_budget_logits_pr
     ReasoningBudgetLogitsProcessor,
 )
 
-MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
+MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
 DEVICE = torch.device("cuda:0")
 pytestmark = [pytest.mark.functional, pytest.mark.gpu]
 
@@ -663,8 +663,9 @@ class TestVLLMOfflineGeneration:
             model=MODEL_NAME,
             logits_processors=[ReasoningBudgetLogitsProcessor],
             trust_remote_code=True,
-            gpu_memory_utilization=0.8,
+            gpu_memory_utilization=0.9,
             max_model_len=4096,
+            max_num_seqs=2,
         )
 
     @pytest.fixture(scope="class")
