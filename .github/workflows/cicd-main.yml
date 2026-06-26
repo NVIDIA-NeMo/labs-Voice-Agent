@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: CICD NeMo
+name: CICD Voice Agent
 
 on:
   push:
@@ -76,14 +76,33 @@ jobs:
           pre-commit install
           pre-commit run --all-files --show-diff-on-failure --color=always
 
-  build-image:
-    runs-on: ${{ needs.pre-flight.outputs.runner_prefix }}
+  cicd-wait-in-queue:
     needs: [pre-flight, lint-check]
+    runs-on: ubuntu-latest
+    environment: test
     if: |
       always()
       && !cancelled()
       && !(needs.lint-check.result == 'failure'
       || needs.lint-check.result == 'cancelled')
+      && !(needs.pre-flight.outputs.is_ci_workload == 'true'
+      || needs.pre-flight.outputs.is_deployment_workflow == 'true'
+      || needs.pre-flight.outputs.docs_only == 'true')
+    steps:
+      - name: Running CI tests
+        run: |
+          echo "Running CI tests"
+
+  build-image:
+    runs-on: ${{ needs.pre-flight.outputs.runner_prefix }}
+    needs: [pre-flight, lint-check, cicd-wait-in-queue]
+    if: |
+      always()
+      && !cancelled()
+      && !(needs.lint-check.result == 'failure'
+      || needs.lint-check.result == 'cancelled')
+      && (needs.cicd-wait-in-queue.result == 'success'
+      || needs.pre-flight.outputs.is_ci_workload == 'true')
       && !(needs.pre-flight.outputs.docs_only == 'true'
       || needs.pre-flight.outputs.is_deployment_workflow == 'true')
     steps:
@@ -182,10 +201,12 @@ jobs:
 
   unit-tests:
     runs-on: ${{ needs.pre-flight.outputs.runner_prefix }}
-    needs: [pre-flight, build-image]
+    needs: [pre-flight, cicd-wait-in-queue, build-image]
     if: |
       !cancelled()
       && needs.pre-flight.result == 'success'
+      && (needs.cicd-wait-in-queue.result == 'success'
+      || needs.pre-flight.outputs.is_ci_workload == 'true')
       && needs.build-image.result == 'success'
       && !(needs.pre-flight.outputs.docs_only == 'true'
       || needs.pre-flight.outputs.is_deployment_workflow == 'true')
@@ -205,10 +226,12 @@ jobs:
 
   functional-tests-h100:
     runs-on: ${{ needs.pre-flight.outputs.runner_prefix }}
-    needs: [pre-flight, build-image]
+    needs: [pre-flight, cicd-wait-in-queue, build-image]
     if: |
       !cancelled()
       && needs.pre-flight.result == 'success'
+      && (needs.cicd-wait-in-queue.result == 'success'
+      || needs.pre-flight.outputs.is_ci_workload == 'true')
       && needs.build-image.result == 'success'
       && !(needs.pre-flight.outputs.docs_only == 'true'
       || needs.pre-flight.outputs.is_deployment_workflow == 'true')
@@ -234,6 +257,7 @@ jobs:
   Nemo_CICD_Test:
     needs:
       - pre-flight
+      - cicd-wait-in-queue
       - build-image
       - unit-tests
       - functional-tests-h100
