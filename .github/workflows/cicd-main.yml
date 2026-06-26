@@ -184,7 +184,10 @@ jobs:
     runs-on: ${{ needs.pre-flight.outputs.runner_prefix }}
     needs: [pre-flight, build-image]
     if: |
-      !(needs.pre-flight.outputs.docs_only == 'true'
+      !cancelled()
+      && needs.pre-flight.result == 'success'
+      && needs.build-image.result == 'success'
+      && !(needs.pre-flight.outputs.docs_only == 'true'
       || needs.pre-flight.outputs.is_deployment_workflow == 'true')
       && (github.event_name != 'workflow_dispatch'
       || inputs.test_suite == 'all'
@@ -204,7 +207,10 @@ jobs:
     runs-on: ${{ needs.pre-flight.outputs.runner_prefix }}
     needs: [pre-flight, build-image]
     if: |
-      !(needs.pre-flight.outputs.docs_only == 'true'
+      !cancelled()
+      && needs.pre-flight.result == 'success'
+      && needs.build-image.result == 'success'
+      && !(needs.pre-flight.outputs.docs_only == 'true'
       || needs.pre-flight.outputs.is_deployment_workflow == 'true')
       && (github.event_name != 'workflow_dispatch'
       || inputs.test_suite == 'all'
