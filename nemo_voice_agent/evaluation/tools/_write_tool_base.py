@@ -32,8 +32,11 @@ import json
 from typing import ClassVar, List
 
 from loguru import logger
-from pipecat.processors.frameworks.rtvi import RTVIProcessor, RTVIServerMessage
+from pipecat.processors.frameworks.rtvi import RTVIProcessor, RTVIServerMessage, RTVITextMessageData
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
+
+_EXIT_START = "<exit>"
+_EXIT_END = "</exit>"
 
 
 class WriteScenarioTool(StandardSchemaTool):
@@ -134,6 +137,24 @@ class WriteScenarioTool(StandardSchemaTool):
                 f"action-applied push failed for {action.get('name')!r}: "
                 f"{type(exc).__name__}: {exc}"
             )
+
+    async def _send_exit_message(self) -> None:
+        """Emit ``<exit>`` to the bridge, ending the scenario immediately.
+
+        Called by terminal tools (transfer-to-agent/human) after
+        ``result_callback`` so pipecat commits the tool-call record before
+        the bridge tears down the session. Silently no-ops when RTVI is
+        absent (unit tests, gold-replay).
+        """
+        rtvi = self.state.get("__rtvi__")
+        if rtvi is None:
+            return
+        text = f"{_EXIT_START}Transfer complete.{_EXIT_END}"
+        msg = RTVIServerMessage(data=RTVITextMessageData(text=text))
+        try:
+            await rtvi.push_transport_message(msg, exclude_none=True)
+        except Exception as exc:
+            logger.warning(f"exit-message push failed: {type(exc).__name__}: {exc}")
 
     def _next_call_index(self, tool_name: str) -> int:
         """Increment and return the call counter for ``tool_name``.
