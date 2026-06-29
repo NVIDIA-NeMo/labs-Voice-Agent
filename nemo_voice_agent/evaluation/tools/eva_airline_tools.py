@@ -2015,6 +2015,7 @@ class TransferToAgentTool(WriteAirlineTool):
                 "message": "Transferring to live agent",
             }
         )
+        await self._send_exit_message()
 
 
 # ---------------------------------------------------------------------------

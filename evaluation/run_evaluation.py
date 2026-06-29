@@ -251,6 +251,18 @@ Examples:
             "Example: --resume 20260609_181545"
         ),
     )
+    parser.add_argument(
+        "--min-agent-turns",
+        type=int,
+        default=3,
+        metavar="N",
+        help=(
+            "Minimum number of completed agent turns required to count a scenario toward aggregate rates. "
+            "Scenarios with fewer agent turns (e.g. due to a stalled vLLM server) are excluded from all "
+            "success/action-match/db-state rates and flagged in the summary. On --resume, they are also "
+            "treated as in-flight and re-run. Default: 0 (disabled). Suggested value: 2."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -391,6 +403,7 @@ Examples:
                 judge=judge,
                 judge_threshold=args.judge_threshold,
                 strict_match=args.strict_match,
+                min_agent_turns=args.min_agent_turns,
             )
         )
         return 0

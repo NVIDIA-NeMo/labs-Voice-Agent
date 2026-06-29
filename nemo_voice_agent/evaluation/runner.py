@@ -29,6 +29,7 @@ from typing import Dict, List, Optional
 from nemo_voice_agent.evaluation.bridge import STOP_REASON_EXIT, VoiceAgentEvaluationBridge
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 from nemo_voice_agent.evaluation.db_state_predicates import evaluate_db_state_assertion
+from nemo_voice_agent.evaluation.resume import classify_scenario_resume_state, count_agent_llm_messages
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario, SuccessSignal
 from nemo_voice_agent.evaluation.utils import LLMJudge, check_if_task_success, normalize_scenario_payload
 from nemo_voice_agent.utils import FileLogger
@@ -65,6 +66,8 @@ class RunAggregator:
     db_state_assertion_results: List[bool] = field(default_factory=list)
     clean_exit_results: List[bool] = field(default_factory=list)
 
+    insufficient_turns_skipped: List[str] = field(default_factory=list)
+
     per_domain_success: Dict[str, List[bool]] = field(default_factory=dict)
     per_domain_task_success: Dict[str, List[bool]] = field(default_factory=dict)
     per_domain_action_match: Dict[str, List[bool]] = field(default_factory=dict)
@@ -82,7 +85,7 @@ class RunAggregator:
         }
     )
 
-    def add_scenario(self, metrics: dict, domain: str) -> None:
+    def add_scenario(self, metrics: dict, domain: str, min_agent_turns: int = 0) -> None:
         """Append one scenario's metrics into all run-level + per-domain buckets.
 
         Idempotent against incomplete metrics dicts — each signal is only
@@ -96,7 +99,16 @@ class RunAggregator:
         equal to their string values, so this preserves byte-stability of
         the on-disk metrics.json format while pinning the lookup to a
         typo-resistant symbol.
+
+        When ``min_agent_turns > 0``, scenarios with fewer agent turns are
+        excluded from all aggregate buckets and recorded in
+        ``insufficient_turns_skipped`` instead.
         """
+        if min_agent_turns > 0:
+            count = count_agent_llm_messages(metrics.get("scenario_directory", ""))
+            if count is not None and count < min_agent_turns:
+                self.insufficient_turns_skipped.append(metrics.get("scenario_name", "?"))
+                return
         # SuccessSignal.ACTION_MATCH = "is_action_match" → either bool, "N/A", or absent.
         v = metrics.get(SuccessSignal.ACTION_MATCH)
         if isinstance(v, bool):
@@ -195,6 +207,7 @@ async def run_dynamic_evaluation(
     judge: Optional[LLMJudge] = None,
     judge_threshold: Optional[float] = None,
     strict_match: bool = False,
+    min_agent_turns: int = 0,
 ):
     """
     Run evaluation with dynamic scenario switching and latency measurement.
@@ -218,6 +231,7 @@ async def run_dynamic_evaluation(
         judge_threshold: Threshold for judging the scenario if binary result is desired, None for score based result
         strict_match: If True, force ``disallow_extra_items=True`` on every scenario for this run,
             overriding each scenario's own setting. Default False respects per-scenario flags.
+        min_agent_turns: scenarios with agent turns less than this number will be treated as incomplete
     """
 
     if not logger:
@@ -289,24 +303,6 @@ async def run_dynamic_evaluation(
     per_domain_task_success = aggregator.per_domain_task_success
     run_token_usage = aggregator.run_token_usage
 
-    def _classify_resume_state(scenario_dir: str) -> str:
-        """Return ``"completed"`` / ``"in_flight"`` / ``"fresh"`` based on disk state."""
-        if not os.path.isdir(scenario_dir):
-            return "fresh"
-        mf = os.path.join(scenario_dir, "metrics.json")
-        if not os.path.exists(mf):
-            return "in_flight"
-        try:
-            with open(mf) as f:
-                m = json.load(f)
-            # 0-turn scenarios indicate the bot crashed before any audio was
-            # exchanged — treat them as killed so they get re-run.
-            if m.get("total_turns", 0) == 0:
-                return "in_flight"
-            return "completed"
-        except (json.JSONDecodeError, OSError):
-            return "in_flight"
-
     # Pre-loop classification pass: any scenario whose subdir already has a
     # finalized ``metrics.json`` is loaded into ``all_results`` (and its
     # signals folded into the run-level buckets) WITHOUT being re-run.
@@ -317,14 +313,14 @@ async def run_dynamic_evaluation(
     loaded_names = set()
     for scenario in scenarios:
         scen_dir = os.path.join(output_dir, scenario.name)
-        state = _classify_resume_state(scen_dir)
+        state, _reason = classify_scenario_resume_state(scen_dir, min_agent_turns)
         if state == "completed":
             with open(os.path.join(scen_dir, "metrics.json")) as f:
                 m = json.load(f)
             # Refresh the scenario_directory in case the dir was moved.
             m["scenario_directory"] = scen_dir
             all_results.append(m)
-            aggregator.add_scenario(m, scenario.name.split("__", 1)[0])
+            aggregator.add_scenario(m, scenario.name.split("__", 1)[0], min_agent_turns=min_agent_turns)
             loaded_names.add(scenario.name)
             logger.info(f"[SKIP] {scenario.name}: already complete, loaded metrics.json from disk.")
         elif state == "in_flight":
@@ -334,7 +330,7 @@ async def run_dynamic_evaluation(
             # the moved directory for a real scenario subdir.
             open(os.path.join(backup, "__KILLED__"), "w").close()
             logger.info(
-                f"[CLEANUP] {scenario.name}: subdir was in-flight (no metrics.json); "
+                f"[CLEANUP] {scenario.name}: subdir was in-flight (no metrics.json or no turns completed); "
                 f"moved to {os.path.basename(backup)}/ and will re-run."
             )
 
@@ -360,6 +356,9 @@ async def run_dynamic_evaluation(
         if isinstance(value, (int, float)):
             return float(value) >= pass_rate_threshold
         return None
+
+    scenarios_to_run = [s for s in scenarios if s.name not in loaded_names]
+    logger.info(f"{len(scenarios_to_run)} scenario(s) to run, {len(loaded_names)} already completed.")
 
     for idx, scenario in enumerate(scenarios):
         # Resume short-circuit: scenarios with a finalized metrics.json were
@@ -404,6 +403,15 @@ async def run_dynamic_evaluation(
         # under the full name.
         domain = scenario.name.split("__", 1)[0]
 
+        # Detect stalled scenarios (e.g. vLLM hung after first tool call) by
+        # counting assistant-role messages in the saved agent LLM context file.
+        # The bridge writes this file during run_scenario, so it is available here.
+        # None (file absent or unreadable) → skip the check.
+        _agent_llm_count = count_agent_llm_messages(scenario_dir)
+        insufficient_turns = (
+            min_agent_turns > 0 and _agent_llm_count is not None and _agent_llm_count < min_agent_turns
+        )
+
         # Check if the scenario is successful
         reference_file = os.path.join(scenario_config_dir, scenario.reference_file)
         prediction_file = os.path.join(scenario_dir, bridge.final_response_file)
@@ -432,7 +440,7 @@ async def run_dynamic_evaluation(
                 clean_text=getattr(scenario, "clean_text", False),
                 disallow_extra_items=scenario_disallow_extra,
             )
-        if isinstance(is_action_match, bool):
+        if isinstance(is_action_match, bool) and not insufficient_turns:
             action_match_results.append(is_action_match)
             per_domain_action_match.setdefault(domain, []).append(is_action_match)
 
@@ -495,12 +503,14 @@ async def run_dynamic_evaluation(
             with open(os.path.join(scenario_dir, "judge_result.json"), "w") as f:
                 json.dump(result, f, indent=2)
             judge_score = float(result["score"])
-            judge_score_results.append(judge_score)
-            per_domain_judge_score.setdefault(domain, []).append(judge_score)
+            if not insufficient_turns:
+                judge_score_results.append(judge_score)
+                per_domain_judge_score.setdefault(domain, []).append(judge_score)
             if judge_threshold is not None:
                 judge_passed = judge_score >= judge_threshold
-                judge_pass_results.append(judge_passed)
-                per_domain_judge_pass.setdefault(domain, []).append(judge_passed)
+                if not insufficient_turns:
+                    judge_pass_results.append(judge_passed)
+                    per_domain_judge_pass.setdefault(domain, []).append(judge_passed)
             # Roll per-assertion verdicts into both the run-wide list and the
             # per-domain bucket. Denominator is total assertions, not scenarios —
             # makes the rate stable when scenarios carry different assertion counts.
@@ -509,8 +519,9 @@ async def run_dynamic_evaluation(
                 scenario_passes = 0
                 for v in verdicts:
                     passed = bool(v.get("passed"))
-                    nl_assertion_results.append(passed)
-                    per_domain_nl_assertion.setdefault(domain, []).append(passed)
+                    if not insufficient_turns:
+                        nl_assertion_results.append(passed)
+                        per_domain_nl_assertion.setdefault(domain, []).append(passed)
                     if passed:
                         scenario_passes += 1
                 scenario_nl_pass_rate = scenario_passes / len(verdicts)
@@ -525,8 +536,13 @@ async def run_dynamic_evaluation(
         # non-clean termination. Drives the optional CLEAN_EXIT gating signal.
         metrics["stop_reason"] = bridge.stop_reason
         metrics["clean_exit"] = bridge.stop_reason == STOP_REASON_EXIT
-        clean_exit_results.append(metrics["clean_exit"])
-        per_domain_clean_exit.setdefault(domain, []).append(metrics["clean_exit"])
+        if insufficient_turns:
+            metrics["insufficient_agent_turns"] = True
+        if not insufficient_turns:
+            clean_exit_results.append(metrics["clean_exit"])
+            per_domain_clean_exit.setdefault(domain, []).append(metrics["clean_exit"])
+        else:
+            aggregator.insufficient_turns_skipped.append(scenario.name)
         metrics["is_action_match"] = is_action_match
         if judge_score is not None:
             metrics["judge_score"] = judge_score
@@ -568,8 +584,9 @@ async def run_dynamic_evaluation(
                 metrics["db_state_match"] = expected_hash == actual_hash
                 metrics["db_state_expected_hash"] = expected_hash
                 metrics["db_state_actual_hash"] = actual_hash
-                db_state_results.append(metrics["db_state_match"])
-                per_domain_db_state.setdefault(domain, []).append(metrics["db_state_match"])
+                if not insufficient_turns:
+                    db_state_results.append(metrics["db_state_match"])
+                    per_domain_db_state.setdefault(domain, []).append(metrics["db_state_match"])
 
         # Persist per-scenario nl-assertion pass rate so it lands in metrics.json
         # and the per-scenario console summary below. ``None`` ↔ scenario carries
@@ -619,8 +636,9 @@ async def run_dynamic_evaluation(
             # nl_assertion convention so the two rates are comparable.
             for v in db_state_verdicts:
                 passed = bool(v.get("passed"))
-                db_state_assertion_results.append(passed)
-                per_domain_db_state_assertion.setdefault(domain, []).append(passed)
+                if not insufficient_turns:
+                    db_state_assertion_results.append(passed)
+                    per_domain_db_state_assertion.setdefault(domain, []).append(passed)
 
         # ----- Composite is_successful (delegated to scenario) ---------------
         # The scenario's ``success_signals`` whitelist drives which of the 5
@@ -646,7 +664,7 @@ async def run_dynamic_evaluation(
             "excluded": [str(k) for k, v in signal_checks.items() if k not in whitelist and v is not None],
         }
         metrics["is_successful"] = scenario.compute_is_successful(signal_checks)
-        if isinstance(metrics["is_successful"], bool):
+        if isinstance(metrics["is_successful"], bool) and not insufficient_turns:
             success_results.append(metrics["is_successful"])
             per_domain_success.setdefault(domain, []).append(metrics["is_successful"])
 
@@ -656,8 +674,9 @@ async def run_dynamic_evaluation(
                 f for f in metrics["success_breakdown"].get("failed", []) if f != str(SuccessSignal.CLEAN_EXIT)
             ]
             metrics["is_task_successful"] = len(failed_excl_exit) == 0
-            task_success_results.append(metrics["is_task_successful"])
-            per_domain_task_success.setdefault(domain, []).append(metrics["is_task_successful"])
+            if not insufficient_turns:
+                task_success_results.append(metrics["is_task_successful"])
+                per_domain_task_success.setdefault(domain, []).append(metrics["is_task_successful"])
 
         # Save metrics to file
         metrics_file = os.path.join(scenario_dir, "metrics.json")
@@ -687,6 +706,11 @@ async def run_dynamic_evaluation(
         if metrics["success_breakdown"]["failed"]:
             logger.info(f"    Failed signals: {metrics['success_breakdown']['failed']}")
         logger.info(f"  Total turns: {metrics['total_turns']}")
+        if insufficient_turns:
+            logger.info(
+                f"  WARNING: Only {_agent_llm_count} agent LLM message(s) in context — excluded from "
+                f"aggregate rates (min_agent_turns={min_agent_turns}). Run with --resume to retry."
+            )
         logger.info(f"  Duration: {metrics['scenario_duration']:.1f}s")
         logger.info(f"  Latency measurements: {latency_stats['count']}")
         if latency_stats["count"] > 0:
@@ -781,6 +805,8 @@ async def run_dynamic_evaluation(
             if failed_signals:
                 f.write(f"    Failed signals: {', '.join(failed_signals)}\n")
             f.write(f"  Turns: {result['total_turns']}\n")
+            if result.get("insufficient_agent_turns"):
+                f.write(f"  [EXCLUDED FROM AGGREGATE RATES: insufficient agent turns]\n")
             f.write(f"  Duration: {result['scenario_duration']:.1f}s\n")
             if result["scenario_duration"] > 0:
                 f.write(f"  Turns/min: {result['total_turns'] / (result['scenario_duration'] / 60):.1f}\n")
@@ -801,6 +827,15 @@ async def run_dynamic_evaluation(
         f.write(f"  P95: {overall_latency_stats['p95_ms']:.1f}ms\n")
         f.write(f"  Min: {overall_latency_stats['min_ms']:.1f}ms\n")
         f.write(f"  Max: {overall_latency_stats['max_ms']:.1f}ms\n")
+
+        # Warn when min_agent_turns caused scenarios to be excluded so the user
+        # knows the eval is not fully complete and can --resume to retry them.
+        if aggregator.insufficient_turns_skipped:
+            n = len(aggregator.insufficient_turns_skipped)
+            f.write(f"\n\nWARNING: {n} scenario(s) had fewer than {min_agent_turns} agent turn(s) "
+                    f"and were excluded from aggregate rates (likely stalled LLM / server hang).\n")
+            f.write(f"Excluded scenarios: {', '.join(aggregator.insufficient_turns_skipped)}\n")
+            f.write(f"Run with --resume <TIMESTAMP> --min-agent-turns {min_agent_turns} to retry them.\n")
 
         # Composite (strict-conjunction) success rate first — the headline
         # number — followed by per-signal breakdown so operators can see
@@ -920,6 +955,14 @@ async def run_dynamic_evaluation(
     logger.info(f"{'='*80}")
     logger.info("Evaluation Complete!")
     logger.info(f"{'='*80}")
+    if aggregator.insufficient_turns_skipped:
+        n = len(aggregator.insufficient_turns_skipped)
+        logger.info(
+            f"\nWARNING: {n} scenario(s) had fewer than {min_agent_turns} agent turn(s) and were "
+            f"EXCLUDED from aggregate rates (likely stalled LLM / server hang)."
+        )
+        logger.info(f"  Excluded: {', '.join(aggregator.insufficient_turns_skipped)}")
+        logger.info(f"  Run with --resume <TIMESTAMP> --min-agent-turns {min_agent_turns} to retry.")
     if success_results:
         logger.info(
             f"Overall Success Rate: {success_rate*100:.2f}% "

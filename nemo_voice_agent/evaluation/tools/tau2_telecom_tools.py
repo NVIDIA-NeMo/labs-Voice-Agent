@@ -865,6 +865,10 @@ class TransferToHumanAgentsTool(_Tau2TelecomAgentWriteTool):
         )
         return "Transfer successful"
 
+    async def _execute(self, params: FunctionCallParams) -> None:
+        await super()._execute(params)
+        await self._send_exit_message()
+
 
 # =============================================================================
 # Name → class map (consumed by Tau2TelecomBaseScenario._build_tool_map for

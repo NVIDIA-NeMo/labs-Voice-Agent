@@ -39,8 +39,8 @@ END_CONVERSATION_GUIDELINE = (
     "termination is a failure mode. Typical flow: (a) confirm all actions are "
     "complete, (b) ask 'is there anything else you need help with?', (c) wait "
     "for the user's response, (d) if they say goodbye or say nothing is needed, "
-    "say goodbye back and then call `EndConversationTool` (or other available "
-    "tools that fits the situation)."
+    "say goodbye back and then call `EndConversationTool`. This tool should also "
+    "be called if you have transferred the call to a human agent successfully."
 )
 
 

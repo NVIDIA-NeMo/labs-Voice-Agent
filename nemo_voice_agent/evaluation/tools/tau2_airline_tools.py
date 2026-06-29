@@ -1168,6 +1168,10 @@ class TransferToHumanAgentsTool(_Tau2WriteTool):
         )
         return {"status": "success", "message": "Transfer successful"}
 
+    async def _execute(self, params: FunctionCallParams) -> None:
+        await super()._execute(params)
+        await self._send_exit_message()
+
 
 # =============================================================================
 # Convenience: ordered tool list (used by BaseScenario._build_tool_map)
