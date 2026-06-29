@@ -25,7 +25,7 @@ from nemo_voice_agent.vllm.v1.sample.logits_processor.reasoning_budget_logits_pr
     ReasoningBudgetLogitsProcessor,
 )
 
-MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
+MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 
 MESSAGES = [
     {"role": "system", "content": "You are a helpful assistant."},
