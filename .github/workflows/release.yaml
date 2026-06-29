@@ -82,6 +82,7 @@ jobs:
       create-gh-release: ${{ inputs.create-gh-release || true }}
       has-src-dir: false
       skip-test-wheel: true
+      skip-wheel-build: true
       publish-docs: ${{ inputs.publish-docs || true }}
       docs-target-path: nemo/voice-agent
       app-id: ${{ vars.BOT_ID }}
