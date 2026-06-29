@@ -122,7 +122,7 @@ Per-scenario filesystem state determines what happens to each scenario:
 | State | What's on disk | Behavior |
 |---|---|---|
 | **Completed** | `metrics.json` exists and parses cleanly | Skipped. Metrics loaded from disk and folded into the run-level aggregate so `all_summary.txt` covers BOTH this and the previous session. |
-| **In-flight** | Subdir exists but no (or malformed) `metrics.json` | Moved to `<scenario>.killed.<resume_ts>/` (with a `__KILLED__` marker) for post-mortem; the scenario then re-runs fresh. |
+| **In-flight** | Subdir exists but no (or malformed) `metrics.json`; or `metrics.json` exists but `agent_turns < --min-agent-turns` | Moved to `<scenario>.killed.<resume_ts>/` and re-run fresh. |
 | **Fresh** | No subdir | Runs normally. |
 
 **Invocation history.** Every run writes `<session_dir>/run_args.json` recording the CLI invocation (parsed args, `argv`, resolved scenario list). Resume invocations append a new entry rather than overwrite, so the file shows the full history of the run dir. The LLM judge API key is redacted before writing.
@@ -397,3 +397,16 @@ Two dedicated guides cover the two axes of extension. Pick the one that matches 
 ## Notes
 
 - The pipecat version used in this evaluation system is 0.0.98. An upgrade to the 1.0 version is planned.
+
+- **Resuming after server hangs (`--min-agent-turns`).** When the agent LLM server hangs mid-scenario (e.g. LLM API server stops responding after the first agent turn), scenarios time out after only one agent turn (the greeting). These look like failures in the summary but the root cause is infrastructure, not actual agent quality. Use `--min-agent-turns N` to exclude them from aggregate rates and automatically re-run them on `--resume`:
+
+  ```bash
+  # Mark scenarios with fewer than 2 agent turns as incomplete and re-run them
+  python run_evaluation.py \
+      --user-url ws://localhost:8766 --agent-url ws://localhost:8765 \
+      --domain tau2_retail \
+      --resume 20260618_072325 \
+      --min-agent-turns 2
+  ```
+
+  Scenarios below the threshold are excluded from `is_successful`, action-match, DB-state, and all other aggregate rates for the current run, and flagged in `all_summary.txt`. On `--resume`, they are additionally treated as in-flight (moved aside and re-run), so a single resume command both cleans the aggregate and retries the stalled scenarios. A value of `2` (agent must have spoken at least once beyond the opening greeting) is a reasonable default for single-turn authentication flows.
