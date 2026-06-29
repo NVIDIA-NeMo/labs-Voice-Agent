@@ -161,5 +161,6 @@ override-dependencies = [
     "protobuf==5.29.6",
     "numba==0.65.0",
     "transformers>=5.8.0",
-    "setuptools>=79.0.0"
+    "setuptools>=79.0.0",
+    "pillow>=12.2.0"
 ]
