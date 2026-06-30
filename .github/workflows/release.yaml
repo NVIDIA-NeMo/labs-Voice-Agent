@@ -58,6 +58,7 @@ concurrency:
 jobs:
   pre-flight:
     uses: NVIDIA-NeMo/FW-CI-templates/.github/workflows/_cicd_preflight.yml@v0.80.1
+    if: (vars.ENABLE_RELEASE_WORKFLOW || 'false') == 'true'
     with:
       default_runner_prefix: ${{ vars.DEFAULT_RUNNER_PREFIX }}
       non_nvidia_runner_prefix: ${{ vars.NON_NVIDIA_RUNNER_PREFIX }}
@@ -68,7 +69,8 @@ jobs:
     uses: NVIDIA-NeMo/FW-CI-templates/.github/workflows/_release_library.yml@v1.6.0
     needs: [pre-flight]
     if: |
-      !cancelled() && !failure()
+      (vars.ENABLE_RELEASE_WORKFLOW || 'false') == 'true'
+      && !cancelled() && !failure()
       && !(needs.pre-flight.outputs.docs_only == 'true'
            || needs.pre-flight.outputs.is_deployment_workflow == 'true')
     with:
