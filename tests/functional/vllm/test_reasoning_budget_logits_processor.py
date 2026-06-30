@@ -40,6 +40,7 @@ from nemo_voice_agent.vllm.v1.sample.logits_processor.reasoning_budget_logits_pr
 
 MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 DEVICE = torch.device("cuda:0")
+pytestmark = [pytest.mark.functional, pytest.mark.gpu]
 
 # Real prompts used for testing.
 MESSAGES = [
@@ -662,14 +663,16 @@ class TestVLLMOfflineGeneration:
             model=MODEL_NAME,
             logits_processors=[ReasoningBudgetLogitsProcessor],
             trust_remote_code=True,
-            gpu_memory_utilization=0.8,
+            gpu_memory_utilization=0.9,
             max_model_len=4096,
+            max_num_seqs=2,
         )
 
     @pytest.fixture(scope="class")
     def tok(self):
         return AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
 
+    @pytest.mark.skip(reason="this feature is deprecated to in favor of the native budget control in vllm")
     def test_generate_with_thinking_budget(self, llm, tok):
         """Send MESSAGES with thinking_budget=64, max_tokens=256, print full response."""
         prompt = tok.apply_chat_template(
@@ -703,6 +706,7 @@ class TestVLLMOfflineGeneration:
 
             assert generated_text is not None and len(generated_text) > 0
 
+    @pytest.mark.skip(reason="this feature is deprecated to in favor of the native budget control in vllm")
     def test_generate_multiple_budgets(self, llm, tok):
         """Compare outputs with different thinking budgets side by side."""
         prompt = tok.apply_chat_template(

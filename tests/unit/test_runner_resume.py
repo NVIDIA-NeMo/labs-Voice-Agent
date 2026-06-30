@@ -128,7 +128,7 @@ class _StubScenario:
 @pytest.fixture
 def _run_eval_module():
     """Import the run_evaluation script as a module so we can call _write_run_args."""
-    script_path = Path(__file__).resolve().parent.parent / "evaluation" / "run_evaluation.py"
+    script_path = Path(__file__).resolve().parents[2] / "evaluation" / "run_evaluation.py"
     spec = importlib.util.spec_from_file_location("run_evaluation_under_test", script_path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["run_evaluation_under_test"] = mod

@@ -24,7 +24,7 @@
 
 Each LLM-exposed tool from tau2's ``AirlineTools`` class becomes a
 ``StandardSchemaTool`` or ``WriteScenarioTool`` subclass. The DB lives in
-``self.state["db"]`` as a raw dict (loaded from ``evaluation/data/tau2_airline/db.json``);
+``self.state["db"]`` as a raw dict (loaded from ``nemo_voice_agent/evaluation/data/tau2_airline/db.json``);
 tools mutate it in place. Write-tools call ``self._record_action({...})`` with an
 ``action_type`` matching one of ``TAU2_AIRLINE_ACTION_TYPES``.
 

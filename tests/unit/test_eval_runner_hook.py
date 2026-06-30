@@ -175,12 +175,12 @@ def test_setup_shared_state_disallow_extra_items_default():
 
 
 def test_eval_data_root_falls_back_to_repo_path(monkeypatch):
-    """Without env override, resolves to <repo>/evaluation/data.
+    """Without env override, resolves to <repo>/nemo_voice_agent/evaluation/data.
 
     Was previously asserting against the old NeMo-main layout
-    (``examples/voice_agent/evaluation/data``); the eval framework now lives
+    (``examples/voice_agent/nemo_voice_agent/evaluation/data``); the eval framework now lives
     in the standalone NeMo-Voice-Agent repo where the data root is one level
-    higher (``<repo>/evaluation/data``). Repo *name* isn't asserted because
+    higher (``<repo>/nemo_voice_agent/evaluation/data``). Repo *name* isn't asserted because
     users may clone into any directory. Existence + a known checked-in
     fixture path is the meaningful invariant.
     """
@@ -189,7 +189,7 @@ def test_eval_data_root_falls_back_to_repo_path(monkeypatch):
     assert root.name == "data"
     assert root.parent.name == "evaluation"
     assert root.is_dir(), f"eval data root {root} does not exist"
-    # eva_airline_dataset.jsonl is checked in at evaluation/data/eva_airline/.
+    # eva_airline_dataset.jsonl is checked in at nemo_voice_agent/evaluation/data/eva_airline/.
     assert (root / "eva_airline" / "eva_airline_dataset.jsonl").exists(), (
         f"expected eva_airline/eva_airline_dataset.jsonl under {root}"
     )

@@ -25,7 +25,7 @@ This file holds **two** classes of models, both consumed by
 
 1. **Domain data models** — ``FlightDB`` / ``User`` / ``Reservation`` / ``Flight`` /
    ``Passenger`` / payment-method variants / etc. Mirror tau2's ``data_model.py``
-   1:1 so dicts loaded from ``evaluation/data/tau2_airline/db.json`` round-trip
+   1:1 so dicts loaded from ``nemo_voice_agent/evaluation/data/tau2_airline/db.json`` round-trip
    through ``Model.model_validate(...)`` cleanly. Used by tools that need to
    manipulate strongly-typed records (e.g., creating a new Reservation).
 
@@ -297,7 +297,7 @@ class Reservation(BaseModel):
 
 
 class FlightDB(BaseModel):
-    """Top-level shape of ``evaluation/data/tau2_airline/db.json``."""
+    """Top-level shape of ``nemo_voice_agent/evaluation/data/tau2_airline/db.json``."""
 
     flights: Dict[str, Flight] = Field(description="Dictionary of all flights indexed by flight number")
     users: Dict[str, User] = Field(description="Dictionary of all users indexed by user ID")

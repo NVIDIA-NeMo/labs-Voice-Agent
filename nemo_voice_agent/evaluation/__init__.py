@@ -21,7 +21,9 @@ from typing import Any, Dict, Union
 def get_eval_data_root() -> Path:
     """Resolve the root directory for evaluation fixture data.
 
-    Checks `$EVAL_DATA_ROOT` first; falls back to `<repo>/evaluation/data`.
+    Checks `$EVAL_DATA_ROOT` first; falls back to packaged data under
+    `nemo_voice_agent/evaluation/data`, then the legacy `<repo>/evaluation/data`
+    layout.
     Lazy (function, not module constant) so env-var changes after import take
     effect — useful for tests and for bridge/server processes setting it
     differently.
@@ -32,7 +34,10 @@ def get_eval_data_root() -> Path:
     """
     if env := os.environ.get("EVAL_DATA_ROOT"):
         return Path(env)
-    # parents[2]: __init__.py → evaluation → nemo_voice_agent → repo root
+    package_data = Path(__file__).resolve().parent / "data"
+    if package_data.exists():
+        return package_data
+    # parents[2]: __init__.py -> evaluation -> nemo_voice_agent -> repo root
     return Path(__file__).resolve().parents[2] / "evaluation" / "data"
 
 

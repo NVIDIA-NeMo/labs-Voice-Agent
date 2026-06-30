@@ -1,10 +1,26 @@
 [project]
-name = "nemo_voice_agent"
-version = "0.1.0"
+name = "nemo-voice-agent"
 description = "An open-source real-time voice agent pipeline built on Pipecat and NeMo speech models."
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+dynamic = ["version"]
+authors = [{ name = "NVIDIA", email = "nemo-toolkit@nvidia.com" }]
+maintainers = [{ name = "NVIDIA", email = "nemo-toolkit@nvidia.com" }]
+keywords = ["voice agent", "speech", "LLM", "NeMo", "Pipecat", "NVIDIA"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: GPU :: NVIDIA CUDA",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     # Deep learning core (CUDA 13.0 wheels; see [tool.uv.sources] below)
     "torch",
@@ -47,45 +63,33 @@ dependencies = [
 [project.optional-dependencies]
 # Dev tools: linters, formatters, test runners
 dev = [
-    "black>=24",
-    "isort>=5",
     "pytest>=8",
     "pytest",
     "pre-commit",
+    "ruff>=0.9.9",
+]
+
+[dependency-groups]
+test = [
+    "coverage[toml]>=7.8.1",
+    "pytest>=8",
+    "pytest-timeout>=2.4.0",
+]
+dev = [
+    "pre-commit",
+    "ruff>=0.9.9",
+]
+docs = []
+build = [
+    "build",
+    "setuptools>=79",
+    "wheel",
 ]
 
 [project.urls]
 Homepage = "https://github.com/NVIDIA-NeMo/Voice-Agent"
 Repository = "https://github.com/NVIDIA-NeMo/Voice-Agent"
 Issues = "https://github.com/NVIDIA-NeMo/Voice-Agent/issues"
-
-[tool.isort]
-profile = "black"  # black-compatible
-line_length = 119  # should match black parameters
-ignore_whitespace = true  # ignore whitespace for compatibility with the initial style
-py_version = 310  # python 3.10 as a target version
-known_first_party = ["nemo"]  # FIRSTPARTY section
-known_third_party = ["nemo_text_processing", "examples", "scripts"]  # THIRDPARTY section
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-default_section = "THIRDPARTY"
-extend_skip = ["setup.py", "docs/source/conf.py"]
-
-
-[tool.black]
-line_length = 119
-skip_string_normalization = true
-# major year version is stable, see details in
-# https://black.readthedocs.io/en/stable/the_black_code_style/index.html
-# `required_version` is necessary for consistency (other `black` versions will fail to reformat files)
-required_version = "24"
-target-version = ['py310', 'py311', 'py312', 'py313']
-# by default exclude Jupyter Notebooks (but can be reformated when passed directly)
-extend-exclude = '''
-(
-  \.ipynb
-  | \.ipynb_checkpoints
-)
-'''
 
 [build-system]
 requires = ["setuptools>=79"]
@@ -94,6 +98,43 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["nemo_voice_agent*"]
 exclude = ["tests*", "evaluation*", "examples*", "client*"]
+
+[tool.setuptools.package-data]
+nemo_voice_agent = [
+    "evaluation/data/**/*.json",
+    "evaluation/data/**/*.jsonl",
+    "evaluation/data/**/*.md",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "nemo_voice_agent.package_info.__version__" }
+
+[tool.pytest.ini_options]
+addopts = "--verbose --strict-markers"
+testpaths = ["tests"]
+markers = [
+    "unit: in-process tests that do not require GPU hardware, external services, or live model serving",
+    "functional: tests that exercise runtime integrations, model serving, GPU execution, or end-to-end flows",
+    "gpu: tests requiring GPU hardware",
+    "slow: tests that are too slow for the default unit lane",
+    "skipduringci: tests intentionally skipped in CI",
+    "pleasefixme: tests that are broken and need fixing",
+]
+
+[tool.coverage.run]
+concurrency = ["thread", "multiprocessing"]
+source = ["nemo_voice_agent"]
+omit = [
+    "tests/*",
+    ".venv/*",
+]
+
+[tool.coverage.paths]
+source = [
+    ".",
+    "/opt/Voice-Agent/",
+    "/home/runner/work/Voice-Agent/Voice-Agent",
+]
 
 # ---------------------------------------------------------------------------
 # uv configuration — pins PyTorch and vLLM wheels to the CUDA 13.0 index.
@@ -120,5 +161,6 @@ override-dependencies = [
     "protobuf==5.29.6",
     "numba==0.65.0",
     "transformers>=5.8.0",
-    "setuptools>=79.0.0"
+    "setuptools>=79.0.0",
+    "pillow>=12.2.0"
 ]
