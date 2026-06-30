@@ -672,6 +672,7 @@ class TestVLLMOfflineGeneration:
     def tok(self):
         return AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
 
+    @pytest.mark.skip(reason="this feature is deprecated to in favor of the native budget control in vllm")
     def test_generate_with_thinking_budget(self, llm, tok):
         """Send MESSAGES with thinking_budget=64, max_tokens=256, print full response."""
         prompt = tok.apply_chat_template(
@@ -705,6 +706,7 @@ class TestVLLMOfflineGeneration:
 
             assert generated_text is not None and len(generated_text) > 0
 
+    @pytest.mark.skip(reason="this feature is deprecated to in favor of the native budget control in vllm")
     def test_generate_multiple_budgets(self, llm, tok):
         """Compare outputs with different thinking budgets side by side."""
         prompt = tok.apply_chat_template(
