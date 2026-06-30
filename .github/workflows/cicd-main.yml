@@ -226,13 +226,17 @@ jobs:
 
   functional-tests-h100:
     runs-on: ${{ needs.pre-flight.outputs.runner_prefix }}
-    needs: [pre-flight, cicd-wait-in-queue, build-image]
+    needs: [pre-flight, cicd-wait-in-queue, build-image, unit-tests]
     if: |
-      !cancelled()
+      always()
+      && !cancelled()
       && needs.pre-flight.result == 'success'
       && (needs.cicd-wait-in-queue.result == 'success'
       || needs.pre-flight.outputs.is_ci_workload == 'true')
       && needs.build-image.result == 'success'
+      && (needs.unit-tests.result == 'success'
+      || (github.event_name == 'workflow_dispatch'
+      && inputs.test_suite == 'functional-only'))
       && !(needs.pre-flight.outputs.docs_only == 'true'
       || needs.pre-flight.outputs.is_deployment_workflow == 'true')
       && (github.event_name != 'workflow_dispatch'
