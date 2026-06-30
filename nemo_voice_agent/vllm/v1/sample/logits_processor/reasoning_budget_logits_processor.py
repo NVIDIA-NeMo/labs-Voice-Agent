@@ -65,6 +65,8 @@ import torch
 from vllm import SamplingParams
 from vllm.v1.sample.logits_processor import BatchUpdate, LogitsProcessor
 from vllm.v1.sample.logits_processor.builtin import process_dict_updates
+from vllm.tokenizers import get_tokenizer
+
 
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
@@ -152,7 +154,6 @@ class ReasoningBudgetLogitsProcessor(LogitsProcessor):
     def _load_tokenizer(vllm_config: "VllmConfig"):
         """Obtain a tokenizer from the vLLM config."""
         model_cfg = vllm_config.model_config
-        from vllm.transformers_utils.tokenizer import get_tokenizer
 
         return get_tokenizer(
             model_cfg.tokenizer,
