@@ -1,0 +1,48 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+FROM nvcr.io/nvidia/cuda-dl-base:26.04-cuda13.2-devel-ubuntu24.04
+
+ARG UV_VERSION=0.11.14
+
+ENV UV_PYTHON=3.13
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV VIRTUAL_ENV=/opt/venv
+ENV UV_LINK_MODE=copy
+ENV UV_NO_PROGRESS=1
+ENV PATH="/root/.local/bin:/opt/venv/bin:${PATH}"
+ENV NO_VCS_VERSION=1
+
+WORKDIR /opt/Voice-Agent
+
+RUN <<EOF bash -ex
+apt-get update
+apt-get install -y curl git
+apt-get clean
+rm -rf /var/lib/apt/lists/*
+EOF
+
+RUN <<EOF bash -ex
+curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | sh
+uv --version
+EOF
+
+COPY pyproject.toml uv.lock ./
+COPY nemo_voice_agent/__init__.py nemo_voice_agent/package_info.py ./nemo_voice_agent/
+
+RUN uv sync --link-mode copy --locked --all-extras --group test --no-install-project
+
+COPY . .
+
+RUN uv sync --link-mode copy --locked --all-extras --group test

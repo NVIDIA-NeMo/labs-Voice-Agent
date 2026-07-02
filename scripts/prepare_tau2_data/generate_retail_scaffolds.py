@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import List
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = REPO_ROOT / "evaluation" / "data" / "tau2_retail"
+DATA_DIR = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "data" / "tau2_retail"
 TARGET_PKG = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "scenarios" / "data" / "tau2_retail"
 GROUP_SIZE = 10  # 114 base tasks → 12 groups (last group has 4)
 

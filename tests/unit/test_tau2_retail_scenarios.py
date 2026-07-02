@@ -14,7 +14,7 @@
 
 """Integration tests for the tau2_retail scenario port.
 
-These tests touch the real ``evaluation/data/tau2_retail/`` fixtures and
+These tests touch the real ``nemo_voice_agent/evaluation/data/tau2_retail/`` fixtures and
 exercise the full chain: data-file load → ``Tau2RetailBaseScenario`` →
 ``_gold_replay`` against ported tools → ``expected_scenario_db`` hash.
 

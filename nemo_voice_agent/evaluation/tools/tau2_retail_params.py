@@ -197,7 +197,7 @@ class Order(BaseModel):
 
 
 class RetailDB(BaseModel):
-    """Top-level shape of ``evaluation/data/tau2_retail/db.json``."""
+    """Top-level shape of ``nemo_voice_agent/evaluation/data/tau2_retail/db.json``."""
 
     products: Dict[str, Product] = Field(description="Dictionary of all products indexed by product ID")
     users: Dict[str, User] = Field(description="Dictionary of all users indexed by user ID")

@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Scenario fixtures (evaluation/data/tau2_airline/{db,tasks,tasks_voice,split_tasks,policy.md}.json)
+# Scenario fixtures (nemo_voice_agent/evaluation/data/tau2_airline/{db,tasks,tasks_voice,split_tasks,policy.md}.json)
 # are adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0
-# (MIT-licensed). See evaluation/data/README.md for the upstream pin (commit 17e07b1).
+# (MIT-licensed). See nemo_voice_agent/evaluation/data/README.md for the upstream pin (commit 17e07b1).
 
 """Tau2-airline scenario base + seed scenarios.
 

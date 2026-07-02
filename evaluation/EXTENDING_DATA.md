@@ -49,7 +49,7 @@ A scenario fully specifies what both the user and the agent do during one evalua
 | `name` | Unique scenario ID. Convention: `{domain}__{scenario_name}` (e.g., `restaurant__pizza_pepperoni`, `tau2_airline__7`). |
 | `description` | Short human-readable summary. |
 | `max_duration` | Max scenario duration in seconds. Overrides the CLI default. |
-| `domain` | ClassVar string. Keys the per-domain tool registry namespace, the fixture subdir (e.g., `evaluation/data/{domain}/`), and the bridge's `tool_domain` argument to `update_system_prompt`. Set on the domain base class; subclasses inherit. Default is `"default"`. |
+| `domain` | ClassVar string. Keys the per-domain tool registry namespace, the fixture subdir (e.g., `nemo_voice_agent/evaluation/data/{domain}/`), and the bridge's `tool_domain` argument to `update_system_prompt`. Set on the domain base class; subclasses inherit. Default is `"default"`. |
 | `success_signals` | **Required.** Tuple of `SuccessSignal` members that gate the `is_successful` composite for this scenario. Set as a ClassVar on the domain base when uniform across the domain, or as a `cached_property` deriving from `self.nl_assertions` / other per-scenario fields when the domain has a mixed composition. `Scenario.__init_subclass__` validates this is non-empty at class-definition time for any class declaring `name`. See [Scoring contract](#scoring-contract-success_signals) below. |
 | `reference_answer` | The expected action list (or `<final_response>` payload for legacy LLM-summary scenarios). Dict or list-of-dicts. Drives the action-list match signal. |
 | `expected_scenario_db` | Optional `cached_property`. End-state DB fixture used by the DB-state hash match signal. Path-independent. |

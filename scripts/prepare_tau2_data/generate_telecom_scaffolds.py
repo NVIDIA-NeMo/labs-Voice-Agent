@@ -21,7 +21,7 @@ but adapted for telecom's descriptive task ids. Telecom task ids look like
 category (in ``[]``), one or more issues (``|``-separated), and a persona
 suffix (``None`` / ``Easy`` / ``Hard``).
 
-Reads ``evaluation/data/tau2_telecom/split_tasks.json[base]`` (114 ids) and
+Reads ``nemo_voice_agent/evaluation/data/tau2_telecom/split_tasks.json[base]`` (114 ids) and
 emits one ``@register_eval_scenario class Tau2Telecom<Snake>`` per task
 across ``group_Nx.py`` modules in
 ``nemo_voice_agent/evaluation/scenarios/data/tau2_telecom/``. 10 tasks per
@@ -57,7 +57,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = REPO_ROOT / "evaluation" / "data" / "tau2_telecom"
+DATA_DIR = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "data" / "tau2_telecom"
 TARGET_PKG = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "scenarios" / "data" / "tau2_telecom"
 GROUP_SIZE = 10
 

@@ -363,7 +363,7 @@ For details of available NVIDIA NIM services, please refer to:
 ## Acknowledgments
 
 - This example uses the [Pipecat](https://github.com/pipecat-ai/pipecat) orchestrator framework.
-- The `eva_airline` evaluation domain (50 airline customer-service scenarios) is adapted from [ServiceNow/eva](https://github.com/ServiceNow/eva) (MIT-licensed, version `0.1.3`). Per-scenario fixtures and tool function bodies carry inline `# Adapted from ...` attribution; see [`evaluation/data/README.md`](evaluation/data/README.md) for the full source/license inventory.
+- The `eva_airline` evaluation domain (50 airline customer-service scenarios) is adapted from [ServiceNow/eva](https://github.com/ServiceNow/eva) (MIT-licensed, version `0.1.3`). Per-scenario fixtures and tool function bodies carry inline `# Adapted from ...` attribution; see [`nemo_voice_agent/evaluation/data/README.md`](nemo_voice_agent/evaluation/data/README.md) for the full source/license inventory.
 - The `tau2_airline`, `tau2_retail`, and `tau2_telecom` evaluation domains (278 scenarios total) are ported from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) (MIT-licensed) at the `voice-user-sim-v1.0` branch (commit `17e07b1`). Upstream tasks, DBs, and policies are imported via the scripts under [`scripts/prepare_tau2_data/`](scripts/prepare_tau2_data/); generated scenario classes carry inline attribution headers. The companion `tau2_telecom_workflow` registration pairs each telecom task with an alternate policy variant for A/B comparison; it shares the underlying 114 tasks with `tau2_telecom` and is not counted separately.
 
 
@@ -371,4 +371,3 @@ For details of available NVIDIA NIM services, please refer to:
 ## Contributing
 
 We welcome contributions to this project. Please feel free to submit a pull request or open an issue.
-
