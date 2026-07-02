@@ -48,6 +48,13 @@ fi
 # .venv/ in the current directory with everything installed.
 uv sync
 
+# --- 4. Prefetch NLTK data for the Apache-2.0 G2P fallback ----------------
+# g2p_en (used by nemo_voice_agent/pipecat/services/nemo/_g2p_fallback.py to
+# phonemize out-of-vocabulary words for Kokoro TTS without the GPL-licensed
+# phonemizer/espeak-ng stack) needs these two NLTK corpora. Prefetch them here
+# so a live TTS session never stalls on a network call for this.
+uv run python -c "import nltk; nltk.download('cmudict'); nltk.download('averaged_perceptron_tagger_eng')"
+
 echo
 echo "✓ Install complete."
 echo "  Activate the env with:   source .venv/bin/activate"
