@@ -586,6 +586,9 @@ class KokoroTTSService(BaseNemoTTSService):
         self, lang_code: Optional[str] = None, voice: Optional[str] = None
     ):
         """Initialize the Kokoro pipeline."""
+        from nemo_voice_agent.pipecat.services.nemo import _espeak_gpl_shim
+
+        _espeak_gpl_shim.install()
         try:
             from kokoro import KPipeline
         except ImportError:
@@ -605,8 +608,21 @@ class KokoroTTSService(BaseNemoTTSService):
             pipeline = KPipeline(
                 lang_code=lang_code, device=self._device, repo_id=self._model_name
             )
+            self._attach_g2p_fallback(pipeline)
             self._model_maps[lang_code] = pipeline
         return pipeline
+
+    @staticmethod
+    def _attach_g2p_fallback(pipeline) -> None:
+        """Attach the Apache-2.0 OOV fallback (see _g2p_fallback.py) to an English pipeline.
+
+        Without this, misaki's dictionary-based G2P silently drops any word outside its
+        lexicon (phonemes=None) since the GPL-licensed espeak fallback is excluded.
+        """
+        if hasattr(pipeline, "g2p") and hasattr(pipeline.g2p, "fallback"):
+            from nemo_voice_agent.pipecat.services.nemo import _g2p_fallback
+
+            pipeline.g2p.fallback = _g2p_fallback.get_shared_fallback()
 
     def _download_all_models(
         self,
@@ -619,12 +635,16 @@ class KokoroTTSService(BaseNemoTTSService):
         logger.info(
             f"Downloading all models for Kokoro TTS service with lang_code={lang_code}"
         )
+        from nemo_voice_agent.pipecat.services.nemo import _espeak_gpl_shim
+
+        _espeak_gpl_shim.install()
         from kokoro import KPipeline
 
         model_maps = {}
 
         for lang in lang_code:
             pipeline = KPipeline(lang_code=lang, device=device, repo_id=repo_id)
+            self._attach_g2p_fallback(pipeline)
             if cache_models:
                 model_maps[lang] = pipeline
         torch.cuda.empty_cache()

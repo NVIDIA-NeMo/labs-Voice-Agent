@@ -10,38 +10,39 @@ dependencies = [
     "torch",
     "torchvision",
     "torchaudio",
-
     # NeMo speech stack (ASR + TTS models)
     "nemo-toolkit[asr,tts]>=2.7.3",
-
     # Real-time voice pipeline framework
     "pipecat-ai==0.0.98",
-
     # LLM backends
     "transformers>=5.8.0",
-    "vllm>=0.20.0",
+    "vllm>=0.24.0",
     "openai",
-
     # TTS backends and audio processing
     "kokoro",
+    "spacy",       # misaki[en] runtime need, pulled in directly since we override
+    "num2words",   # misaki's `en` extra to drop its GPL-3.0 phonemizer-fork/espeakng_loader deps
+    # misaki.en.G2P unconditionally loads this spaCy pipeline (tokenizer/tagger) on
+    # every construction and self-installs it via `pip` if missing. Pin it explicitly
+    # (MIT-licensed, not on PyPI so it needs a direct wheel URL) so `uv sync` doesn't
+    # keep stripping it and misaki doesn't fall back to an unpinned network install.
+    "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     "silero-vad",
     "onnxruntime",
     "kaldialign",
-
     # Web / API / client
     "fastapi",
     "uvicorn",
     "websockets",
-
     # Utilities
     "python_weather",
     "python-dotenv",
     "loguru",
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-exporter-otlp-proto-http",
-
     # Riva client
     "nvidia-riva-client==2.21.1",
+    "g2p-en>=2.1.0",
 ]
 
 [project.optional-dependencies]
@@ -120,5 +121,12 @@ override-dependencies = [
     "protobuf==5.29.6",
     "numba==0.65.0",
     "transformers>=5.8.0",
-    "setuptools>=79.0.0"
+    "setuptools>=79.0.0",
+    # Drop kokoro's `misaki[en]` extra request: it pulls in phonemizer-fork
+    # (GPL-3.0) and espeakng_loader (bundles a compiled GPL-3.0 espeak-ng
+    # binary), which are incompatible with this project's Apache-2.0 license.
+    # spacy/num2words (misaki's other `en` extras, both permissively licensed
+    # and needed for its core dictionary-based G2P) are added as direct deps
+    # above. See nemo_voice_agent/pipecat/services/nemo/_espeak_gpl_shim.py.
+    "misaki==0.9.4",
 ]
