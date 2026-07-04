@@ -13,11 +13,45 @@
 # limitations under the License.
 
 import inspect
-from typing import Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
 
 from nemo_voice_agent.utils.tool_calling.base import StandardSchemaTool
+
+
+def normalize_tool_result(result: Any) -> Any:
+    """Guard a tool result against pipecat's empty-result masking.
+
+    Pipecat's function-call handlers substitute the literal string
+    ``"COMPLETED"`` whenever a result is falsy — the check is ``if
+    frame.result:`` (e.g. ``pipecat/services/openai/llm.py``
+    ``handle_function_call_result``). An empty ``list``/``dict`` is a
+    *meaningful* result for a read tool ("no records / no match found"), so
+    returning a bare ``[]`` or ``{}`` gets silently rewritten to
+    ``"COMPLETED"`` — which the LLM reads as *success*. That is the failure
+    behind an agent believing a name+DOB customer lookup that matched nobody
+    had "completed" successfully (observed in tau2_telecom).
+
+    Wrap any falsy result in an explicit, non-falsy envelope so pipecat
+    serializes it verbatim and the model gets an honest "empty" signal.
+    Truthy results pass through unchanged.
+
+    IMPORTANT: apply this ONLY at the pipecat-facing ``_execute`` boundary,
+    never inside ``_do_work``/``invoke``. The sync ``invoke`` path feeds
+    gold replay and shadow-DB cross-side sync, which expect the raw return
+    shape (e.g. a bare list of matches); rewrapping there would corrupt
+    DB-hash comparison and ``sync_state``.
+    """
+    if result:  # non-empty / truthy — leave untouched
+        return result
+    if isinstance(result, list):
+        return {"status": "success", "results": [], "count": 0, "message": "No matching records found."}
+    if isinstance(result, dict):  # empty dict
+        return {"status": "success", "results": {}, "message": "No matching records found."}
+    # None / "" / 0 / False — preserve the value, just make the envelope non-falsy.
+    return {"status": "success", "result": result, "message": "Completed with no data returned."}
+
 
 # Per-domain tool registry: outer key is the domain (matching ``Scenario.domain``),
 # inner key is the tool class name (``cls.__name__`` unless ``name`` class

@@ -56,6 +56,7 @@ def _make_metrics_json(scen_dir: Path, **overrides) -> dict:
 
 def test_classify_resume_state(tmp_path):
     """The classifier returns ``completed`` / ``in_flight`` / ``fresh`` per disk shape."""
+
     # We test the logic by reproducing it inline — the helper is closed-over
     # inside ``run_dynamic_evaluation`` and not importable on its own.
     def classify(d):
@@ -134,6 +135,123 @@ def _run_eval_module():
     sys.modules["run_evaluation_under_test"] = mod
     spec.loader.exec_module(mod)
     return mod
+
+
+# ---------------------------------------------------------------------------
+# stall detection — robust to the agent-context save bug
+# ---------------------------------------------------------------------------
+
+
+def test_count_agent_responses_prefers_metrics_token_usage(tmp_path):
+    """The robust counter reads token_usage.agent.n_calls, ignoring an empty
+    agent llm_context.json (the file that gets lost on save)."""
+    from nemo_voice_agent.evaluation.resume import count_agent_responses
+
+    scen = tmp_path / "scen"
+    # Agent context saved EMPTY (the save bug) — the fragile signal would say 0.
+    (scen / "bot_logs_agent").mkdir(parents=True)
+    (scen / "bot_logs_agent" / "llm_context.json").write_text("[]")
+    # But metrics.json recorded 7 live agent LLM calls.
+    _make_metrics_json(
+        scen,
+        token_usage={
+            "agent": {"n_calls": 7, "prompt": 1, "completion": 1},
+            "user": {"n_calls": 7, "prompt": 1, "completion": 1},
+        },
+    )
+
+    # From an in-memory dict and from disk both resolve to the live count.
+    m = json.loads((scen / "metrics.json").read_text())
+    assert count_agent_responses(str(scen), m) == 7
+    assert count_agent_responses(str(scen)) == 7
+
+
+def test_count_agent_responses_falls_back_to_context_file(tmp_path):
+    """When metrics has no token_usage (old runs), fall back to the context file."""
+    from nemo_voice_agent.evaluation.resume import count_agent_responses
+
+    scen = tmp_path / "scen"
+    (scen / "bot_logs_agent").mkdir(parents=True)
+    (scen / "bot_logs_agent" / "llm_context.json").write_text(
+        json.dumps([{"role": "assistant"}, {"role": "user"}, {"role": "assistant"}])
+    )
+    # metrics.json without token_usage.
+    _make_metrics_json(scen, token_usage=None)
+    assert count_agent_responses(str(scen)) == 2
+
+
+def test_classify_marks_low_ncalls_as_in_flight(tmp_path):
+    """A scenario with fewer agent LLM calls than min_agent_turns is in_flight,
+    even when its (buggy) empty context file would otherwise pass."""
+    from nemo_voice_agent.evaluation.resume import classify_scenario_resume_state
+
+    scen = tmp_path / "scen"
+    (scen / "bot_logs_agent").mkdir(parents=True)
+    (scen / "bot_logs_agent" / "llm_context.json").write_text("[]")
+    _make_metrics_json(
+        scen,
+        token_usage={
+            "agent": {"n_calls": 1, "prompt": 1, "completion": 1},
+            "user": {"n_calls": 1, "prompt": 1, "completion": 1},
+        },
+        stop_reason="[EXIT]",
+    )
+
+    state, _reason = classify_scenario_resume_state(str(scen), min_agent_turns=3)
+    assert state == "in_flight"
+
+    # A healthy scenario (7 calls) with the same empty context file passes.
+    scen2 = tmp_path / "scen2"
+    (scen2 / "bot_logs_agent").mkdir(parents=True)
+    (scen2 / "bot_logs_agent" / "llm_context.json").write_text("[]")
+    _make_metrics_json(
+        scen2,
+        token_usage={
+            "agent": {"n_calls": 7, "prompt": 1, "completion": 1},
+            "user": {"n_calls": 7, "prompt": 1, "completion": 1},
+        },
+        stop_reason="[EXIT]",
+    )
+    state2, _ = classify_scenario_resume_state(str(scen2), min_agent_turns=3)
+    assert state2 == "completed"
+
+
+def test_aggregator_counts_stalled_as_failure(tmp_path):
+    """add_scenario with min_agent_turns>0: a stalled scenario is a failure, not
+    a silent pass, and its per-signal buckets are skipped."""
+    from nemo_voice_agent.evaluation.runner import RunAggregator
+
+    scen = tmp_path / "scen"
+    # Stalled: 1 agent call, but every gating signal happens to pass / be N/A
+    # so the naive is_successful would be True.
+    _make_metrics_json(
+        scen,
+        is_successful=True,
+        db_state_match=True,
+        clean_exit=True,
+        success_breakdown={"passed": ["clean_exit"], "failed": [], "not_applicable": [], "excluded": []},
+        token_usage={
+            "agent": {"n_calls": 1, "prompt": 100, "completion": 10},
+            "user": {"n_calls": 1, "prompt": 50, "completion": 5},
+        },
+    )
+    m = json.loads((scen / "metrics.json").read_text())
+
+    agg = RunAggregator()
+    agg.add_scenario(m, "tau2_retail", min_agent_turns=3)
+
+    # Counted as failure in the composite buckets...
+    assert agg.success_results == [False]
+    assert agg.task_success_results == [False]
+    assert agg.per_domain_success["tau2_retail"] == [False]
+    # ...excluded from per-signal buckets (meaningless for a run that stalled)...
+    assert agg.db_state_results == []
+    assert agg.action_match_results == []
+    # ...recorded for the resume warning...
+    assert agg.insufficient_turns_skipped == [scen.name]
+    # ...but token usage still rolls up for cost accounting.
+    assert agg.run_token_usage["agent"]["n_calls"] == 1
+    assert agg.run_token_usage["agent"]["prompt"] == 100
 
 
 def test_run_args_initial_invocation_creates_history(tmp_path, _run_eval_module):
@@ -245,7 +363,8 @@ def test_run_aggregator_fold_freshly_run_and_loaded_metrics(tmp_path):
             "user": {"n_calls": 5, "prompt": 3_000, "completion": 400},
         },
         "db_state_assertion_verdicts": [
-            {"passed": True}, {"passed": False},
+            {"passed": True},
+            {"passed": False},
         ],
     }
     m2 = {
@@ -260,7 +379,9 @@ def test_run_aggregator_fold_freshly_run_and_loaded_metrics(tmp_path):
             "user": {"n_calls": 7, "prompt": 4_000, "completion": 600},
         },
         "db_state_assertion_verdicts": [
-            {"passed": True}, {"passed": True}, {"passed": False},
+            {"passed": True},
+            {"passed": True},
+            {"passed": False},
         ],
     }
 
