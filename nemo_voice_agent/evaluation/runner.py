@@ -108,7 +108,7 @@ class RunAggregator:
             count = count_agent_llm_messages(metrics.get("scenario_directory", ""))
             if count is not None and count < min_agent_turns:
                 self.insufficient_turns_skipped.append(metrics.get("scenario_name", "?"))
-                return
+                # Fall through — stalled scenarios count as failures in all aggregate rates.
         # SuccessSignal.ACTION_MATCH = "is_action_match" → either bool, "N/A", or absent.
         v = metrics.get(SuccessSignal.ACTION_MATCH)
         if isinstance(v, bool):
@@ -664,7 +664,7 @@ async def run_dynamic_evaluation(
             "excluded": [str(k) for k, v in signal_checks.items() if k not in whitelist and v is not None],
         }
         metrics["is_successful"] = scenario.compute_is_successful(signal_checks)
-        if isinstance(metrics["is_successful"], bool) and not insufficient_turns:
+        if isinstance(metrics["is_successful"], bool):
             success_results.append(metrics["is_successful"])
             per_domain_success.setdefault(domain, []).append(metrics["is_successful"])
 
@@ -674,9 +674,8 @@ async def run_dynamic_evaluation(
                 f for f in metrics["success_breakdown"].get("failed", []) if f != str(SuccessSignal.CLEAN_EXIT)
             ]
             metrics["is_task_successful"] = len(failed_excl_exit) == 0
-            if not insufficient_turns:
-                task_success_results.append(metrics["is_task_successful"])
-                per_domain_task_success.setdefault(domain, []).append(metrics["is_task_successful"])
+            task_success_results.append(metrics["is_task_successful"])
+            per_domain_task_success.setdefault(domain, []).append(metrics["is_task_successful"])
 
         # Save metrics to file
         metrics_file = os.path.join(scenario_dir, "metrics.json")
@@ -708,8 +707,8 @@ async def run_dynamic_evaluation(
         logger.info(f"  Total turns: {metrics['total_turns']}")
         if insufficient_turns:
             logger.info(
-                f"  WARNING: Only {_agent_llm_count} agent LLM message(s) in context — excluded from "
-                f"aggregate rates (min_agent_turns={min_agent_turns}). Run with --resume to retry."
+                f"  WARNING: Only {_agent_llm_count} agent LLM message(s) in context — counted as failure "
+                f"(min_agent_turns={min_agent_turns}). Run with --resume to retry."
             )
         logger.info(f"  Duration: {metrics['scenario_duration']:.1f}s")
         logger.info(f"  Latency measurements: {latency_stats['count']}")
@@ -833,8 +832,8 @@ async def run_dynamic_evaluation(
         if aggregator.insufficient_turns_skipped:
             n = len(aggregator.insufficient_turns_skipped)
             f.write(f"\n\nWARNING: {n} scenario(s) had fewer than {min_agent_turns} agent turn(s) "
-                    f"and were excluded from aggregate rates (likely stalled LLM / server hang).\n")
-            f.write(f"Excluded scenarios: {', '.join(aggregator.insufficient_turns_skipped)}\n")
+                    f"(likely stalled LLM / server hang) and were counted as failures.\n")
+            f.write(f"Stalled scenarios: {', '.join(aggregator.insufficient_turns_skipped)}\n")
             f.write(f"Run with --resume <TIMESTAMP> --min-agent-turns {min_agent_turns} to retry them.\n")
 
         # Composite (strict-conjunction) success rate first — the headline
@@ -958,10 +957,10 @@ async def run_dynamic_evaluation(
     if aggregator.insufficient_turns_skipped:
         n = len(aggregator.insufficient_turns_skipped)
         logger.info(
-            f"\nWARNING: {n} scenario(s) had fewer than {min_agent_turns} agent turn(s) and were "
-            f"EXCLUDED from aggregate rates (likely stalled LLM / server hang)."
+            f"\nWARNING: {n} scenario(s) had fewer than {min_agent_turns} agent turn(s) "
+            f"(likely stalled LLM / server hang) — counted as failures in aggregate rates."
         )
-        logger.info(f"  Excluded: {', '.join(aggregator.insufficient_turns_skipped)}")
+        logger.info(f"  Stalled: {', '.join(aggregator.insufficient_turns_skipped)}")
         logger.info(f"  Run with --resume <TIMESTAMP> --min-agent-turns {min_agent_turns} to retry.")
     if success_results:
         logger.info(
