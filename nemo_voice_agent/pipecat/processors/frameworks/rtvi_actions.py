@@ -37,6 +37,88 @@ from pipecat.processors.frameworks.rtvi import RTVIAction, RTVIProcessor
 from pipecat.services.ai_service import AIService
 
 
+# Leaf keys whose VALUE is always a raw base64-encoded blob — dropped wherever
+# they appear. From the OpenAI Chat Completions content-part schema (the format
+# pipecat's ``OpenAILLMContext`` uses):
+#   - ``file_data`` — base64 file bytes in a ``file`` content part
+#   - ``b64_json``  — base64 image bytes (image-generation results)
+# The generic ``data`` key (``input_audio.data`` / assistant ``audio.data``) is
+# handled separately: it's only dropped when nested inside a media container, so
+# an unrelated ``data`` field in some tool payload isn't clobbered.
+_BASE64_LEAF_KEYS = frozenset({"file_data", "b64_json"})
+
+
+def _is_media_key(key: Any) -> bool:
+    """True if ``key`` names an audio/image/file container (e.g. ``input_audio``,
+    ``image_url``, ``file``, assistant ``audio``)."""
+    k = str(key).lower()
+    return "audio" in k or "image" in k or "file" in k
+
+
+def _tag_for_key(key: Optional[str]) -> str:
+    """Pick a human-readable placeholder tag for a stripped media/binary blob.
+
+    Keyed by the nearest media-container field name so audio/image/file payloads
+    read naturally in the saved context; anything else → generic ``<binary>``.
+    """
+    k = (str(key) if key is not None else "").lower()
+    if "audio" in k:
+        return "<audio>"
+    if "image" in k:
+        return "<image>"
+    if "file" in k:
+        return "<file>"
+    return "<binary>"
+
+
+def sanitize_context_for_transport(obj: Any, _media_key: Optional[str] = None) -> Any:
+    """Return a deep copy of an LLM-context structure with raw media blobs dropped.
+
+    Omni models keep audio (and, in future, image/file) payloads inline in their
+    message list. Serializing those verbatim produces a multi-MB payload that
+    overflows pipecat's WebSocket frame cap, so ``get_context_history`` silently
+    fails and the saved agent context ends up empty.
+
+    Only the **raw encoded data** is dropped (replaced with an ``<audio>`` /
+    ``<image>`` / ``<file>`` / ``<binary>`` tag) — small metadata is kept so the
+    snapshot stays useful for debugging:
+
+    - dropped: ``bytes`` / ``bytearray`` values; ``data:`` base64 URI strings
+      (e.g. ``image_url.url``); ``file_data`` / ``b64_json`` leaves; and the
+      ``data`` leaf when nested inside a media container (``input_audio.data``,
+      assistant ``audio.data``).
+    - kept: ``text`` / ``refusal`` strings, ``format``, ``filename``, ``file_id``,
+      ``detail``, audio ``transcript``, ``id``, and plain ``url`` / file-path
+      strings (only base64 ``data:`` URIs are stripped, not real URLs/paths).
+
+    ``_media_key`` carries the nearest enclosing media-container key name down the
+    recursion so a stripped leaf gets the right tag. Pure and non-mutating — the
+    caller's live context is never altered; a fresh structure is returned.
+    """
+    if isinstance(obj, (bytes, bytearray)):
+        return _tag_for_key(_media_key)
+    if isinstance(obj, str):
+        # base64 data URIs are heavy (e.g. an image_url given inline); a plain
+        # http(s) URL or file path is small and kept as-is.
+        if obj.startswith("data:"):
+            return _tag_for_key(_media_key)
+        return obj
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            kl = str(k).lower()
+            # Propagate the nearest media-container key for correct leaf tagging.
+            child_media_key = k if _is_media_key(k) else _media_key
+            if kl in _BASE64_LEAF_KEYS or (kl == "data" and _media_key is not None):
+                out[k] = _tag_for_key(child_media_key)
+            else:
+                out[k] = sanitize_context_for_transport(v, _media_key=child_media_key)
+        return out
+    if isinstance(obj, (list, tuple)):
+        return [sanitize_context_for_transport(v, _media_key=_media_key) for v in obj]
+    return obj
+
+
 @dataclasses.dataclass
 class TaskRef:
     """Mutable handle to a PipelineTask and its running flag.
@@ -290,7 +372,7 @@ def create_get_context_history_action(
     read the context before those frames commit, the captured message list is
     missing the final assistant turn. The judge then sees a stale context
     that doesn't contain the EndConversationTool tool_call and (incorrectly)
-    deducts points for "didn't call EndConversationTool". 
+    deducts points for "didn't call EndConversationTool".
 
     Fix: poll the aggregator until its in-progress map drains, with a hard
     deadline so a stuck tool can never deadlock scenario cleanup. The common
@@ -305,7 +387,7 @@ def create_get_context_history_action(
         # access as an attribute, no parens, or it raises
         # ``'bool' object is not callable`` at runtime); the bounded 3 s
         # deadline ensures we always return — a stuck tool downgrades to a
-        # warning, not a deadlock. 
+        # warning, not a deadlock.
         if hasattr(assistant_aggregator, "has_function_calls_in_progress"):
             deadline = asyncio.get_event_loop().time() + 3.0
             waited_initial = assistant_aggregator.has_function_calls_in_progress
@@ -321,8 +403,13 @@ def create_get_context_history_action(
                 logger.debug("get_context_history: aggregator drained, snapshotting context")
         try:
             messages = assistant_aggregator._context.get_messages()
+            # Strip inline binary blobs (Omni audio/image bytes) before
+            # stringifying — raw bytes overflow pipecat's WebSocket frame cap,
+            # which silently drops the response and leaves the saved agent
+            # context empty. Non-mutating: the live context keeps its bytes.
+            sanitized = sanitize_context_for_transport(messages)
             logger.debug(f"Returning context history: {len(messages)} messages")
-            return {"context": str(messages)}
+            return {"context": str(sanitized)}
         except Exception as e:
             logger.error(f"Error getting context history: {e}")
             return {"context": []}
@@ -398,8 +485,7 @@ def create_get_scenario_summary_action(
             db = shared_state_ref.state.get("db") or {}
             db_hash = get_dict_hash(db) if db else None
             logger.debug(
-                f"Returning scenario summary: {len(actions)} action(s), "
-                f"db_hash={db_hash}, include_db={include_db}"
+                f"Returning scenario summary: {len(actions)} action(s), " f"db_hash={db_hash}, include_db={include_db}"
             )
             await _maybe_end_task(task_ref)
             response: dict[str, Any] = {
@@ -528,10 +614,7 @@ def create_apply_initialization_action(
             if not isinstance(init_payload, dict):
                 return {
                     "success": False,
-                    "errors": [
-                        f"shared_state_init must decode to a dict, got "
-                        f"{type(init_payload).__name__}."
-                    ],
+                    "errors": [f"shared_state_init must decode to a dict, got " f"{type(init_payload).__name__}."],
                 }
             shared_state.update(init_payload)
 
@@ -563,10 +646,7 @@ def create_apply_initialization_action(
             #    only entries belonging to this bot before sending. The
             #    handler is side-agnostic.
             db = shared_state.get("db")
-            logger.info(
-                f"[APPLY INIT] domain={domain!r}, actions={len(actions)}, "
-                f"db_present={db is not None}"
-            )
+            logger.info(f"[APPLY INIT] domain={domain!r}, actions={len(actions)}, " f"db_present={db is not None}")
             if actions and db is None:
                 return {
                     "success": False,
@@ -587,10 +667,7 @@ def create_apply_initialization_action(
             if result["success"]:
                 logger.info(f"[APPLY INIT] success ({len(actions)} action(s) applied)")
             else:
-                logger.warning(
-                    f"[APPLY INIT] failure with {len(result['errors'])} error(s): "
-                    f"{result['errors']}"
-                )
+                logger.warning(f"[APPLY INIT] failure with {len(result['errors'])} error(s): " f"{result['errors']}")
             return result
         except Exception as e:
             logger.error(f"Error applying initialization: {e}")
@@ -662,8 +739,7 @@ def create_apply_sync_delta_action(
                 }
             db = shared_state_ref.state.get("db") if shared_state_ref.state else None
             logger.info(
-                f"[APPLY SYNC] domain={domain!r}, delta_keys={list(delta.keys())}, "
-                f"db_present={db is not None}"
+                f"[APPLY SYNC] domain={domain!r}, delta_keys={list(delta.keys())}, " f"db_present={db is not None}"
             )
             if db is None:
                 return {

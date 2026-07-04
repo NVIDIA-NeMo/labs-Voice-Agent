@@ -18,6 +18,7 @@ from .rtvi_actions import (
     create_get_context_history_action,
     create_reset_context_action,
     create_update_system_prompt_action,
+    sanitize_context_for_transport,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "create_get_context_history_action",
     "create_reset_context_action",
     "create_update_system_prompt_action",
+    "sanitize_context_for_transport",
 ]
