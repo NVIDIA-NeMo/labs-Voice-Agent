@@ -29,7 +29,11 @@ from typing import Dict, List, Optional
 from nemo_voice_agent.evaluation.bridge import STOP_REASON_EXIT, VoiceAgentEvaluationBridge
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 from nemo_voice_agent.evaluation.db_state_predicates import evaluate_db_state_assertion
-from nemo_voice_agent.evaluation.resume import classify_scenario_resume_state, count_agent_llm_messages
+from nemo_voice_agent.evaluation.resume import (
+    classify_scenario_resume_state,
+    count_agent_llm_messages,
+    count_agent_responses,
+)
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario, SuccessSignal
 from nemo_voice_agent.evaluation.utils import LLMJudge, check_if_task_success, normalize_scenario_payload
 from nemo_voice_agent.utils import FileLogger
@@ -100,15 +104,33 @@ class RunAggregator:
         the on-disk metrics.json format while pinning the lookup to a
         typo-resistant symbol.
 
-        When ``min_agent_turns > 0``, scenarios with fewer agent turns are
-        excluded from all aggregate buckets and recorded in
-        ``insufficient_turns_skipped`` instead.
+        When ``min_agent_turns > 0``, scenarios with fewer agent LLM responses
+        (stalled agent) are counted as failures in the composite success/task
+        buckets, skipped in the per-signal buckets (those measurements are
+        meaningless for a run that stalled), and recorded in
+        ``insufficient_turns_skipped`` for the resume warning. Token usage is
+        still rolled up so cost accounting stays accurate.
         """
         if min_agent_turns > 0:
-            count = count_agent_llm_messages(metrics.get("scenario_directory", ""))
+            count = count_agent_responses(metrics.get("scenario_directory", ""), metrics)
             if count is not None and count < min_agent_turns:
                 self.insufficient_turns_skipped.append(metrics.get("scenario_name", "?"))
-                # Fall through — stalled scenarios count as failures in all aggregate rates.
+                # A stalled agent (too few LLM responses) is a hard failure. Record
+                # False in the composite success/task buckets and skip the per-signal
+                # buckets (those measurements are meaningless for a run that never
+                # happened). Token usage is still rolled up below so cost accounting
+                # stays accurate. Returning here is what actually enforces the
+                # "counted as failures" contract the summary warning promises.
+                self.success_results.append(False)
+                self.per_domain_success.setdefault(domain, []).append(False)
+                self.task_success_results.append(False)
+                self.per_domain_task_success.setdefault(domain, []).append(False)
+                tu = metrics.get("token_usage") or {}
+                for side in ("agent", "user"):
+                    sub = tu.get(side) or {}
+                    for key in ("n_calls", "prompt", "completion"):
+                        self.run_token_usage[side][key] += sub.get(key, 0)
+                return
         # SuccessSignal.ACTION_MATCH = "is_action_match" → either bool, "N/A", or absent.
         v = metrics.get(SuccessSignal.ACTION_MATCH)
         if isinstance(v, bool):
@@ -404,10 +426,13 @@ async def run_dynamic_evaluation(
         domain = scenario.name.split("__", 1)[0]
 
         # Detect stalled scenarios (e.g. vLLM hung after first tool call) by
-        # counting assistant-role messages in the saved agent LLM context file.
-        # The bridge writes this file during run_scenario, so it is available here.
-        # None (file absent or unreadable) → skip the check.
-        _agent_llm_count = count_agent_llm_messages(scenario_dir)
+        # counting the agent's LLM responses. Uses the bridge's live-accumulated
+        # token_usage.agent.n_calls — robust to the agent-context save bug that
+        # can leave bot_logs_agent/llm_context.json empty even when the agent ran.
+        # Falls back to the saved context file only if the counter is unavailable.
+        _agent_llm_count = (bridge.token_usage.get("agent") or {}).get("n_calls")
+        if _agent_llm_count is None:
+            _agent_llm_count = count_agent_llm_messages(scenario_dir)
         insufficient_turns = (
             min_agent_turns > 0 and _agent_llm_count is not None and _agent_llm_count < min_agent_turns
         )
@@ -576,17 +601,22 @@ async def run_dynamic_evaluation(
         if expected_db is not None:
             summary = bridge.scenario_summary or {}
             actual_hash = summary.get("db_hash") if isinstance(summary, dict) else None
+            expected_hash = get_dict_hash(expected_db)
+            metrics["db_state_expected_hash"] = expected_hash
             if actual_hash is None:
-                logger.info("Bot did not report a db_hash in get_scenario_summary; skipping DB-state match.")
-                metrics["db_state_match"] = "N/A"
+                # DB-state matching IS applicable (the scenario declares an expected
+                # end state), but the bot never returned a db_hash — the agent failed
+                # to reach a scoreable end state. That is a FAILURE, not "N/A".
+                # "N/A" is reserved for scenarios with no expected_scenario_db at all.
+                logger.info("Bot did not report a db_hash in get_scenario_summary; DB-state match = False.")
+                metrics["db_state_match"] = False
+                metrics["db_state_actual_hash"] = None
             else:
-                expected_hash = get_dict_hash(expected_db)
                 metrics["db_state_match"] = expected_hash == actual_hash
-                metrics["db_state_expected_hash"] = expected_hash
                 metrics["db_state_actual_hash"] = actual_hash
-                if not insufficient_turns:
-                    db_state_results.append(metrics["db_state_match"])
-                    per_domain_db_state.setdefault(domain, []).append(metrics["db_state_match"])
+            if not insufficient_turns:
+                db_state_results.append(metrics["db_state_match"])
+                per_domain_db_state.setdefault(domain, []).append(metrics["db_state_match"])
 
         # Persist per-scenario nl-assertion pass rate so it lands in metrics.json
         # and the per-scenario console summary below. ``None`` ↔ scenario carries
@@ -663,19 +693,32 @@ async def run_dynamic_evaluation(
             "not_applicable": [str(k) for k, v in signal_checks.items() if k in whitelist and v is None],
             "excluded": [str(k) for k, v in signal_checks.items() if k not in whitelist and v is not None],
         }
-        metrics["is_successful"] = scenario.compute_is_successful(signal_checks)
-        if isinstance(metrics["is_successful"], bool):
-            success_results.append(metrics["is_successful"])
-            per_domain_success.setdefault(domain, []).append(metrics["is_successful"])
+        # A stalled agent (too few LLM responses) is a hard failure regardless of
+        # which gating signals happened to be N/A — an empty conversation must not
+        # score as success just because clean_exit was the only applicable signal.
+        # Overriding here keeps metrics.json, the per-scenario display, and the
+        # aggregate buckets all consistent with the "counted as failures" warning.
+        if insufficient_turns:
+            metrics["is_successful"] = False
+            metrics["is_task_successful"] = False
+            success_results.append(False)
+            per_domain_success.setdefault(domain, []).append(False)
+            task_success_results.append(False)
+            per_domain_task_success.setdefault(domain, []).append(False)
+        else:
+            metrics["is_successful"] = scenario.compute_is_successful(signal_checks)
+            if isinstance(metrics["is_successful"], bool):
+                success_results.append(metrics["is_successful"])
+                per_domain_success.setdefault(domain, []).append(metrics["is_successful"])
 
-        # Task success: conjunction over whitelisted signals excluding clean_exit.
-        if isinstance(metrics["is_successful"], bool):
-            failed_excl_exit = [
-                f for f in metrics["success_breakdown"].get("failed", []) if f != str(SuccessSignal.CLEAN_EXIT)
-            ]
-            metrics["is_task_successful"] = len(failed_excl_exit) == 0
-            task_success_results.append(metrics["is_task_successful"])
-            per_domain_task_success.setdefault(domain, []).append(metrics["is_task_successful"])
+            # Task success: conjunction over whitelisted signals excluding clean_exit.
+            if isinstance(metrics["is_successful"], bool):
+                failed_excl_exit = [
+                    f for f in metrics["success_breakdown"].get("failed", []) if f != str(SuccessSignal.CLEAN_EXIT)
+                ]
+                metrics["is_task_successful"] = len(failed_excl_exit) == 0
+                task_success_results.append(metrics["is_task_successful"])
+                per_domain_task_success.setdefault(domain, []).append(metrics["is_task_successful"])
 
         # Save metrics to file
         metrics_file = os.path.join(scenario_dir, "metrics.json")
@@ -805,7 +848,10 @@ async def run_dynamic_evaluation(
                 f.write(f"    Failed signals: {', '.join(failed_signals)}\n")
             f.write(f"  Turns: {result['total_turns']}\n")
             if result.get("insufficient_agent_turns"):
-                f.write(f"  [EXCLUDED FROM AGGREGATE RATES: insufficient agent turns]\n")
+                f.write(
+                    f"  [COUNTED AS FAILURE: insufficient agent turns / stalled — "
+                    f"excluded from per-signal rates]\n"
+                )
             f.write(f"  Duration: {result['scenario_duration']:.1f}s\n")
             if result["scenario_duration"] > 0:
                 f.write(f"  Turns/min: {result['total_turns'] / (result['scenario_duration'] / 60):.1f}\n")
@@ -831,8 +877,10 @@ async def run_dynamic_evaluation(
         # knows the eval is not fully complete and can --resume to retry them.
         if aggregator.insufficient_turns_skipped:
             n = len(aggregator.insufficient_turns_skipped)
-            f.write(f"\n\nWARNING: {n} scenario(s) had fewer than {min_agent_turns} agent turn(s) "
-                    f"(likely stalled LLM / server hang) and were counted as failures.\n")
+            f.write(
+                f"\n\nWARNING: {n} scenario(s) had fewer than {min_agent_turns} agent turn(s) "
+                f"(likely stalled LLM / server hang) and were counted as failures.\n"
+            )
             f.write(f"Stalled scenarios: {', '.join(aggregator.insufficient_turns_skipped)}\n")
             f.write(f"Run with --resume <TIMESTAMP> --min-agent-turns {min_agent_turns} to retry them.\n")
 
@@ -1023,7 +1071,9 @@ async def run_dynamic_evaluation(
         for d in sorted(per_domain_task_success):
             results = per_domain_task_success[d]
             rate = sum(results) / len(results) if results else 0
-            logger.info(f"  [{d}] Task Success Rate (excl. clean_exit): {rate*100:.2f}% ({sum(results):g}/{len(results)})")
+            logger.info(
+                f"  [{d}] Task Success Rate (excl. clean_exit): {rate*100:.2f}% ({sum(results):g}/{len(results)})"
+            )
     if len(per_domain_db_state) > 1:
         for d in sorted(per_domain_db_state):
             results = per_domain_db_state[d]
