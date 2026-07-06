@@ -56,6 +56,7 @@ import sys
 from pathlib import Path
 from typing import List, Tuple
 
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "data" / "tau2_telecom"
 TARGET_PKG = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "scenarios" / "data" / "tau2_telecom"

@@ -48,6 +48,7 @@ from typing import Callable, Dict
 
 from loguru import logger
 
+
 # domain → applier callable. Populated by ``@register_sync_applier``
 # decorators applied to functions in the relevant domain module (e.g.,
 # ``tau2_telecom_sync.py`` registers under ``"tau2_telecom"``). Missing

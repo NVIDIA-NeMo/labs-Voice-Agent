@@ -32,6 +32,7 @@ from nemo_voice_agent.evaluation.tools.customer_service_tools import (
     DEFAULT_RESOLUTION_TYPES,
 )
 
+
 RESOLUTION_TYPES_INFO = (
     f"Valid `resolution_type` values for `ResolveTicketTool`: {', '.join(DEFAULT_RESOLUTION_TYPES)}."
 )

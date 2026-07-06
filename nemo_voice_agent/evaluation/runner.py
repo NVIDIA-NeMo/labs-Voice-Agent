@@ -806,7 +806,7 @@ async def run_dynamic_evaluation(
                 f.write(f"    Failed signals: {', '.join(failed_signals)}\n")
             f.write(f"  Turns: {result['total_turns']}\n")
             if result.get("insufficient_agent_turns"):
-                f.write(f"  [EXCLUDED FROM AGGREGATE RATES: insufficient agent turns]\n")
+                f.write("  [EXCLUDED FROM AGGREGATE RATES: insufficient agent turns]\n")
             f.write(f"  Duration: {result['scenario_duration']:.1f}s\n")
             if result["scenario_duration"] > 0:
                 f.write(f"  Turns/min: {result['total_turns'] / (result['scenario_duration'] / 60):.1f}\n")

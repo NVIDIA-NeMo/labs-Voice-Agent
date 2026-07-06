@@ -20,20 +20,21 @@ Importing this package side-imports every group so registry decoration fires
 for all 114 base-split tau2_telecom scenarios.
 """
 
+# Side-import groups so @register_eval_scenario fires.
+from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import (
+    group_0x,  # noqa: F401
+    group_1x,  # noqa: F401
+    group_2x,  # noqa: F401
+    group_3x,  # noqa: F401
+    group_4x,  # noqa: F401
+    group_5x,  # noqa: F401
+    group_6x,  # noqa: F401
+    group_7x,  # noqa: F401
+    group_8x,  # noqa: F401
+    group_9x,  # noqa: F401
+    group_10x,  # noqa: F401
+    group_11x,  # noqa: F401
+)
 from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (  # noqa: F401
     Tau2TelecomBaseScenario,
 )
-
-# Side-import groups so @register_eval_scenario fires.
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_0x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_1x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_2x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_3x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_4x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_5x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_6x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_7x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_8x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_9x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_10x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import group_11x  # noqa: F401

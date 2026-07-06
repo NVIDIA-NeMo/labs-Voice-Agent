@@ -23,10 +23,8 @@
 # flake8: noqa: E501
 
 import copy
-import json
 from typing import Any, Dict, List, Optional
 
-from loguru import logger
 from pipecat.services.llm_service import FunctionCallParams
 from pydantic import ValidationError
 
@@ -53,6 +51,7 @@ from nemo_voice_agent.evaluation.tools.eva_airline_params import (
     validation_error_response,
 )
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
+
 
 # ---------------------------------------------------------------------------
 # Action-type vocabulary (locked, 1:1 with eva tool names)

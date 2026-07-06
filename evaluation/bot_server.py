@@ -38,10 +38,10 @@ from nemo_voice_agent.pipecat.processors.frameworks.rtvi import RTVIObserver
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     SharedStateRef,
     TaskRef,
-    create_get_context_history_action,
-    create_get_scenario_summary_action,
     create_apply_initialization_action,
     create_apply_sync_delta_action,
+    create_get_context_history_action,
+    create_get_scenario_summary_action,
     create_reset_context_action,
     create_update_system_prompt_action,
 )
@@ -60,6 +60,7 @@ from nemo_voice_agent.pipecat.services.nemo.builders import (
 )
 from nemo_voice_agent.utils import ConfigManager, setup_rotating_log
 from nemo_voice_agent.utils.tool_calling import register_schema_tools_to_llm
+
 
 load_dotenv(override=True)
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")

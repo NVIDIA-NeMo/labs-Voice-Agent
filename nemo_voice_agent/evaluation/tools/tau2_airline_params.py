@@ -51,6 +51,7 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+
 # =============================================================================
 # Domain enums / type aliases (mirror data_model.py top-of-file)
 # =============================================================================

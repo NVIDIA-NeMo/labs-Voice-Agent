@@ -22,7 +22,6 @@ the resulting user_db.
 """
 
 import nemo_voice_agent.evaluation.scenarios.data  # noqa: F401 — triggers registration
-
 from nemo_voice_agent.evaluation.db_state_predicates import evaluate_db_state_assertion
 from nemo_voice_agent.evaluation.scenarios import ALL_EVAL_SCENARIOS
 from nemo_voice_agent.evaluation.scenarios.data.tau2_common import _normalize_env_record

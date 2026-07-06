@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+
 # =============================================================================
 # Domain enums / type aliases
 # =============================================================================

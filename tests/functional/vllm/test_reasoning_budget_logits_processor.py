@@ -38,6 +38,7 @@ from nemo_voice_agent.vllm.v1.sample.logits_processor.reasoning_budget_logits_pr
     ReasoningBudgetLogitsProcessor,
 )
 
+
 MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 DEVICE = torch.device("cuda:0")
 pytestmark = [pytest.mark.functional, pytest.mark.gpu]
@@ -599,7 +600,7 @@ class TestRealPromptTokenization:
         logits_before = logits.clone()
         processor.apply(logits)
         assert torch.equal(logits, logits_before)
-        print(f"  Logits are unconstrained after </think>")
+        print("  Logits are unconstrained after </think>")
         print(f"{'=' * 70}")
 
     def test_chat_template_tokens(self, processor, tokenizer):
@@ -661,7 +662,7 @@ class TestVLLMOfflineGeneration:
         outputs = llm.generate([prompt], sampling_params_list)
 
         print(f"\n{'=' * 70}")
-        print(f"vllm.LLM generation — thinking_budget=64, max_tokens=256")
+        print("vllm.LLM generation — thinking_budget=64, max_tokens=256")
         print(f"Messages: {MESSAGES}")
         print(f"{'=' * 70}")
         for output in outputs:
@@ -670,7 +671,7 @@ class TestVLLMOfflineGeneration:
             print(f"Prompt:    {output.prompt!r}")
             print(f"Output ({num_tokens} tokens):")
             print(f"  {generated_text}")
-            print(f"-" * 60)
+            print("-" * 60)
 
             assert generated_text is not None and len(generated_text) > 0
 
@@ -709,11 +710,11 @@ class TestVLLMOfflineGeneration:
         outputs = llm.generate([prompt, prompt_2], sampling_params_list)
 
         print(f"\n{'=' * 70}")
-        print(f"vllm.LLM generation — multiple budgets")
+        print("vllm.LLM generation — multiple budgets")
         print(f"{'=' * 70}")
         labels = [
-            f"budget=150, grace=30, end='Reached thinking limit.\\n</think>'",
-            f"budget=20,  grace=5,  end='</think>'",
+            "budget=150, grace=30, end='Reached thinking limit.\\n</think>'",
+            "budget=20,  grace=5,  end='</think>'",
         ]
         prompts_used = [MESSAGES, messages_2]
         for i, output in enumerate(outputs):

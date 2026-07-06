@@ -54,6 +54,7 @@ from nemo_voice_agent.pipecat.frames.riva import (
     RivaVoicesFrame,
 )
 
+
 # Constants
 DEFAULT_NVCF_SERVER = "grpc.nvcf.nvidia.com:443"
 

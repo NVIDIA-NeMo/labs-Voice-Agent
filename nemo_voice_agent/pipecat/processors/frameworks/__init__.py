@@ -20,6 +20,7 @@ from .rtvi_actions import (
     create_update_system_prompt_action,
 )
 
+
 __all__ = [
     "RTVIObserver",
     "TaskRef",

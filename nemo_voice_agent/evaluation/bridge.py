@@ -38,7 +38,6 @@ import numpy as np
 import soxr
 import websockets
 from loguru import logger
-from omegaconf import DictConfig
 from pipecat.frames.frames import OutputAudioRawFrame
 from pipecat.processors.frameworks.rtvi import (
     RTVIBotStartedSpeakingMessage,
@@ -60,6 +59,7 @@ from nemo_voice_agent.utils import setup_logging
 
 # Import AudioStream for buffering and resampling
 from nemo_voice_agent.utils.audio import AudioStream, NoiseConfig
+
 
 # RTVI message type constants - automatically adapts to pipecat changes
 RTVI_BOT_STOPPED_SPEAKING = RTVIBotStoppedSpeakingMessage().type

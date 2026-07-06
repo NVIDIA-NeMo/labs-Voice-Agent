@@ -43,6 +43,7 @@ from vllm.config import ModelConfig as vllmModelConfig
 
 from nemo_voice_agent.pipecat.services.nvidia_llm_traced import NvidiaLLMService
 
+
 DEFAULT_GENERATION_KWARGS = {
     "max_new_tokens": 256,
     "temperature": 0.7,

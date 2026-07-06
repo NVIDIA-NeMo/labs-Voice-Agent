@@ -29,6 +29,7 @@ from pipecat.transports.network.websocket_server import (
 from nemo_voice_agent.pipecat.transports.base_input import BaseInputTransport
 from nemo_voice_agent.pipecat.transports.base_transport import TransportParams
 
+
 try:
     import websockets
 except ModuleNotFoundError as e:
@@ -153,7 +154,7 @@ class WebsocketServerInputTransport(BaseInputTransport):
     async def _server_task_handler(self):
         """Handle WebSocket server startup and client connections."""
         logger.info(f"Starting websocket server on {self._host}:{self._port}")
-        async with websockets.serve(self._client_handler, self._host, self._port) as server:
+        async with websockets.serve(self._client_handler, self._host, self._port):
             await self._callbacks.on_websocket_ready()
             await self._stop_server_event.wait()
 

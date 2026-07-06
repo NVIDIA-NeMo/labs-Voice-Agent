@@ -111,7 +111,7 @@ def _write_run_args(
         if mismatches:
             logger.info(
                 "WARNING: --resume invocation differs from the original run on these "
-                f"scoring-relevant fields:\n" + "\n".join(mismatches) + "\n"
+                "scoring-relevant fields:\n" + "\n".join(mismatches) + "\n"
                 "Proceeding — aggregate metrics may mix scenarios scored with different "
                 "settings. Re-run from scratch (omit --resume) for a clean comparison."
             )

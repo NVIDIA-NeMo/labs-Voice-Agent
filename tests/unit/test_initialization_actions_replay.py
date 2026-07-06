@@ -49,6 +49,7 @@ from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     create_apply_initialization_action,
 )
 
+
 _TEST_DOMAIN = "_test_init_actions_synthetic_domain"
 
 

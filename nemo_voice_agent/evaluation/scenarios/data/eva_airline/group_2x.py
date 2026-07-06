@@ -25,6 +25,7 @@ from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
 )
 from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
+
 # ---------------------------------------------------------------------------
 # eva 2.1.2: You want help after your ATL to SEA flight was canceled: get rebooked onto the first available fligh
 # ---------------------------------------------------------------------------

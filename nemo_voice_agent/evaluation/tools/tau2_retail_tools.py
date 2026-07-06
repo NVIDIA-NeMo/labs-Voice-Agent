@@ -29,7 +29,6 @@ records each mutation into ``self.state["actions"]``.
 # pylint: disable=line-too-long
 # flake8: noqa: E501
 
-import copy
 import json
 from typing import Any, ClassVar, Dict, List, Optional, Type
 
@@ -58,6 +57,7 @@ from nemo_voice_agent.evaluation.tools.tau2_retail_params import (
     validation_error_response,
 )
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
+
 
 # =============================================================================
 # Action-type vocabulary

@@ -28,12 +28,13 @@ time based on which WebSocket produced the record; the gold-replay path stamps
 """
 
 import asyncio
-import json
 from typing import ClassVar, List
 
 from loguru import logger
 from pipecat.processors.frameworks.rtvi import RTVIProcessor, RTVIServerMessage, RTVITextMessageData
+
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
+
 
 _EXIT_START = "<exit>"
 _EXIT_END = "</exit>"

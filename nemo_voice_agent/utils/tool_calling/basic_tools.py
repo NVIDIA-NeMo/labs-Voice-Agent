@@ -20,6 +20,7 @@ from pipecat.frames.frames import LLMTextFrame, TTSSpeakFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import FunctionCallParams
 
+
 HTTP_REQUEST_TIMEOUT = 10.0
 
 

@@ -30,6 +30,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
 )
 from nemo_voice_agent.utils.audio import NoiseConfig
 
+
 # ---------------------------------------------------------------------------
 # Menu constants
 # ---------------------------------------------------------------------------

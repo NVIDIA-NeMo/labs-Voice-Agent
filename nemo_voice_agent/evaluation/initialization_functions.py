@@ -69,6 +69,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from loguru import logger
 
+
 # Initialization function signature: ``(db: dict, **arguments) -> None``.
 # Mutates the passed dict in place; return value is ignored.
 InitializationFunction = Callable[..., None]

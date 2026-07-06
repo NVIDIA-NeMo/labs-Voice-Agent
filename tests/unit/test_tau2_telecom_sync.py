@@ -169,7 +169,7 @@ def test_sync_steady_state_produces_no_delta():
     agent_db = _make_agent_db()
     user_db = _make_user_db()
     # Pre-align surroundings.line_active matches line.status=Active
-    deltas = sync_telecom_state(agent_db, user_db)
+    sync_telecom_state(agent_db, user_db)
     # First call may produce deltas for fields not yet set; second call must
     # be a no-op since the sync just updated them.
     second = sync_telecom_state(agent_db, user_db)

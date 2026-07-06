@@ -109,7 +109,6 @@ from nemo_voice_agent.evaluation.tools.tau2_telecom_params import (
     SimStatus,
 )
 from nemo_voice_agent.evaluation.tools.tau2_telecom_predicates import (
-    _can_send_mms,
     _get_customer_by_id,
     _get_target_line,
 )
@@ -458,7 +457,7 @@ def suspend_line_for_overdue_bill(
     ``suspend_line_for_overdue_bill`` signatures so task
     ``initialization_actions`` payloads dispatch without renaming.
     """
-    from datetime import date, datetime, timedelta
+    from datetime import date, timedelta
 
     line = _get_target_line(db, customer_id, line_id)
     if line is None:

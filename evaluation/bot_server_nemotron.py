@@ -199,23 +199,23 @@ async def run_bot_websocket(
 ):
     """Start the evaluation agent websocket server; runs until Ctrl+C."""
     logger.info(f"Starting websocket server on {host}:{port}")
-    logger.info(f"------- LLM -------")
+    logger.info("------- LLM -------")
     logger.info(f"NVIDIA_LLM_URL: {NVIDIA_LLM_URL}")
     logger.info(f"NVIDIA_LLM_MODEL: {NVIDIA_LLM_MODEL}")
     logger.info(f"ENABLE_TOOL_CALLING: {ENABLE_TOOL_CALLING}")
     logger.info(f"ENABLE_THINKING: {ENABLE_THINKING}")
     logger.info(f"THINKING_BUDGET: {THINKING_BUDGET}")
-    logger.info(f"------- ASR -------")
+    logger.info("------- ASR -------")
     logger.info(f"ASR_SERVER_URL: {ASR_SERVER_URL}")
     logger.info(f"ASR_MODEL_NAME: {ASR_MODEL_NAME}")
     logger.info(f"ASR_LANGUAGE: {ASR_LANGUAGE}")
     logger.info(f"ASR_CLOUD_FUNCTION_ID: {ASR_CLOUD_FUNCTION_ID}")
-    logger.info(f"------- TTS -------")
+    logger.info("------- TTS -------")
     logger.info(f"TTS_SERVER_URL: {TTS_SERVER_URL}")
     logger.info(f"TTS_VOICE_ID: {TTS_VOICE_ID}")
     logger.info(f"TTS_MODEL_NAME: {TTS_MODEL_NAME}")
     logger.info(f"TTS_LANGUAGE: {TTS_LANGUAGE}")
-    logger.info(f"------- Misc ------")
+    logger.info("------- Misc ------")
     logger.info(f"ENABLE_MULTILINGUAL: {ENABLE_MULTILINGUAL}")
     logger.info(f"VAD_PROFILE: {VAD_PROFILE}")
     logger.info(f"VAD_STOP_SECS: {VAD_STOP_SECS}")
@@ -227,7 +227,7 @@ async def run_bot_websocket(
     logger.info(f"ENABLE_SPECULATIVE_SPEECH: {ENABLE_SPECULATIVE_SPEECH}")
     logger.info(f"CHAT_HISTORY_LIMIT: {CHAT_HISTORY_LIMIT}")
     logger.info(f"LOG_FILE: {LOG_FILE}")
-    logger.info(f"-------------------")
+    logger.info("-------------------")
 
     setup_rotating_log(
         log_file=LOG_FILE,

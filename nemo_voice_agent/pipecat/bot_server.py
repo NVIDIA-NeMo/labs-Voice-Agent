@@ -39,11 +39,11 @@ from pipecat.pipeline.task import PipelineTask
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
 
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import TaskRef
-from nemo_voice_agent.utils.websocket_url import build_websocket_url
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
 from nemo_voice_agent.pipecat.transports.network.websocket_server import (
     WebsocketServerTransport,
 )
+from nemo_voice_agent.utils.websocket_url import build_websocket_url
 
 
 def _reset_services(services: Optional[List[Any]]) -> None:

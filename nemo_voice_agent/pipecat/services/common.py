@@ -28,6 +28,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response import LLMUserContextAggregator
 from pipecat.processors.frame_processor import FrameProcessor
 
+
 DEFAULT_TEXT_PROMPT_FOR_AUDIO = "Follow instructions or answer questions in the audio."
 DEFAULT_TEXT_PROMPT_FOR_TRANSCRIPT = "Here is the pseudo-transcript of the audio for reference:"
 
@@ -118,11 +119,11 @@ class UserAudioBuffer(FrameProcessor):
             logger.debug(f"Added transcript to buffer: `{frame.text}`. New buffer: {self._transcript_buffer}")
             return
         elif isinstance(frame, UserStartedSpeakingFrame):
-            logger.debug(f"User started speaking")
+            logger.debug("User started speaking")
             self._user_speaking = True
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._user_speaking = False
-            logger.debug(f"User stopped speaking")
+            logger.debug("User stopped speaking")
             if self._keep_only_last_audio_turn:
                 self._replace_previous_audio_turns()
             text = self._text_prompt_for_audio

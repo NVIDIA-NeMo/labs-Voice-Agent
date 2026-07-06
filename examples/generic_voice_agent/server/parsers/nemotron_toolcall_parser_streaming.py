@@ -38,6 +38,7 @@ from vllm.tokenizers import TokenizerLike
 from vllm.tokenizers.mistral import MistralTokenizer
 from vllm.tool_parsers.abstract_tool_parser import ToolParser, ToolParserManager
 
+
 logger = init_logger(__name__)
 
 ALPHANUMERIC = ascii_letters + digits

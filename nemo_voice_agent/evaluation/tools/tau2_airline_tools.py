@@ -73,6 +73,7 @@ from nemo_voice_agent.evaluation.tools.tau2_airline_params import (
 )
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
 
+
 # =============================================================================
 # Action-type vocabulary
 # Recorded by every _Tau2WriteTool subclass via ``_record_action({"action_type": ...})``.

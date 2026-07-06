@@ -49,6 +49,7 @@ from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     create_get_scenario_summary_action,
 )
 
+
 # ---------------------------------------------------------------------------
 # 1. db_hash hashing
 # ---------------------------------------------------------------------------

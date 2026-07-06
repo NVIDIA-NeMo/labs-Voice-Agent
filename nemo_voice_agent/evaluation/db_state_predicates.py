@@ -59,6 +59,7 @@ from typing import Any, Callable, Dict, Optional
 
 from loguru import logger
 
+
 # Predicate signature: ``(db: dict, **arguments) -> bool``.
 Predicate = Callable[..., bool]
 

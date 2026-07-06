@@ -40,6 +40,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
 )
 from nemo_voice_agent.evaluation.utils import check_if_task_success
 
+
 # ---------------------------------------------------------------------------
 # Tiny fully-realized Scenario so we can exercise setup_shared_state in
 # isolation. Every abstract @property gets a minimal stub.

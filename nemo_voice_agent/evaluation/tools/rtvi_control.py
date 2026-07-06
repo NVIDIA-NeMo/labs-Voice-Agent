@@ -29,6 +29,7 @@ from pipecat.services.llm_service import FunctionCallParams
 from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
 
+
 FINAL_RESPONSE_START_TAG = "<final_response>"
 FINAL_RESPONSE_END_TAG = "</final_response>"
 EXIT_MESSAGE_START_TAG = "<exit>"

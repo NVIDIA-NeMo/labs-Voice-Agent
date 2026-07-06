@@ -23,6 +23,7 @@ from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools.rtvi_control import SendScenarioSummaryTool
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
 
+
 DEFAULT_RESOLUTION_TYPES: List[str] = [
     "refund",
     "replacement",

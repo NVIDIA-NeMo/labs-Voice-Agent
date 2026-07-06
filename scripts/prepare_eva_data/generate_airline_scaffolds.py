@@ -41,6 +41,7 @@ import json
 import sys
 from pathlib import Path
 
+
 ALREADY_PORTED = {"1.1.2", "2.1.1", "3.1.3", "5.1.1", "7.2.1"}
 
 DIGIT_WORDS = {
@@ -233,7 +234,7 @@ def build_scenario(entry: dict) -> str:
     g_lines = []
     for g in guidelines:
         if g == "self.VOICE_ALPHANUMERIC_RULE":
-            g_lines.append(f"                self.VOICE_ALPHANUMERIC_RULE,")
+            g_lines.append("                self.VOICE_ALPHANUMERIC_RULE,")
         else:
             _, text = g
             g_lines.append(f'                "{escape(text)}",')
@@ -299,9 +300,9 @@ def _emit_group(entries: list, major: int) -> None:
 
     # Section header on stdout so a single dump covering multiple
     # majors can be split mechanically by the operator.
-    print(f"# =========================================================")
+    print("# =========================================================")
     print(f"# === eva_airline major group {major}.x ({len(matching)} scenarios) ===")
-    print(f"# =========================================================")
+    print("# =========================================================")
     print()
     for entry in matching:
         print(build_scenario(entry))

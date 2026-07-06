@@ -55,6 +55,7 @@ from nemo_voice_agent.utils import ConfigManager, setup_logging
 from nemo_voice_agent.utils.tool_calling.basic_tools import tool_get_city_weather
 from nemo_voice_agent.utils.tool_calling.mixins import register_direct_tools_to_llm
 
+
 load_dotenv(override=True)
 
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")

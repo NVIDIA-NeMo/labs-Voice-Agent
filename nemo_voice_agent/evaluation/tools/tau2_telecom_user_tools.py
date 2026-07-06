@@ -62,7 +62,6 @@ from nemo_voice_agent.evaluation.tools.tau2_telecom_init_functions import (
     _simulate_network_search,
 )
 from nemo_voice_agent.evaluation.tools.tau2_telecom_params import (
-    APNNames,
     APNSettings,
     CanSendMmsParams,
     CheckApnSettingsParams,
@@ -85,10 +84,9 @@ from nemo_voice_agent.evaluation.tools.tau2_telecom_params import (
     NetworkModePreference,
     NetworkStatus,
     NetworkTechnology,
-    PerformanceLevel,
     RebootDeviceParams,
-    ResetApnSettingsParams,
     ReseatSimCardParams,
+    ResetApnSettingsParams,
     RunSpeedTestParams,
     SetApnSettingsParams,
     SetNetworkModePreferenceParams,
@@ -650,7 +648,6 @@ class CheckNetworkStatusTool(_Tau2TelecomReadTool):
         if not db:
             return _db_not_initialized()
         device = db["device"]
-        surroundings = db["surroundings"]
         lines = [
             f"Airplane Mode: {'ON' if device['airplane_mode'] else 'OFF'}",
             # SIM status mirrors upstream: missing flag overrides sim_card_status

@@ -63,9 +63,9 @@ from typing import TYPE_CHECKING
 
 import torch
 from vllm import SamplingParams
+from vllm.tokenizers import get_tokenizer
 from vllm.v1.sample.logits_processor import BatchUpdate, LogitsProcessor
 from vllm.v1.sample.logits_processor.builtin import process_dict_updates
-from vllm.tokenizers import get_tokenizer
 
 
 if TYPE_CHECKING:

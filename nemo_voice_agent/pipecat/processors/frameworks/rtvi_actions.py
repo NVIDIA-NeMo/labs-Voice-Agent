@@ -573,7 +573,7 @@ def create_apply_initialization_action(
                 # No init mutations to apply; the DB-load step above is
                 # the entire purpose of this call. Return success so the
                 # bridge can proceed to the conversation.
-                logger.info(f"[APPLY INIT] no actions to apply (DB-load-only call)")
+                logger.info("[APPLY INIT] no actions to apply (DB-load-only call)")
                 return {"success": True, "errors": []}
 
             result = _apply(domain=domain, actions=actions, db=db)

@@ -34,6 +34,7 @@ import json
 import math
 from typing import Any
 
+
 # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3
 ORDER_INDEPENDENT_LIST_FIELDS: set[str] = {
     "standby_list",

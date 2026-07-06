@@ -24,8 +24,11 @@ import json
 from functools import cache, cached_property
 
 from nemo_voice_agent.evaluation import get_eval_data_root
-from nemo_voice_agent.evaluation.scenarios import register_eval_scenario
-from nemo_voice_agent.evaluation.scenarios import END_CONVERSATION_GUIDELINE, EXECUTION_HONESTY_GUIDELINE
+from nemo_voice_agent.evaluation.scenarios import (
+    END_CONVERSATION_GUIDELINE,
+    EXECUTION_HONESTY_GUIDELINE,
+    register_eval_scenario,
+)
 from nemo_voice_agent.evaluation.scenarios.classes import (
     Actions,
     Persona,
@@ -35,6 +38,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     Task,
 )
 from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
+
 
 # ---------------------------------------------------------------------------
 # Module-level cached dataset index
