@@ -188,9 +188,7 @@ def test_dispatch_function_raising_exception_reports_error():
 def test_dispatch_empty_actions_list_is_success():
     """No actions to apply ≠ failure. Bridge calls this even for scenarios
     that filtered all actions to the other side; should succeed silently."""
-    result = apply_initialization_actions(
-        domain=_TEST_DOMAIN, actions=[], db={}
-    )
+    result = apply_initialization_actions(domain=_TEST_DOMAIN, actions=[], db={})
     assert result == {"success": True, "errors": []}
 
 
@@ -228,9 +226,7 @@ def test_rtvi_handler_applies_to_state_db():
             "context",
             {
                 "domain": _TEST_DOMAIN,
-                "actions": [
-                    {"side": "user", "func_name": "set_count", "arguments": {"value": 3}}
-                ],
+                "actions": [{"side": "user", "func_name": "set_count", "arguments": {"value": 3}}],
             },
         )
     )
@@ -258,7 +254,7 @@ def test_rtvi_handler_per_action_side_field_is_informational_only():
                     # Mixed side values would never reach a real bot (the
                     # bridge filters), but if they did, the handler still
                     # applies them all to its own state["db"]:
-                    {"side": "user",  "func_name": "set_count",  "arguments": {"value": 7}},
+                    {"side": "user", "func_name": "set_count", "arguments": {"value": 7}},
                     {"side": "agent", "func_name": "set_status", "arguments": {"status": "ok"}},
                 ],
             },
@@ -282,9 +278,7 @@ def test_rtvi_handler_missing_state_db_returns_error():
             "context",
             {
                 "domain": _TEST_DOMAIN,
-                "actions": [
-                    {"side": "user", "func_name": "set_count", "arguments": {"value": 1}}
-                ],
+                "actions": [{"side": "user", "func_name": "set_count", "arguments": {"value": 1}}],
             },
         )
     )

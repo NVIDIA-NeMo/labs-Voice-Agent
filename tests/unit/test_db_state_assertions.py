@@ -122,9 +122,7 @@ def test_evaluate_passed_true_when_predicate_matches_assert_value():
         "arguments": {"expected": 5},
         "assert_value": True,
     }
-    verdict = evaluate_db_state_assertion(
-        domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"count": 5}
-    )
+    verdict = evaluate_db_state_assertion(domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"count": 5})
     assert verdict["passed"] is True
     assert verdict["actual"] is True
     assert verdict["expected"] is True
@@ -145,9 +143,7 @@ def test_evaluate_passed_false_when_assert_value_is_false_and_predicate_returns_
         "arguments": {"expected": 5},
         "assert_value": False,  # we expect the predicate to return False
     }
-    verdict = evaluate_db_state_assertion(
-        domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"count": 5}
-    )
+    verdict = evaluate_db_state_assertion(domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"count": 5})
     # Predicate returned True, but assert_value=False → mismatch → fail.
     assert verdict["passed"] is False
     assert verdict["actual"] is True
@@ -186,9 +182,7 @@ def test_evaluate_missing_predicate_returns_error_verdict():
         "arguments": {},
         "assert_value": True,
     }
-    verdict = evaluate_db_state_assertion(
-        domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"count": 1}
-    )
+    verdict = evaluate_db_state_assertion(domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"count": 1})
     assert verdict["passed"] is False
     assert verdict["error"] is not None
     assert "No predicate" in verdict["error"]
@@ -203,9 +197,7 @@ def test_evaluate_unknown_side_returns_error_verdict():
         "arguments": {"expected": 1},
         "assert_value": True,
     }
-    verdict = evaluate_db_state_assertion(
-        domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"count": 1}
-    )
+    verdict = evaluate_db_state_assertion(domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"count": 1})
     assert verdict["passed"] is False
     assert "Unknown side" in (verdict["error"] or "")
 
@@ -218,9 +210,7 @@ def test_evaluate_missing_user_db_returns_error_verdict():
         "arguments": {"expected": 1},
         "assert_value": True,
     }
-    verdict = evaluate_db_state_assertion(
-        domain=_TEST_DOMAIN, assertion=assertion, db={"count": 1}, user_db=None
-    )
+    verdict = evaluate_db_state_assertion(domain=_TEST_DOMAIN, assertion=assertion, db={"count": 1}, user_db=None)
     assert verdict["passed"] is False
     assert "user DB" in (verdict["error"] or "")
 
@@ -236,9 +226,7 @@ def test_evaluate_predicate_raising_exception_returns_error_verdict():
         "arguments": {},
         "assert_value": True,
     }
-    verdict = evaluate_db_state_assertion(
-        domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"x": 1}
-    )
+    verdict = evaluate_db_state_assertion(domain=_TEST_DOMAIN, assertion=assertion, db=None, user_db={"x": 1})
     assert verdict["passed"] is False
     assert "Predicate raised" in (verdict["error"] or "")
     assert "RuntimeError" in (verdict["error"] or "")

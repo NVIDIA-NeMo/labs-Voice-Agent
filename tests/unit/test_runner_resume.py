@@ -56,6 +56,7 @@ def _make_metrics_json(scen_dir: Path, **overrides) -> dict:
 
 def test_classify_resume_state(tmp_path):
     """The classifier returns ``completed`` / ``in_flight`` / ``fresh`` per disk shape."""
+
     # We test the logic by reproducing it inline — the helper is closed-over
     # inside ``run_dynamic_evaluation`` and not importable on its own.
     def classify(d):
@@ -245,7 +246,8 @@ def test_run_aggregator_fold_freshly_run_and_loaded_metrics(tmp_path):
             "user": {"n_calls": 5, "prompt": 3_000, "completion": 400},
         },
         "db_state_assertion_verdicts": [
-            {"passed": True}, {"passed": False},
+            {"passed": True},
+            {"passed": False},
         ],
     }
     m2 = {
@@ -260,7 +262,9 @@ def test_run_aggregator_fold_freshly_run_and_loaded_metrics(tmp_path):
             "user": {"n_calls": 7, "prompt": 4_000, "completion": 600},
         },
         "db_state_assertion_verdicts": [
-            {"passed": True}, {"passed": True}, {"passed": False},
+            {"passed": True},
+            {"passed": True},
+            {"passed": False},
         ],
     }
 

@@ -172,9 +172,7 @@ class FastBiteScenario(Scenario):
     @property
     def user_resources(self) -> Resources:
         return Resources(
-            information=[
-                "The restaurant is called FastBites and it is famous for its sandwiches."
-            ],
+            information=["The restaurant is called FastBites and it is famous for its sandwiches."],
         )
 
     # Agent section

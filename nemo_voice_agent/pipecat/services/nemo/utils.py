@@ -45,9 +45,7 @@ class AudioBufferer:
 
         audio_size = audio.shape[0]
         if audio_size > self.buffer_size:
-            raise ValueError(
-                f"Frame size ({audio_size}) exceeds buffer size ({self.buffer_size})"
-            )
+            raise ValueError(f"Frame size ({audio_size}) exceeds buffer size ({self.buffer_size})")
 
         shift = audio_size
         self.sample_buffer[:-shift] = self.sample_buffer[shift:].clone()
@@ -80,7 +78,6 @@ class CacheFeatureBufferer:
         device: torch.device,
         fill_value: float = LOG_MEL_ZERO,
     ):
-
         if buffer_size_in_secs < chunk_size_in_secs:
             raise ValueError(
                 f"Buffer size ({buffer_size_in_secs}s) should be no less than chunk size ({chunk_size_in_secs}s)"
@@ -92,9 +89,7 @@ class CacheFeatureBufferer:
         self.device = device
 
         if hasattr(preprocessor_cfg, "log") and preprocessor_cfg.log:
-            self.ZERO_LEVEL_SPEC_DB_VAL = (
-                LOG_MEL_ZERO  # Log-Mel spectrogram value for zero signals
-            )
+            self.ZERO_LEVEL_SPEC_DB_VAL = LOG_MEL_ZERO  # Log-Mel spectrogram value for zero signals
         else:
             self.ZERO_LEVEL_SPEC_DB_VAL = fill_value
 
@@ -135,9 +130,7 @@ class CacheFeatureBufferer:
         """
         Add an extracted feature to `feature_buffer`
         """
-        self.feature_buffer[:, : -self.feature_chunk_len] = self.feature_buffer[
-            :, self.feature_chunk_len :
-        ].clone()
+        self.feature_buffer[:, : -self.feature_chunk_len] = self.feature_buffer[:, self.feature_chunk_len :].clone()
         self.feature_buffer[:, -self.feature_chunk_len :] = feat_chunk.clone()
 
     def preprocess(self, audio_signal: torch.Tensor) -> torch.Tensor:
@@ -172,9 +165,7 @@ class CacheFeatureBufferer:
             samples = self.sample_buffer.sample_buffer.clone()
         else:
             # Add look_back to have context for the first feature
-            samples = self.sample_buffer.sample_buffer[
-                -(self.n_chunk_look_back + self.chunk_size) :
-            ]
+            samples = self.sample_buffer.sample_buffer[-(self.n_chunk_look_back + self.chunk_size) :]
 
         # Get the mel spectrogram
         features = self.preprocess(samples)

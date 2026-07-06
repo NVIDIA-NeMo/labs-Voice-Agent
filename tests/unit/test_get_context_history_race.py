@@ -160,9 +160,7 @@ def test_aggregator_without_property_does_not_crash():
     """
 
     async def run():
-        agg = SimpleNamespace(
-            _context=SimpleNamespace(get_messages=lambda: [{"role": "user", "content": "ok"}])
-        )
+        agg = SimpleNamespace(_context=SimpleNamespace(get_messages=lambda: [{"role": "user", "content": "ok"}]))
         # No has_function_calls_in_progress method.
         handler = _build_handler(agg)
         return await handler(None, "context", {})

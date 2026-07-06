@@ -174,21 +174,13 @@ class Order(BaseModel):
     status: OrderStatus = Field(description="Status of the order")
     fulfillments: List[OrderFullfilment] = Field(description="Fulfillments of the order")
     payment_history: List[OrderPayment] = Field(description="Payments of the order")
-    cancel_reason: Optional[CancelReason] = Field(
-        default=None, description="Reason for cancelling the order"
-    )
+    cancel_reason: Optional[CancelReason] = Field(default=None, description="Reason for cancelling the order")
     exchange_items: Optional[List[str]] = Field(default=None, description="Items to be exchanged")
     exchange_new_items: Optional[List[str]] = Field(default=None, description="Items exchanged for")
-    exchange_payment_method_id: Optional[str] = Field(
-        default=None, description="Payment method ID for the exchange"
-    )
-    exchange_price_difference: Optional[float] = Field(
-        default=None, description="Price difference for the exchange"
-    )
+    exchange_payment_method_id: Optional[str] = Field(default=None, description="Payment method ID for the exchange")
+    exchange_price_difference: Optional[float] = Field(default=None, description="Price difference for the exchange")
     return_items: Optional[List[str]] = Field(default=None, description="Items to be returned")
-    return_payment_method_id: Optional[str] = Field(
-        default=None, description="Payment method ID for the return"
-    )
+    return_payment_method_id: Optional[str] = Field(default=None, description="Payment method ID for the return")
 
 
 # -----------------------------------------------------------------------------
@@ -231,27 +223,20 @@ class FindUserIdByEmailParams(_ToolParamsBase):
 class GetOrderDetailsParams(_ToolParamsBase):
     order_id: str = Field(
         description=(
-            "The order id, such as '#W0000000'. Be careful there is a '#' symbol "
-            "at the beginning of the order id."
+            "The order id, such as '#W0000000'. Be careful there is a '#' symbol at the beginning of the order id."
         )
     )
 
 
 class GetProductDetailsParams(_ToolParamsBase):
     product_id: str = Field(
-        description=(
-            "The product id, such as '6086499569'. Be careful the product id is "
-            "different from the item id."
-        )
+        description=("The product id, such as '6086499569'. Be careful the product id is different from the item id.")
     )
 
 
 class GetItemDetailsParams(_ToolParamsBase):
     item_id: str = Field(
-        description=(
-            "The item id, such as '6086499569'. Be careful the item id is different "
-            "from the product id."
-        )
+        description=("The item id, such as '6086499569'. Be careful the item id is different from the product id.")
     )
 
 
@@ -271,15 +256,11 @@ class ListAllProductTypesParams(_ToolParamsBase):
 class CancelPendingOrderParams(_ToolParamsBase):
     order_id: str = Field(
         description=(
-            "The order id, such as '#W0000000'. Be careful there is a '#' symbol "
-            "at the beginning of the order id."
+            "The order id, such as '#W0000000'. Be careful there is a '#' symbol at the beginning of the order id."
         )
     )
     reason: str = Field(
-        description=(
-            "The reason for cancellation, which should be either 'no longer needed' "
-            "or 'ordered by mistake'."
-        )
+        description=("The reason for cancellation, which should be either 'no longer needed' or 'ordered by mistake'.")
     )
 
 
@@ -287,8 +268,7 @@ class ExchangeDeliveredOrderItemsParams(_ToolParamsBase):
     order_id: str = Field(description="The order id, such as '#W0000000'.")
     item_ids: List[str] = Field(
         description=(
-            "The item ids to be exchanged, each such as '1008292230'. There could "
-            "be duplicate items in the list."
+            "The item ids to be exchanged, each such as '1008292230'. There could be duplicate items in the list."
         )
     )
     new_item_ids: List[str] = Field(
@@ -320,8 +300,7 @@ class ModifyPendingOrderItemsParams(_ToolParamsBase):
     order_id: str = Field(description="The order id, such as '#W0000000'.")
     item_ids: List[str] = Field(
         description=(
-            "The item ids to be modified, each such as '1008292230'. There could be "
-            "duplicate items in the list."
+            "The item ids to be modified, each such as '1008292230'. There could be duplicate items in the list."
         )
     )
     new_item_ids: List[str] = Field(
@@ -342,10 +321,7 @@ class ModifyPendingOrderItemsParams(_ToolParamsBase):
 class ModifyPendingOrderPaymentParams(_ToolParamsBase):
     order_id: str = Field(description="The order id, such as '#W0000000'.")
     payment_method_id: str = Field(
-        description=(
-            "The payment method id, such as 'gift_card_0000000' or "
-            "'credit_card_0000000'."
-        )
+        description=("The payment method id, such as 'gift_card_0000000' or 'credit_card_0000000'.")
     )
 
 
@@ -363,8 +339,7 @@ class ReturnDeliveredOrderItemsParams(_ToolParamsBase):
     order_id: str = Field(description="The order id, such as '#W0000000'.")
     item_ids: List[str] = Field(
         description=(
-            "The item ids to be returned, each such as '1008292230'. There could be "
-            "duplicate items in the list."
+            "The item ids to be returned, each such as '1008292230'. There could be duplicate items in the list."
         )
     )
     payment_method_id: str = Field(

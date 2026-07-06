@@ -35,120 +35,154 @@ from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
 
 
 @register_eval_scenario
-class Tau2TelecomMmsIssueBadNetworkPreferenceBreakAppSmsPermissionDataModeOffDataUsageExceededUserAbroadRoamingEnabledOff(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_network_preference__break_app_sms_permission__data_mode_off__data_usage_exceeded__user_abroad_roaming_enabled_off'
-    tau2_id = '[mms_issue]bad_network_preference|break_app_sms_permission|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:None]'
+class Tau2TelecomMmsIssueBadNetworkPreferenceBreakAppSmsPermissionDataModeOffDataUsageExceededUserAbroadRoamingEnabledOff(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__mms_issue__bad_network_preference__break_app_sms_permission__data_mode_off__data_usage_exceeded__user_abroad_roaming_enabled_off"
+    tau2_id = "[mms_issue]bad_network_preference|break_app_sms_permission|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMmsIssueBadNetworkPreferenceBreakAppSmsPermissionDataModeOffDataUsageExceededUserAbroadRoamingEnabledOff(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_network_preference__break_app_sms_permission__data_mode_off__data_usage_exceeded__user_abroad_roaming_enabled_off'
-    tau2_id = '[mms_issue]bad_network_preference|break_app_sms_permission|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:None]'
+class Tau2TelecomWorkflowMmsIssueBadNetworkPreferenceBreakAppSmsPermissionDataModeOffDataUsageExceededUserAbroadRoamingEnabledOff(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mms_issue__bad_network_preference__break_app_sms_permission__data_mode_off__data_usage_exceeded__user_abroad_roaming_enabled_off"
+    tau2_id = "[mms_issue]bad_network_preference|break_app_sms_permission|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomMmsIssueBadNetworkPreferenceBreakAppSmsPermissionUserAbroadRoamingDisabledOnHard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_network_preference__break_app_sms_permission__user_abroad_roaming_disabled_on__hard'
-    tau2_id = '[mms_issue]bad_network_preference|break_app_sms_permission|user_abroad_roaming_disabled_on[PERSONA:Hard]'
+class Tau2TelecomMmsIssueBadNetworkPreferenceBreakAppSmsPermissionUserAbroadRoamingDisabledOnHard(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__mms_issue__bad_network_preference__break_app_sms_permission__user_abroad_roaming_disabled_on__hard"
+    tau2_id = (
+        "[mms_issue]bad_network_preference|break_app_sms_permission|user_abroad_roaming_disabled_on[PERSONA:Hard]"
+    )
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMmsIssueBadNetworkPreferenceBreakAppSmsPermissionUserAbroadRoamingDisabledOnHard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_network_preference__break_app_sms_permission__user_abroad_roaming_disabled_on__hard'
-    tau2_id = '[mms_issue]bad_network_preference|break_app_sms_permission|user_abroad_roaming_disabled_on[PERSONA:Hard]'
+class Tau2TelecomWorkflowMmsIssueBadNetworkPreferenceBreakAppSmsPermissionUserAbroadRoamingDisabledOnHard(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mms_issue__bad_network_preference__break_app_sms_permission__user_abroad_roaming_disabled_on__hard"
+    tau2_id = (
+        "[mms_issue]bad_network_preference|break_app_sms_permission|user_abroad_roaming_disabled_on[PERSONA:Hard]"
+    )
 
 
 @register_eval_scenario
 class Tau2TelecomMmsIssueBadNetworkPreferenceDataModeOffUserAbroadRoamingDisabledOn(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_network_preference__data_mode_off__user_abroad_roaming_disabled_on'
-    tau2_id = '[mms_issue]bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:None]'
+    name = "tau2_telecom__mms_issue__bad_network_preference__data_mode_off__user_abroad_roaming_disabled_on"
+    tau2_id = "[mms_issue]bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMmsIssueBadNetworkPreferenceDataModeOffUserAbroadRoamingDisabledOn(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_network_preference__data_mode_off__user_abroad_roaming_disabled_on'
-    tau2_id = '[mms_issue]bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:None]'
+class Tau2TelecomWorkflowMmsIssueBadNetworkPreferenceDataModeOffUserAbroadRoamingDisabledOn(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mms_issue__bad_network_preference__data_mode_off__user_abroad_roaming_disabled_on"
+    tau2_id = "[mms_issue]bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomMmsIssueBadNetworkPreferenceUserAbroadRoamingDisabledOff(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_network_preference__user_abroad_roaming_disabled_off'
-    tau2_id = '[mms_issue]bad_network_preference|user_abroad_roaming_disabled_off[PERSONA:None]'
+    name = "tau2_telecom__mms_issue__bad_network_preference__user_abroad_roaming_disabled_off"
+    tau2_id = "[mms_issue]bad_network_preference|user_abroad_roaming_disabled_off[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowMmsIssueBadNetworkPreferenceUserAbroadRoamingDisabledOff(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_network_preference__user_abroad_roaming_disabled_off'
-    tau2_id = '[mms_issue]bad_network_preference|user_abroad_roaming_disabled_off[PERSONA:None]'
+    name = "tau2_telecom_workflow__mms_issue__bad_network_preference__user_abroad_roaming_disabled_off"
+    tau2_id = "[mms_issue]bad_network_preference|user_abroad_roaming_disabled_off[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomMmsIssueBadNetworkPreferenceUserAbroadRoamingDisabledOn(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_network_preference__user_abroad_roaming_disabled_on'
-    tau2_id = '[mms_issue]bad_network_preference|user_abroad_roaming_disabled_on[PERSONA:None]'
+    name = "tau2_telecom__mms_issue__bad_network_preference__user_abroad_roaming_disabled_on"
+    tau2_id = "[mms_issue]bad_network_preference|user_abroad_roaming_disabled_on[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowMmsIssueBadNetworkPreferenceUserAbroadRoamingDisabledOn(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_network_preference__user_abroad_roaming_disabled_on'
-    tau2_id = '[mms_issue]bad_network_preference|user_abroad_roaming_disabled_on[PERSONA:None]'
+    name = "tau2_telecom_workflow__mms_issue__bad_network_preference__user_abroad_roaming_disabled_on"
+    tau2_id = "[mms_issue]bad_network_preference|user_abroad_roaming_disabled_on[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomMmsIssueBadWifiCallingBreakApnMmsSettingBreakAppBothPermissionsDataModeOffDataUsageExceededUserAbroadRoamingDisabledOff(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_wifi_calling__break_apn_mms_setting__break_app_both_permissions__data_mode_off__data_usage_exceeded__user_abroad_roaming_disabled_off'
-    tau2_id = '[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]'
+class Tau2TelecomMmsIssueBadWifiCallingBreakApnMmsSettingBreakAppBothPermissionsDataModeOffDataUsageExceededUserAbroadRoamingDisabledOff(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__mms_issue__bad_wifi_calling__break_apn_mms_setting__break_app_both_permissions__data_mode_off__data_usage_exceeded__user_abroad_roaming_disabled_off"
+    tau2_id = "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMmsIssueBadWifiCallingBreakApnMmsSettingBreakAppBothPermissionsDataModeOffDataUsageExceededUserAbroadRoamingDisabledOff(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_wifi_calling__break_apn_mms_setting__break_app_both_permissions__data_mode_off__data_usage_exceeded__user_abroad_roaming_disabled_off'
-    tau2_id = '[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]'
+class Tau2TelecomWorkflowMmsIssueBadWifiCallingBreakApnMmsSettingBreakAppBothPermissionsDataModeOffDataUsageExceededUserAbroadRoamingDisabledOff(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mms_issue__bad_wifi_calling__break_apn_mms_setting__break_app_both_permissions__data_mode_off__data_usage_exceeded__user_abroad_roaming_disabled_off"
+    tau2_id = "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomMmsIssueBadWifiCallingBreakApnMmsSettingBreakAppSmsPermissionDataUsageExceededHard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_wifi_calling__break_apn_mms_setting__break_app_sms_permission__data_usage_exceeded__hard'
-    tau2_id = '[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_usage_exceeded[PERSONA:Hard]'
+class Tau2TelecomMmsIssueBadWifiCallingBreakApnMmsSettingBreakAppSmsPermissionDataUsageExceededHard(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__mms_issue__bad_wifi_calling__break_apn_mms_setting__break_app_sms_permission__data_usage_exceeded__hard"
+    tau2_id = (
+        "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_usage_exceeded[PERSONA:Hard]"
+    )
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMmsIssueBadWifiCallingBreakApnMmsSettingBreakAppSmsPermissionDataUsageExceededHard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_wifi_calling__break_apn_mms_setting__break_app_sms_permission__data_usage_exceeded__hard'
-    tau2_id = '[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_usage_exceeded[PERSONA:Hard]'
+class Tau2TelecomWorkflowMmsIssueBadWifiCallingBreakApnMmsSettingBreakAppSmsPermissionDataUsageExceededHard(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mms_issue__bad_wifi_calling__break_apn_mms_setting__break_app_sms_permission__data_usage_exceeded__hard"
+    tau2_id = (
+        "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_usage_exceeded[PERSONA:Hard]"
+    )
 
 
 @register_eval_scenario
-class Tau2TelecomMmsIssueBadWifiCallingBreakApnMmsSettingDataModeOffDataUsageExceededUnseatSimCard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_wifi_calling__break_apn_mms_setting__data_mode_off__data_usage_exceeded__unseat_sim_card'
-    tau2_id = '[mms_issue]bad_wifi_calling|break_apn_mms_setting|data_mode_off|data_usage_exceeded|unseat_sim_card[PERSONA:None]'
+class Tau2TelecomMmsIssueBadWifiCallingBreakApnMmsSettingDataModeOffDataUsageExceededUnseatSimCard(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__mms_issue__bad_wifi_calling__break_apn_mms_setting__data_mode_off__data_usage_exceeded__unseat_sim_card"
+    tau2_id = "[mms_issue]bad_wifi_calling|break_apn_mms_setting|data_mode_off|data_usage_exceeded|unseat_sim_card[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMmsIssueBadWifiCallingBreakApnMmsSettingDataModeOffDataUsageExceededUnseatSimCard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_wifi_calling__break_apn_mms_setting__data_mode_off__data_usage_exceeded__unseat_sim_card'
-    tau2_id = '[mms_issue]bad_wifi_calling|break_apn_mms_setting|data_mode_off|data_usage_exceeded|unseat_sim_card[PERSONA:None]'
+class Tau2TelecomWorkflowMmsIssueBadWifiCallingBreakApnMmsSettingDataModeOffDataUsageExceededUnseatSimCard(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mms_issue__bad_wifi_calling__break_apn_mms_setting__data_mode_off__data_usage_exceeded__unseat_sim_card"
+    tau2_id = "[mms_issue]bad_wifi_calling|break_apn_mms_setting|data_mode_off|data_usage_exceeded|unseat_sim_card[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomMmsIssueBadWifiCallingBreakApnMmsSettingUnseatSimCardUserAbroadRoamingEnabledOffEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_wifi_calling__break_apn_mms_setting__unseat_sim_card__user_abroad_roaming_enabled_off__easy'
-    tau2_id = '[mms_issue]bad_wifi_calling|break_apn_mms_setting|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:Easy]'
+class Tau2TelecomMmsIssueBadWifiCallingBreakApnMmsSettingUnseatSimCardUserAbroadRoamingEnabledOffEasy(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__mms_issue__bad_wifi_calling__break_apn_mms_setting__unseat_sim_card__user_abroad_roaming_enabled_off__easy"
+    tau2_id = "[mms_issue]bad_wifi_calling|break_apn_mms_setting|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:Easy]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMmsIssueBadWifiCallingBreakApnMmsSettingUnseatSimCardUserAbroadRoamingEnabledOffEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_wifi_calling__break_apn_mms_setting__unseat_sim_card__user_abroad_roaming_enabled_off__easy'
-    tau2_id = '[mms_issue]bad_wifi_calling|break_apn_mms_setting|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:Easy]'
+class Tau2TelecomWorkflowMmsIssueBadWifiCallingBreakApnMmsSettingUnseatSimCardUserAbroadRoamingEnabledOffEasy(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mms_issue__bad_wifi_calling__break_apn_mms_setting__unseat_sim_card__user_abroad_roaming_enabled_off__easy"
+    tau2_id = "[mms_issue]bad_wifi_calling|break_apn_mms_setting|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomMmsIssueBadWifiCallingDataModeOffDataUsageExceededEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mms_issue__bad_wifi_calling__data_mode_off__data_usage_exceeded__easy'
-    tau2_id = '[mms_issue]bad_wifi_calling|data_mode_off|data_usage_exceeded[PERSONA:Easy]'
+    name = "tau2_telecom__mms_issue__bad_wifi_calling__data_mode_off__data_usage_exceeded__easy"
+    tau2_id = "[mms_issue]bad_wifi_calling|data_mode_off|data_usage_exceeded[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowMmsIssueBadWifiCallingDataModeOffDataUsageExceededEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mms_issue__bad_wifi_calling__data_mode_off__data_usage_exceeded__easy'
-    tau2_id = '[mms_issue]bad_wifi_calling|data_mode_off|data_usage_exceeded[PERSONA:Easy]'
+    name = "tau2_telecom_workflow__mms_issue__bad_wifi_calling__data_mode_off__data_usage_exceeded__easy"
+    tau2_id = "[mms_issue]bad_wifi_calling|data_mode_off|data_usage_exceeded[PERSONA:Easy]"

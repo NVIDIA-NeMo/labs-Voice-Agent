@@ -176,9 +176,7 @@ def evaluate_db_state_assertion(
     elif side == "agent":
         target_db = db
     else:
-        verdict["error"] = (
-            f"Unknown side {side!r}; expected 'user' or 'agent'."
-        )
+        verdict["error"] = f"Unknown side {side!r}; expected 'user' or 'agent'."
         return verdict
 
     if target_db is None:

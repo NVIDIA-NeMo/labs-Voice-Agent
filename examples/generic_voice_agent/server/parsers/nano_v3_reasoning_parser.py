@@ -21,9 +21,7 @@ from vllm.reasoning.deepseek_r1_reasoning_parser import DeepSeekR1ReasoningParse
 @ReasoningParserManager.register_module("nano_v3")
 class NanoV3ReasoningParser(DeepSeekR1ReasoningParser):
     def extract_reasoning(self, model_output, request):
-        reasoning_content, final_content = super().extract_reasoning(
-            model_output, request
-        )
+        reasoning_content, final_content = super().extract_reasoning(model_output, request)
         if (
             hasattr(request, "chat_template_kwargs")
             and request.chat_template_kwargs

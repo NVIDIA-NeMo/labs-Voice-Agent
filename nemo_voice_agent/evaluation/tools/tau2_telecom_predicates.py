@@ -170,9 +170,7 @@ def _run_speed_test(db: Dict[str, Any]) -> Tuple[Optional[float], Optional[str]]
         NetworkTechnology.FIVE_G.value: (50.0, 500.0),
         NetworkTechnology.NONE.value: (0.0, 0.0),
     }
-    min_speed, max_speed = tech_speed_map.get(
-        device["network_technology_connected"], (0.0, 0.0)
-    )
+    min_speed, max_speed = tech_speed_map.get(device["network_technology_connected"], (0.0, 0.0))
 
     # Signal strength → multiplier
     signal_factor_map = {
@@ -268,9 +266,7 @@ def _get_line_by_id(db: Dict[str, Any], line_id: str) -> Optional[Dict[str, Any]
     return None
 
 
-def _get_target_line(
-    db: Dict[str, Any], customer_id: str, line_id: str
-) -> Optional[Dict[str, Any]]:
+def _get_target_line(db: Dict[str, Any], customer_id: str, line_id: str) -> Optional[Dict[str, Any]]:
     """Lookup a line scoped to a customer.
 
     Mirrors upstream's ``_get_target_line``: verifies ``line_id`` is in
@@ -341,9 +337,7 @@ def assert_can_send_mms(db: Dict[str, Any], expected_status: bool) -> bool:
 
 
 @register_db_state_predicate(domain="tau2_telecom")
-def assert_data_refueling_amount(
-    db: Dict[str, Any], customer_id: str, line_id: str, expected_amount: float
-) -> bool:
+def assert_data_refueling_amount(db: Dict[str, Any], customer_id: str, line_id: str, expected_amount: float) -> bool:
     """Assert that the named line's ``data_refueling_gb`` matches ``expected_amount``.
 
     Float-tolerance compare (``abs(diff) < 1e-6``). Returns ``False`` if the

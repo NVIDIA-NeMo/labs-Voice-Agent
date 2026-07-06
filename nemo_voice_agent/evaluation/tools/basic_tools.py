@@ -229,12 +229,8 @@ class PlaceOrderTool(SendScenarioSummaryTool):
         calculated_total_price = 0.0
         for item in items:
             self._validate_item(item)
-            calculated_total_price += float(item["unit_price"]) * float(
-                item["quantity"]
-            )
-        if self.auto_validate and not np.isclose(
-            calculated_total_price, float(total_price)
-        ):
+            calculated_total_price += float(item["unit_price"]) * float(item["quantity"])
+        if self.auto_validate and not np.isclose(calculated_total_price, float(total_price)):
             raise ValueError(
                 f"The total price is incorrect. The calculated total price is "
                 f"{calculated_total_price} but the expected total price is {total_price}."
@@ -267,9 +263,7 @@ class SaveQuestionAnswerTool(SendScenarioSummaryTool):
     Send an answer to the user.
     """
 
-    def __init__(
-        self, *, rtvi: Optional[RTVIProcessor] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, rtvi: Optional[RTVIProcessor] = None, description: Optional[str] = None):
         if description is None:
             description = "Save a question and answer pair to the conversation history for future reference."
         super().__init__(description=description, rtvi=rtvi)
@@ -303,9 +297,7 @@ class SaveQuestionAnswerTool(SendScenarioSummaryTool):
         }
         message = json.dumps(message)
         await self.send_scenario_summary(message)
-        await params.result_callback(
-            {"success": True, "message": "Question and answer logged."}
-        )
+        await params.result_callback({"success": True, "message": "Question and answer logged."})
 
 
 @register_schema_tool_for_eval
@@ -314,9 +306,7 @@ class EndConversationTool(SendExitMessageTool):
     End the conversation with the user.
     """
 
-    def __init__(
-        self, *, rtvi: Optional[RTVIProcessor] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, rtvi: Optional[RTVIProcessor] = None, description: Optional[str] = None):
         if description is None:
             description = "End the conversation with the user."
         super().__init__(description=description, rtvi=rtvi)

@@ -270,7 +270,7 @@ class VoluntaryDateChange(EvaAirlineBaseScenario):
         "Passenger wants to move AUS→LAX from March 20 to March 25, arriving by 4:00 PM Pacific, "
         "for ≤$120 total, keeping a window seat."
     )
-    
+
     # commented out to use DB-state matching instead, kept here for reference
     # reference_answer = {
     #     "actions": [

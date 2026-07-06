@@ -71,9 +71,7 @@ def normalize_for_comparison(obj: Any) -> Any:
         for k, v in obj.items():
             norm_v = normalize_for_comparison(v)
             if k in ORDER_INDEPENDENT_LIST_FIELDS and isinstance(norm_v, list):
-                norm_v = sorted(
-                    norm_v, key=lambda x: json.dumps(x, sort_keys=True, default=str)
-                )
+                norm_v = sorted(norm_v, key=lambda x: json.dumps(x, sort_keys=True, default=str))
             normalized[k] = norm_v
         return normalized
     if isinstance(obj, list):
@@ -102,15 +100,9 @@ def get_dict_hash(obj: dict) -> str:
       non-JSON-serializable types.
     - SHA-256 of the resulting string.
     """
-    obj_for_hash = (
-        {k: v for k, v in obj.items() if k not in HASH_EXCLUDED_KEYS}
-        if isinstance(obj, dict)
-        else obj
-    )
+    obj_for_hash = {k: v for k, v in obj.items() if k not in HASH_EXCLUDED_KEYS} if isinstance(obj, dict) else obj
     normalized = normalize_for_comparison(obj_for_hash)
-    serialized = json.dumps(
-        normalized, sort_keys=True, default=str, separators=(",", ":")
-    )
+    serialized = json.dumps(normalized, sort_keys=True, default=str, separators=(",", ":"))
     return hashlib.sha256(serialized.encode()).hexdigest()
 
 
@@ -184,11 +176,7 @@ def _compute_table_diff(expected_table: dict, actual_table: dict) -> dict | None
         if record_diff:
             table_diff["records_modified"][str(key)] = record_diff
 
-    if (
-        not table_diff["records_added"]
-        and not table_diff["records_removed"]
-        and not table_diff["records_modified"]
-    ):
+    if not table_diff["records_added"] and not table_diff["records_removed"] and not table_diff["records_modified"]:
         return None
 
     return table_diff
@@ -225,24 +213,16 @@ def _compute_record_diff(
         field_diff["fields_removed"] = sorted(expected_keys - actual_keys)
         for key in sorted(expected_keys & actual_keys):
             nested_path = f"{path}.{key}" if path else key
-            nested_diff = _compute_record_diff(
-                expected_record[key], actual_record[key], nested_path, field_name=key
-            )
+            nested_diff = _compute_record_diff(expected_record[key], actual_record[key], nested_path, field_name=key)
             if nested_diff:
                 field_diff["fields_modified"][key] = nested_diff
-        if (
-            not field_diff["fields_added"]
-            and not field_diff["fields_removed"]
-            and not field_diff["fields_modified"]
-        ):
+        if not field_diff["fields_added"] and not field_diff["fields_removed"] and not field_diff["fields_modified"]:
             return None
         return field_diff
 
     if isinstance(expected_record, list):
         if field_name in ORDER_INDEPENDENT_LIST_FIELDS:
-            sort_key = lambda x: json.dumps(
-                x, sort_keys=True, default=str
-            )  # noqa: E731
+            sort_key = lambda x: json.dumps(x, sort_keys=True, default=str)  # noqa: E731
             expected_record = sorted(expected_record, key=sort_key)
             actual_record = sorted(actual_record, key=sort_key)
 

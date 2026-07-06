@@ -921,7 +921,7 @@ class CancelReservationTool(WriteAirlineTool):
             "cancellation_reason": {
                 "type": "string",
                 "description": (
-                    "One of: voluntary, irrops_refund, 24_hour_rule, schedule_unacceptable, " "medical, bereavement."
+                    "One of: voluntary, irrops_refund, 24_hour_rule, schedule_unacceptable, medical, bereavement."
                 ),
             },
         }
@@ -1294,7 +1294,7 @@ class AssignSeatTool(WriteAirlineTool):
 class AddBaggageAllowanceTool(WriteAirlineTool):
     """Add checked baggage (0-5 bags) to a flight segment."""
 
-    DESCRIPTION = "Add checked baggage allowance to a flight segment. Specify the exact number of " "bags (0-5)."
+    DESCRIPTION = "Add checked baggage allowance to a flight segment. Specify the exact number of bags (0-5)."
 
     def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
@@ -1852,7 +1852,7 @@ class IssueMealVoucherTool(WriteAirlineTool):
             "voucher_reason": {
                 "type": "string",
                 "description": (
-                    "One of: delay_over_2_hours, delay_over_4_hours, " "cancellation_wait_same_day, irrops_overnight."
+                    "One of: delay_over_2_hours, delay_over_4_hours, cancellation_wait_same_day, irrops_overnight."
                 ),
             },
         }

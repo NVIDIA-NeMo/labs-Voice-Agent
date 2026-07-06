@@ -136,10 +136,18 @@ class Line(BaseModelNoExtra):
     data_used_gb: float = Field(0.0, description="Data used in the current billing cycle (GB)")
     data_refueling_gb: float = Field(0.0, description="Data refueled in the current billing cycle (GB)")
     roaming_enabled: bool = Field(False, description="International roaming enabled for this line")
-    contract_end_date: Optional[datetime.date] = Field(None, description="End date of the current contract (YYYY-MM-DD, EST)")
-    last_plan_change_date: Optional[datetime.date] = Field(None, description="Date of the most recent plan change (YYYY-MM-DD, EST)")
-    last_sim_replacement_date: Optional[datetime.date] = Field(None, description="Date of the most recent SIM card replacement (YYYY-MM-DD, EST)")
-    suspension_start_date: Optional[datetime.date] = Field(None, description="Start date of the current suspension period (YYYY-MM-DD, EST)")
+    contract_end_date: Optional[datetime.date] = Field(
+        None, description="End date of the current contract (YYYY-MM-DD, EST)"
+    )
+    last_plan_change_date: Optional[datetime.date] = Field(
+        None, description="Date of the most recent plan change (YYYY-MM-DD, EST)"
+    )
+    last_sim_replacement_date: Optional[datetime.date] = Field(
+        None, description="Date of the most recent SIM card replacement (YYYY-MM-DD, EST)"
+    )
+    suspension_start_date: Optional[datetime.date] = Field(
+        None, description="Start date of the current suspension period (YYYY-MM-DD, EST)"
+    )
 
 
 class LineItem(BaseModelNoExtra):
@@ -210,9 +218,7 @@ class Customer(BaseModelNoExtra):
         None,
         description="Date of the most recent payment extension (for quarterly limit check) (YYYY-MM-DD, EST)",
     )
-    goodwill_credit_used_this_year: float = Field(
-        0.0, description="Goodwill credit used in the current calendar year"
-    )
+    goodwill_credit_used_this_year: float = Field(0.0, description="Goodwill credit used in the current calendar year")
 
 
 class TelecomDB(BaseModelNoExtra):
@@ -472,9 +478,7 @@ class UserSurroundings(BaseModelNoExtra):
     )
     mobile_data_usage_exceeded: bool = Field(False, description="User has exceeded data usage limit")
     line_active: bool = Field(True, description="User has an active line")
-    payment_request: Optional[PaymentRequest] = Field(
-        None, description="Payment request the agent has initiated"
-    )
+    payment_request: Optional[PaymentRequest] = Field(None, description="Payment request the agent has initiated")
 
 
 class TelecomUserDB(BaseModelNoExtra):
@@ -783,36 +787,84 @@ __all__ = [
     # base helper
     "BaseModelNoExtra",
     # agent-side enums
-    "DeviceType", "LineStatus", "BillStatus", "AccountStatus", "PaymentMethodType",
+    "DeviceType",
+    "LineStatus",
+    "BillStatus",
+    "AccountStatus",
+    "PaymentMethodType",
     # agent-side models
-    "Address", "Plan", "Device", "Line", "LineItem", "Bill",
-    "PaymentMethod", "Customer", "TelecomDB",
+    "Address",
+    "Plan",
+    "Device",
+    "Line",
+    "LineItem",
+    "Bill",
+    "PaymentMethod",
+    "Customer",
+    "TelecomDB",
     # user-side enums
-    "SimStatus", "NetworkTechnology", "NetworkModePreference", "SignalStrength",
-    "PerformanceLevel", "NetworkStatus", "APNNames",
+    "SimStatus",
+    "NetworkTechnology",
+    "NetworkModePreference",
+    "SignalStrength",
+    "PerformanceLevel",
+    "NetworkStatus",
+    "APNNames",
     # user-side models
-    "APNSettings", "VpnDetails", "AppPermissions", "AppStatus", "StatusBar",
-    "MockPhoneAttributes", "PaymentRequest", "UserSurroundings", "TelecomUserDB",
+    "APNSettings",
+    "VpnDetails",
+    "AppPermissions",
+    "AppStatus",
+    "StatusBar",
+    "MockPhoneAttributes",
+    "PaymentRequest",
+    "UserSurroundings",
+    "TelecomUserDB",
     # per-tool args — user-side (no args)
-    "ToggleDataParams", "ToggleAirplaneModeParams",
-    "CheckStatusBarParams", "RunSpeedTestParams",
-    "CheckNetworkStatusParams", "CheckNetworkModePreferenceParams",
-    "CheckSimStatusParams", "CheckDataRestrictionStatusParams",
-    "CheckApnSettingsParams", "CheckWifiStatusParams",
-    "CheckWifiCallingStatusParams", "CheckVpnStatusParams",
-    "CheckInstalledAppsParams", "CanSendMmsParams", "CheckPaymentRequestParams",
-    "ReseatSimCardParams", "ToggleRoamingParams", "ToggleDataSaverModeParams",
-    "ResetApnSettingsParams", "ToggleWifiParams", "ToggleWifiCallingParams",
-    "ConnectVpnParams", "DisconnectVpnParams", "RebootDeviceParams",
+    "ToggleDataParams",
+    "ToggleAirplaneModeParams",
+    "CheckStatusBarParams",
+    "RunSpeedTestParams",
+    "CheckNetworkStatusParams",
+    "CheckNetworkModePreferenceParams",
+    "CheckSimStatusParams",
+    "CheckDataRestrictionStatusParams",
+    "CheckApnSettingsParams",
+    "CheckWifiStatusParams",
+    "CheckWifiCallingStatusParams",
+    "CheckVpnStatusParams",
+    "CheckInstalledAppsParams",
+    "CanSendMmsParams",
+    "CheckPaymentRequestParams",
+    "ReseatSimCardParams",
+    "ToggleRoamingParams",
+    "ToggleDataSaverModeParams",
+    "ResetApnSettingsParams",
+    "ToggleWifiParams",
+    "ToggleWifiCallingParams",
+    "ConnectVpnParams",
+    "DisconnectVpnParams",
+    "RebootDeviceParams",
     "MakePaymentParams",
     # per-tool args — user-side (with args)
-    "SetNetworkModePreferenceParams", "SetApnSettingsParams",
-    "CheckAppStatusParams", "CheckAppPermissionsParams", "GrantAppPermissionParams",
+    "SetNetworkModePreferenceParams",
+    "SetApnSettingsParams",
+    "CheckAppStatusParams",
+    "CheckAppPermissionsParams",
+    "GrantAppPermissionParams",
     # per-tool args — agent-side
-    "GetCustomerByPhoneParams", "GetCustomerByIdParams", "GetCustomerByNameParams",
-    "GetDetailsByIdParams", "GetBillsForCustomerParams", "GetDataUsageParams",
-    "SuspendLineParams", "ResumeLineParams", "SendPaymentRequestParams",
-    "RefuelDataParams", "EnableRoamingParams", "DisableRoamingParams",
+    "GetCustomerByPhoneParams",
+    "GetCustomerByIdParams",
+    "GetCustomerByNameParams",
+    "GetDetailsByIdParams",
+    "GetBillsForCustomerParams",
+    "GetDataUsageParams",
+    "SuspendLineParams",
+    "ResumeLineParams",
+    "SendPaymentRequestParams",
+    "RefuelDataParams",
+    "EnableRoamingParams",
+    "DisableRoamingParams",
     "TransferToHumanAgentsParams",
     "validation_error_response",
     # constants

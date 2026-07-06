@@ -204,9 +204,7 @@ def apply_initialization_actions(
                 func_name,
                 domain,
             )
-            errors.append(
-                f"[action {idx}] {func_name!r} raised: {type(exc).__name__}: {exc}"
-            )
+            errors.append(f"[action {idx}] {func_name!r} raised: {type(exc).__name__}: {exc}")
 
     return {"success": len(errors) == 0, "errors": errors}
 

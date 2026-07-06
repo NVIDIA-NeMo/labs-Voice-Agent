@@ -63,12 +63,8 @@ def build_audio_logger(config_manager: ConfigManager) -> Optional[AudioLogger]:
 def build_vad_analyzer(config_manager: ConfigManager) -> SileroVADAnalyzer:
     """Build the Silero VAD analyzer at the transport's input sample rate."""
     server_config = config_manager.server_config
-    sample_rate = server_config.transport.get(
-        "audio_in_sample_rate", config_manager.SAMPLE_RATE
-    )
-    return SileroVADAnalyzer(
-        sample_rate=sample_rate, params=config_manager.get_vad_params()
-    )
+    sample_rate = server_config.transport.get("audio_in_sample_rate", config_manager.SAMPLE_RATE)
+    return SileroVADAnalyzer(sample_rate=sample_rate, params=config_manager.get_vad_params())
 
 
 def build_ws_transport(
@@ -87,15 +83,9 @@ def build_ws_transport(
             add_wav_header=False,
             vad_analyzer=vad_analyzer,
             session_timeout=None,
-            audio_in_sample_rate=server_config.transport.get(
-                "audio_in_sample_rate", config_manager.SAMPLE_RATE
-            ),
-            audio_out_sample_rate=server_config.transport.get(
-                "audio_out_sample_rate", None
-            ),
-            can_create_user_frames=server_config.transport.get(
-                "can_create_user_frames", False
-            ),
+            audio_in_sample_rate=server_config.transport.get("audio_in_sample_rate", config_manager.SAMPLE_RATE),
+            audio_out_sample_rate=server_config.transport.get("audio_out_sample_rate", None),
+            can_create_user_frames=server_config.transport.get("can_create_user_frames", False),
             audio_out_10ms_chunks=config_manager.TRANSPORT_AUDIO_OUT_10MS_CHUNKS,
         ),
         host=host,
@@ -103,16 +93,12 @@ def build_ws_transport(
     )
 
 
-def build_stt(
-    config_manager: ConfigManager, audio_logger: Optional[AudioLogger] = None
-) -> STTService:
+def build_stt(config_manager: ConfigManager, audio_logger: Optional[AudioLogger] = None) -> STTService:
     """Build the NeMo STT service from config."""
     return get_stt_service_from_config(config_manager.server_config.stt, audio_logger)
 
 
-def build_diar(
-    config_manager: ConfigManager, audio_logger: Optional[AudioLogger] = None
-) -> Optional[NemoDiarService]:
+def build_diar(config_manager: ConfigManager, audio_logger: Optional[AudioLogger] = None) -> Optional[NemoDiarService]:
     """Build the diarization service, or return ``None`` if ``diar.enabled`` is False."""
     if not config_manager.server_config.diar.get("enabled", False):
         return None
@@ -148,9 +134,7 @@ def build_turn_taking(
     )
 
 
-def build_tts(
-    config_manager: ConfigManager, audio_logger: Optional[AudioLogger] = None
-) -> TTSService:
+def build_tts(config_manager: ConfigManager, audio_logger: Optional[AudioLogger] = None) -> TTSService:
     """Build the TTS service via ``get_tts_service_from_config``."""
     return get_tts_service_from_config(config_manager.server_config.tts, audio_logger)
 
@@ -160,9 +144,7 @@ def build_llm(config_manager: ConfigManager) -> LLMService:
     return get_llm_service_from_config(config_manager.server_config.llm)
 
 
-def build_context_and_aggregators(
-    llm: BaseOpenAILLMService, config_manager: ConfigManager
-):
+def build_context_and_aggregators(llm: BaseOpenAILLMService, config_manager: ConfigManager):
     """Build ``OpenAILLMContext`` and its user/assistant aggregators.
 
     Returns ``(context, user_aggregator, assistant_aggregator, original_messages)``.
@@ -176,9 +158,7 @@ def build_context_and_aggregators(
         }
     ]
     if config_manager.server_config.llm.get("inject_dummy_user_message", False):
-        dummy_message = config_manager.server_config.llm.get(
-            "dummy_user_message", "Hello."
-        )
+        dummy_message = config_manager.server_config.llm.get("dummy_user_message", "Hello.")
         messages.append({"role": "user", "content": dummy_message})
 
     context = OpenAILLMContext(messages=messages)
@@ -212,9 +192,7 @@ def resolve_log_file_path(
 
 def overwrite_existing_log(config_manager: ConfigManager) -> bool:
     """Whether to delete (True) or rename (False) a pre-existing log file on startup."""
-    return bool(
-        config_manager.server_config.server.get("overwrite_existing_log", False)
-    )
+    return bool(config_manager.server_config.server.get("overwrite_existing_log", False))
 
 
 __all__ = [

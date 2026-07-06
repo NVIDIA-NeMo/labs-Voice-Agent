@@ -496,8 +496,7 @@ app = create_fastapi_app(WEBSOCKET_PORT)
 
 async def main():
     logger.info(
-        f"Starting servers with host {SERVER_HOST}, "
-        f"WebSocket on port {WEBSOCKET_PORT}, FastAPI on port {FASTAPI_PORT}"
+        f"Starting servers with host {SERVER_HOST}, WebSocket on port {WEBSOCKET_PORT}, FastAPI on port {FASTAPI_PORT}"
     )
     await run_bot_with_fastapi(
         ws_coro=run_bot_websocket(

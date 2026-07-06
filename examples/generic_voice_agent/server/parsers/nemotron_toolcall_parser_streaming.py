@@ -56,9 +56,7 @@ class NemotronToolCall(ToolCall):
 
 
 def _is_fn_name_regex_support(model_tokenizer: TokenizerLike) -> bool:
-    return (
-        isinstance(model_tokenizer, MistralTokenizer) and model_tokenizer.version >= 11
-    )
+    return isinstance(model_tokenizer, MistralTokenizer) and model_tokenizer.version >= 11
 
 
 @ToolParserManager.register_module("nemotron_json")
@@ -93,20 +91,14 @@ class NemotronToolParser(ToolParser):
         self.prev_tool_call_arr: list[dict] = []
         self.current_tool_id: int = -1
         self.current_tool_name_sent: bool = False
-        self.streamed_args_for_tool: list[str] = (
-            []
-        )  # map what has been streamed for each tool so far to a list
+        self.streamed_args_for_tool: list[str] = []  # map what has been streamed for each tool so far to a list
         self.tool_args_emitted: list[bool] = []
         self.bot_token = "<TOOLCALL>"
         self.bot_token_id = self.vocab.get(self.bot_token)
-        logger.info(
-            f"Nemotron Tool Parser: bot_token: {self.bot_token}, bot_token_id: {self.bot_token_id}"
-        )
+        logger.info(f"Nemotron Tool Parser: bot_token: {self.bot_token}, bot_token_id: {self.bot_token_id}")
         self.tool_call_regex = re.compile(r"\[{.*}\]", re.DOTALL)
         if _is_fn_name_regex_support(self.model_tokenizer):
-            self.fn_name_regex = re.compile(
-                r"([a-zA-Z0-9_-]+)(\{[\s\S]*?\})(?=\s*$|,|\s)", re.DOTALL
-            )
+            self.fn_name_regex = re.compile(r"([a-zA-Z0-9_-]+)(\{[\s\S]*?\})(?=\s*$|,|\s)", re.DOTALL)
         else:
             self.fn_name_regex = None
 
@@ -173,9 +165,7 @@ class NemotronToolParser(ToolParser):
             idx += 1
         return idx
 
-    def _compute_arguments_delta(
-        self, cur_arguments_json: str, end_of_call: bool
-    ) -> str:
+    def _compute_arguments_delta(self, cur_arguments_json: str, end_of_call: bool) -> str:
         """
         Determine the incremental suffix to stream for the current tool call.
         Ensures we only emit monotonic chunks by trimming our tracked prefix to
@@ -193,9 +183,7 @@ class NemotronToolParser(ToolParser):
         tool_idx = self.current_tool_id
         if tool_idx < 0 or tool_idx >= len(self.streamed_args_for_tool):
             if tool_idx < 0:
-                logger.debug(
-                    f"current_tool_id is negative ({tool_idx}), no tool designated yet"
-                )
+                logger.debug(f"current_tool_id is negative ({tool_idx}), no tool designated yet")
             else:
                 logger.warning(
                     f"tool_idx ({tool_idx}) is out of bounds for streamed_args_for_tool "
@@ -204,11 +192,7 @@ class NemotronToolParser(ToolParser):
             return ""
 
         streamed_prefix = self.streamed_args_for_tool[tool_idx]
-        had_any = (
-            self.tool_args_emitted[tool_idx]
-            if tool_idx < len(self.tool_args_emitted)
-            else False
-        )
+        had_any = self.tool_args_emitted[tool_idx] if tool_idx < len(self.tool_args_emitted) else False
 
         lcp_len = self._common_prefix_len(cur_arguments_json, streamed_prefix)
         if lcp_len != len(streamed_prefix):
@@ -236,12 +220,7 @@ class NemotronToolParser(ToolParser):
         if not end_of_call:
             arguments_delta = self._strip_trailing_auto_closers(arguments_delta)
 
-        if (
-            not had_any
-            and not end_of_call
-            and arguments_delta
-            and arguments_delta.endswith("}")
-        ):
+        if not had_any and not end_of_call and arguments_delta and arguments_delta.endswith("}"):
             arguments_delta = arguments_delta[:-1]
             if arguments_delta.endswith('"'):
                 arguments_delta = arguments_delta[:-1]
@@ -302,11 +281,7 @@ class NemotronToolParser(ToolParser):
         return "".join(visible)
 
     def adjust_request(self, request: ChatCompletionRequest) -> ChatCompletionRequest:
-        if (
-            not isinstance(self.model_tokenizer, MistralTokenizer)
-            and request.tools
-            and request.tool_choice != "none"
-        ):
+        if not isinstance(self.model_tokenizer, MistralTokenizer) and request.tools and request.tool_choice != "none":
             # Do not skip special tokens when using chat template
             # with Mistral parser as TOOL_CALL token is needed
             # for tool detection.
@@ -344,9 +319,7 @@ class NemotronToolParser(ToolParser):
 
         # case -- if a tool call token is not present, return a text response
         if self.bot_token not in model_output:
-            return ExtractedToolCallInformation(
-                tools_called=False, tool_calls=[], content=model_output
-            )
+            return ExtractedToolCallInformation(tools_called=False, tool_calls=[], content=model_output)
 
         # first remove the BOT token
         tool_content = model_output.replace(self.bot_token, "").strip()
@@ -365,9 +338,7 @@ class NemotronToolParser(ToolParser):
 
                         # fn_name is encoded outside serialized json dump
                         # only arguments are serialized
-                        function_call_arr.append(
-                            {"name": fn_name, "arguments": json.loads(args)}
-                        )
+                        function_call_arr.append({"name": fn_name, "arguments": json.loads(args)})
                 else:
                     function_call_arr = json.loads(tool_content)
             except json.JSONDecodeError:
@@ -377,9 +348,7 @@ class NemotronToolParser(ToolParser):
                 # can be brittle for very complex / highly nested tool calls
                 matches = self.tool_call_regex.findall(tool_content)
                 if not matches:
-                    raise ValueError(
-                        f"No tool call pattern found in: {tool_content[:100]} ..."
-                    )
+                    raise ValueError(f"No tool call pattern found in: {tool_content[:100]} ...")
                 raw_tool_call = matches[0]
                 function_call_arr = json.loads(raw_tool_call)
 
@@ -390,9 +359,7 @@ class NemotronToolParser(ToolParser):
                     function=FunctionCall(
                         name=raw_function_call["name"],
                         # function call args are JSON but as a string
-                        arguments=json.dumps(
-                            raw_function_call["arguments"], ensure_ascii=False
-                        ),
+                        arguments=json.dumps(raw_function_call["arguments"], ensure_ascii=False),
                     ),
                 )
                 for raw_function_call in function_call_arr
@@ -409,9 +376,7 @@ class NemotronToolParser(ToolParser):
         except Exception:
             logger.exception("Error in extracting tool call from response.")
             # return information to just treat the tool call as regular JSON
-            return ExtractedToolCallInformation(
-                tools_called=False, tool_calls=[], content=tool_content
-            )
+            return ExtractedToolCallInformation(tools_called=False, tool_calls=[], content=tool_content)
 
     def extract_tool_calls_streaming(
         self,
@@ -446,9 +411,7 @@ class NemotronToolParser(ToolParser):
         # Reset state at the start of a new streaming request
         # Detect new request: if we have stale state but previous_text indicates this is a fresh start
         if not previous_text and (
-            self.current_tool_id != -1
-            or self.prev_tool_call_arr
-            or self.streamed_args_for_tool
+            self.current_tool_id != -1 or self.prev_tool_call_arr or self.streamed_args_for_tool
         ):
             logger.debug("Detected new streaming request, resetting parser state")
             self._reset_state()
@@ -459,13 +422,9 @@ class NemotronToolParser(ToolParser):
         visible_delta_text = delta_text
         try:
             start_token = self.bot_token
-            end_token = (
-                f"</{self.bot_token[1:]}" if self.bot_token.startswith("<") else None
-            )
+            end_token = f"</{self.bot_token[1:]}" if self.bot_token.startswith("<") else None
 
-            visible_delta_text = self._visible_delta_outside_tool(
-                delta_text, start_token, end_token
-            )
+            visible_delta_text = self._visible_delta_outside_tool(delta_text, start_token, end_token)
         except Exception:
             # Fallback to conservative checks in case of any issues
             if (
@@ -492,7 +451,6 @@ class NemotronToolParser(ToolParser):
         flags = Allow.ALL if self.current_tool_name_sent else Allow.ALL & ~Allow.STR
         end_of_call: bool = False
         try:
-
             # replace BOT token with empty string, and convert single quotes
             # to double to allow parsing as JSON since mistral uses single
             # quotes instead of double for tool calls
@@ -506,9 +464,7 @@ class NemotronToolParser(ToolParser):
             # tool calls are generated in an array, so do partial JSON
             # parsing on the entire array
             try:
-                tool_call_arr: list[dict] = partial_json_parser.loads(
-                    parsable_arr, flags
-                )
+                tool_call_arr: list[dict] = partial_json_parser.loads(parsable_arr, flags)
             except (
                 partial_json_parser.core.exceptions.MalformedJSON,
                 json.JSONDecodeError,
@@ -518,9 +474,7 @@ class NemotronToolParser(ToolParser):
 
             current_tool_call: dict = (
                 tool_call_arr[self.current_tool_id]
-                if len(tool_call_arr) > 0
-                and self.current_tool_id >= 0
-                and self.current_tool_id < len(tool_call_arr)
+                if len(tool_call_arr) > 0 and self.current_tool_id >= 0 and self.current_tool_id < len(tool_call_arr)
                 else {}
             )
 
@@ -531,17 +485,12 @@ class NemotronToolParser(ToolParser):
 
             # case: we are starting a new tool in the array
             #   -> array has > 0 length AND length has moved past cursor
-            elif (
-                len(tool_call_arr) > 0 and len(tool_call_arr) > self.current_tool_id + 1
-            ):
-
+            elif len(tool_call_arr) > 0 and len(tool_call_arr) > self.current_tool_id + 1:
                 # if we're moving on to a new call, first make sure we
                 # haven't missed anything in the previous one that was
                 # auto-generated due to JSON completions, but wasn't
                 # streamed to the client yet.
-                if self.current_tool_id >= 0 and self.current_tool_id < len(
-                    self.streamed_args_for_tool
-                ):
+                if self.current_tool_id >= 0 and self.current_tool_id < len(self.streamed_args_for_tool):
                     diff: Union[str, None] = current_tool_call.get("arguments")
 
                     if diff:
@@ -552,9 +501,7 @@ class NemotronToolParser(ToolParser):
                             tool_calls=[
                                 DeltaToolCall(
                                     index=self.current_tool_id,
-                                    function=DeltaFunctionCall(
-                                        arguments=diff
-                                    ).model_dump(exclude_none=True),
+                                    function=DeltaFunctionCall(arguments=diff).model_dump(exclude_none=True),
                                 )
                             ]
                         )
@@ -577,16 +524,13 @@ class NemotronToolParser(ToolParser):
             if not self.current_tool_name_sent:
                 function_name = current_tool_call.get("name")
                 if function_name:
-
                     delta = DeltaMessage(
                         tool_calls=[
                             DeltaToolCall(
                                 index=self.current_tool_id,
                                 type="function",
                                 id=NemotronToolCall.generate_random_id(),
-                                function=DeltaFunctionCall(
-                                    name=function_name
-                                ).model_dump(exclude_none=True),
+                                function=DeltaFunctionCall(name=function_name).model_dump(exclude_none=True),
                             )
                         ]
                     )
@@ -597,54 +541,39 @@ class NemotronToolParser(ToolParser):
             # now we know we're on the same tool call and we're streaming
             # arguments
             else:
-                if self.current_tool_id < 0 or self.current_tool_id >= len(
-                    self.prev_tool_call_arr
-                ):
+                if self.current_tool_id < 0 or self.current_tool_id >= len(self.prev_tool_call_arr):
                     prev_arguments = None
                 else:
-                    prev_arguments = self.prev_tool_call_arr[self.current_tool_id].get(
-                        "arguments"
-                    )
+                    prev_arguments = self.prev_tool_call_arr[self.current_tool_id].get("arguments")
                 cur_arguments = current_tool_call.get("arguments")
 
                 if not cur_arguments and not prev_arguments:
                     delta = None
                 elif not cur_arguments and prev_arguments:
-                    logger.error(
-                        "INVARIANT - impossible to have arguments reset "
-                        "mid-arguments"
-                    )
+                    logger.error("INVARIANT - impossible to have arguments reset mid-arguments")
                     delta = None
                 elif cur_arguments:
                     cur_arguments_json = json.dumps(cur_arguments, ensure_ascii=False)
-                    arguments_delta = self._compute_arguments_delta(
-                        cur_arguments_json, end_of_call
-                    )
+                    arguments_delta = self._compute_arguments_delta(cur_arguments_json, end_of_call)
                     if arguments_delta:
                         delta = DeltaMessage(
                             tool_calls=[
                                 DeltaToolCall(
                                     index=self.current_tool_id,
-                                    function=DeltaFunctionCall(
-                                        arguments=arguments_delta
-                                    ).model_dump(exclude_none=True),
+                                    function=DeltaFunctionCall(arguments=arguments_delta).model_dump(
+                                        exclude_none=True
+                                    ),
                                 )
                             ]
                         )
-                        if self.current_tool_id >= 0 and self.current_tool_id < len(
-                            self.streamed_args_for_tool
-                        ):
-                            self.streamed_args_for_tool[
-                                self.current_tool_id
-                            ] += arguments_delta
+                        if self.current_tool_id >= 0 and self.current_tool_id < len(self.streamed_args_for_tool):
+                            self.streamed_args_for_tool[self.current_tool_id] += arguments_delta
                         else:
                             logger.warning(
                                 f"current_tool_id ({self.current_tool_id}) is out of bounds for streamed_args_for_tool "
                                 f"(length: {len(self.streamed_args_for_tool)})"
                             )
-                        if self.current_tool_id >= 0 and self.current_tool_id < len(
-                            self.tool_args_emitted
-                        ):
+                        if self.current_tool_id >= 0 and self.current_tool_id < len(self.tool_args_emitted):
                             self.tool_args_emitted[self.current_tool_id] = True
                         else:
                             logger.warning(
@@ -670,18 +599,14 @@ class NemotronToolParser(ToolParser):
                     cur_arguments = current_tool_call.get("arguments")
                     if cur_arguments is not None:
                         cur_args_json = json.dumps(cur_arguments, ensure_ascii=False)
-                        remaining_suffix = self._compute_arguments_delta(
-                            cur_args_json, end_of_call=True
-                        )
+                        remaining_suffix = self._compute_arguments_delta(cur_args_json, end_of_call=True)
 
                         # Only send remaining suffix if it's non-empty and contains meaningful content
                         # (not just whitespace or single characters like closing braces)
                         if remaining_suffix and remaining_suffix.strip():
                             extra = DeltaToolCall(
                                 index=self.current_tool_id,
-                                function=DeltaFunctionCall(
-                                    arguments=remaining_suffix
-                                ).model_dump(exclude_none=True),
+                                function=DeltaFunctionCall(arguments=remaining_suffix).model_dump(exclude_none=True),
                             )
                             if delta is None:
                                 delta = DeltaMessage(tool_calls=[extra])
@@ -690,23 +615,14 @@ class NemotronToolParser(ToolParser):
                                     delta.tool_calls.append(extra)
                                 else:
                                     delta.tool_calls = [extra]
-                            if (
-                                self.current_tool_id >= 0
-                                and self.current_tool_id
-                                < len(self.streamed_args_for_tool)
-                            ):
-                                self.streamed_args_for_tool[
-                                    self.current_tool_id
-                                ] += remaining_suffix
+                            if self.current_tool_id >= 0 and self.current_tool_id < len(self.streamed_args_for_tool):
+                                self.streamed_args_for_tool[self.current_tool_id] += remaining_suffix
                             else:
                                 logger.warning(
                                     f"current_tool_id ({self.current_tool_id}) is out of bounds for streamed_args_for_tool "
                                     f"(length: {len(self.streamed_args_for_tool)})"
                                 )
-                            if (
-                                self.current_tool_id >= 0
-                                and self.current_tool_id < len(self.tool_args_emitted)
-                            ):
+                            if self.current_tool_id >= 0 and self.current_tool_id < len(self.tool_args_emitted):
                                 self.tool_args_emitted[self.current_tool_id] = True
                             else:
                                 logger.warning(
@@ -715,9 +631,7 @@ class NemotronToolParser(ToolParser):
                                 )
                 except Exception as e:
                     # Failure to flush the remaining arguments suffix is non-fatal; log for debugging.
-                    logger.warning(
-                        f"Error in flushing remaining suffix for tool call: {e}"
-                    )
+                    logger.warning(f"Error in flushing remaining suffix for tool call: {e}")
 
             return delta
 

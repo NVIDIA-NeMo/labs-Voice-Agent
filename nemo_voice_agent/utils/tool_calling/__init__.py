@@ -43,9 +43,7 @@ def register_standard_schema_tool(cls):
     The tool is keyed by cls.name if it exists, otherwise cls.__name__.
     """
     if not issubclass(cls, StandardSchemaTool):
-        raise ValueError(
-            f"Class {cls.__name__} is not a subclass of StandardSchemaTool"
-        )
+        raise ValueError(f"Class {cls.__name__} is not a subclass of StandardSchemaTool")
     key = getattr(cls, "name", cls.__name__)
     ALL_STANDARD_SCHEMA_TOOLS[key] = cls
     return cls

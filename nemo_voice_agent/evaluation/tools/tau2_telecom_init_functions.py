@@ -155,9 +155,7 @@ def _simulate_network_search(db: Dict[str, Any]) -> None:
         device["network_connection_status"] = NetworkStatus.CONNECTED.value
         pref = device["network_mode_preference"]
         if pref == NetworkModePreference.FOUR_G_5G_PREFERRED.value:
-            five_g_signal = signal_strengths_per_tech.get(
-                NetworkTechnology.FIVE_G.value, SignalStrength.NONE.value
-            )
+            five_g_signal = signal_strengths_per_tech.get(NetworkTechnology.FIVE_G.value, SignalStrength.NONE.value)
             if five_g_signal == SignalStrength.NONE.value:
                 device["network_technology_connected"] = NetworkTechnology.FOUR_G.value
                 device["network_signal_strength"] = signal_strengths_per_tech.get(
@@ -353,9 +351,7 @@ def break_apn_mms_setting(db: Dict[str, Any]) -> None:
 
 
 @register_initialization_function(domain="tau2_telecom")
-def set_wifi_calling(
-    db: Dict[str, Any], enabled: bool, mms_over_wifi: Optional[bool] = None
-) -> None:
+def set_wifi_calling(db: Dict[str, Any], enabled: bool, mms_over_wifi: Optional[bool] = None) -> None:
     """Set the Wi-Fi Calling toggle and optionally the MMS-over-Wi-Fi flag.
 
     When both Wi-Fi Calling and MMS-over-Wi-Fi are on, MMS-send is
@@ -407,9 +403,7 @@ def enable_roaming(db: Dict[str, Any], customer_id: str, line_id: str) -> None:
     """
     line = _get_target_line(db, customer_id, line_id)
     if line is None:
-        raise ValueError(
-            f"enable_roaming: line {line_id!r} not found for customer {customer_id!r}"
-        )
+        raise ValueError(f"enable_roaming: line {line_id!r} not found for customer {customer_id!r}")
     line["roaming_enabled"] = True
 
 
@@ -418,16 +412,12 @@ def disable_roaming(db: Dict[str, Any], customer_id: str, line_id: str) -> None:
     """Set ``roaming_enabled = False`` on the named customer's line."""
     line = _get_target_line(db, customer_id, line_id)
     if line is None:
-        raise ValueError(
-            f"disable_roaming: line {line_id!r} not found for customer {customer_id!r}"
-        )
+        raise ValueError(f"disable_roaming: line {line_id!r} not found for customer {customer_id!r}")
     line["roaming_enabled"] = False
 
 
 @register_initialization_function(domain="tau2_telecom")
-def set_data_usage(
-    db: Dict[str, Any], customer_id: str, line_id: str, data_used_gb: float
-) -> None:
+def set_data_usage(db: Dict[str, Any], customer_id: str, line_id: str, data_used_gb: float) -> None:
     """Overwrite ``data_used_gb`` on the named line.
 
     Parameter name matches upstream ``TelecomTools.set_data_usage`` so
@@ -436,9 +426,7 @@ def set_data_usage(
     """
     line = _get_target_line(db, customer_id, line_id)
     if line is None:
-        raise ValueError(
-            f"set_data_usage: line {line_id!r} not found for customer {customer_id!r}"
-        )
+        raise ValueError(f"set_data_usage: line {line_id!r} not found for customer {customer_id!r}")
     line["data_used_gb"] = float(data_used_gb)
 
 
@@ -474,10 +462,7 @@ def suspend_line_for_overdue_bill(
 
     line = _get_target_line(db, customer_id, line_id)
     if line is None:
-        raise ValueError(
-            f"suspend_line_for_overdue_bill: line {line_id!r} not found for "
-            f"customer {customer_id!r}"
-        )
+        raise ValueError(f"suspend_line_for_overdue_bill: line {line_id!r} not found for customer {customer_id!r}")
     if line["status"] != LineStatus.ACTIVE.value:
         raise ValueError(
             f"suspend_line_for_overdue_bill: line {line_id!r} must be active "
@@ -493,8 +478,7 @@ def suspend_line_for_overdue_bill(
         bill = next((b for b in (db.get("bills") or []) if b["bill_id"] == bid), None)
         if bill is not None and bill["status"] == BillStatus.OVERDUE.value:
             raise ValueError(
-                f"suspend_line_for_overdue_bill: customer {customer_id!r} already has "
-                f"an overdue bill ({bid})"
+                f"suspend_line_for_overdue_bill: customer {customer_id!r} already has an overdue bill ({bid})"
             )
 
     plan = next((p for p in (db.get("plans") or []) if p["plan_id"] == line.get("plan_id")), None)

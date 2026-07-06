@@ -44,7 +44,7 @@ def get_eval_data_root() -> Path:
 def load_db_artifact(path: Union[str, Path]) -> Dict[str, Any]:
     """Load a tau2-style DB artifact, transparently handling sharded form.
 
-    Some upstream ``db.json`` files exceed file size limits (e.g., 
+    Some upstream ``db.json`` files exceed file size limits (e.g.,
     5 MB per-file cap), so they're sharded into ``<name>/<table>.json``
     one-file-per-top-level-key. This helper accepts either form:
 
@@ -73,6 +73,4 @@ def load_db_artifact(path: Union[str, Path]) -> Dict[str, Any]:
         for shard in sorted(p.glob("*.json")):
             out[shard.stem] = json.loads(shard.read_text())
         return out
-    raise FileNotFoundError(
-        f"No DB artifact at {file_form} or {p}/ (tried single-file and sharded forms)."
-    )
+    raise FileNotFoundError(f"No DB artifact at {file_form} or {p}/ (tried single-file and sharded forms).")

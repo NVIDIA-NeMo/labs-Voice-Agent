@@ -78,7 +78,7 @@ def scenario_name_for(task_id: str) -> str:
     return f"tau2_airline__{task_id}"
 
 
-GROUP_HEADER = '''# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+GROUP_HEADER = """# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -104,7 +104,7 @@ from nemo_voice_agent.evaluation.scenarios.data.tau2_airline.base import (
 )
 
 
-'''
+"""
 
 
 def emit_group(group_idx: int, ids: List[str]) -> str:
@@ -114,8 +114,8 @@ def emit_group(group_idx: int, ids: List[str]) -> str:
         cls = class_name_for(tid)
         name = scenario_name_for(tid)
         parts.append(
-            f'@register_eval_scenario\n'
-            f'class {cls}(Tau2AirlineBaseScenario):\n'
+            f"@register_eval_scenario\n"
+            f"class {cls}(Tau2AirlineBaseScenario):\n"
             f'    name = "{name}"\n'
             f'    tau2_id = "{tid}"\n\n\n'
         )
@@ -174,9 +174,7 @@ def main() -> int:
         f"from nemo_voice_agent.evaluation.scenarios.data.tau2_airline import {f[:-3]}  # noqa: F401"
         for f in sorted(group_files)
     )
-    (TARGET_PKG / "__init__.py").write_text(
-        INIT_TEMPLATE.format(n_total=n_total, import_lines=import_lines)
-    )
+    (TARGET_PKG / "__init__.py").write_text(INIT_TEMPLATE.format(n_total=n_total, import_lines=import_lines))
     print(f"  wrote __init__.py with {len(group_files)} group side-imports")
 
     return 0

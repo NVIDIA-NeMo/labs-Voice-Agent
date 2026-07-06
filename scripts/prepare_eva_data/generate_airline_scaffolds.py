@@ -44,8 +44,16 @@ from pathlib import Path
 ALREADY_PORTED = {"1.1.2", "2.1.1", "3.1.3", "5.1.1", "7.2.1"}
 
 DIGIT_WORDS = {
-    "0": "zero", "1": "one", "2": "two", "3": "three", "4": "four",
-    "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine",
+    "0": "zero",
+    "1": "one",
+    "2": "two",
+    "3": "three",
+    "4": "four",
+    "5": "five",
+    "6": "six",
+    "7": "seven",
+    "8": "eight",
+    "9": "nine",
 }
 
 
@@ -79,18 +87,24 @@ def extract_identity(info: dict) -> dict:
     """Pull confirmation_number, last_name, first_name across alias variations."""
     conf = _lookup(
         info,
-        "confirmation_number", "confirmation_code",
-        "Booking confirmation number", "Booking confirmation code",
+        "confirmation_number",
+        "confirmation_code",
+        "Booking confirmation number",
+        "Booking confirmation code",
         default="",
     )
     last = _lookup(
         info,
-        "last_name", "passenger_last_name", "Passenger last name",
+        "last_name",
+        "passenger_last_name",
+        "Passenger last name",
         default="",
     )
     first = _lookup(
         info,
-        "first_name", "first_name_if_asked", "first_name_if_requested",
+        "first_name",
+        "first_name_if_asked",
+        "first_name_if_requested",
         "Passenger first name",
         default="",
     )
@@ -175,9 +189,7 @@ def build_scenario(entry: dict) -> str:
     # Build route line if present
     route_bits = []
     if route["origin"] and route["destination"]:
-        route_bits.append(
-            f"Your booking: {fmt_code(route['origin'])} to {fmt_code(route['destination'])}"
-        )
+        route_bits.append(f"Your booking: {fmt_code(route['origin'])} to {fmt_code(route['destination'])}")
         if route["date"]:
             route_bits.append(f"on {route['date']}")
         if route["departure_time"]:
@@ -192,16 +204,12 @@ def build_scenario(entry: dict) -> str:
         instructions.append(f"Greet the agent and say: '{starting}'")
     instructions.append("Provide your confirmation number when the agent asks.")
     instructions.append("Provide your last name when the agent asks.")
-    instructions.append(
-        "Share trip details, constraints, and what you want when the agent asks."
-    )
+    instructions.append("Share trip details, constraints, and what you want when the agent asks.")
     instructions.append(
         "When the agent presents options or asks for decisions, choose options "
         "that meet your must-have criteria (or follow the failure path in your guidelines if none fit)."
     )
-    instructions.append(
-        "Once the work is done and the agent has confirmed it, thank them and end the call."
-    )
+    instructions.append("Once the work is done and the agent has confirmed it, thank them and end the call.")
 
     # Compose guidelines: voice rule + identity + must-haves + edge cases + failure + escalation
     guidelines = ["self.VOICE_ALPHANUMERIC_RULE"]
@@ -281,11 +289,7 @@ class {cls}(EvaAirlineBaseScenario):
 
 def _emit_group(entries: list, major: int) -> None:
     """Emit all (non-already-ported) scaffolds for one major group to stdout."""
-    matching = [
-        e
-        for e in entries
-        if e["id"].startswith(f"{major}.") and e["id"] not in ALREADY_PORTED
-    ]
+    matching = [e for e in entries if e["id"].startswith(f"{major}.") and e["id"] not in ALREADY_PORTED]
     matching.sort(key=lambda e: tuple(int(p) for p in e["id"].split(".")))
 
     print(f"# Generated {len(matching)} scenarios for major group {major}.x", file=sys.stderr)

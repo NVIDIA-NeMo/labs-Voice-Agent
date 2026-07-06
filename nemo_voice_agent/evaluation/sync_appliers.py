@@ -106,9 +106,7 @@ def apply_sync_delta(domain: str, db: dict, delta: dict) -> None:
         # Log but don't crash the bot — a malformed delta should not
         # take down the conversation. The runner will catch the
         # downstream symptom (predicate failure, wrong state, etc.).
-        logger.error(
-            f"apply_sync_delta failed on domain={domain!r}: {type(exc).__name__}: {exc}"
-        )
+        logger.error(f"apply_sync_delta failed on domain={domain!r}: {type(exc).__name__}: {exc}")
 
 
 def _default_sync_applier(db: dict, delta: dict) -> None:

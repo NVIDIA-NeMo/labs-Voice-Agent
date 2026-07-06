@@ -38,7 +38,7 @@ from nemo_voice_agent.pipecat.services.nemo.stt import ResilientNvidiaSTTService
 
 # Real-world error message we extracted from the live bot log (2026-06-01).
 _TRITON_SEQUENCE_ERROR = (
-    'inference request for sequence 155182184 to model '
+    "inference request for sequence 155182184 to model "
     "'parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer' must specify "
     "the START flag on the first request of the sequence"
 )

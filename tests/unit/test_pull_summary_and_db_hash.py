@@ -14,14 +14,14 @@
 
 """Smoke tests for the bridge-pull infrastructure landed in commit A:
 
-  1. ``db_hash.get_dict_hash`` — determinism, ``HASH_EXCLUDED_KEYS`` exclusion,
-     ``normalize_for_comparison`` (1.0/1, "none"/None, recursion).
-  2. ``db_hash.compute_db_diff`` — structured diff shape on table/record/field
-     differences and order-independent list handling.
-  3. ``rtvi_actions.create_get_scenario_summary_action`` — handler returns the
-     state ref's ``actions`` and ``db`` keys; uninitialized state returns empty.
-  4. ``Scenario.expected_scenario_db`` field — default None; set via __init__
-     or class attribute; doesn't break existing scenarios.
+1. ``db_hash.get_dict_hash`` — determinism, ``HASH_EXCLUDED_KEYS`` exclusion,
+   ``normalize_for_comparison`` (1.0/1, "none"/None, recursion).
+2. ``db_hash.compute_db_diff`` — structured diff shape on table/record/field
+   differences and order-independent list handling.
+3. ``rtvi_actions.create_get_scenario_summary_action`` — handler returns the
+   state ref's ``actions`` and ``db`` keys; uninitialized state returns empty.
+4. ``Scenario.expected_scenario_db`` field — default None; set via __init__
+   or class attribute; doesn't break existing scenarios.
 """
 
 import asyncio

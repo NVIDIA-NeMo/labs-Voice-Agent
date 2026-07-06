@@ -336,7 +336,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"  filter   {name:<32} → {name:<32} ({_sha256(dst)})  "
             f"kept={n_kept} dropped={n_dropped}  "
             f"size: {src_size:,}B → {dst_size:,}B "
-            f"({100*dst_size/src_size:.1f}%)"
+            f"({100 * dst_size / src_size:.1f}%)"
         )
 
     # 3. Verbatim directories
@@ -354,8 +354,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"Done. {len(TOML_TO_JSON)} conversions + {len(VERBATIM_FILES)} files + {len(VERBATIM_DIRS)} dirs.")
     print(f"Output dir: {dest}")
     print()
-    print("Next: append a tau2_telecom section to nemo_voice_agent/evaluation/data/README.md "
-          "(source URL, license, commit pin) if this is a first import.")
+    print(
+        "Next: append a tau2_telecom section to nemo_voice_agent/evaluation/data/README.md "
+        "(source URL, license, commit pin) if this is a first import."
+    )
     return 0
 
 

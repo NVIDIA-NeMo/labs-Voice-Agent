@@ -76,8 +76,7 @@ def main():
             continue
         # Skip non-scenario top-level files/dirs (run_args.json, evaluation_log.txt, etc.)
         if not any(
-            os.path.exists(os.path.join(scen_dir, f))
-            for f in ("metrics.json", "bridge_log.txt", "scenario_config")
+            os.path.exists(os.path.join(scen_dir, f)) for f in ("metrics.json", "bridge_log.txt", "scenario_config")
         ):
             continue
 

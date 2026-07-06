@@ -87,9 +87,7 @@ def test_all_114_manual_scenarios_registered():
     the manual-policy variants (workflow variants use
     ``tau2_telecom_workflow__`` prefix and are tested separately)."""
     manual = [
-        n
-        for n in ALL_EVAL_SCENARIOS
-        if n.startswith("tau2_telecom__") and not n.startswith("tau2_telecom_workflow__")
+        n for n in ALL_EVAL_SCENARIOS if n.startswith("tau2_telecom__") and not n.startswith("tau2_telecom_workflow__")
     ]
     assert len(manual) == 114
 
@@ -173,9 +171,7 @@ def test_workflow_and_manual_share_reference_answer():
     """Same upstream task → same reference actions, predicates, init
     actions, and expected DB hash. The workflow variant is purely a
     policy-prose A/B knob, not a different evaluation contract."""
-    manual_inst = ALL_EVAL_SCENARIOS[
-        "tau2_telecom__mobile_data_issue__data_mode_off__data_usage_exceeded"
-    ]()
+    manual_inst = ALL_EVAL_SCENARIOS["tau2_telecom__mobile_data_issue__data_mode_off__data_usage_exceeded"]()
     workflow_inst = ALL_EVAL_SCENARIOS[
         "tau2_telecom_workflow__mobile_data_issue__data_mode_off__data_usage_exceeded"
     ]()
@@ -316,17 +312,37 @@ def test_user_resources_carries_all_30_user_tools():
     tools = scenario.user_resources.tools
     expected = {
         # Reads (14)
-        "check_status_bar", "check_network_status", "check_network_mode_preference",
-        "check_sim_status", "check_data_restriction_status", "check_apn_settings",
-        "check_wifi_status", "check_wifi_calling_status", "check_vpn_status",
-        "check_installed_apps", "check_app_status", "check_app_permissions",
-        "can_send_mms", "check_payment_request", "run_speed_test",
+        "check_status_bar",
+        "check_network_status",
+        "check_network_mode_preference",
+        "check_sim_status",
+        "check_data_restriction_status",
+        "check_apn_settings",
+        "check_wifi_status",
+        "check_wifi_calling_status",
+        "check_vpn_status",
+        "check_installed_apps",
+        "check_app_status",
+        "check_app_permissions",
+        "can_send_mms",
+        "check_payment_request",
+        "run_speed_test",
         # Writes (16)
-        "toggle_airplane_mode", "toggle_data", "toggle_roaming",
-        "toggle_data_saver_mode", "toggle_wifi", "toggle_wifi_calling",
-        "set_network_mode_preference", "reseat_sim_card", "set_apn_settings",
-        "reset_apn_settings", "connect_vpn", "disconnect_vpn",
-        "grant_app_permission", "reboot_device", "make_payment",
+        "toggle_airplane_mode",
+        "toggle_data",
+        "toggle_roaming",
+        "toggle_data_saver_mode",
+        "toggle_wifi",
+        "toggle_wifi_calling",
+        "set_network_mode_preference",
+        "reseat_sim_card",
+        "set_apn_settings",
+        "reset_apn_settings",
+        "connect_vpn",
+        "disconnect_vpn",
+        "grant_app_permission",
+        "reboot_device",
+        "make_payment",
     }
     # Note: "run_speed_test" is read-only — listed in reads above; the count
     # of 15+15 (with run_speed_test in reads) totals 30. Confirm the count:
@@ -358,11 +374,19 @@ def test_agent_resources_carries_full_telecom_surface():
     tools = scenario.agent_resources.tools
     expected_agent_tools = {
         # Reads (6)
-        "get_customer_by_phone", "get_customer_by_id", "get_customer_by_name",
-        "get_details_by_id", "get_bills_for_customer", "get_data_usage",
+        "get_customer_by_phone",
+        "get_customer_by_id",
+        "get_customer_by_name",
+        "get_details_by_id",
+        "get_bills_for_customer",
+        "get_data_usage",
         # Writes (6)
-        "suspend_line", "resume_line", "enable_roaming", "disable_roaming",
-        "send_payment_request", "refuel_data",
+        "suspend_line",
+        "resume_line",
+        "enable_roaming",
+        "disable_roaming",
+        "send_payment_request",
+        "refuel_data",
         # Generic (1)
         "transfer_to_human_agents",
         # Harness

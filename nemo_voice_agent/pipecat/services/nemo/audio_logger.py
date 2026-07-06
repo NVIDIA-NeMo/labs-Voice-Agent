@@ -93,9 +93,7 @@ class AudioLogger:
         self._agent_counter = 0
         self._turn_index = 0  # Turn index for conversation turns
         self._current_speaker = None  # Track current speaker for turn transitions
-        self._agent_turn_start_time = (
-            None  # Captured when BotStartedSpeakingFrame is received
-        )
+        self._agent_turn_start_time = None  # Captured when BotStartedSpeakingFrame is received
         self._lock = threading.Lock()
         self.staged_metadata = None
         self._staged_audio_data = None
@@ -108,9 +106,7 @@ class AudioLogger:
 
         # Stereo conversation recording (left=agent, right=user)
         self._stereo_conversation_filename = "conversation_stereo.wav"
-        self._stereo_conversation_file = (
-            self.session_dir / self._stereo_conversation_filename
-        )
+        self._stereo_conversation_file = self.session_dir / self._stereo_conversation_filename
         self._stereo_sample_rate = user_audio_sample_rate  # Use user audio sample rate (downsample agent audio)
         self._stereo_audio_buffer_left: list = []  # Agent audio (left channel)
         self._stereo_audio_buffer_right: list = []  # User audio (right channel)
@@ -161,9 +157,7 @@ class AudioLogger:
         """
         # Convert bytes to numpy array if needed
         if isinstance(audio_data, bytes):
-            audio_array = (
-                np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-            )
+            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
         elif audio_data.dtype == np.int16:
             audio_array = audio_data.astype(np.float32) / 32768.0
         else:
@@ -171,9 +165,7 @@ class AudioLogger:
 
         # Resample if needed
         if orig_sr != target_sr:
-            audio_array = librosa.resample(
-                audio_array, orig_sr=orig_sr, target_sr=target_sr
-            )
+            audio_array = librosa.resample(audio_array, orig_sr=orig_sr, target_sr=target_sr)
 
         return audio_array
 
@@ -198,9 +190,7 @@ class AudioLogger:
 
         try:
             # Resample to stereo sample rate if needed
-            audio_float = self._resample_audio(
-                audio_data, sample_rate, self._stereo_sample_rate
-            )
+            audio_float = self._resample_audio(audio_data, sample_rate, self._stereo_sample_rate)
 
             # Calculate the sample position for this audio
             start_sample = int(start_time * self._stereo_sample_rate)
@@ -252,12 +242,7 @@ class AudioLogger:
             # This is raw bytes at user sample rate, no resampling needed since stereo uses user sample rate
             if self.continuous_user_audio_buffer:
                 continuous_audio_bytes = b"".join(self.continuous_user_audio_buffer)
-                right_array = (
-                    np.frombuffer(continuous_audio_bytes, dtype=np.int16).astype(
-                        np.float32
-                    )
-                    / 32768.0
-                )
+                right_array = np.frombuffer(continuous_audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
             else:
                 right_array = np.array([], dtype=np.float32)
 
@@ -298,12 +283,8 @@ class AudioLogger:
         """Get the time from the start of the session to the given datetime string."""
         # get the time difference in seconds.
         if self.first_audio_timestamp is None:
-            raise ValueError(
-                "First audio timestamp is not set. Aborting time calculation."
-            )
-        time_diff = (
-            timestamp if timestamp else datetime.now()
-        ) - self.first_audio_timestamp
+            raise ValueError("First audio timestamp is not set. Aborting time calculation.")
+        time_diff = (timestamp if timestamp else datetime.now()) - self.first_audio_timestamp
         return time_diff.total_seconds()
 
     def _get_next_counter(self, speaker: str) -> int:
@@ -332,9 +313,7 @@ class AudioLogger:
             if speaker is None:
                 # Always increment if no speaker specified
                 self._turn_index += 1
-                logger.debug(
-                    f"[AudioLogger] Turn index incremented to {self._turn_index}"
-                )
+                logger.debug(f"[AudioLogger] Turn index incremented to {self._turn_index}")
             elif speaker != self._current_speaker:
                 # Only increment if speaker changed
                 self._current_speaker = speaker
@@ -362,9 +341,7 @@ class AudioLogger:
         # Only set if not already set for this turn
         if self._agent_turn_start_time is None:
             self._agent_turn_start_time = self.get_time_from_start_of_session()
-            logger.debug(
-                f"[AudioLogger] Agent turn start time set to {self._agent_turn_start_time:.3f}s"
-            )
+            logger.debug(f"[AudioLogger] Agent turn start time set to {self._agent_turn_start_time:.3f}s")
 
     def _save_audio_wav(
         self,
@@ -468,20 +445,12 @@ class AudioLogger:
             audio_file = self.user_dir / f"{base_name}.wav"
             metadata_file = self.user_dir / f"{base_name}.json"
 
-            if (
-                is_first_frame
-                or self.staged_metadata is None
-                or "start_time" not in self.staged_metadata
-            ):
-                raw_start_time = self.get_time_from_start_of_session(
-                    timestamp=timestamp_now
-                )
+            if is_first_frame or self.staged_metadata is None or "start_time" not in self.staged_metadata:
+                raw_start_time = self.get_time_from_start_of_session(timestamp=timestamp_now)
                 # Apply pre-roll: go back pre_roll_time_sec, but don't go before the last entry's end time
                 pre_roll_start = raw_start_time - self._pre_roll_time_sec
                 if self.session_metadata["user_entries"]:
-                    last_entry_end_time = self.session_metadata["user_entries"][-1][
-                        "end_time"
-                    ]
+                    last_entry_end_time = self.session_metadata["user_entries"][-1]["end_time"]
                     _start_time = max(pre_roll_start, last_entry_end_time)
                 else:
                     # No previous entries, just ensure we don't go negative
@@ -580,9 +549,7 @@ class AudioLogger:
         except Exception as e:
             logger.warning(f"[AudioLogger] Failed to stage user audio: {e}")
 
-    def save_user_audio(
-        self, is_backchannel: bool = False, float_divisor: float = 32768.0
-    ):
+    def save_user_audio(self, is_backchannel: bool = False, float_divisor: float = 32768.0):
         """Save the user audio to the disk.
 
         Args:
@@ -591,9 +558,7 @@ class AudioLogger:
         # Safety check: ensure staged metadata exists and has required fields
         if self.staged_metadata is None or "base_name" not in self.staged_metadata:
             # This is expected - multiple TranscriptionFrames may be pushed but only one has audio staged
-            logger.debug(
-                "[AudioLogger] No staged metadata to save (this is normal for multiple frame pushes)"
-            )
+            logger.debug("[AudioLogger] No staged metadata to save (this is normal for multiple frame pushes)")
             return
 
         try:
@@ -610,10 +575,7 @@ class AudioLogger:
                 self.staged_metadata["end_time"],
             )
             continuous_audio_bytes = b"".join(self.continuous_user_audio_buffer)
-            full_audio_array = (
-                np.frombuffer(continuous_audio_bytes, dtype=np.int16).astype(np.float32)
-                / float_divisor
-            )
+            full_audio_array = np.frombuffer(continuous_audio_bytes, dtype=np.int16).astype(np.float32) / float_divisor
             start_idx = int(stt * self._stereo_sample_rate)
             end_idx = int(end * self._stereo_sample_rate)
             staged_audio_data = full_audio_array[start_idx:end_idx]
@@ -624,9 +586,7 @@ class AudioLogger:
                 sample_rate=self.staged_metadata["sample_rate"],
             )
 
-            self._save_metadata_json(
-                metadata=self.staged_metadata, file_path=metadata_file
-            )
+            self._save_metadata_json(metadata=self.staged_metadata, file_path=metadata_file)
             backchannel_label = " [BACKCHANNEL]" if is_backchannel else ""
             transcription_preview = self.staged_metadata["transcription"][:50]
             ellipsis = "..." if len(self.staged_metadata["transcription"]) > 50 else ""
@@ -705,9 +665,7 @@ class AudioLogger:
             with self._lock:
                 agent_entries = self.session_metadata["agent_entries"]
                 # agent_entries is a list of turns, each turn is a list of segments
-                if (
-                    agent_entries and agent_entries[-1]
-                ):  # If there's a current turn with segments
+                if agent_entries and agent_entries[-1]:  # If there's a current turn with segments
                     last_segment = agent_entries[-1][-1]  # Last segment of last turn
                     if last_segment["turn_index"] == self._turn_index:
                         # Same turn - start after previous segment ends
@@ -722,9 +680,7 @@ class AudioLogger:
                     # Fallback to tts_generation_time if agent_turn_start_time not set
                     start_time = tts_generation_time
                 else:
-                    start_time = self.get_time_from_start_of_session(
-                        timestamp=timestamp_now
-                    )
+                    start_time = self.get_time_from_start_of_session(timestamp=timestamp_now)
 
             end_time = start_time + audio_duration_sec
 
@@ -766,10 +722,7 @@ class AudioLogger:
             with self._lock:
                 agent_entries = self.session_metadata["agent_entries"]
                 # Check if we need to start a new turn or append to existing turn
-                if (
-                    not agent_entries
-                    or agent_entries[-1][-1]["turn_index"] != self._turn_index
-                ):
+                if not agent_entries or agent_entries[-1][-1]["turn_index"] != self._turn_index:
                     # Start a new turn (new sublist)
                     agent_entries.append([metadata])
                 else:
@@ -777,9 +730,7 @@ class AudioLogger:
                     agent_entries[-1].append(metadata)
                 self._save_session_metadata()
 
-            logger.info(
-                f"[AudioLogger] Logged agent audio #{counter}: '{text[:50]}{'...' if len(text) > 50 else ''}'"
-            )
+            logger.info(f"[AudioLogger] Logged agent audio #{counter}: '{text[:50]}{'...' if len(text) > 50 else ''}'")
 
             return {
                 "audio_file": str(audio_file),
@@ -827,9 +778,7 @@ class AudioLogger:
                     metadata_file = self.agent_dir / f"{segment['base_name']}.json"
                     self._save_metadata_json(segment, metadata_file)
                 except Exception as e:
-                    logger.error(
-                        f"[AudioLogger] Error updating agent cutoff time for segment: {e}"
-                    )
+                    logger.error(f"[AudioLogger] Error updating agent cutoff time for segment: {e}")
 
             # Truncate the stereo buffer (left channel = agent) at the cutoff point
             cutoff_sample = int(cutoff_time * self._stereo_sample_rate)
@@ -873,9 +822,7 @@ class AudioLogger:
         self.session_metadata["end_time"] = datetime.now().isoformat()
         self.session_metadata["total_user_entries"] = self._user_counter
         self.session_metadata["total_agent_segments"] = self._agent_counter
-        self.session_metadata["total_agent_turns"] = len(
-            self.session_metadata["agent_entries"]
-        )
+        self.session_metadata["total_agent_turns"] = len(self.session_metadata["agent_entries"])
         self._save_session_metadata()
         logger.info(
             f"[AudioLogger] Session finalized: {self.session_id} "

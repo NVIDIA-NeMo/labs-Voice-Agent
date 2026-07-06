@@ -344,8 +344,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         self._vllm_server_params = vllm_server_params
         self._start_vllm_on_init = start_vllm_on_init
         logger.info(
-            f"VLLMService initialized with model: {model}, api_key: {api_key}, base_url: {base_url},"
-            f"params: {params}"
+            f"VLLMService initialized with model: {model}, api_key: {api_key}, base_url: {base_url},params: {params}"
         )
 
     def _start_vllm_server(

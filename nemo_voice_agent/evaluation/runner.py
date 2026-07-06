@@ -366,12 +366,12 @@ async def run_dynamic_evaluation(
         # so skip the live execution. Per-scenario artifacts on disk (bridge_log,
         # bot_logs, judge_result) remain unchanged.
         if scenario.name in loaded_names:
-            logger.info(f"[SKIP {idx+1}/{len(scenarios)}] {scenario.name} (loaded from previous run)")
+            logger.info(f"[SKIP {idx + 1}/{len(scenarios)}] {scenario.name} (loaded from previous run)")
             continue
 
-        logger.info(f"{'='*80}")
-        logger.info(f"Starting Scenario {idx+1}/{len(scenarios)}: {scenario.name}")
-        logger.info(f"{'='*80}\n")
+        logger.info(f"{'=' * 80}")
+        logger.info(f"Starting Scenario {idx + 1}/{len(scenarios)}: {scenario.name}")
+        logger.info(f"{'=' * 80}\n")
 
         # Create scenario-specific directory
         scenario_dir = os.path.join(output_dir, scenario.name)
@@ -688,17 +688,17 @@ async def run_dynamic_evaluation(
 
         # Log scenario summary
         latency_stats = metrics["latency_stats"]
-        logger.info(f"{'='*80}")
+        logger.info(f"{'=' * 80}")
         logger.info(f"Scenario '{scenario.name}' Complete")
-        logger.info(f"{'='*80}")
+        logger.info(f"{'=' * 80}")
         logger.info(f"  Is successful: {metrics['is_successful']}")
         logger.info(f"    Action-list match: {metrics['is_action_match']}")
         if "db_state_match" in metrics:
             logger.info(f"    DB-state match: {metrics['db_state_match']}")
         if "db_state_assertion_pass_rate" in metrics:
-            logger.info(f"    DB-state-assertion pass rate: {metrics['db_state_assertion_pass_rate']*100:.2f}%")
+            logger.info(f"    DB-state-assertion pass rate: {metrics['db_state_assertion_pass_rate'] * 100:.2f}%")
         if "nl_assertion_pass_rate" in metrics:
-            logger.info(f"    NL-assertion pass rate: {metrics['nl_assertion_pass_rate']*100:.2f}%")
+            logger.info(f"    NL-assertion pass rate: {metrics['nl_assertion_pass_rate'] * 100:.2f}%")
         if "judge_score" in metrics:
             logger.info(f"    Judge score: {metrics['judge_score']:.2f}")
         if "judge_passed" in metrics:
@@ -794,9 +794,9 @@ async def run_dynamic_evaluation(
             if "db_state_match" in result:
                 f.write(f"    DB-state match: {result['db_state_match']}\n")
             if "db_state_assertion_pass_rate" in result:
-                f.write(f"    DB-state-assertion pass rate: " f"{result['db_state_assertion_pass_rate']*100:.2f}%\n")
+                f.write(f"    DB-state-assertion pass rate: {result['db_state_assertion_pass_rate'] * 100:.2f}%\n")
             if "nl_assertion_pass_rate" in result:
-                f.write(f"    NL-assertion pass rate: {result['nl_assertion_pass_rate']*100:.2f}%\n")
+                f.write(f"    NL-assertion pass rate: {result['nl_assertion_pass_rate'] * 100:.2f}%\n")
             if "judge_score" in result:
                 f.write(f"    Judge score: {result['judge_score']:.2f}\n")
             if "judge_passed" in result:
@@ -832,8 +832,10 @@ async def run_dynamic_evaluation(
         # knows the eval is not fully complete and can --resume to retry them.
         if aggregator.insufficient_turns_skipped:
             n = len(aggregator.insufficient_turns_skipped)
-            f.write(f"\n\nWARNING: {n} scenario(s) had fewer than {min_agent_turns} agent turn(s) "
-                    f"and were excluded from aggregate rates (likely stalled LLM / server hang).\n")
+            f.write(
+                f"\n\nWARNING: {n} scenario(s) had fewer than {min_agent_turns} agent turn(s) "
+                f"and were excluded from aggregate rates (likely stalled LLM / server hang).\n"
+            )
             f.write(f"Excluded scenarios: {', '.join(aggregator.insufficient_turns_skipped)}\n")
             f.write(f"Run with --resume <TIMESTAMP> --min-agent-turns {min_agent_turns} to retry them.\n")
 
@@ -842,13 +844,13 @@ async def run_dynamic_evaluation(
         # which dimension(s) dragged the conjunction down.
         if success_results:
             f.write(
-                f"\n\nOverall Success Rate: {success_rate*100:.2f}% "
+                f"\n\nOverall Success Rate: {success_rate * 100:.2f}% "
                 f"({sum(success_results)}/{len(success_results)} scenarios — strict conjunction "
                 f"across all applicable signals)\n"
             )
             if task_success_rate is not None:
                 f.write(
-                    f"Task Success Rate (excl. clean_exit): {task_success_rate*100:.2f}% "
+                    f"Task Success Rate (excl. clean_exit): {task_success_rate * 100:.2f}% "
                     f"({sum(task_success_results)}/{len(task_success_results)} scenarios)\n"
                 )
         else:
@@ -857,22 +859,22 @@ async def run_dynamic_evaluation(
         f.write("\nPer-signal pass rates:\n")
         if action_match_rate is not None:
             f.write(
-                f"  Action-list match:           {action_match_rate*100:6.2f}% "
+                f"  Action-list match:           {action_match_rate * 100:6.2f}% "
                 f"({sum(action_match_results)}/{len(action_match_results)} scenarios)\n"
             )
         if db_state_success_rate is not None:
             f.write(
-                f"  DB-State match:              {db_state_success_rate*100:6.2f}% "
+                f"  DB-State match:              {db_state_success_rate * 100:6.2f}% "
                 f"({sum(db_state_results)}/{len(db_state_results)} scenarios)\n"
             )
         if db_state_assertion_success_rate is not None:
             f.write(
-                f"  DB-State-Assertion pass:     {db_state_assertion_success_rate*100:6.2f}% "
+                f"  DB-State-Assertion pass:     {db_state_assertion_success_rate * 100:6.2f}% "
                 f"({sum(db_state_assertion_results)}/{len(db_state_assertion_results)} predicates)\n"
             )
         if nl_assertion_success_rate is not None:
             f.write(
-                f"  NL-Assertion pass:           {nl_assertion_success_rate*100:6.2f}% "
+                f"  NL-Assertion pass:           {nl_assertion_success_rate * 100:6.2f}% "
                 f"({sum(nl_assertion_results)}/{len(nl_assertion_results)} assertions)\n"
             )
         if judge_score_mean is not None:
@@ -882,13 +884,13 @@ async def run_dynamic_evaluation(
             )
         if judge_pass_rate is not None:
             f.write(
-                f"  Judge passed (>= threshold): {judge_pass_rate*100:6.2f}% "
+                f"  Judge passed (>= threshold): {judge_pass_rate * 100:6.2f}% "
                 f"({sum(judge_pass_results)}/{len(judge_pass_results)} scenarios)\n"
             )
         if clean_exit_results:
             clean_exit_rate = sum(clean_exit_results) / len(clean_exit_results)
             f.write(
-                f"  Clean exit: {clean_exit_rate*100:6.2f}% "
+                f"  Clean exit: {clean_exit_rate * 100:6.2f}% "
                 f"({sum(clean_exit_results)}/{len(clean_exit_results)} scenarios)\n"
             )
 
@@ -922,39 +924,39 @@ async def run_dynamic_evaluation(
             for d in sorted(per_domain_success):
                 results = per_domain_success[d]
                 rate = sum(results) / len(results) if results else 0
-                f.write(f"  {d}: {rate*100:.2f}% ({sum(results):g}/{len(results)})\n")
+                f.write(f"  {d}: {rate * 100:.2f}% ({sum(results):g}/{len(results)})\n")
         if len(per_domain_task_success) > 1:
             f.write("\nPer-Domain Task Success Rate (excl. clean_exit):\n")
             f.write("-" * 80 + "\n")
             for d in sorted(per_domain_task_success):
                 results = per_domain_task_success[d]
                 rate = sum(results) / len(results) if results else 0
-                f.write(f"  {d}: {rate*100:.2f}% ({sum(results):g}/{len(results)})\n")
+                f.write(f"  {d}: {rate * 100:.2f}% ({sum(results):g}/{len(results)})\n")
         if len(per_domain_db_state) > 1:
             f.write("\nPer-Domain DB-State Match Rate:\n")
             f.write("-" * 80 + "\n")
             for d in sorted(per_domain_db_state):
                 results = per_domain_db_state[d]
                 rate = sum(results) / len(results) if results else 0
-                f.write(f"  {d}: {rate*100:.2f}% ({sum(results)}/{len(results)})\n")
+                f.write(f"  {d}: {rate * 100:.2f}% ({sum(results)}/{len(results)})\n")
         if len(per_domain_nl_assertion) > 1:
             f.write("\nPer-Domain NL-Assertion Pass Rate:\n")
             f.write("-" * 80 + "\n")
             for d in sorted(per_domain_nl_assertion):
                 results = per_domain_nl_assertion[d]
                 rate = sum(results) / len(results) if results else 0
-                f.write(f"  {d}: {rate*100:.2f}% ({sum(results)}/{len(results)})\n")
+                f.write(f"  {d}: {rate * 100:.2f}% ({sum(results)}/{len(results)})\n")
         if len(per_domain_db_state_assertion) > 1:
             f.write("\nPer-Domain DB-State-Assertion Pass Rate:\n")
             f.write("-" * 80 + "\n")
             for d in sorted(per_domain_db_state_assertion):
                 results = per_domain_db_state_assertion[d]
                 rate = sum(results) / len(results) if results else 0
-                f.write(f"  {d}: {rate*100:.2f}% ({sum(results)}/{len(results)})\n")
+                f.write(f"  {d}: {rate * 100:.2f}% ({sum(results)}/{len(results)})\n")
 
-    logger.info(f"{'='*80}")
+    logger.info(f"{'=' * 80}")
     logger.info("Evaluation Complete!")
-    logger.info(f"{'='*80}")
+    logger.info(f"{'=' * 80}")
     if aggregator.insufficient_turns_skipped:
         n = len(aggregator.insufficient_turns_skipped)
         logger.info(
@@ -965,42 +967,42 @@ async def run_dynamic_evaluation(
         logger.info(f"  Run with --resume <TIMESTAMP> --min-agent-turns {min_agent_turns} to retry.")
     if success_results:
         logger.info(
-            f"Overall Success Rate: {success_rate*100:.2f}% "
+            f"Overall Success Rate: {success_rate * 100:.2f}% "
             f"({sum(success_results)}/{len(success_results)} scenarios — "
             f"strict conjunction across all applicable signals)"
         )
         if task_success_rate is not None:
             logger.info(
-                f"Task Success Rate (excl. clean_exit): {task_success_rate*100:.2f}% "
+                f"Task Success Rate (excl. clean_exit): {task_success_rate * 100:.2f}% "
                 f"({sum(task_success_results)}/{len(task_success_results)} scenarios)"
             )
     else:
         logger.info("Overall Success Rate: N/A (no scenarios had any applicable signal)")
     if action_match_rate is not None:
         logger.info(
-            f"  Action-list match: {action_match_rate*100:.2f}% "
+            f"  Action-list match: {action_match_rate * 100:.2f}% "
             f"({sum(action_match_results)}/{len(action_match_results)} scenarios)"
         )
     if db_state_success_rate is not None:
         logger.info(
-            f"  DB-State match: {db_state_success_rate*100:.2f}% "
+            f"  DB-State match: {db_state_success_rate * 100:.2f}% "
             f"({sum(db_state_results)}/{len(db_state_results)} scenarios)"
         )
     if db_state_assertion_success_rate is not None:
         logger.info(
-            f"  DB-State-Assertion pass: {db_state_assertion_success_rate*100:.2f}% "
+            f"  DB-State-Assertion pass: {db_state_assertion_success_rate * 100:.2f}% "
             f"({sum(db_state_assertion_results)}/{len(db_state_assertion_results)} predicates)"
         )
     if nl_assertion_success_rate is not None:
         logger.info(
-            f"  NL-Assertion pass: {nl_assertion_success_rate*100:.2f}% "
+            f"  NL-Assertion pass: {nl_assertion_success_rate * 100:.2f}% "
             f"({sum(nl_assertion_results)}/{len(nl_assertion_results)} assertions)"
         )
     if judge_score_mean is not None:
-        logger.info(f"  Judge score mean: {judge_score_mean:.3f} " f"(across {len(judge_score_results)} scenarios)")
+        logger.info(f"  Judge score mean: {judge_score_mean:.3f} (across {len(judge_score_results)} scenarios)")
     if judge_pass_rate is not None:
         logger.info(
-            f"  Judge passed: {judge_pass_rate*100:.2f}% "
+            f"  Judge passed: {judge_pass_rate * 100:.2f}% "
             f"({sum(judge_pass_results)}/{len(judge_pass_results)} scenarios)"
         )
     run_token_total = (
@@ -1019,27 +1021,29 @@ async def run_dynamic_evaluation(
         for d in sorted(per_domain_success):
             results = per_domain_success[d]
             rate = sum(results) / len(results) if results else 0
-            logger.info(f"  [{d}] Success Rate: {rate*100:.2f}% ({sum(results):g}/{len(results)})")
+            logger.info(f"  [{d}] Success Rate: {rate * 100:.2f}% ({sum(results):g}/{len(results)})")
     if len(per_domain_task_success) > 1:
         for d in sorted(per_domain_task_success):
             results = per_domain_task_success[d]
             rate = sum(results) / len(results) if results else 0
-            logger.info(f"  [{d}] Task Success Rate (excl. clean_exit): {rate*100:.2f}% ({sum(results):g}/{len(results)})")
+            logger.info(
+                f"  [{d}] Task Success Rate (excl. clean_exit): {rate * 100:.2f}% ({sum(results):g}/{len(results)})"
+            )
     if len(per_domain_db_state) > 1:
         for d in sorted(per_domain_db_state):
             results = per_domain_db_state[d]
             rate = sum(results) / len(results) if results else 0
-            logger.info(f"  [{d}] DB-State Match: {rate*100:.2f}% ({sum(results)}/{len(results)})")
+            logger.info(f"  [{d}] DB-State Match: {rate * 100:.2f}% ({sum(results)}/{len(results)})")
     if len(per_domain_nl_assertion) > 1:
         for d in sorted(per_domain_nl_assertion):
             results = per_domain_nl_assertion[d]
             rate = sum(results) / len(results) if results else 0
-            logger.info(f"  [{d}] NL-Assertion: {rate*100:.2f}% ({sum(results)}/{len(results)})")
+            logger.info(f"  [{d}] NL-Assertion: {rate * 100:.2f}% ({sum(results)}/{len(results)})")
     if len(per_domain_db_state_assertion) > 1:
         for d in sorted(per_domain_db_state_assertion):
             results = per_domain_db_state_assertion[d]
             rate = sum(results) / len(results) if results else 0
-            logger.info(f"  [{d}] DB-State-Assertion: {rate*100:.2f}% ({sum(results)}/{len(results)})")
+            logger.info(f"  [{d}] DB-State-Assertion: {rate * 100:.2f}% ({sum(results)}/{len(results)})")
     logger.info(f"Overall Latency P95: {overall_latency_stats['p95_ms']:.1f}ms")
     logger.info(f"Overall Latency P50: {overall_latency_stats['p50_ms']:.1f}ms")
     logger.info(f"Results saved to: {results_file}")

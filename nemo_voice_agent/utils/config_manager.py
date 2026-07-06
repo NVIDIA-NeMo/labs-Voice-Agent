@@ -46,25 +46,17 @@ class ConfigManager:
         if server_config_path is not None:
             self._server_config_path = server_config_path
         else:
-            self._server_config_path = (
-                f"{os.path.abspath(self._server_base_path)}/server_configs/default.yaml"
-            )
+            self._server_config_path = f"{os.path.abspath(self._server_base_path)}/server_configs/default.yaml"
 
         if not os.path.exists(self._server_config_path):
-            raise FileNotFoundError(
-                f"Server configuration file not found at {self._server_config_path}"
-            )
+            raise FileNotFoundError(f"Server configuration file not found at {self._server_config_path}")
 
         # Load and process main configuration
         self.server_config = self._load_server_config()
-        self.use_model_registry = self.server_config.server.get(
-            "use_model_registry", True
-        )
+        self.use_model_registry = self.server_config.server.get("use_model_registry", True)
 
         # Load model registry
-        self.model_registry_path = (
-            f"{os.path.abspath(self._server_base_path)}/model_registry.yaml"
-        )
+        self.model_registry_path = f"{os.path.abspath(self._server_base_path)}/model_registry.yaml"
         self.model_registry = self._load_model_registry()
 
         # Initialize configuration parameters
@@ -84,9 +76,7 @@ class ConfigManager:
             try:
                 model_registry = OmegaConf.load(self.model_registry_path)
             except Exception as e:
-                logger.error(
-                    f"Failed to load model registry from {self.model_registry_path}: {e}"
-                )
+                logger.error(f"Failed to load model registry from {self.model_registry_path}: {e}")
         return model_registry
 
     def _load_server_config(self) -> OmegaConf:
@@ -101,9 +91,7 @@ class ConfigManager:
         # Default constants
         self.SAMPLE_RATE = 16000
         # websocket has 16ms frame length by default
-        self.RAW_AUDIO_FRAME_LEN_IN_SECS = self.server_config.transport.get(
-            "audio_in_frame_len_secs", 0.016
-        )
+        self.RAW_AUDIO_FRAME_LEN_IN_SECS = self.server_config.transport.get("audio_in_frame_len_secs", 0.016)
         self.SYSTEM_PROMPT = " ".join(
             [
                 "You are a helpful AI agent named Lisa.",
@@ -113,9 +101,7 @@ class ConfigManager:
         )
 
         # Transport configuration
-        self.TRANSPORT_AUDIO_OUT_10MS_CHUNKS = (
-            self.server_config.transport.audio_out_10ms_chunks
-        )
+        self.TRANSPORT_AUDIO_OUT_10MS_CHUNKS = self.server_config.transport.audio_out_10ms_chunks
 
         # VAD configuration
         self.vad_params = VADParams(
@@ -167,17 +153,12 @@ class ConfigManager:
         if yaml_file_name is not None:
             stt_config_path = f"{os.path.abspath(self._server_base_path)}/server_configs/stt_configs/{yaml_file_name}"
             if not os.path.exists(stt_config_path):
-                raise FileNotFoundError(
-                    f"STT config file not found at {stt_config_path}"
-                )
+                raise FileNotFoundError(f"STT config file not found at {stt_config_path}")
             stt_config = OmegaConf.load(stt_config_path)
 
             # merge stt config with server config
             for key in stt_config:
-                if (
-                    key in self.server_config.stt
-                    and self.server_config.stt[key] != stt_config[key]
-                ):
+                if key in self.server_config.stt and self.server_config.stt[key] != stt_config[key]:
                     logger.info(
                         f"STT config field `{key}` is overridden from `{self.server_config.stt[key]}` "
                         f"to `{stt_config[key]}` by {stt_config_path}"
@@ -186,17 +167,13 @@ class ConfigManager:
 
         logger.info(f"Final STT config: {self.server_config.stt}")
 
-        audio_chunk_size_in_secs = self.server_config.stt.get(
-            "audio_chunk_size_in_secs", 0.08
-        )
+        audio_chunk_size_in_secs = self.server_config.stt.get("audio_chunk_size_in_secs", 0.08)
         buffer_size = audio_chunk_size_in_secs // self.RAW_AUDIO_FRAME_LEN_IN_SECS
         self.stt_params = NeMoSTTInputParams(
             att_context_size=self.server_config.stt.get("att_context_size", [70, 1]),
             frame_len_in_secs=self.server_config.stt.get("frame_len_in_secs", 0.08),
             raw_audio_frame_len_in_secs=self.RAW_AUDIO_FRAME_LEN_IN_SECS,
-            buffer_size=self.server_config.stt.get(
-                "buffer_size", buffer_size
-            ),  # FC has 80ms frame, which is 5 * 16ms
+            buffer_size=self.server_config.stt.get("buffer_size", buffer_size),  # FC has 80ms frame, which is 5 * 16ms
         )
 
     def _configure_diarization(self):
@@ -215,15 +192,9 @@ class ConfigManager:
     def _configure_turn_taking(self):
         """Configure turn taking parameters."""
         if self.server_config.turn_taking.get("enabled", True):
-            self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = (
-                self.server_config.turn_taking.backchannel_phrases_path
-            )
-            self.TURN_TAKING_MAX_BUFFER_SIZE = (
-                self.server_config.turn_taking.max_buffer_size
-            )
-            self.TURN_TAKING_BOT_STOP_DELAY = (
-                self.server_config.turn_taking.bot_stop_delay
-            )
+            self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = self.server_config.turn_taking.backchannel_phrases_path
+            self.TURN_TAKING_MAX_BUFFER_SIZE = self.server_config.turn_taking.max_buffer_size
+            self.TURN_TAKING_BOT_STOP_DELAY = self.server_config.turn_taking.bot_stop_delay
         else:
             self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = ""
             self.TURN_TAKING_MAX_BUFFER_SIZE = 0
@@ -255,27 +226,20 @@ class ConfigManager:
 
             if (
                 is_registry_model
-                and self.model_registry.llm_models[llm_model_id].get(
-                    "reasoning_supported", False
-                )
+                and self.model_registry.llm_models[llm_model_id].get("reasoning_supported", False)
                 and self.server_config.llm.get("enable_reasoning", False)
             ):
                 llm_config_path = llm_config_path.replace(".yaml", "_think.yaml")
 
             if not os.path.exists(llm_config_path):
-                raise FileNotFoundError(
-                    f"LLM config file not found at {llm_config_path}"
-                )
+                raise FileNotFoundError(f"LLM config file not found at {llm_config_path}")
             logger.info(f"Loading LLM config from: {llm_config_path}")
 
             llm_config = OmegaConf.load(llm_config_path)
             # merge llm config with server config
             # print the override keys
             for key in llm_config:
-                if (
-                    key in self.server_config.llm
-                    and self.server_config.llm[key] != llm_config[key]
-                ):
+                if key in self.server_config.llm and self.server_config.llm[key] != llm_config[key]:
                     logger.info(
                         f"LLM config field `{key}` is overridden from `{self.server_config.llm[key]}` to "
                         f"`{llm_config[key]}` by {llm_config_path}"
@@ -293,17 +257,13 @@ class ConfigManager:
                     system_prompt = f.read()
             self.SYSTEM_PROMPT = system_prompt
         else:
-            logger.info(
-                f"No system prompt provided, using default system prompt: {self.SYSTEM_PROMPT}"
-            )
+            logger.info(f"No system prompt provided, using default system prompt: {self.SYSTEM_PROMPT}")
 
         self.SYSTEM_PROMPT_SUFFIX = ""
         if self.server_config.llm.get("system_prompt_suffix", None) is not None:
             self.SYSTEM_PROMPT += "\n" + self.server_config.llm.system_prompt_suffix
             self.SYSTEM_PROMPT_SUFFIX = self.server_config.llm.system_prompt_suffix
-            logger.info(
-                f"Adding system prompt suffix: {self.server_config.llm.system_prompt_suffix}"
-            )
+            logger.info(f"Adding system prompt suffix: {self.server_config.llm.system_prompt_suffix}")
 
         logger.info(f"System prompt: {self.SYSTEM_PROMPT}")
 
@@ -329,17 +289,12 @@ class ConfigManager:
         if yaml_file_name is not None:
             tts_config_path = f"{os.path.abspath(self._server_base_path)}/server_configs/tts_configs/{yaml_file_name}"
             if not os.path.exists(tts_config_path):
-                raise FileNotFoundError(
-                    f"TTS config file not found at {tts_config_path}"
-                )
+                raise FileNotFoundError(f"TTS config file not found at {tts_config_path}")
             tts_config = OmegaConf.load(tts_config_path)
 
             # merge tts config with server config
             for key in tts_config:
-                if (
-                    key in self.server_config.tts
-                    and self.server_config.tts[key] != tts_config[key]
-                ):
+                if key in self.server_config.tts and self.server_config.tts[key] != tts_config[key]:
                     logger.info(
                         f"TTS config field `{key}` is overridden from `{self.server_config.tts[key]}` to "
                         f"`{tts_config[key]}` by {tts_config_path}"

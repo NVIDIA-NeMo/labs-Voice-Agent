@@ -259,9 +259,7 @@ def _db_not_initialized() -> dict:
     return {
         "status": "error",
         "error_type": "db_not_initialized",
-        "message": (
-            "Scenario user-side database not loaded. This indicates a fixture-loading bug."
-        ),
+        "message": ("Scenario user-side database not loaded. This indicates a fixture-loading bug."),
     }
 
 
@@ -618,8 +616,7 @@ def _grant_app_permission(db: dict, app_name: str, permission: str) -> "tuple[bo
     if permission not in perms:
         return (
             False,
-            f"Permission '{permission}' not tracked for app '{app_name}', "
-            f"available permissions: {list(perms.keys())}",
+            f"Permission '{permission}' not tracked for app '{app_name}', available permissions: {list(perms.keys())}",
         )
     perms[permission] = True
     return True, f"Permission '{permission}' granted to app '{app_name}'."
@@ -728,10 +725,7 @@ class CheckSimStatusTool(_Tau2TelecomReadTool):
 @register_schema_tool_for_eval(domain="tau2_telecom")
 class CheckDataRestrictionStatusTool(_Tau2TelecomReadTool):
     name = "check_data_restriction_status"
-    DESCRIPTION = (
-        "Checks if your phone has any data-limiting features active. Shows if "
-        "Data Saver mode is on."
-    )
+    DESCRIPTION = "Checks if your phone has any data-limiting features active. Shows if Data Saver mode is on."
     PARAMS_MODEL = CheckDataRestrictionStatusParams
 
     @property
@@ -837,10 +831,7 @@ class CheckWifiCallingStatusTool(_Tau2TelecomReadTool):
         db = self.state.get("db")
         if not db:
             return _db_not_initialized()
-        return (
-            f"Wi-Fi Calling is currently turned "
-            f"{'ON' if db['device']['wifi_calling_enabled'] else 'OFF'}."
-        )
+        return f"Wi-Fi Calling is currently turned {'ON' if db['device']['wifi_calling_enabled'] else 'OFF'}."
 
 
 @register_schema_tool_for_eval(domain="tau2_telecom")
@@ -902,8 +893,7 @@ class CheckInstalledAppsTool(_Tau2TelecomReadTool):
 class CheckAppStatusTool(_Tau2TelecomReadTool):
     name = "check_app_status"
     DESCRIPTION = (
-        "Checks detailed information about a specific app. Shows its "
-        "permissions and background data usage settings."
+        "Checks detailed information about a specific app. Shows its permissions and background data usage settings."
     )
     PARAMS_MODEL = CheckAppStatusParams
 
@@ -1017,10 +1007,7 @@ class CheckPaymentRequestTool(_Tau2TelecomReadTool):
         pr = db["surroundings"].get("payment_request")
         if pr is None:
             return "No payment request has been made."
-        return (
-            f"You have a payment request for bill {pr['bill_id']} "
-            f"of {pr['amount_due']} USD."
-        )
+        return f"You have a payment request for bill {pr['bill_id']} of {pr['amount_due']} USD."
 
 
 # =============================================================================
@@ -1043,9 +1030,7 @@ class SetNetworkModePreferenceTool(_Tau2TelecomWriteTool):
         return {
             "mode": {
                 "type": "string",
-                "description": (
-                    "One of '4g_5g_preferred', '4g_only', '3g_only', '2g_only'."
-                ),
+                "description": ("One of '4g_5g_preferred', '4g_only', '3g_only', '2g_only'."),
             },
         }
 
@@ -1078,10 +1063,7 @@ class SetNetworkModePreferenceTool(_Tau2TelecomWriteTool):
 @register_schema_tool_for_eval(domain="tau2_telecom")
 class ReseatSimCardTool(_Tau2TelecomWriteTool):
     name = "reseat_sim_card"
-    DESCRIPTION = (
-        "Simulates removing and reinserting your SIM card. This can help "
-        "resolve recognition issues."
-    )
+    DESCRIPTION = "Simulates removing and reinserting your SIM card. This can help resolve recognition issues."
     PARAMS_MODEL = ReseatSimCardParams
 
     @property
@@ -1139,10 +1121,7 @@ class ToggleRoamingTool(_Tau2TelecomWriteTool):
                 "result": {"roaming_enabled": new_state},
             }
         )
-        return (
-            f"Data Roaming is now {'ON' if new_state else 'OFF'}.\n"
-            f"Status Bar: {_check_status_bar(db)}"
-        )
+        return f"Data Roaming is now {'ON' if new_state else 'OFF'}.\nStatus Bar: {_check_status_bar(db)}"
 
 
 @register_schema_tool_for_eval(domain="tau2_telecom")
@@ -1175,10 +1154,7 @@ class ToggleDataSaverModeTool(_Tau2TelecomWriteTool):
                 "result": {"data_saver_mode": new_state},
             }
         )
-        return (
-            f"Data Saver Mode is now {'ON' if new_state else 'OFF'}.\n"
-            f"Status Bar: {_check_status_bar(db)}"
-        )
+        return f"Data Saver Mode is now {'ON' if new_state else 'OFF'}.\nStatus Bar: {_check_status_bar(db)}"
 
 
 @register_schema_tool_for_eval(domain="tau2_telecom")
@@ -1277,10 +1253,7 @@ class ToggleWifiTool(_Tau2TelecomWriteTool):
             return _db_not_initialized()
         new_state = _toggle_wifi(db)
         if new_state is None:
-            return (
-                "Cannot change Wi-Fi settings while Airplane Mode is ON.\n"
-                f"Status Bar: {_check_status_bar(db)}"
-            )
+            return f"Cannot change Wi-Fi settings while Airplane Mode is ON.\nStatus Bar: {_check_status_bar(db)}"
         self._record_action(
             {
                 "action_type": "toggle_wifi",
@@ -1289,10 +1262,7 @@ class ToggleWifiTool(_Tau2TelecomWriteTool):
                 "result": {"wifi_enabled": new_state},
             }
         )
-        return (
-            f"Wi-Fi is now {'ON' if new_state else 'OFF'}.\n"
-            f"Status Bar: {_check_status_bar(db)}"
-        )
+        return f"Wi-Fi is now {'ON' if new_state else 'OFF'}.\nStatus Bar: {_check_status_bar(db)}"
 
 
 @register_schema_tool_for_eval(domain="tau2_telecom")
@@ -1327,10 +1297,7 @@ class ToggleWifiCallingTool(_Tau2TelecomWriteTool):
                 "result": {"wifi_calling_enabled": new_state},
             }
         )
-        return (
-            f"Wi-Fi Calling is now {'ON' if new_state else 'OFF'}.\n"
-            f"Status Bar: {_check_status_bar(db)}"
-        )
+        return f"Wi-Fi Calling is now {'ON' if new_state else 'OFF'}.\nStatus Bar: {_check_status_bar(db)}"
 
 
 @register_schema_tool_for_eval(domain="tau2_telecom")
@@ -1390,11 +1357,7 @@ class DisconnectVpnTool(_Tau2TelecomWriteTool):
         if not db:
             return _db_not_initialized()
         disconnected = _disconnect_vpn_tool(db)
-        msg = (
-            "VPN disconnected successfully."
-            if disconnected
-            else "No active VPN connection to disconnect."
-        )
+        msg = "VPN disconnected successfully." if disconnected else "No active VPN connection to disconnect."
         if disconnected:
             self._record_action(
                 {

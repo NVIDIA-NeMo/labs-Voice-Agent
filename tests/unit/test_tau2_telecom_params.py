@@ -138,9 +138,7 @@ def test_TelecomUserDB_rejects_unknown_field():
     upstream data should raise at validate time, NOT silently shadow a real
     field. Catches accidental shape drift on future re-imports."""
     with pytest.raises(ValidationError):
-        TelecomUserDB.model_validate(
-            {"device": {}, "surroundings": {}, "totally_made_up_field": 42}
-        )
+        TelecomUserDB.model_validate({"device": {}, "surroundings": {}, "totally_made_up_field": 42})
 
 
 def test_UserSurroundings_rejects_unknown_field():

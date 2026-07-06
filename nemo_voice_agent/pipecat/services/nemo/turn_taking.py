@@ -67,9 +67,7 @@ class NeMoTurnTakingService(FrameProcessor):
         self.can_create_user_frames = can_create_user_frames
 
         self.backchannel_phrases = self._load_backchannel_phrases(backchannel_phrases)
-        self.backchannel_phrases_nopc = set(
-            [self.clean_text(phrase) for phrase in self.backchannel_phrases]
-        )
+        self.backchannel_phrases_nopc = set([self.clean_text(phrase) for phrase in self.backchannel_phrases])
         self.bot_stop_delay = bot_stop_delay
         self.can_create_user_frames = can_create_user_frames
         # internal data
@@ -85,34 +83,24 @@ class NeMoTurnTakingService(FrameProcessor):
             # if vad is not used, we assume the user is always speaking
             self._vad_user_speaking = True
 
-    def _load_backchannel_phrases(
-        self, backchannel_phrases: Optional[Union[str, List[str]]] = None
-    ):
+    def _load_backchannel_phrases(self, backchannel_phrases: Optional[Union[str, List[str]]] = None):
         if not backchannel_phrases:
             return []
 
         if isinstance(backchannel_phrases, str) and Path(backchannel_phrases).is_file():
             logger.info(f"Loading backchannel phrases from file: {backchannel_phrases}")
             if not Path(backchannel_phrases).exists():
-                raise FileNotFoundError(
-                    f"Backchannel phrases file not found: {backchannel_phrases}"
-                )
+                raise FileNotFoundError(f"Backchannel phrases file not found: {backchannel_phrases}")
             with open(backchannel_phrases, "r") as f:
                 backchannel_phrases = yaml.safe_load(f)
             if not isinstance(backchannel_phrases, list):
-                raise ValueError(
-                    f"Backchannel phrases must be a list, got {type(backchannel_phrases)}"
-                )
-            logger.info(
-                f"Loaded {len(backchannel_phrases)} backchannel phrases from file: {backchannel_phrases}"
-            )
+                raise ValueError(f"Backchannel phrases must be a list, got {type(backchannel_phrases)}")
+            logger.info(f"Loaded {len(backchannel_phrases)} backchannel phrases from file: {backchannel_phrases}")
         elif isinstance(backchannel_phrases, (list, ListConfig)):
             backchannel_phrases = list(backchannel_phrases)
             logger.info(f"Using backchannel phrases from list: {backchannel_phrases}")
         else:
-            raise ValueError(
-                f"Invalid backchannel phrases of type {type(backchannel_phrases)}: {backchannel_phrases}"
-            )
+            raise ValueError(f"Invalid backchannel phrases of type {type(backchannel_phrases)}: {backchannel_phrases}")
         return backchannel_phrases
 
     def reset(self):
@@ -136,9 +124,7 @@ class NeMoTurnTakingService(FrameProcessor):
         Clean the text so that it can be used for backchannel detection.
         """
         if self.language != Language.EN_US:
-            raise ValueError(
-                f"Language {self.language} not supported, currently only English is supported."
-            )
+            raise ValueError(f"Language {self.language} not supported, currently only English is supported.")
         for eou_string in [self.eou_string, self.eob_string]:
             if text.endswith(eou_string):
                 text = text[: -len(eou_string)].strip()
@@ -226,13 +212,9 @@ class NeMoTurnTakingService(FrameProcessor):
             if has_eou:
                 # EOU detected, user is done speaking - push completed text and interrupt bot
                 logger.debug(f"<EOU> Detected: `{self._user_speaking_buffer}`")
-                completed_text = self._user_speaking_buffer[
-                    : -len(self.eou_string)
-                ].strip()
+                completed_text = self._user_speaking_buffer[: -len(self.eou_string)].strip()
                 if self._bot_speaking and self.is_backchannel(completed_text):
-                    logger.debug(
-                        f"<EOU> detected for a backchannel phrase while bot is speaking: `{completed_text}`"
-                    )
+                    logger.debug(f"<EOU> detected for a backchannel phrase while bot is speaking: `{completed_text}`")
                     await self._handle_backchannel_text(completed_text)
                     if self._audio_logger:
                         if self._audio_logger.staged_metadata is None:
@@ -247,13 +229,9 @@ class NeMoTurnTakingService(FrameProcessor):
                     await self._handle_completed_text(completed_text, direction)
                     await self._handle_user_interruption(UserStoppedSpeakingFrame())
                 self._user_speaking_buffer = ""
-                self._have_sent_user_started_speaking = (
-                    False  # user is done speaking, so we reset the flag
-                )
+                self._have_sent_user_started_speaking = False  # user is done speaking, so we reset the flag
             elif has_eob and self._bot_speaking:
-                logger.debug(
-                    f"<EOB> detected while bot is speaking: `{self._user_speaking_buffer}`"
-                )
+                logger.debug(f"<EOB> detected while bot is speaking: `{self._user_speaking_buffer}`")
                 await self._handle_backchannel_text(str(self._user_speaking_buffer))
                 if self._audio_logger:
                     if self._audio_logger.staged_metadata is None:
@@ -264,28 +242,21 @@ class NeMoTurnTakingService(FrameProcessor):
                     else:
                         self._audio_logger.staged_metadata["is_backchannel"] = True
                 self._user_speaking_buffer = ""
-                self._have_sent_user_started_speaking = (
-                    False  # user is done speaking, so we reset the flag
-                )
+                self._have_sent_user_started_speaking = False  # user is done speaking, so we reset the flag
             else:
                 # if bot is not speaking, the backchannel string is not considered a backchannel phrase
                 # user is still speaking, so we append the text segment to the buffer
                 logger.debug(f"User is speaking: `{self._user_speaking_buffer}`")
                 if has_eob:
                     logger.debug(
-                        f"{self.eob_string} detected but ignored (bot NOT speaking): "
-                        f"`{self._user_speaking_buffer}`"
+                        f"{self.eob_string} detected but ignored (bot NOT speaking): `{self._user_speaking_buffer}`"
                     )
-                    self._user_speaking_buffer = self._user_speaking_buffer[
-                        : -len(self.eob_string)
-                    ].strip()
+                    self._user_speaking_buffer = self._user_speaking_buffer[: -len(self.eob_string)].strip()
                 # assume the last word is not completed
                 completed_words = self._user_speaking_buffer.strip().split()[:-1]
                 if len(completed_words) >= self.max_buffer_size:
                     completed_text = " ".join(completed_words)
-                    await self._handle_completed_text(
-                        completed_text, direction, is_final=False
-                    )
+                    await self._handle_completed_text(completed_text, direction, is_final=False)
 
         else:
             # if vad is not detecting user speaking
@@ -304,9 +275,7 @@ class NeMoTurnTakingService(FrameProcessor):
             if not text_segment.strip():
                 return
             if is_backchannel and self._bot_speaking:
-                logger.debug(
-                    f"Backchannel detected while bot is speaking: `{text_segment}`"
-                )
+                logger.debug(f"Backchannel detected while bot is speaking: `{text_segment}`")
                 # push the backchannel string upstream, not downstream
                 curr_text = str(self._user_speaking_buffer + text_segment)
                 self._user_speaking_buffer = ""
@@ -324,9 +293,7 @@ class NeMoTurnTakingService(FrameProcessor):
                         user_id="",
                         timestamp=time_now_iso8601(),
                         language=self.language if self.language else Language.EN_US,
-                        result={
-                            "text": f"Backchannel detected: {self._user_speaking_buffer+text_segment}"
-                        },
+                        result={"text": f"Backchannel detected: {self._user_speaking_buffer + text_segment}"},
                     ),
                     direction=FrameDirection.UPSTREAM,
                 )
@@ -335,19 +302,13 @@ class NeMoTurnTakingService(FrameProcessor):
                 # if the text segment is not empty and have non-space characters, we append it to the buffer
                 self._user_speaking_buffer += text_segment
                 if self.is_backchannel(self._user_speaking_buffer):
-                    logger.debug(
-                        f"Backchannel detected: `{self._user_speaking_buffer}`"
-                    )
+                    logger.debug(f"Backchannel detected: `{self._user_speaking_buffer}`")
                     self._user_speaking_buffer = ""
                     self._have_sent_user_started_speaking = False
                     return
-                logger.debug(
-                    f"Appending text segment to user speaking buffer: `{self._user_speaking_buffer}`"
-                )
+                logger.debug(f"Appending text segment to user speaking buffer: `{self._user_speaking_buffer}`")
 
-    async def _handle_completed_text(
-        self, completed_text: str, direction: FrameDirection, is_final: bool = True
-    ):
+    async def _handle_completed_text(self, completed_text: str, direction: FrameDirection, is_final: bool = True):
         if not self._have_sent_user_started_speaking:
             # if we haven't sent the user started speaking frame, we send it now
             # so that the bot can be interrupted and be ready to respond to the new user turn
@@ -355,15 +316,9 @@ class NeMoTurnTakingService(FrameProcessor):
             self._have_sent_user_started_speaking = True
 
         completed_text = completed_text.strip()
-        completed_text = completed_text.replace(self.eou_string, "").replace(
-            self.eob_string, ""
-        )
+        completed_text = completed_text.replace(self.eou_string, "").replace(self.eob_string, "")
 
-        if (
-            self.use_diar
-            and not completed_text.startswith("<speaker_")
-            and self._prev_speaker_id is not None
-        ):
+        if self.use_diar and not completed_text.startswith("<speaker_") and self._prev_speaker_id is not None:
             # Add the previous speaker tag to the beginning of the text
             completed_text = f"<speaker_{self._prev_speaker_id}> {completed_text}"
 
@@ -384,9 +339,7 @@ class NeMoTurnTakingService(FrameProcessor):
         """
         return text.strip().startswith("<speaker_") and text.strip().endswith(">")
 
-    async def _handle_vad_user_started_speaking(
-        self, frame: VADUserStartedSpeakingFrame, direction: FrameDirection
-    ):
+    async def _handle_vad_user_started_speaking(self, frame: VADUserStartedSpeakingFrame, direction: FrameDirection):
         """
         Handle the user started speaking frame.
 
@@ -400,9 +353,7 @@ class NeMoTurnTakingService(FrameProcessor):
             await self._handle_user_interruption(UserStartedSpeakingFrame())
             self._have_sent_user_started_speaking = True
 
-    async def _handle_vad_user_stopped_speaking(
-        self, frame: VADUserStoppedSpeakingFrame, direction: FrameDirection
-    ):
+    async def _handle_vad_user_stopped_speaking(self, frame: VADUserStoppedSpeakingFrame, direction: FrameDirection):
         """
         Handle the user stopped speaking frame.
 
@@ -418,21 +369,15 @@ class NeMoTurnTakingService(FrameProcessor):
 
         # if user buffer only contains speaker tags, we don't push the completed text frame
         if self._contains_only_speaker_tags(self._user_speaking_buffer):
-            logger.debug(
-                f"User buffer only contains speaker tags: `{self._user_speaking_buffer}`, ignoring"
-            )
+            logger.debug(f"User buffer only contains speaker tags: `{self._user_speaking_buffer}`, ignoring")
             return
 
         is_backchannel = self.is_backchannel(self._user_speaking_buffer)
         if not self._user_speaking_buffer:
             return
         if not self._bot_speaking or not is_backchannel:
-            logger.debug(
-                f"Bot talking: {self._bot_speaking}, backchannel: {is_backchannel}"
-            )
-            logger.debug(
-                f"Pushing completed text frame for VAD user stopped speaking: {self._user_speaking_buffer}"
-            )
+            logger.debug(f"Bot talking: {self._bot_speaking}, backchannel: {is_backchannel}")
+            logger.debug(f"Pushing completed text frame for VAD user stopped speaking: {self._user_speaking_buffer}")
             await self._handle_completed_text(self._user_speaking_buffer, direction)
             self._user_speaking_buffer = ""
             if self._have_sent_user_started_speaking:
@@ -452,9 +397,7 @@ class NeMoTurnTakingService(FrameProcessor):
                     user_id="",
                     timestamp=time_now_iso8601(),
                     language=self.language if self.language else Language.EN_US,
-                    result={
-                        "text": f"Backchannel detected: {self._user_speaking_buffer}"
-                    },
+                    result={"text": f"Backchannel detected: {self._user_speaking_buffer}"},
                 ),
                 direction=FrameDirection.UPSTREAM,
             )
@@ -466,13 +409,9 @@ class NeMoTurnTakingService(FrameProcessor):
         if isinstance(frame, UserStartedSpeakingFrame):
             logger.debug("User started speaking")
             if self.can_create_user_frames:
-                logger.debug(
-                    "Pushing UserStartedSpeakingFrame and StartInterruptionFrame"
-                )
+                logger.debug("Pushing UserStartedSpeakingFrame and StartInterruptionFrame")
                 await self.push_frame(frame)
-                await self.push_frame(
-                    StartInterruptionFrame(), direction=FrameDirection.DOWNSTREAM
-                )
+                await self.push_frame(StartInterruptionFrame(), direction=FrameDirection.DOWNSTREAM)
             # Record cutoff time for agent audio when TTS is interrupted
             if self._audio_logger and self._bot_speaking:
                 self._audio_logger.set_agent_cutoff_time()
@@ -485,17 +424,11 @@ class NeMoTurnTakingService(FrameProcessor):
                 logger.debug("Pushing UserStoppedSpeakingFrame")
                 await self.push_frame(frame)
             else:
-                logger.debug(
-                    "Skipping UserStoppedSpeakingFrame because can_create_user_frames is False"
-                )
+                logger.debug("Skipping UserStoppedSpeakingFrame because can_create_user_frames is False")
         else:
-            logger.debug(
-                f"Unknown frame type for _handle_user_interruption: {type(frame)}"
-            )
+            logger.debug(f"Unknown frame type for _handle_user_interruption: {type(frame)}")
 
-    async def _handle_diar_result(
-        self, frame: DiarResultFrame, direction: FrameDirection
-    ):
+    async def _handle_diar_result(self, frame: DiarResultFrame, direction: FrameDirection):
         if not self.use_diar:
             logger.debug("Diarization is disabled, skipping")
             return
@@ -508,16 +441,10 @@ class NeMoTurnTakingService(FrameProcessor):
 
         if not self._user_speaking_buffer.startswith("<speaker_"):
             # add speaker tag <speaker_{speaker_id}> to the beginning of the current utterance
-            self._user_speaking_buffer = (
-                f"<speaker_{new_speaker_id}> {self._user_speaking_buffer}"
-            )
+            self._user_speaking_buffer = f"<speaker_{new_speaker_id}> {self._user_speaking_buffer}"
         elif last_speaker_id != new_speaker_id:
             # change the speaker tag to the dominant speaker id
-            self._user_speaking_buffer = self._user_speaking_buffer[
-                len("<speaker_0>") :
-            ]
-            self._user_speaking_buffer = (
-                f"<speaker_{new_speaker_id}> {self._user_speaking_buffer}"
-            )
+            self._user_speaking_buffer = self._user_speaking_buffer[len("<speaker_0>") :]
+            self._user_speaking_buffer = f"<speaker_{new_speaker_id}> {self._user_speaking_buffer}"
         logger.debug(f"Speaker changed from {last_speaker_id} to {new_speaker_id}")
         self._current_speaker_id = new_speaker_id

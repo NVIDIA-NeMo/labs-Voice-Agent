@@ -163,9 +163,7 @@ class StartedPresenceUserActionFrame(StartedActionFrame, UserActionFrame, System
 
 
 @dataclass
-class FinishedPresenceUserActionFrame(
-    FinishedActionFrame, UserActionFrame, SystemFrame
-):
+class FinishedPresenceUserActionFrame(FinishedActionFrame, UserActionFrame, SystemFrame):
     """The interactive system detects the user's absence.
 
     TODO: We inherit from SystemFrame to circumvent the frame deletion issue with InterruptionFrame.

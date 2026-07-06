@@ -143,9 +143,7 @@ class NemotronTTSService(TTSService):
         self._audio_prompt_encoding = audio_prompt_encoding
         self._model = model
         self._cached_languages: dict[str, dict[str, list[str]]] | None = None
-        self._lang_code_lookup: dict[str, str] = (
-            {}
-        )  # lowercase -> actual lang code (O(1) lookup)
+        self._lang_code_lookup: dict[str, str] = {}  # lowercase -> actual lang code (O(1) lookup)
         self._tts_timeout = tts_timeout
 
         metadata = [
@@ -160,9 +158,7 @@ class NemotronTTSService(TTSService):
             auth = riva.client.Auth(None, use_ssl, server, metadata)
             self._service = riva.client.SpeechSynthesisService(auth)
             # warm up the service
-            _ = self._service.stub.GetRivaSynthesisConfig(
-                riva.client.proto.riva_tts_pb2.RivaSynthesisConfigRequest()
-            )
+            _ = self._service.stub.GetRivaSynthesisConfig(riva.client.proto.riva_tts_pb2.RivaSynthesisConfigRequest())
         except Exception as e:
             logger.error(
                 "In order to use NVIDIA Nemotron Speech TTS and ASR Services, you will either need a locally "
@@ -208,11 +204,7 @@ class NemotronTTSService(TTSService):
         if isinstance(frame, RivaFetchVoicesFrame):
             try:
                 # Send consolidated voice information in a single frame
-                zero_shot_prompt = (
-                    self._zero_shot_audio_prompt_file.name
-                    if self._zero_shot_audio_prompt_file
-                    else ""
-                )
+                zero_shot_prompt = self._zero_shot_audio_prompt_file.name if self._zero_shot_audio_prompt_file else ""
                 await self.push_frame(
                     RivaVoicesFrame(
                         available_voices=self.list_available_voices(),
@@ -242,17 +234,13 @@ class NemotronTTSService(TTSService):
                     # Path provided directly in frame
                     prompt_path = frame.custom_prompt_path
                     self._zero_shot_audio_prompt_file = prompt_path
-                    logger.debug(
-                        f"Switched to custom prompt: {prompt_id} -> {prompt_path}"
-                    )
+                    logger.debug(f"Switched to custom prompt: {prompt_id} -> {prompt_path}")
                 elif prompt_id == "backend":
                     # Use initial backend-configured prompt
                     self._zero_shot_audio_prompt_file = self._backend_audio_prompt_file
                     logger.debug("Switched to backend prompt")
                 else:
-                    logger.warning(
-                        f"Custom prompt path not provided or invalid for: {prompt_id}"
-                    )
+                    logger.warning(f"Custom prompt path not provided or invalid for: {prompt_id}")
 
     async def _push_tts_frames(
         self,
@@ -296,17 +284,13 @@ class NemotronTTSService(TTSService):
         result = text
 
         # Strip MetaData field
-        metadata_match = re.search(
-            r"\s*MetaData\s*:?\s*.*$", result, re.IGNORECASE | re.DOTALL
-        )
+        metadata_match = re.search(r"\s*MetaData\s*:?\s*.*$", result, re.IGNORECASE | re.DOTALL)
         if metadata_match:
             result = result[: metadata_match.start()].strip()
             logger.debug(f"Stripped MetaData, keeping: [{result}]")
 
         # Strip Translation field (LLM sometimes adds unwanted translations)
-        translation_match = re.search(
-            r"\s*Translation\s*:?\s*.*$", result, re.IGNORECASE | re.DOTALL
-        )
+        translation_match = re.search(r"\s*Translation\s*:?\s*.*$", result, re.IGNORECASE | re.DOTALL)
         if translation_match:
             result = result[: translation_match.start()].strip()
             logger.debug(f"Stripped Translation, keeping: [{result}]")
@@ -383,20 +367,13 @@ class NemotronTTSService(TTSService):
                     # Work within a bounded window [current_index, window_end_index)
                     window_text = input_text[current_index:window_end_index]
                     last_whitespace_offset = next(
-                        (
-                            k
-                            for k in range(len(window_text) - 1, -1, -1)
-                            if window_text[k].isspace()
-                        ),
+                        (k for k in range(len(window_text) - 1, -1, -1) if window_text[k].isspace()),
                         -1,
                     )
                     if last_whitespace_offset > 0:
                         chunk = window_text[:last_whitespace_offset].rstrip()
                         current_index += last_whitespace_offset
-                        while (
-                            current_index < input_length
-                            and input_text[current_index].isspace()
-                        ):
+                        while current_index < input_length and input_text[current_index].isspace():
                             current_index += 1
                     else:
                         chunk = window_text
@@ -421,9 +398,7 @@ class NemotronTTSService(TTSService):
         # When text_filters were applied, display_text is the pre-filter text for transcript/UI;
         # otherwise (emotion/multilingual or no filter) use processed clean_text.
         display_text = getattr(self, "_display_text_before_filter", None) or clean_text
-        self._display_text_before_filter = (
-            None  # clear after use so next run_tts doesn't reuse
-        )
+        self._display_text_before_filter = None  # clear after use so next run_tts doesn't reuse
         tts_text_frame = TTSTextFrame(text, aggregated_by=AggregationType.SENTENCE)
         tts_text_frame.metadata["display_text"] = display_text
         yield tts_text_frame
@@ -467,9 +442,7 @@ class NemotronTTSService(TTSService):
                             resp = await get_next_response(response_iterator)
                     except TimeoutError:
                         logger.error(f"{self} timeout waiting for TTS audio response")
-                        yield ErrorFrame(
-                            error=f"{self} timeout waiting for TTS audio response"
-                        )
+                        yield ErrorFrame(error=f"{self} timeout waiting for TTS audio response")
                         break
 
                     if resp is None:
@@ -499,9 +472,7 @@ class NemotronTTSService(TTSService):
         # TODO: Remove this once Pipecat fixes transport output chunk cut-off issues
         # Add 400ms of silence at the end of each response
         silence_duration_ms = 400
-        silence_bytes = int(
-            self._sample_rate * 2 * silence_duration_ms / 1000
-        )  # 2 bytes per sample (16-bit)
+        silence_bytes = int(self._sample_rate * 2 * silence_duration_ms / 1000)  # 2 bytes per sample (16-bit)
         silence_audio = bytes(silence_bytes)
         yield TTSAudioRawFrame(
             audio=silence_audio,
@@ -510,9 +481,7 @@ class NemotronTTSService(TTSService):
         )
 
         await self.start_tts_usage_metrics(text)
-        logger.debug(
-            f"Total generated TTS audio length: {total_audio_length / (self._sample_rate * 2)} seconds"
-        )
+        logger.debug(f"Total generated TTS audio length: {total_audio_length / (self._sample_rate * 2)} seconds")
         yield TTSStoppedFrame()
 
     def parse_emotion_response(self, text: str) -> tuple[str, str]:
@@ -539,14 +508,10 @@ class NemotronTTSService(TTSService):
         )
         if not match:
             # Attempt to salvage only the spoken text if available
-            if text_only := re.search(
-                r"Text\s*:?\s*(.+)$", clean_text, re.IGNORECASE | re.DOTALL
-            ):
+            if text_only := re.search(r"Text\s*:?\s*(.+)$", clean_text, re.IGNORECASE | re.DOTALL):
                 return "", self._strip_non_speech_content(text_only.group(1).strip())
             # If only emotion content exists, return empty spoken text
-            if re.search(
-                r"Emotion\s*:?\s*(.+)$", clean_text, re.IGNORECASE | re.DOTALL
-            ):
+            if re.search(r"Emotion\s*:?\s*(.+)$", clean_text, re.IGNORECASE | re.DOTALL):
                 return "", ""
             return "", self._strip_non_speech_content(clean_text)
 
@@ -577,11 +542,7 @@ class NemotronTTSService(TTSService):
             if not current_voice:
                 return
             available_voices_map = self.list_available_voices()
-            available_voices = {
-                v
-                for langs in available_voices_map.values()
-                for v in langs.get("voices", [])
-            }
+            available_voices = {v for langs in available_voices_map.values() for v in langs.get("voices", [])}
             if not available_voices:
                 logger.debug("No available voices returned; skipping emotion switch")
                 return
@@ -596,9 +557,7 @@ class NemotronTTSService(TTSService):
             if emotion_variant in available_voices:
                 target_voice = emotion_variant
             else:
-                logger.debug(
-                    f"Unable to find suitable voice for {base_voice} with tag [{emotion_tag}]"
-                )
+                logger.debug(f"Unable to find suitable voice for {base_voice} with tag [{emotion_tag}]")
                 target_voice = base_voice
 
             if hasattr(self, "set_voice"):
@@ -645,9 +604,7 @@ class NemotronTTSService(TTSService):
 
         if not match:
             # Attempt to salvage only the spoken text if available
-            if text_only := re.search(
-                r"Text\s*:?\s*(.+)$", clean_text, re.IGNORECASE | re.DOTALL
-            ):
+            if text_only := re.search(r"Text\s*:?\s*(.+)$", clean_text, re.IGNORECASE | re.DOTALL):
                 return default_lang, text_only.group(1).strip()
             # If only language content exists, return empty spoken text
             if re.search(
@@ -690,9 +647,7 @@ class NemotronTTSService(TTSService):
             await self.push_frame(update_frame)
             await self.push_frame(update_frame, direction=FrameDirection.UPSTREAM)
         else:
-            logger.warning(
-                f"Language '{lang_code}' not supported. Available: {list(available_voices.keys())}"
-            )
+            logger.warning(f"Language '{lang_code}' not supported. Available: {list(available_voices.keys())}")
 
     def list_available_voices(self) -> dict[str, dict[str, list[str]]]:
         """Return voices grouped by language for multilingual models."""
@@ -715,11 +670,7 @@ class NemotronTTSService(TTSService):
                 if not voice_name or not language_codes:
                     continue
 
-                lang_map = {
-                    lc.strip().upper(): lc.strip()
-                    for lc in language_codes.split(",")
-                    if lc and lc.strip()
-                }
+                lang_map = {lc.strip().upper(): lc.strip() for lc in language_codes.split(",") if lc and lc.strip()}
                 subvoices = params.get("subvoices", "")
                 for sc in subvoices.split(","):
                     sc = sc.strip()
@@ -729,16 +680,12 @@ class NemotronTTSService(TTSService):
                     voice_lang_code = voice_id.split(".")[0].strip().upper()
                     if voice_lang_code in lang_map:
                         name = f"{voice_name}.{voice_id}"
-                        result.setdefault(lang_map[voice_lang_code], {"voices": []})[
-                            "voices"
-                        ].append(name)
+                        result.setdefault(lang_map[voice_lang_code], {"voices": []})["voices"].append(name)
 
             self._cached_languages = result
             # Build O(1) lookup: lowercase lang code -> actual lang code
             self._lang_code_lookup = {lang.lower(): lang for lang in result}
-            logger.info(
-                f"list_available_voices returning {len(result)} languages: {list(result.keys())}"
-            )
+            logger.info(f"list_available_voices returning {len(result)} languages: {list(result.keys())}")
             return result
 
         except Exception as e:
@@ -879,9 +826,7 @@ class NemotronASRService(STTService):
             ),
             interim_results=self._interim_results,
         )
-        riva.client.add_word_boosting_to_config(
-            config, self._boosted_lm_words, self._boosted_lm_score
-        )
+        riva.client.add_word_boosting_to_config(config, self._boosted_lm_words, self._boosted_lm_score)
         riva.client.add_endpoint_parameters_to_config(
             config,
             self._start_history,
@@ -891,9 +836,7 @@ class NemotronASRService(STTService):
             self._stop_threshold,
             self._stop_threshold_eou,
         )
-        riva.client.add_custom_configuration_to_config(
-            config, self._custom_configuration
-        )
+        riva.client.add_custom_configuration_to_config(config, self._custom_configuration)
         self._config = config
 
         self._queue = asyncio.Queue()
@@ -905,9 +848,7 @@ class NemotronASRService(STTService):
         self._thread_task = None
         self._response_task = None
         # Initialize ASR compute latency tracking
-        self._audio_duration_counter = (
-            0.0  # Tracks cumulative audio duration sent to Riva (in seconds)
-        )
+        self._audio_duration_counter = 0.0  # Tracks cumulative audio duration sent to Riva (in seconds)
 
     def can_generate_metrics(self) -> bool:
         """Check if the service can generate metrics.
@@ -961,9 +902,7 @@ class NemotronASRService(STTService):
             for response in responses:
                 if not response.results:
                     continue
-                asyncio.run_coroutine_threadsafe(
-                    self._response_queue.put(response), self.get_event_loop()
-                )
+                asyncio.run_coroutine_threadsafe(self._response_queue.put(response), self.get_event_loop())
         except Exception as e:
             logger.error(f"Error in ASR stream: {e}")
             raise
@@ -985,18 +924,14 @@ class NemotronASRService(STTService):
             if isinstance(frame, UserStartedSpeakingFrame):
                 logger.debug("User started speaking")
                 await self.push_frame(frame)
-                await self.push_frame(
-                    UserStartedSpeakingFrame(), direction=FrameDirection.UPSTREAM
-                )
+                await self.push_frame(UserStartedSpeakingFrame(), direction=FrameDirection.UPSTREAM)
 
                 # Make sure we notify about interruptions quickly out-of-band.
                 await self.push_interruption_task_frame_and_wait()
             elif isinstance(frame, UserStoppedSpeakingFrame):
                 logger.debug("User stopped speaking")
                 await self.push_frame(frame)
-                await self.push_frame(
-                    UserStoppedSpeakingFrame(), direction=FrameDirection.UPSTREAM
-                )
+                await self.push_frame(UserStoppedSpeakingFrame(), direction=FrameDirection.UPSTREAM)
 
     async def _handle_response(self, response):
         """Process ASR response and generate appropriate transcription frames.
@@ -1024,35 +959,21 @@ class NemotronASRService(STTService):
                         await self._handle_interruptions(UserStoppedSpeakingFrame())
                     # Calculate ASR compute latency
                     if result.audio_processed:
-                        compute_latency = (
-                            self._audio_duration_counter - result.audio_processed
-                        )
-                        logger.debug(
-                            f"{self.name} ASR compute latency: {compute_latency}"
-                        )
+                        compute_latency = self._audio_duration_counter - result.audio_processed
+                        logger.debug(f"{self.name} ASR compute latency: {compute_latency}")
                     logger.debug(f"Final user transcript: [{transcript}]")
-                    await self.push_frame(
-                        TranscriptionFrame(transcript, "", time_now_iso8601(), None)
-                    )
-                    await self._handle_transcription(
-                        transcript, True, self._language_code
-                    )
+                    await self.push_frame(TranscriptionFrame(transcript, "", time_now_iso8601(), None))
+                    await self._handle_transcription(transcript, True, self._language_code)
                     self.last_transcript_frame = None
                     break
                 elif abs(result.stability - 1.0) < 1e-9:
-                    if (
-                        self._generate_interruptions
-                        and self._vad_state != VADState.SPEAKING
-                    ):
+                    if self._generate_interruptions and self._vad_state != VADState.SPEAKING:
                         self._vad_state = VADState.SPEAKING
                         await self._handle_interruptions(UserStartedSpeakingFrame())
                     if (
                         self.last_transcript_frame is None
                         or abs(self.last_transcript_frame.stability - 1.0) >= 1e-9
-                        or (
-                            self.last_transcript_frame.text.rstrip()
-                            != transcript.rstrip()
-                        )
+                        or (self.last_transcript_frame.text.rstrip() != transcript.rstrip())
                     ):
                         logger.debug(f"Interim user transcript: [{transcript}]")
                         frame = RivaInterimTranscriptionFrame(
@@ -1063,16 +984,11 @@ class NemotronASRService(STTService):
                             stability=result.stability,
                         )
                         await self.push_frame(frame)
-                        await self._handle_transcription(
-                            transcript, False, self._language_code
-                        )
+                        await self._handle_transcription(transcript, False, self._language_code)
                         self.last_transcript_frame = frame
                     break
                 else:
-                    if (
-                        self._generate_interruptions
-                        and self._vad_state != VADState.SPEAKING
-                    ):
+                    if self._generate_interruptions and self._vad_state != VADState.SPEAKING:
                         self._vad_state = VADState.SPEAKING
                         await self._handle_interruptions(UserStartedSpeakingFrame())
                     partial_transcript += transcript
@@ -1083,9 +999,7 @@ class NemotronASRService(STTService):
             or (self.last_transcript_frame.text.rstrip() != partial_transcript.rstrip())
         ):
             logger.debug(f"Partial user transcript: [{partial_transcript}]")
-            frame = RivaInterimTranscriptionFrame(
-                partial_transcript, "", time_now_iso8601(), None, stability=0.1
-            )
+            frame = RivaInterimTranscriptionFrame(partial_transcript, "", time_now_iso8601(), None, stability=0.1)
             await self.push_frame(frame)
             self.last_transcript_frame = frame
 
@@ -1098,9 +1012,7 @@ class NemotronASRService(STTService):
                 break
 
     @traced_stt
-    async def _handle_transcription(
-        self, transcript: str, is_final: bool, language: Language | None = None
-    ):
+    async def _handle_transcription(self, transcript: str, is_final: bool, language: Language | None = None):
         """Handle a transcription result with tracing."""
         pass
 
@@ -1130,23 +1042,17 @@ class NemotronASRService(STTService):
         if not self._thread_running:
             raise StopIteration
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                self._queue.get(), self.get_event_loop()
-            )
+            future = asyncio.run_coroutine_threadsafe(self._queue.get(), self.get_event_loop())
             result = future.result(timeout=self._idle_timeout)
             # Increment audio duration counter based on audio chunk size
             # Assuming LINEAR_PCM encoding: bytes_per_sample = 2, channels = self._audio_channel_count
             bytes_per_sample = 2  # 16-bit PCM
-            total_samples = len(result) // (
-                bytes_per_sample * self._audio_channel_count
-            )
+            total_samples = len(result) // (bytes_per_sample * self._audio_channel_count)
             duration_seconds = total_samples / self._sample_rate
             self._audio_duration_counter += duration_seconds
         except concurrent.futures.TimeoutError:
             future.cancel()
-            logger.info(
-                f"ASR service is idle for {self._idle_timeout} seconds, terminating active ASR request..."
-            )
+            logger.info(f"ASR service is idle for {self._idle_timeout} seconds, terminating active ASR request...")
             self._thread_task = None
             raise StopIteration from None
         except Exception as e:
