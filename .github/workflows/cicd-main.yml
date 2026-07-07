@@ -360,19 +360,31 @@ jobs:
           pattern: coverage-${{ matrix.flag }}-*
           merge-multiple: false
       - name: Combine coverage
+        id: combine-coverage
         run: |
           pip install coverage[toml]
-          files=$(find . -name .coverage -type f | tr '\n' ' ')
+          files=$(find . -path '*/.coverage' -type f | tr '\n' ' ')
           if [ -z "$files" ]; then
             echo "No coverage files for ${{ matrix.flag }}"
+            echo "has_coverage=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           coverage combine --keep $files
           coverage report -i
+          coverage xml -i -o coverage-${{ matrix.flag }}.xml
+          echo "has_coverage=true" >> "$GITHUB_OUTPUT"
+      - name: Upload combined coverage artifact
+        if: steps.combine-coverage.outputs.has_coverage == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml-${{ matrix.flag }}-${{ github.run_id }}
+          path: coverage-${{ matrix.flag }}.xml
+          if-no-files-found: error
       - name: Upload to Codecov
-        if: env.UPLOAD_CODECOV == 'true'
+        if: env.UPLOAD_CODECOV == 'true' && steps.combine-coverage.outputs.has_coverage == 'true'
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: ${{ matrix.flag }}
+          files: coverage-${{ matrix.flag }}.xml
           fail_ci_if_error: false
