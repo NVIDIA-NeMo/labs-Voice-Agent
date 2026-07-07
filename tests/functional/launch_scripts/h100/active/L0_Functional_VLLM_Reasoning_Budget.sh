@@ -17,7 +17,7 @@
 # GPU_COUNT=x1
 set -xeuo pipefail
 
-coverage run --data-file="${COVERAGE_FILE:-.coverage}" --source=nemo_voice_agent -m pytest \
+coverage run -a --data-file="${COVERAGE_FILE:-.coverage}" --source=nemo_voice_agent -m pytest \
     -o log_cli=true \
     -o log_cli_level=INFO \
     --disable-warnings \

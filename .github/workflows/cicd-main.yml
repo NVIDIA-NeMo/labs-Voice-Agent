@@ -363,7 +363,7 @@ jobs:
         id: combine-coverage
         run: |
           pip install coverage[toml]
-          files=$(find . -name '.coverage*' -type f | tr '\n' ' ')
+          files=$(find . -path '*/.coverage' -type f | tr '\n' ' ')
           if [ -z "$files" ]; then
             echo "No coverage files for ${{ matrix.flag }}"
             echo "has_coverage=false" >> "$GITHUB_OUTPUT"
