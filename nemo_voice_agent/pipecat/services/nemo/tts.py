@@ -40,9 +40,8 @@ from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.nvidia.tts import NvidiaTTSService
 from pipecat.services.tts_service import TTSService
 
-from nemo_voice_agent.pipecat.services.riva_speech import ResilientNemotronTTSService
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
-from nemo_voice_agent.pipecat.services.riva_speech import NemotronTTSService
+from nemo_voice_agent.pipecat.services.riva_speech import ResilientNemotronTTSService
 from nemo_voice_agent.pipecat.utils.text.simple_text_aggregator import (
     SimpleSegmentedTextAggregator,
 )
