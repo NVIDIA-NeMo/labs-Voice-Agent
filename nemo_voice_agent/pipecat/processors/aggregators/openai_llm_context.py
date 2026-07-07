@@ -28,7 +28,6 @@ from pipecat.processors.aggregators.openai_llm_context import (
 
 
 class OpenAILLMContext(BaseOpenAILLMContext):
-
     @staticmethod
     async def create_audio_message(
         *,
@@ -81,8 +80,6 @@ class OpenAILLMContext(BaseOpenAILLMContext):
 
         return {"role": role, "content": content}
 
-    async def add_audio_frames_message(
-        self, *, audio_frames: list[AudioRawFrame], text: str
-    ) -> None:
+    async def add_audio_frames_message(self, *, audio_frames: list[AudioRawFrame], text: str) -> None:
         message = await self.create_audio_message(audio_frames=audio_frames, text=text)
         self.add_message(message)

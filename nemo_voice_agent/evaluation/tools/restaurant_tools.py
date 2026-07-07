@@ -26,10 +26,7 @@ class GetMenuTool(StandardSchemaTool):
     """Returns the restaurant menu. Menu content is configured per scenario."""
 
     def __init__(self, *, menu: str = "", description: Optional[str] = None):
-        super().__init__(
-            description=description
-            or "Get the restaurant menu to see available items and prices."
-        )
+        super().__init__(description=description or "Get the restaurant menu to see available items and prices.")
         self.menu = menu
 
     @property

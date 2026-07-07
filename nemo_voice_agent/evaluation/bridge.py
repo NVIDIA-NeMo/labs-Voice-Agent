@@ -21,6 +21,7 @@ Connects two voice agents via WebSocket and provides:
 - Dynamic system prompt updates via RTVI actions
 - Conversation monitoring and metrics
 """
+
 import asyncio
 import copy
 import json
@@ -37,7 +38,6 @@ import numpy as np
 import soxr
 import websockets
 from loguru import logger
-from omegaconf import DictConfig
 from pipecat.frames.frames import OutputAudioRawFrame
 from pipecat.processors.frameworks.rtvi import (
     RTVIBotStartedSpeakingMessage,
@@ -60,6 +60,7 @@ from nemo_voice_agent.utils import setup_logging
 # Import AudioStream for buffering and resampling
 from nemo_voice_agent.utils.audio import AudioStream, NoiseConfig
 
+
 # RTVI message type constants - automatically adapts to pipecat changes
 RTVI_BOT_STOPPED_SPEAKING = RTVIBotStoppedSpeakingMessage().type
 RTVI_BOT_STARTED_SPEAKING = RTVIBotStartedSpeakingMessage().type
@@ -72,9 +73,7 @@ RTVI_BOT_SERVER_MESSAGE = RTVIServerMessage(data=RTVITextMessageData(text="")).t
 # ``[AGENT STARTED SPEAKING]``). The uniform ``[SIDE EVENT] type=<X>`` tag
 # emitted by ``_log_rtvi_event`` is skipped for these types so the bridge log
 # doesn't double up.
-_RTVI_TYPES_ALREADY_TAGGED = frozenset(
-    {RTVI_BOT_STARTED_SPEAKING, RTVI_BOT_TTS_TEXT, RTVI_BOT_STOPPED_SPEAKING}
-)
+_RTVI_TYPES_ALREADY_TAGGED = frozenset({RTVI_BOT_STARTED_SPEAKING, RTVI_BOT_TTS_TEXT, RTVI_BOT_STOPPED_SPEAKING})
 
 STOP_REASON_TIMEOUT = "[TIMEOUT]"
 STOP_REASON_EXIT = "[EXIT]"
@@ -1495,12 +1494,8 @@ class VoiceAgentEvaluationBridge:
         # Always call both — even with empty per-side action lists. The
         # handler does state merge + DB load regardless of whether there
         # are init functions to dispatch.
-        await self._send_apply_initialization(
-            self.agent_ws, "agent", domain, agent_shared_state_init, agent_actions
-        )
-        await self._send_apply_initialization(
-            self.user_ws, "user", domain, user_shared_state_init, user_actions
-        )
+        await self._send_apply_initialization(self.agent_ws, "agent", domain, agent_shared_state_init, agent_actions)
+        await self._send_apply_initialization(self.user_ws, "user", domain, user_shared_state_init, user_actions)
 
     async def _send_apply_initialization(
         self,
@@ -1590,17 +1585,11 @@ class VoiceAgentEvaluationBridge:
                 # Skip stragglers (e.g. update_system_prompt action-response
                 # that races us at scenario start).
                 if data.get("id") != action_id:
-                    logger.debug(
-                        f"[APPLY INIT] Skipping unrelated action-response "
-                        f"id={data.get('id')!r}"
-                    )
+                    logger.debug(f"[APPLY INIT] Skipping unrelated action-response id={data.get('id')!r}")
                     continue
                 result = data.get("data", {}).get("result", {})
                 if result.get("success"):
-                    logger.info(
-                        f"[APPLY INIT] {side_label} bot applied "
-                        f"{len(actions)} action(s) successfully"
-                    )
+                    logger.info(f"[APPLY INIT] {side_label} bot applied {len(actions)} action(s) successfully")
                     return
                 raise RuntimeError(
                     f"[APPLY INIT] {side_label} bot reported failure on "
@@ -1697,8 +1686,7 @@ class VoiceAgentEvaluationBridge:
             self.shadow_tool_map = scenario._build_tool_map(self.shadow_state)
         except Exception as exc:
             logger.warning(
-                f"[SYNC SETUP] scenario._build_tool_map raised: {type(exc).__name__}: {exc}. "
-                f"Cross-side sync disabled."
+                f"[SYNC SETUP] scenario._build_tool_map raised: {type(exc).__name__}: {exc}. Cross-side sync disabled."
             )
             self.shadow_state = None
             return
@@ -1732,18 +1720,13 @@ class VoiceAgentEvaluationBridge:
         user_delta = deltas.get("user") or {}
         if agent_delta or user_delta:
             logger.info(
-                f"[SYNC SETUP] Initial sync dispatch: "
-                f"agent_delta={list(agent_delta)}, user_delta={list(user_delta)}"
+                f"[SYNC SETUP] Initial sync dispatch: agent_delta={list(agent_delta)}, user_delta={list(user_delta)}"
             )
             tasks = []
             if agent_delta:
-                tasks.append(
-                    self._send_apply_sync_delta(self.agent_ws, "agent", domain, agent_delta)
-                )
+                tasks.append(self._send_apply_sync_delta(self.agent_ws, "agent", domain, agent_delta))
             if user_delta:
-                tasks.append(
-                    self._send_apply_sync_delta(self.user_ws, "user", domain, user_delta)
-                )
+                tasks.append(self._send_apply_sync_delta(self.user_ws, "user", domain, user_delta))
             await asyncio.gather(*tasks, return_exceptions=True)
 
     async def _propagate_cross_side_sync(self, action: dict, source_side: str) -> None:
@@ -1780,8 +1763,7 @@ class VoiceAgentEvaluationBridge:
                 tool.invoke(**args)
             except Exception as exc:
                 logger.warning(
-                    f"[SYNC] Shadow replay failed for {name!r}: {type(exc).__name__}: {exc}. "
-                    f"Skipping sync this turn."
+                    f"[SYNC] Shadow replay failed for {name!r}: {type(exc).__name__}: {exc}. Skipping sync this turn."
                 )
                 return
 
@@ -1791,9 +1773,7 @@ class VoiceAgentEvaluationBridge:
                     user_db=self.shadow_state["user_db"],
                 )
             except Exception as exc:
-                logger.warning(
-                    f"[SYNC] sync_state raised: {type(exc).__name__}: {exc}. Skipping."
-                )
+                logger.warning(f"[SYNC] sync_state raised: {type(exc).__name__}: {exc}. Skipping.")
                 return
 
             agent_delta = deltas.get("agent") or {}
@@ -1808,19 +1788,13 @@ class VoiceAgentEvaluationBridge:
             )
             tasks = []
             if agent_delta:
-                tasks.append(
-                    self._send_apply_sync_delta(self.agent_ws, "agent", domain, agent_delta)
-                )
+                tasks.append(self._send_apply_sync_delta(self.agent_ws, "agent", domain, agent_delta))
             if user_delta:
-                tasks.append(
-                    self._send_apply_sync_delta(self.user_ws, "user", domain, user_delta)
-                )
+                tasks.append(self._send_apply_sync_delta(self.user_ws, "user", domain, user_delta))
             # Both pushes can run concurrently — they target different bots.
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _send_apply_sync_delta(
-        self, ws, side_label: str, domain: str, delta: dict
-    ) -> None:
+    async def _send_apply_sync_delta(self, ws, side_label: str, domain: str, delta: dict) -> None:
         """Send a single ``apply_sync_delta`` RTVI action to a bot.
 
         Mirrors ``_send_apply_initialization``: builds an action
@@ -1829,10 +1803,7 @@ class VoiceAgentEvaluationBridge:
         long as the next propagation cycle eventually catches up.
         """
         if not ws:
-            logger.warning(
-                f"[SYNC] {side_label}_ws is not connected; cannot push "
-                f"{len(delta)}-key sync delta."
-            )
+            logger.warning(f"[SYNC] {side_label}_ws is not connected; cannot push {len(delta)}-key sync delta.")
             return
 
         action_id = f"apply_sync_delta_{side_label}_{datetime.now().timestamp()}"
@@ -1853,16 +1824,10 @@ class VoiceAgentEvaluationBridge:
         serialized = await self.serializer.serialize(msg_frame)
         try:
             await ws.send(serialized)
-            logger.debug(
-                f"[SYNC] Sent apply_sync_delta to {side_label} bot "
-                f"({len(delta)} key(s)); id={action_id!r}"
-            )
+            logger.debug(f"[SYNC] Sent apply_sync_delta to {side_label} bot ({len(delta)} key(s)); id={action_id!r}")
         except Exception as exc:
             # The connection may have closed between turns; log + continue.
-            logger.warning(
-                f"[SYNC] Failed to send apply_sync_delta to {side_label}: "
-                f"{type(exc).__name__}: {exc}"
-            )
+            logger.warning(f"[SYNC] Failed to send apply_sync_delta to {side_label}: {type(exc).__name__}: {exc}")
 
     async def _receive_user_to_queue(self, user_ws, duration: float):
         """Receive audio from user WebSocket and put into queue for agent thread."""
@@ -1991,9 +1956,7 @@ class VoiceAgentEvaluationBridge:
         user_actions = user_summary.get("actions") or []
         if user_actions:
             agent_actions = self.scenario_summary.get("actions") or []
-            self.scenario_summary["actions"] = list(agent_actions) + [
-                {**a, "side": "user"} for a in user_actions
-            ]
+            self.scenario_summary["actions"] = list(agent_actions) + [{**a, "side": "user"} for a in user_actions]
 
         self.metrics.end_time = datetime.now()
         # Finalize any in-progress turns at end of scenario
@@ -2208,9 +2171,7 @@ class VoiceAgentEvaluationBridge:
                     value_str = f"{float(ttfb.get('value', 0)):.3f}s"
                 except (TypeError, ValueError):
                     value_str = str(ttfb.get("value"))
-                logger.debug(
-                    f"[{side} METRICS] ttfb processor={ttfb.get('processor')} value={value_str}"
-                )
+                logger.debug(f"[{side} METRICS] ttfb processor={ttfb.get('processor')} value={value_str}")
             for tok in body.get("tokens") or []:
                 prompt_n = int(tok.get("prompt_tokens") or 0)
                 completion_n = int(tok.get("completion_tokens") or 0)

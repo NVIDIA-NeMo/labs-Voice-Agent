@@ -89,7 +89,4 @@ def test_no_single_side_scenario_carries_db_state_assertions():
             or inst.expected_user_db is not None
         ):
             offenders.append(name)
-    assert offenders == [], (
-        "Single-side scenarios accidentally opted into dual-side fields: "
-        f"{offenders}"
-    )
+    assert offenders == [], f"Single-side scenarios accidentally opted into dual-side fields: {offenders}"

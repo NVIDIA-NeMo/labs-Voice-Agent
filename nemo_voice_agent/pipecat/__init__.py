@@ -15,6 +15,4 @@
 try:
     import pipecat
 except ImportError:
-    raise ImportError(
-        "pipecat is not installed. Please install it with `pip install pipecat-ai`."
-    )
+    raise ImportError("pipecat is not installed. Please install it with `pip install pipecat-ai`.")

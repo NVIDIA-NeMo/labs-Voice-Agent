@@ -384,8 +384,7 @@ class GetDetailsByIdTool(_Tau2TelecomAgentReadTool):
 class GetBillsForCustomerTool(_Tau2TelecomAgentReadTool):
     name = "get_bills_for_customer"
     DESCRIPTION = (
-        "Retrieves a list of the customer's bills, most-recent-first. Optionally "
-        "limits the number of bills returned."
+        "Retrieves a list of the customer's bills, most-recent-first. Optionally limits the number of bills returned."
     )
     PARAMS_MODEL = GetBillsForCustomerParams
 
@@ -518,8 +517,7 @@ class SuspendLineTool(_Tau2TelecomAgentWriteTool):
 class ResumeLineTool(_Tau2TelecomAgentWriteTool):
     name = "resume_line"
     DESCRIPTION = (
-        "Resumes a Suspended or Pending Activation line. Sets line status to "
-        "Active and clears suspension_start_date."
+        "Resumes a Suspended or Pending Activation line. Sets line status to Active and clears suspension_start_date."
     )
     PARAMS_MODEL = ResumeLineParams
 
@@ -755,18 +753,13 @@ class RefuelDataTool(_Tau2TelecomAgentWriteTool):
             }
         )
         return {
-            "message": (
-                f"Successfully added {p.gb_amount} GB of data for line {p.line_id} "
-                f"for ${charge_amount:.2f}"
-            ),
+            "message": (f"Successfully added {p.gb_amount} GB of data for line {p.line_id} for ${charge_amount:.2f}"),
             "new_data_refueling_gb": line["data_refueling_gb"],
             "charge": charge_amount,
         }
 
     @staticmethod
-    def _apply_one_time_charge(
-        db: dict, customer_id: str, amount: float, description: str
-    ) -> None:
+    def _apply_one_time_charge(db: dict, customer_id: str, amount: float, description: str) -> None:
         """Mirrors upstream ``TelecomTools._apply_one_time_charge``.
 
         Finds an existing DRAFT bill for the customer, or creates one.
@@ -793,9 +786,7 @@ class RefuelDataTool(_Tau2TelecomAgentWriteTool):
             if today.month < 12:
                 next_month = date(today.year, today.month + 1, 1)
                 period_end_month_first = (
-                    date(today.year, today.month + 2, 1)
-                    if today.month < 11
-                    else date(today.year + 1, 1, 1)
+                    date(today.year, today.month + 2, 1) if today.month < 11 else date(today.year + 1, 1, 1)
                 )
             else:
                 next_month = date(today.year + 1, 1, 1)

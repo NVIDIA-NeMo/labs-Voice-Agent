@@ -63,9 +63,9 @@ from typing import TYPE_CHECKING
 
 import torch
 from vllm import SamplingParams
+from vllm.tokenizers import get_tokenizer
 from vllm.v1.sample.logits_processor import BatchUpdate, LogitsProcessor
 from vllm.v1.sample.logits_processor.builtin import process_dict_updates
-from vllm.tokenizers import get_tokenizer
 
 
 if TYPE_CHECKING:
@@ -116,9 +116,7 @@ class ReasoningBudgetLogitsProcessor(LogitsProcessor):
     # Construction & validation
     # ------------------------------------------------------------------
 
-    def __init__(
-        self, vllm_config: "VllmConfig", device: torch.device, is_pin_memory: bool
-    ) -> None:
+    def __init__(self, vllm_config: "VllmConfig", device: torch.device, is_pin_memory: bool) -> None:
         self.device = device
         self.pin_memory = is_pin_memory
 
@@ -142,9 +140,7 @@ class ReasoningBudgetLogitsProcessor(LogitsProcessor):
         # Sparse dict: batch-index → RequestState (only for requests with a budget).
         self.req_states: dict[int, RequestState] = {}
 
-        self.neg_inf = torch.tensor(
-            -float("inf"), dtype=torch.float32, device=self.device
-        )
+        self.neg_inf = torch.tensor(-float("inf"), dtype=torch.float32, device=self.device)
 
     # ------------------------------------------------------------------
     # Interface helpers
@@ -167,9 +163,9 @@ class ReasoningBudgetLogitsProcessor(LogitsProcessor):
         return tokenizer.encode(text, add_special_tokens=False)
 
     def _device_tensor(self, data: list, dtype: torch.dtype) -> torch.Tensor:
-        return torch.tensor(
-            data, device="cpu", dtype=dtype, pin_memory=self.pin_memory
-        ).to(device=self.device, non_blocking=True)
+        return torch.tensor(data, device="cpu", dtype=dtype, pin_memory=self.pin_memory).to(
+            device=self.device, non_blocking=True
+        )
 
     # ------------------------------------------------------------------
     # LogitsProcessor interface
@@ -184,14 +180,10 @@ class ReasoningBudgetLogitsProcessor(LogitsProcessor):
         if budget is None:
             return
         if not isinstance(budget, int) or budget < 0:
-            raise ValueError(
-                f"thinking_budget must be a non-negative int, got {budget!r}"
-            )
+            raise ValueError(f"thinking_budget must be a non-negative int, got {budget!r}")
         grace = sampling_params.extra_args.get("thinking_budget_grace_period")
         if grace is not None and (not isinstance(grace, int) or grace < 0):
-            raise ValueError(
-                f"thinking_budget_grace_period must be a non-negative int, got {grace!r}"
-            )
+            raise ValueError(f"thinking_budget_grace_period must be a non-negative int, got {grace!r}")
         for key in ("think_start_tokens", "think_end_tokens"):
             val = sampling_params.extra_args.get(key)
             if val is not None and not isinstance(val, str):
@@ -375,9 +367,7 @@ class ReasoningBudgetLogitsProcessor(LogitsProcessor):
 
         return logits
 
-    def _force_end_token(
-        self, logits: torch.Tensor, batch_idx: int, state: RequestState
-    ) -> None:
+    def _force_end_token(self, logits: torch.Tensor, batch_idx: int, state: RequestState) -> None:
         """Set all logits to -inf except the next token in the end sequence.
         Advances ``forcing_end_idx`` each call."""
         if state.forcing_end_idx < 0:
@@ -387,9 +377,7 @@ class ReasoningBudgetLogitsProcessor(LogitsProcessor):
             forced_tok = state.force_end_ids[state.forcing_end_idx]
             original = logits[batch_idx, forced_tok].clone()
             logits[batch_idx].fill_(-float("inf"))
-            logits[batch_idx, forced_tok] = (
-                original if original != -float("inf") else 0.0
-            )
+            logits[batch_idx, forced_tok] = original if original != -float("inf") else 0.0
             state.forcing_end_idx += 1
         else:
             # All end tokens have been forced.  Mark thinking as done so
@@ -399,9 +387,7 @@ class ReasoningBudgetLogitsProcessor(LogitsProcessor):
             state.stopped_thinking = True
 
     @staticmethod
-    def _apply_grace_boost(
-        logits: torch.Tensor, batch_idx: int, state: RequestState
-    ) -> None:
+    def _apply_grace_boost(logits: torch.Tensor, batch_idx: int, state: RequestState) -> None:
         """Additively boost newline and end-token logits."""
         for tok_id in state.force_end_ids:
             logits[batch_idx, tok_id] += _GRACE_LOGIT_BOOST

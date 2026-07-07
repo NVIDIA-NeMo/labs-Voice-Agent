@@ -159,6 +159,6 @@ def test_check_if_task_success_still_matches_after_normalization(tmp_path):
     pred_path = tmp_path / "pred.json"
     pred_path.write_text(_json.dumps([{"actions": actions}]))
 
-    assert (
-        check_if_task_success(reference=str(ref_path), prediction=str(pred_path)) is True
-    ), "tau2-style dict ref + list-of-1-dict pred should still match"
+    assert check_if_task_success(reference=str(ref_path), prediction=str(pred_path)) is True, (
+        "tau2-style dict ref + list-of-1-dict pred should still match"
+    )

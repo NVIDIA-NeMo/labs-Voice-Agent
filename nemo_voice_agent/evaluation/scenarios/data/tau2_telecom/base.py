@@ -93,7 +93,7 @@ TELECOM_PASSIVE_TOOL_USE_GUIDELINE: str = (
     "to take a specific action. You are the customer, not the troubleshooter — the agent "
     "diagnoses, you describe and follow. Ground all spoken claims about your phone's "
     "state on the actual return value of the most recent tool call; never narrate as the "
-    "agent (phrases like \"the issue is resolved\" or \"is there anything else I can help "
+    'agent (phrases like "the issue is resolved" or "is there anything else I can help '
     "with?\" are the agent's lines, not yours)."
 )
 from nemo_voice_agent.evaluation.tools.tau2_telecom_sync import sync_telecom_state
@@ -136,11 +136,11 @@ TELECOM_AGENT_TOOL_AVAILABILITY_NOTE = (
     "All other tools mentioned in the policy text are on the USER'S PHONE. The user "
     "has these phone-control tools available to them and will operate their own device:\n"
     "{user_tool_names}\n\n"
-    "When the policy says \"use `check_status_bar()`\" or \"guide the user to use "
-    "`toggle_airplane_mode()`\", you are NOT supposed to call that tool yourself — "
+    'When the policy says "use `check_status_bar()`" or "guide the user to use '
+    '`toggle_airplane_mode()`", you are NOT supposed to call that tool yourself — '
     "you do not have it. Instead, instruct the user verbally and wait for them to "
     "report the result. Calling a user-side tool name will fail with an "
-    "\"unknown_tool\" error; do not attempt it."
+    '"unknown_tool" error; do not attempt it.'
 )
 
 
@@ -167,13 +167,13 @@ TELECOM_AGENT_STAY_ON_TASK_GUIDELINE = (
 TELECOM_AGENT_HOME_NETWORK_NOTE = (
     "Home network context + location-probe rule. This telecom company operates in "
     "the United States — phone numbers are 10-digit US format (e.g. 555-123-4567), "
-    "customer addresses are US states, billing is in USD. \n\n" 
+    "customer addresses are US states, billing is in USD. \n\n"
     "Always ASK the user where they are physically located right now "
     "for any connectivity complaint like no data, slow "
     "data, MMS not sending, no service, weak signal, etc. The user may not "
     "volunteer their location proactively; you must ask. Example opener: "
-    "\"Before we check other settings on your account, can you tell me where you are right now? "
-    "Are you home in the US, or traveling abroad?\"\n\n"
+    '"Before we check other settings on your account, can you tell me where you are right now? '
+    'Are you home in the US, or traveling abroad?"\n\n'
     "If the user reports being abroad with no data, IMMEDIATELY check `line.roaming_enabled` "
     "via `get_details_by_id(<line_id>)`. If `line.roaming_enabled` is False, "
     "explain that roaming is disabled on their line and ASK the user if they want to enable it. "

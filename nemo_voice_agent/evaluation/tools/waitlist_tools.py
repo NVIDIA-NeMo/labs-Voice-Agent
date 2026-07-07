@@ -82,9 +82,7 @@ class JoinWaitListTool(SendScenarioSummaryTool):
         logger.debug(f"JoinWaitListTool: {name} ({phone}) added at position {position}")
 
         # Send updated waitlist to evaluator
-        summary = json.dumps(
-            {"waitlist": self.state["waitlist"], "action": "join", "customer": entry}
-        )
+        summary = json.dumps({"waitlist": self.state["waitlist"], "action": "join", "customer": entry})
         await self.send_scenario_summary(summary)
 
         await params.result_callback(
@@ -136,13 +134,9 @@ class DropWaitListTool(SendScenarioSummaryTool):
         name = params.arguments.get("name")
         waitlist = self.state["waitlist"]
         original_len = len(waitlist)
-        self.state["waitlist"] = [
-            entry for entry in waitlist if entry.get("name") != name
-        ]
+        self.state["waitlist"] = [entry for entry in waitlist if entry.get("name") != name]
         removed = len(self.state["waitlist"]) < original_len
-        logger.debug(
-            f"DropWaitListTool: {name} {'removed' if removed else 'not found'}"
-        )
+        logger.debug(f"DropWaitListTool: {name} {'removed' if removed else 'not found'}")
 
         # Send updated waitlist to evaluator
         summary = json.dumps(
@@ -177,9 +171,7 @@ class DropWaitListTool(SendScenarioSummaryTool):
 class GetWaitlistTool(StandardSchemaTool):
     """Check the current waitlist status. Reads from shared state."""
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(
             description=description
             or "Check the current restaurant waitlist to see who is waiting and their position."

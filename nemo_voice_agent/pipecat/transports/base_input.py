@@ -32,18 +32,13 @@ class BaseInputTransport(_BaseInputTransport):
     async def _handle_vad(self, audio_frame: InputAudioRawFrame, vad_state: VADState):
         """Handle Voice Activity Detection results and generate appropriate frames."""
         new_vad_state = await self._vad_analyze(audio_frame)
-        if (
-            new_vad_state != vad_state
-            and new_vad_state != VADState.STARTING
-            and new_vad_state != VADState.STOPPING
-        ):
+        if new_vad_state != vad_state and new_vad_state != VADState.STARTING and new_vad_state != VADState.STOPPING:
             frame = None
             # If the turn analyser is enabled, this will prevent:
             # - Creating the UserStoppedSpeakingFrame
             # - Creating the UserStartedSpeakingFrame multiple times
             can_create_user_frames = (
-                self._params.turn_analyzer is None
-                or not self._params.turn_analyzer.speech_triggered
+                self._params.turn_analyzer is None or not self._params.turn_analyzer.speech_triggered
             ) and self._params.can_create_user_frames
             logger.debug(
                 f"base_input: VAD state changed to {new_vad_state}, can_create_user_frames: {can_create_user_frames}"
@@ -53,17 +48,13 @@ class BaseInputTransport(_BaseInputTransport):
                 if can_create_user_frames:
                     frame = UserStartedSpeakingFrame()
                 else:
-                    logger.debug(
-                        "base_input: VAD state changed to SPEAKING but can_create_user_frames is False"
-                    )
+                    logger.debug("base_input: VAD state changed to SPEAKING but can_create_user_frames is False")
             elif new_vad_state == VADState.QUIET:
                 await self.push_frame(VADUserStoppedSpeakingFrame())
                 if can_create_user_frames:
                     frame = UserStoppedSpeakingFrame()
                 else:
-                    logger.debug(
-                        "base_input: VAD state changed to QUIET but can_create_user_frames is False"
-                    )
+                    logger.debug("base_input: VAD state changed to QUIET but can_create_user_frames is False")
 
             if frame:
                 logger.debug(f"base_input: handling user interruption: {frame}")

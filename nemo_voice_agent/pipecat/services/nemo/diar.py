@@ -82,9 +82,7 @@ class NemoDiarService(STTService):
         self._device = device
         self._sample_rate = sample_rate
         self._audio_passthrough = audio_passthrough
-        params.buffer_size = (
-            params.frame_len_in_secs // params.raw_audio_frame_len_in_secs
-        )
+        params.buffer_size = params.frame_len_in_secs // params.raw_audio_frame_len_in_secs
         self._params = params
         self._model_name = model
         self._use_vad = use_vad
@@ -170,9 +168,7 @@ class NemoDiarService(STTService):
             while self._processing_running:
                 try:
                     # Get audio from queue - blocking call that will be interrupted by cancellation
-                    future = asyncio.run_coroutine_threadsafe(
-                        self._queue.get(), self.get_event_loop()
-                    )
+                    future = asyncio.run_coroutine_threadsafe(self._queue.get(), self.get_event_loop())
                     audio = future.result()
 
                     if audio is None:  # Stop signal
@@ -182,16 +178,12 @@ class NemoDiarService(STTService):
                     # Process diarization
                     diar_result = self._model.diarize(audio)
                     # Send result back to async loop
-                    asyncio.run_coroutine_threadsafe(
-                        self._response_queue.put(diar_result), self.get_event_loop()
-                    )
+                    asyncio.run_coroutine_threadsafe(self._response_queue.put(diar_result), self.get_event_loop())
 
                 except Exception as e:
                     logger.error(f"Error in background diarization processor: {e}")
                     # Send error back to async loop
-                    asyncio.run_coroutine_threadsafe(
-                        self._response_queue.put(("error", e)), self.get_event_loop()
-                    )
+                    asyncio.run_coroutine_threadsafe(self._response_queue.put(("error", e)), self.get_event_loop())
 
         except Exception as e:
             logger.error(f"Background diarization processor fatal error: {e}")
@@ -218,17 +210,10 @@ class NemoDiarService(STTService):
                 return
             dominant_speaker_id = self._get_dominant_speaker_id(diar_result)
             # logger.debug(f"Dominant speaker ID: {dominant_speaker_id}")
-            if (
-                dominant_speaker_id is not None
-                and dominant_speaker_id != self._current_speaker_id
-            ):
+            if dominant_speaker_id is not None and dominant_speaker_id != self._current_speaker_id:
                 self._current_speaker_id = dominant_speaker_id
-                logger.debug(
-                    f"Pushing DiarResultFrame with speaker {dominant_speaker_id}"
-                )
-                await self.push_frame(
-                    DiarResultFrame(dominant_speaker_id, stream_id="default")
-                )
+                logger.debug(f"Pushing DiarResultFrame with speaker {dominant_speaker_id}")
+                await self.push_frame(DiarResultFrame(dominant_speaker_id, stream_id="default"))
         except Exception as e:
             logger.error(f"Error handling diarization result: {e}")
             await self.push_frame(
@@ -247,9 +232,7 @@ class NemoDiarService(STTService):
                     result = await self._response_queue.get()
                     await self.stop_ttfb_metrics()
                     await self.stop_processing_metrics()
-                    self._has_generated_metrics = (
-                        True  # prevent future metrics generation
-                    )
+                    self._has_generated_metrics = True  # prevent future metrics generation
 
                     if isinstance(result, tuple) and result[0] == "error":
                         # Handle error from background processing
@@ -292,9 +275,7 @@ class NemoDiarService(STTService):
         yield None
 
     @traced_stt
-    async def _handle_transcription(
-        self, transcript: str, is_final: bool, language: Optional[str] = None
-    ):
+    async def _handle_transcription(self, transcript: str, is_final: bool, language: Optional[str] = None):
         """Handle a transcription result.
 
         Args:
@@ -369,14 +350,10 @@ class NemoDiarService(STTService):
             valid_frame_mask = spk_pred.sum(axis=1) > 0
 
             # Filter diar_result to only keep valid frames
-            filtered_diar_result = spk_pred[
-                valid_frame_mask
-            ]  # ndarray of shape [num_valid_frames, num_speakers]
+            filtered_diar_result = spk_pred[valid_frame_mask]  # ndarray of shape [num_valid_frames, num_speakers]
 
             # Get the primary speaker for each valid frame
-            primary_spk = np.argmax(
-                filtered_diar_result, axis=1
-            )  # ndarray of shape [num_valid_frames]
+            primary_spk = np.argmax(filtered_diar_result, axis=1)  # ndarray of shape [num_valid_frames]
             # logger.debug(f"Primary speaker for valid frames: {primary_spk}")
 
             # count the number of different speakers in the primary speaker sequence

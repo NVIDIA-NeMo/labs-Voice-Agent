@@ -41,4 +41,5 @@ from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
     EvaAirlineBaseScenario,
 )
 
+
 __all__ = ["EvaAirlineBaseScenario"]

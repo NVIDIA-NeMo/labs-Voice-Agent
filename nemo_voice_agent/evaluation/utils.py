@@ -609,7 +609,7 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
             sections.append(f"<conversation>\n{turns_text}\n</conversation>")
 
         if nl_assertions:
-            numbered = "\n".join(f"{i+1}. {a}" for i, a in enumerate(nl_assertions))
+            numbered = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(nl_assertions))
             sections.append(f"<nl_assertions>\n{numbered}\n</nl_assertions>")
 
         if agent_context_history:
@@ -659,12 +659,14 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
                     # is self-describing — operators can read a single file
                     # to see what was claimed AND what the judge decided,
                     # without cross-referencing scenario_config/metadata.json.
-                    normalized.append({
-                        "index": i,
-                        "assertion": nl_assertions[i - 1],
-                        "passed": passed,
-                        "reason": reason_text,
-                    })
+                    normalized.append(
+                        {
+                            "index": i,
+                            "assertion": nl_assertions[i - 1],
+                            "passed": passed,
+                            "reason": reason_text,
+                        }
+                    )
                     if passed:
                         passes += 1
                 result["nl_assertion_verdicts"] = normalized

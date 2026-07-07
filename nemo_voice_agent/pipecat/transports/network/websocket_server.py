@@ -29,13 +29,12 @@ from pipecat.transports.network.websocket_server import (
 from nemo_voice_agent.pipecat.transports.base_input import BaseInputTransport
 from nemo_voice_agent.pipecat.transports.base_transport import TransportParams
 
+
 try:
     import websockets
 except ModuleNotFoundError as e:
     logger.error(f"Exception: {e}")
-    logger.error(
-        "In order to use websockets, you need to `pip install pipecat-ai[websocket]`."
-    )
+    logger.error("In order to use websockets, you need to `pip install pipecat-ai[websocket]`.")
     raise Exception(f"Missing module: {e}")
 
 
@@ -155,15 +154,11 @@ class WebsocketServerInputTransport(BaseInputTransport):
     async def _server_task_handler(self):
         """Handle WebSocket server startup and client connections."""
         logger.info(f"Starting websocket server on {self._host}:{self._port}")
-        async with websockets.serve(
-            self._client_handler, self._host, self._port
-        ) as server:
+        async with websockets.serve(self._client_handler, self._host, self._port):
             await self._callbacks.on_websocket_ready()
             await self._stop_server_event.wait()
 
-    async def _client_handler(
-        self, websocket: websockets.WebSocketServerProtocol, path: Optional[str] = None
-    ):
+    async def _client_handler(self, websocket: websockets.WebSocketServerProtocol, path: Optional[str] = None):
         """Handle individual client connections and message processing."""
         logger.info(f"New client connection from {websocket.remote_address}")
         if self._websocket:
@@ -177,9 +172,7 @@ class WebsocketServerInputTransport(BaseInputTransport):
 
         # Create a task to monitor the websocket connection
         if not self._monitor_task and self._params.session_timeout:
-            self._monitor_task = self.create_task(
-                self._monitor_websocket(websocket, self._params.session_timeout)
-            )
+            self._monitor_task = self.create_task(self._monitor_websocket(websocket, self._params.session_timeout))
 
         # Handle incoming messages
         try:
@@ -197,9 +190,7 @@ class WebsocketServerInputTransport(BaseInputTransport):
                 else:
                     await self.push_frame(frame)
         except Exception as e:
-            logger.error(
-                f"{self} exception receiving data: {e.__class__.__name__} ({e})"
-            )
+            logger.error(f"{self} exception receiving data: {e.__class__.__name__} ({e})")
 
         # Notify disconnection
         await self._callbacks.on_client_disconnected(websocket)
@@ -209,9 +200,7 @@ class WebsocketServerInputTransport(BaseInputTransport):
 
         logger.info(f"Client {websocket.remote_address} disconnected")
 
-    async def _monitor_websocket(
-        self, websocket: websockets.WebSocketServerProtocol, session_timeout: int
-    ):
+    async def _monitor_websocket(self, websocket: websockets.WebSocketServerProtocol, session_timeout: int):
         """Monitor WebSocket connection for session timeout."""
         try:
             await asyncio.sleep(session_timeout)
@@ -293,9 +282,7 @@ class WebsocketServerTransport(BaseTransport):
             The WebSocket server output transport instance.
         """
         if not self._output:
-            self._output = WebsocketServerOutputTransport(
-                self, self._params, name=self._output_name
-            )
+            self._output = WebsocketServerOutputTransport(self, self._params, name=self._output_name)
         return self._output
 
     async def _on_client_connected(self, websocket):

@@ -29,7 +29,6 @@ records each mutation into ``self.state["actions"]``.
 # pylint: disable=line-too-long
 # flake8: noqa: E501
 
-import copy
 import json
 from typing import Any, ClassVar, Dict, List, Optional, Type
 
@@ -58,6 +57,7 @@ from nemo_voice_agent.evaluation.tools.tau2_retail_params import (
     validation_error_response,
 )
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
+
 
 # =============================================================================
 # Action-type vocabulary
@@ -395,8 +395,7 @@ class ListAllProductTypesTool(_Tau2ReadTool):
         if not db:
             return _db_not_initialized()
         product_dict = {
-            product.get("name"): product.get("product_id")
-            for product in (db.get("products") or {}).values()
+            product.get("name"): product.get("product_id") for product in (db.get("products") or {}).values()
         }
         return {"status": "success", "product_types": json.dumps(product_dict, sort_keys=True)}
 
@@ -519,7 +518,11 @@ class ExchangeDeliveredOrderItemsTool(_Tau2WriteTool):
         if order is None:
             return {"status": "error", "error_type": "not_found", "message": f"Order {p.order_id} not found"}
         if order.get("status") != "delivered":
-            return {"status": "error", "error_type": "value_error", "message": "Non-delivered order cannot be exchanged"}
+            return {
+                "status": "error",
+                "error_type": "value_error",
+                "message": "Non-delivered order cannot be exchanged",
+            }
 
         # Validate counts of items-to-exchange
         all_item_ids = [item.get("item_id") for item in order.get("items") or []]
@@ -934,7 +937,11 @@ class ReturnDeliveredOrderItemsTool(_Tau2WriteTool):
         if order is None:
             return {"status": "error", "error_type": "not_found", "message": f"Order {p.order_id} not found"}
         if order.get("status") != "delivered":
-            return {"status": "error", "error_type": "value_error", "message": "Non-delivered order cannot be returned"}
+            return {
+                "status": "error",
+                "error_type": "value_error",
+                "message": "Non-delivered order cannot be returned",
+            }
 
         user = _get_user_dict(db, order.get("user_id"))
         if user is None:

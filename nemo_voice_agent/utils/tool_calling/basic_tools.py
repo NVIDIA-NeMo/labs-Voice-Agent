@@ -20,6 +20,7 @@ from pipecat.frames.frames import LLMTextFrame, TTSSpeakFrame
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.llm_service import FunctionCallParams
 
+
 HTTP_REQUEST_TIMEOUT = 10.0
 
 
@@ -33,17 +34,13 @@ async def tool_get_city_weather(params: FunctionCallParams, city_name: str):
     """
     message = f"Looking up weather data for {city_name}. Please wait a moment..."
     # Send the message to upstream so that RTVI can log it while doesn't block the actual tool call.
-    await params.llm.push_frame(
-        LLMTextFrame(message), direction=FrameDirection.UPSTREAM
-    )
+    await params.llm.push_frame(LLMTextFrame(message), direction=FrameDirection.UPSTREAM)
     # Send the message to TTS directly so that the user can hear it immediately.
     await params.llm.push_frame(TTSSpeakFrame(message))
 
     # The measuring unit defaults to metric (Celsius)
     # Use imperial for Fahrenheit: python_weather.IMPERIAL
-    async with python_weather.Client(
-        unit=python_weather.METRIC, max_retries=3
-    ) as client:
+    async with python_weather.Client(unit=python_weather.METRIC, max_retries=3) as client:
         # Fetch a weather forecast from a city
         logger.debug(f"Fetching weather forecast for `{city_name}`")
         try:

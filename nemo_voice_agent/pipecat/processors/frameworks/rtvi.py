@@ -50,26 +50,17 @@ class RTVIObserver(_RTVIObserver):
         src = data.source
         frame: Frame = data.frame
 
-        if isinstance(frame, BotStoppedSpeakingFrame) and isinstance(
-            src, BaseOutputTransport
-        ):
+        if isinstance(frame, BotStoppedSpeakingFrame) and isinstance(src, BaseOutputTransport):
             logger.debug(
                 f"Bot stopped speaking in RTVIObserver: {frame}, seen: {frame.id in self.transport_output_seen}"
             )
-        if isinstance(frame, self.TRANSPORT_OUTPUT_FRAMES) and isinstance(
-            src, BaseOutputTransport
-        ):
-            if (
-                frame.id not in self.transport_output_seen
-                and frame.id in self._frames_seen
-            ):
+        if isinstance(frame, self.TRANSPORT_OUTPUT_FRAMES) and isinstance(src, BaseOutputTransport):
+            if frame.id not in self.transport_output_seen and frame.id in self._frames_seen:
                 self._frames_seen.remove(frame.id)
 
         await super().on_push_frame(data)
 
-        if isinstance(frame, self.TRANSPORT_OUTPUT_FRAMES) and isinstance(
-            src, BaseOutputTransport
-        ):
+        if isinstance(frame, self.TRANSPORT_OUTPUT_FRAMES) and isinstance(src, BaseOutputTransport):
             self.transport_output_seen.add(frame.id)
 
     def reset(self):

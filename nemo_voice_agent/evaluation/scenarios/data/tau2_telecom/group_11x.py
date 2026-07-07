@@ -36,47 +36,47 @@ from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueContractEndSuspensionLockSimCardPinHard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__contract_end_suspension__lock_sim_card_pin__hard'
-    tau2_id = '[service_issue]contract_end_suspension|lock_sim_card_pin[PERSONA:Hard]'
+    name = "tau2_telecom__service_issue__contract_end_suspension__lock_sim_card_pin__hard"
+    tau2_id = "[service_issue]contract_end_suspension|lock_sim_card_pin[PERSONA:Hard]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowServiceIssueContractEndSuspensionLockSimCardPinHard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__contract_end_suspension__lock_sim_card_pin__hard'
-    tau2_id = '[service_issue]contract_end_suspension|lock_sim_card_pin[PERSONA:Hard]'
+    name = "tau2_telecom_workflow__service_issue__contract_end_suspension__lock_sim_card_pin__hard"
+    tau2_id = "[service_issue]contract_end_suspension|lock_sim_card_pin[PERSONA:Hard]"
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueContractEndSuspensionUnseatSimCardHard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__contract_end_suspension__unseat_sim_card__hard'
-    tau2_id = '[service_issue]contract_end_suspension|unseat_sim_card[PERSONA:Hard]'
+    name = "tau2_telecom__service_issue__contract_end_suspension__unseat_sim_card__hard"
+    tau2_id = "[service_issue]contract_end_suspension|unseat_sim_card[PERSONA:Hard]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowServiceIssueContractEndSuspensionUnseatSimCardHard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__contract_end_suspension__unseat_sim_card__hard'
-    tau2_id = '[service_issue]contract_end_suspension|unseat_sim_card[PERSONA:Hard]'
+    name = "tau2_telecom_workflow__service_issue__contract_end_suspension__unseat_sim_card__hard"
+    tau2_id = "[service_issue]contract_end_suspension|unseat_sim_card[PERSONA:Hard]"
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueLockSimCardPinOverdueBillSuspensionEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__lock_sim_card_pin__overdue_bill_suspension__easy'
-    tau2_id = '[service_issue]lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]'
+    name = "tau2_telecom__service_issue__lock_sim_card_pin__overdue_bill_suspension__easy"
+    tau2_id = "[service_issue]lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowServiceIssueLockSimCardPinOverdueBillSuspensionEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__lock_sim_card_pin__overdue_bill_suspension__easy'
-    tau2_id = '[service_issue]lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]'
+    name = "tau2_telecom_workflow__service_issue__lock_sim_card_pin__overdue_bill_suspension__easy"
+    tau2_id = "[service_issue]lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueOverdueBillSuspensionUnseatSimCardEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__overdue_bill_suspension__unseat_sim_card__easy'
-    tau2_id = '[service_issue]overdue_bill_suspension|unseat_sim_card[PERSONA:Easy]'
+    name = "tau2_telecom__service_issue__overdue_bill_suspension__unseat_sim_card__easy"
+    tau2_id = "[service_issue]overdue_bill_suspension|unseat_sim_card[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowServiceIssueOverdueBillSuspensionUnseatSimCardEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__overdue_bill_suspension__unseat_sim_card__easy'
-    tau2_id = '[service_issue]overdue_bill_suspension|unseat_sim_card[PERSONA:Easy]'
+    name = "tau2_telecom_workflow__service_issue__overdue_bill_suspension__unseat_sim_card__easy"
+    tau2_id = "[service_issue]overdue_bill_suspension|unseat_sim_card[PERSONA:Easy]"

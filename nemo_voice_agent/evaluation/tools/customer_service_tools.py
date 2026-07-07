@@ -23,6 +23,7 @@ from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools.rtvi_control import SendScenarioSummaryTool
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
 
+
 DEFAULT_RESOLUTION_TYPES: List[str] = [
     "refund",
     "replacement",
@@ -59,13 +60,10 @@ class LookupAccountTool(StandardSchemaTool):
         description: Optional[str] = None,
     ):
         super().__init__(
-            description=description
-            or "Look up a customer account by account ID to retrieve their details."
+            description=description or "Look up a customer account by account ID to retrieve their details."
         )
         self.state = shared_state if shared_state is not None else {}
-        self.state.setdefault(
-            "accounts", json.loads(accounts) if isinstance(accounts, str) else accounts
-        )
+        self.state.setdefault("accounts", json.loads(accounts) if isinstance(accounts, str) else accounts)
 
     @property
     def properties(self) -> Dict[str, Any]:
@@ -87,22 +85,15 @@ class LookupAccountTool(StandardSchemaTool):
         if account_id in accounts:
             await params.result_callback(accounts[account_id])
         else:
-            await params.result_callback(
-                {"error": f"Account '{account_id}' not found."}
-            )
+            await params.result_callback({"error": f"Account '{account_id}' not found."})
 
 
 @register_schema_tool_for_eval
 class CheckOrderStatusTool(StandardSchemaTool):
     """Check the status of a customer order. Orders are nested under accounts in shared_state."""
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
-        super().__init__(
-            description=description
-            or "Check the status of a customer order by account ID and order ID."
-        )
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
+        super().__init__(description=description or "Check the status of a customer order by account ID and order ID.")
         self.state = shared_state if shared_state is not None else {}
         self.state.setdefault("accounts", {})
 
@@ -129,26 +120,20 @@ class CheckOrderStatusTool(StandardSchemaTool):
         accounts = self.state.get("accounts", {})
         logger.debug(f"CheckOrderStatusTool looking up {account_id}/{order_id}")
         if account_id not in accounts:
-            await params.result_callback(
-                {"error": f"Account '{account_id}' not found."}
-            )
+            await params.result_callback({"error": f"Account '{account_id}' not found."})
             return
         orders = accounts[account_id].get("orders", {})
         if order_id in orders:
             await params.result_callback(orders[order_id])
         else:
-            await params.result_callback(
-                {"error": f"Order '{order_id}' not found for account '{account_id}'."}
-            )
+            await params.result_callback({"error": f"Order '{order_id}' not found for account '{account_id}'."})
 
 
 @register_schema_tool_for_eval
 class ProcessRefundTool(StandardSchemaTool):
     """Issue a refund on a customer account: append a negative charge entry and decrement balance."""
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(
             description=description
             or (
@@ -191,9 +176,7 @@ class ProcessRefundTool(StandardSchemaTool):
         date = params.arguments.get("date")
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback(
-                {"error": f"Account '{account_id}' not found."}
-            )
+            await params.result_callback({"error": f"Account '{account_id}' not found."})
             return
 
         account = accounts[account_id]
@@ -224,9 +207,7 @@ class ProcessRefundTool(StandardSchemaTool):
 class StartItemReturnTool(StandardSchemaTool):
     """Initiate a return for a customer order. Sets the order status to 'Return Started'."""
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(
             description=description
             or (
@@ -264,15 +245,11 @@ class StartItemReturnTool(StandardSchemaTool):
         reason = params.arguments.get("reason")
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback(
-                {"error": f"Account '{account_id}' not found."}
-            )
+            await params.result_callback({"error": f"Account '{account_id}' not found."})
             return
         orders = accounts[account_id].get("orders", {})
         if order_id not in orders:
-            await params.result_callback(
-                {"error": f"Order '{order_id}' not found for account '{account_id}'."}
-            )
+            await params.result_callback({"error": f"Order '{order_id}' not found for account '{account_id}'."})
             return
         orders[order_id]["status"] = "Return Started"
         orders[order_id]["return_reason"] = reason
@@ -320,9 +297,7 @@ class ChangePlanTool(StandardSchemaTool):
             "new_plan": {
                 "type": "string",
                 "description": (
-                    f"The new plan name. Available plans: {plan_names}."
-                    if plan_names
-                    else "The new plan name."
+                    f"The new plan name. Available plans: {plan_names}." if plan_names else "The new plan name."
                 ),
             },
         }
@@ -336,23 +311,17 @@ class ChangePlanTool(StandardSchemaTool):
         new_plan = params.arguments.get("new_plan")
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback(
-                {"error": f"Account '{account_id}' not found."}
-            )
+            await params.result_callback({"error": f"Account '{account_id}' not found."})
             return
         if new_plan not in self.plans:
             await params.result_callback(
-                {
-                    "error": f"Plan '{new_plan}' is not available. Available plans: {list(self.plans.keys())}."
-                }
+                {"error": f"Plan '{new_plan}' is not available. Available plans: {list(self.plans.keys())}."}
             )
             return
         account = accounts[account_id]
         account["plan"] = new_plan
         account["monthly_rate"] = self.plans[new_plan]
-        logger.debug(
-            f"ChangePlanTool: {account_id} -> {new_plan} @ {self.plans[new_plan]}"
-        )
+        logger.debug(f"ChangePlanTool: {account_id} -> {new_plan} @ {self.plans[new_plan]}")
         await params.result_callback(
             {
                 "success": True,
@@ -368,9 +337,7 @@ class ChangePlanTool(StandardSchemaTool):
 class UnlockAccountTool(StandardSchemaTool):
     """Unlock a locked account: set account_status to 'Active' and failed_login_attempts to '0'."""
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(
             description=description
             or (
@@ -398,9 +365,7 @@ class UnlockAccountTool(StandardSchemaTool):
         account_id = params.arguments.get("account_id")
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback(
-                {"error": f"Account '{account_id}' not found."}
-            )
+            await params.result_callback({"error": f"Account '{account_id}' not found."})
             return
         account = accounts[account_id]
         account["account_status"] = "Active"
@@ -419,9 +384,7 @@ class UnlockAccountTool(StandardSchemaTool):
 class CancelSubscriptionTool(StandardSchemaTool):
     """Cancel an account's subscription: set plan to 'Canceled' and monthly_rate to '$0.00'."""
 
-    def __init__(
-        self, *, shared_state: Optional[dict] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(
             description=description
             or (
@@ -449,9 +412,7 @@ class CancelSubscriptionTool(StandardSchemaTool):
         account_id = params.arguments.get("account_id")
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback(
-                {"error": f"Account '{account_id}' not found."}
-            )
+            await params.result_callback({"error": f"Account '{account_id}' not found."})
             return
         account = accounts[account_id]
         account["plan"] = "Canceled"
@@ -487,11 +448,7 @@ class ResolveTicketTool(SendScenarioSummaryTool):
             rtvi=rtvi,
         )
         self.state = shared_state if shared_state is not None else {}
-        self.resolution_types = (
-            list(resolution_types)
-            if resolution_types
-            else list(DEFAULT_RESOLUTION_TYPES)
-        )
+        self.resolution_types = list(resolution_types) if resolution_types else list(DEFAULT_RESOLUTION_TYPES)
 
     @property
     def properties(self) -> Dict[str, Any]:
@@ -534,6 +491,4 @@ class ResolveTicketTool(SendScenarioSummaryTool):
         }
         logger.debug(f"ResolveTicketTool resolving: {resolution}")
         await self.send_scenario_summary(json.dumps(resolution))
-        await params.result_callback(
-            {"success": True, "message": "Ticket resolved successfully."}
-        )
+        await params.result_callback({"success": True, "message": "Ticket resolved successfully."})

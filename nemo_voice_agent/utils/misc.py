@@ -22,9 +22,7 @@ from typing import Optional
 from loguru import logger
 
 
-def setup_logging(
-    log_file: str = "bot_server.log", log_level: str = "DEBUG", rotation: str = "1 day"
-):
+def setup_logging(log_file: str = "bot_server.log", log_level: str = "DEBUG", rotation: str = "1 day"):
     """Configure loguru to emit to stderr and a rotating log file."""
     logger.remove()  # Remove default handler
     logger.add(
@@ -57,9 +55,7 @@ def setup_rotating_log(
             os.remove(log_file)
             logger.info(f"Removed existing log file: {log_file}")
         else:
-            new_log_file = log_file.replace(
-                ".log", f".{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-            )
+            new_log_file = log_file.replace(".log", f".{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
             os.rename(log_file, new_log_file)
             logger.info(f"Renamed existing log file: {log_file} to {new_log_file}")
 

@@ -233,7 +233,7 @@ class NvidiaLLMService(_PipecatNvidiaLLMService):
             async for chunk in stream:
                 n_chunks += 1
                 if not first_chunk_logged:
-                    logger.info(f"[NVIDIA LLM FIRST CHUNK] first_token_latency=" f"{time.monotonic() - t_req:.3f}s")
+                    logger.info(f"[NVIDIA LLM FIRST CHUNK] first_token_latency={time.monotonic() - t_req:.3f}s")
                     first_chunk_logged = True
                 yield chunk
         except Exception as err:

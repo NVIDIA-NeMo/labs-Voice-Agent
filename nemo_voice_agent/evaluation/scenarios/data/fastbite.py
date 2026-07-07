@@ -28,6 +28,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
 )
 from nemo_voice_agent.utils.audio import NoiseConfig
 
+
 FASTBITE_MENU_ITEMS = [
     "Classic Cheeseburger",
     "Crispy Chicken Sandwich",
@@ -172,9 +173,7 @@ class FastBiteScenario(Scenario):
     @property
     def user_resources(self) -> Resources:
         return Resources(
-            information=[
-                "The restaurant is called FastBites and it is famous for its sandwiches."
-            ],
+            information=["The restaurant is called FastBites and it is famous for its sandwiches."],
         )
 
     # Agent section

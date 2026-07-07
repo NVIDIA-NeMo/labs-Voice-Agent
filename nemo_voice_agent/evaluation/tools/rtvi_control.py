@@ -29,6 +29,7 @@ from pipecat.services.llm_service import FunctionCallParams
 from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
 
+
 FINAL_RESPONSE_START_TAG = "<final_response>"
 FINAL_RESPONSE_END_TAG = "</final_response>"
 EXIT_MESSAGE_START_TAG = "<exit>"
@@ -45,9 +46,7 @@ class SendRTVIMessageTool(StandardSchemaTool):
         Send a message to the orchestrator.
         """
 
-    def __init__(
-        self, *, description: Optional[str] = None, rtvi: Optional[RTVIProcessor] = None
-    ):
+    def __init__(self, *, description: Optional[str] = None, rtvi: Optional[RTVIProcessor] = None):
         if description is None:
             description = self.DESCRIPTION
         if rtvi is None:
@@ -93,9 +92,7 @@ class SendRTVIMessageTool(StandardSchemaTool):
         """
         message = params.arguments.get("message")
         await self.send_rtvi_message(message)
-        await params.result_callback(
-            {"success": True, "message": "message sent to the RTVIclient."}
-        )
+        await params.result_callback({"success": True, "message": "message sent to the RTVIclient."})
 
 
 @register_schema_tool_for_eval
@@ -106,9 +103,7 @@ class SendScenarioSummaryTool(SendRTVIMessageTool):
     in the required format.
     """
 
-    def __init__(
-        self, *, rtvi: Optional[RTVIProcessor] = None, description: Optional[str] = None
-    ):
+    def __init__(self, *, rtvi: Optional[RTVIProcessor] = None, description: Optional[str] = None):
         if description is None:
             description = """
             Send a "Task Summary" message to summarize how the agent has helped the user to finish the task.
@@ -133,9 +128,7 @@ class SendScenarioSummaryTool(SendRTVIMessageTool):
         """
         message = params.arguments.get("message")
         await self.send_scenario_summary(message)
-        await params.result_callback(
-            {"success": True, "message": "Scenario summary message sent."}
-        )
+        await params.result_callback({"success": True, "message": "Scenario summary message sent."})
 
 
 @register_schema_tool_for_eval

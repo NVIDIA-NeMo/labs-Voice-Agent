@@ -30,6 +30,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
 )
 from nemo_voice_agent.utils.audio import NoiseConfig
 
+
 # ---------------------------------------------------------------------------
 # Menu constants
 # ---------------------------------------------------------------------------
@@ -306,8 +307,7 @@ class PizzaPepperoni(RestaurantBaseScenario):
             name="Charlie",
             background="You work as a graphic designer at a tech startup. Your phone number is 314-527-8960.",
             personality=(
-                "You are communicative and positive, with clear needs, "
-                "friendly demeanor, and prompt decision-making."
+                "You are communicative and positive, with clear needs, friendly demeanor, and prompt decision-making."
             ),
         )
 
@@ -377,9 +377,7 @@ class PizzaVeggieCombo(RestaurantBaseScenario):
     """Order a veggie supreme pizza with garlic bread and an iced tea at Pizza Palace."""
 
     name = "restaurant__pizza_veggie_combo"
-    description = (
-        "Order a veggie supreme pizza, garlic bread, and iced tea at Pizza Palace"
-    )
+    description = "Order a veggie supreme pizza, garlic bread, and iced tea at Pizza Palace"
     reference_answer = {
         "items": [
             {"name": "Veggie Supreme Pizza", "unit_price": "10.49", "quantity": "1"},
@@ -487,8 +485,7 @@ class PizzaPartyOrder(RestaurantBaseScenario):
             role="human user",
             name="Marcus",
             background=(
-                "You are a college student ordering pizza for a small study group. "
-                "Your phone number is 847-502-9163."
+                "You are a college student ordering pizza for a small study group. Your phone number is 847-502-9163."
             ),
             personality="You are upbeat and social, a bit chatty but decisive when it comes to food choices.",
         )
@@ -577,8 +574,7 @@ class BurgerClassic(RestaurantBaseScenario):
             name="Ethan",
             background="You are a high school teacher on your lunch break. Your phone number is 736-290-5814.",
             personality=(
-                "You are straightforward and efficient. "
-                "You prefer to keep things simple and don't waste time."
+                "You are straightforward and efficient. You prefer to keep things simple and don't waste time."
             ),
         )
 
@@ -651,9 +647,7 @@ class BurgerBaconCombo(RestaurantBaseScenario):
     """Order a bacon cheeseburger combo and a milkshake at Burger Barn."""
 
     name = "restaurant__burger_bacon_combo"
-    description = (
-        "Order a bacon cheeseburger combo and a chocolate milkshake at Burger Barn"
-    )
+    description = "Order a bacon cheeseburger combo and a chocolate milkshake at Burger Barn"
     reference_answer = {
         "items": [
             {
@@ -674,8 +668,7 @@ class BurgerBaconCombo(RestaurantBaseScenario):
             role="human user",
             name="Sophia",
             background=(
-                "You are a nurse who just finished a long shift at the hospital. "
-                "Your phone number is 918-374-6205."
+                "You are a nurse who just finished a long shift at the hospital. Your phone number is 918-374-6205."
             ),
             personality=(
                 "You are warm and friendly, but tired. You want a filling meal "
@@ -771,8 +764,7 @@ class BurgerSpicyFeast(RestaurantBaseScenario):
             name="Jake",
             background="You are a firefighter who loves spicy food. Your phone number is 462-819-3057.",
             personality=(
-                "You are bold and adventurous with food. "
-                "You like to order a lot and enjoy trying spicy options."
+                "You are bold and adventurous with food. You like to order a lot and enjoy trying spicy options."
             ),
         )
 
@@ -953,8 +945,7 @@ class DeliItalianSubLunch(RestaurantBaseScenario):
             name="Tony",
             background="You are a construction worker on your lunch break. Your phone number is 273-940-8162.",
             personality=(
-                "You are direct and no-nonsense. "
-                "You know exactly what you want and don't like to waste time browsing."
+                "You are direct and no-nonsense. You know exactly what you want and don't like to waste time browsing."
             ),
         )
 
@@ -1024,9 +1015,7 @@ class DeliGrilledCheeseSoup(RestaurantBaseScenario):
     """Order a grilled cheese with chicken noodle soup and bottled water at Deli Delights."""
 
     name = "restaurant__deli_grilled_cheese_soup"
-    description = (
-        "Order a grilled cheese, chicken noodle soup, and water at Deli Delights"
-    )
+    description = "Order a grilled cheese, chicken noodle soup, and water at Deli Delights"
     reference_answer = {
         "items": [
             {"name": "Grilled Cheese", "unit_price": "5.99", "quantity": "1"},
@@ -1226,7 +1215,9 @@ class WaitlistJoinThenDrop(RestaurantBaseScenario):
     """User joins the waitlist, asks how many people are ahead, then drops when they hear there are 10."""
 
     name = "restaurant__waitlist_join_then_drop"
-    description = "User joins a busy restaurant waitlist then decides to leave after learning there are 10 people ahead"
+    description = (
+        "User joins a busy restaurant waitlist then decides to leave after learning there are 10 people ahead"
+    )
     max_duration = 120
 
     # Both JoinWaitListTool and DropWaitListTool inherit SendScenarioSummaryTool,

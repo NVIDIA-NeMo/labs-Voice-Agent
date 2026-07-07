@@ -60,9 +60,7 @@ def test_load_db_artifact_single_file_and_sharded_match(tmp_path):
     for k, v in db.items():
         (d2 / f"{k}.json").write_text(json.dumps(v))
     assert load_db_artifact(f1.parent / "db") == load_db_artifact(d2.parent / "db")
-    assert get_dict_hash(load_db_artifact(f1.parent / "db")) == get_dict_hash(
-        load_db_artifact(d2.parent / "db")
-    )
+    assert get_dict_hash(load_db_artifact(f1.parent / "db")) == get_dict_hash(load_db_artifact(d2.parent / "db"))
 
 
 def test_load_db_artifact_missing_raises(tmp_path):

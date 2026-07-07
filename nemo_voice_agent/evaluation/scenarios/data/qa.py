@@ -48,12 +48,8 @@ class QABaseScenario(Scenario):
     # Subclasses must override these
     _user_question: str = ""
     _user_name: str = "Alex"
-    _user_background: str = (
-        "You are a curious person who wants to ask a question to an AI agent."
-    )
-    _user_personality: str = (
-        "You are curious and communicative, with a friendly demeanor."
-    )
+    _user_background: str = "You are a curious person who wants to ask a question to an AI agent."
+    _user_personality: str = "You are curious and communicative, with a friendly demeanor."
 
     @property
     def user_persona(self) -> Persona:
@@ -152,9 +148,7 @@ class QACapitalFrance(QABaseScenario):
 
     _user_question = "What is the capital of France?"
     _user_name = "John"
-    _user_background = (
-        "You are a geography enthusiast who enjoys learning about world capitals."
-    )
+    _user_background = "You are a geography enthusiast who enjoys learning about world capitals."
     _user_personality = "You are curious and communicative, with a friendly demeanor and prompt decision-making."
 
 
@@ -175,9 +169,7 @@ class QAMathAddition(QABaseScenario):
     _user_question = "What is 15 plus 27?"
     _user_name = "Maria"
     _user_background = "You are a student who is practicing basic math."
-    _user_personality = (
-        "You are eager to learn and straightforward in your communication."
-    )
+    _user_personality = "You are eager to learn and straightforward in your communication."
 
 
 # ---------------------------------------------------------------------------
@@ -196,12 +188,8 @@ class QASpeedOfLight(QABaseScenario):
 
     _user_question = "What is the speed of light?"
     _user_name = "David"
-    _user_background = (
-        "You are a physics student curious about fundamental constants of the universe."
-    )
-    _user_personality = (
-        "You are analytical and precise, preferring clear and factual answers."
-    )
+    _user_background = "You are a physics student curious about fundamental constants of the universe."
+    _user_personality = "You are analytical and precise, preferring clear and factual answers."
 
 
 # ---------------------------------------------------------------------------
@@ -241,9 +229,7 @@ class QARomeoAndJuliet(QABaseScenario):
     _user_question = "Who wrote Romeo and Juliet?"
     _user_name = "Emily"
     _user_background = "You are a literature student who is studying classic plays."
-    _user_personality = (
-        "You are thoughtful and articulate, with a love for storytelling and the arts."
-    )
+    _user_personality = "You are thoughtful and articulate, with a love for storytelling and the arts."
 
 
 # ---------------------------------------------------------------------------
@@ -262,12 +248,8 @@ class QAWeatherSanFrancisco(QABaseScenario):
 
     _user_question = "What is the weather in San Francisco?"
     _user_name = "Carlos"
-    _user_background = (
-        "You are planning a trip to San Francisco and want to know the weather."
-    )
-    _user_personality = (
-        "You are practical and organized, always planning ahead for your travels."
-    )
+    _user_background = "You are planning a trip to San Francisco and want to know the weather."
+    _user_personality = "You are practical and organized, always planning ahead for your travels."
 
     @property
     def agent_resources(self) -> Resources:
@@ -296,10 +278,10 @@ class QAWeatherNewYork(QABaseScenario):
 
     _user_question = "What is the weather in New York?"
     _user_name = "Priya"
-    _user_background = (
-        "You are a travel blogger researching weather conditions in major US cities."
+    _user_background = "You are a travel blogger researching weather conditions in major US cities."
+    _user_personality = (
+        "You are outgoing and detail-oriented, always looking for accurate information to share with your readers."
     )
-    _user_personality = "You are outgoing and detail-oriented, always looking for accurate information to share with your readers."
 
     @property
     def agent_resources(self) -> Resources:
@@ -320,9 +302,7 @@ class QAMathWordProblem(QABaseScenario):
     """QA scenario with a math word problem."""
 
     name = "qa__math_word_problem"
-    description = (
-        "QA scenario: If you have 12 apples and give away 5, how many do you have left?"
-    )
+    description = "QA scenario: If you have 12 apples and give away 5, how many do you have left?"
     reference_answer = {
         "question": "If you have 12 apples and give away 5, how many do you have left?",
         "answer": "You have 7 apples left because 12 minus 5 equals 7.",
@@ -331,9 +311,7 @@ class QAMathWordProblem(QABaseScenario):
     _user_question = "If you have 12 apples and give away 5, how many do you have left?"
     _user_name = "Tom"
     _user_background = "You are a parent helping your child with homework and want to verify the answer."
-    _user_personality = (
-        "You are patient and methodical, preferring step-by-step explanations."
-    )
+    _user_personality = "You are patient and methodical, preferring step-by-step explanations."
 
 
 # ---------------------------------------------------------------------------
@@ -353,7 +331,9 @@ class QALargestOcean(QABaseScenario):
     _user_question = "What is the largest ocean on Earth?"
     _user_name = "Yuki"
     _user_background = "You are an environmental science student studying oceanography."
-    _user_personality = "You are inquisitive and environmentally conscious, with a calm and respectful communication style."
+    _user_personality = (
+        "You are inquisitive and environmentally conscious, with a calm and respectful communication style."
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -20,13 +20,14 @@ Importing this package side-imports every group so registry decoration fires
 for all 50 base-split tau2_airline scenarios.
 """
 
+# Side-import groups so @register_eval_scenario fires.
+from nemo_voice_agent.evaluation.scenarios.data.tau2_airline import (
+    group_0x,  # noqa: F401
+    group_1x,  # noqa: F401
+    group_2x,  # noqa: F401
+    group_3x,  # noqa: F401
+    group_4x,  # noqa: F401
+)
 from nemo_voice_agent.evaluation.scenarios.data.tau2_airline.base import (  # noqa: F401
     Tau2AirlineBaseScenario,
 )
-
-# Side-import groups so @register_eval_scenario fires.
-from nemo_voice_agent.evaluation.scenarios.data.tau2_airline import group_0x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_airline import group_1x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_airline import group_2x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_airline import group_3x  # noqa: F401
-from nemo_voice_agent.evaluation.scenarios.data.tau2_airline import group_4x  # noqa: F401

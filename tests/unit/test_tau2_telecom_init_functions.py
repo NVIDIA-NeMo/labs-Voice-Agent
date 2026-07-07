@@ -49,6 +49,7 @@ from nemo_voice_agent.evaluation.initialization_functions import (
     ALL_INITIALIZATION_FUNCTIONS,
     apply_initialization_actions,
 )
+
 # Importing the module triggers @register_initialization_function decorators.
 from nemo_voice_agent.evaluation.tools import tau2_telecom_init_functions  # noqa: F401
 from nemo_voice_agent.evaluation.tools.tau2_telecom_init_functions import (
@@ -74,8 +75,8 @@ from nemo_voice_agent.evaluation.tools.tau2_telecom_init_functions import (
     unseat_sim_card,
 )
 from nemo_voice_agent.evaluation.tools.tau2_telecom_predicates import (
-    _get_mobile_data_working,
     _can_send_mms,
+    _get_mobile_data_working,
 )
 
 
@@ -132,7 +133,9 @@ def test_turn_airplane_mode_on(default_user_db):
     # Pre-set VPN connected so we can verify disconnect path
     default_user_db["device"]["vpn_connected"] = True
     default_user_db["device"]["vpn_details"] = {
-        "server_address": "x", "protocol": "y", "server_performance": "excellent"
+        "server_address": "x",
+        "protocol": "y",
+        "server_performance": "excellent",
     }
     turn_airplane_mode_on(default_user_db)
     device = default_user_db["device"]
@@ -298,7 +301,7 @@ def _first_line_with_customer(db: dict) -> tuple[str, str]:
 def test_enable_roaming(default_agent_db):
     customer_id, line_id = _first_line_with_customer(default_agent_db)
     enable_roaming(default_agent_db, customer_id=customer_id, line_id=line_id)
-    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line = next(line_item for line_item in default_agent_db["lines"] if line_item["line_id"] == line_id)
     assert line["roaming_enabled"] is True
 
 
@@ -307,7 +310,7 @@ def test_disable_roaming(default_agent_db):
     # First enable, then disable to verify the toggle
     enable_roaming(default_agent_db, customer_id=customer_id, line_id=line_id)
     disable_roaming(default_agent_db, customer_id=customer_id, line_id=line_id)
-    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line = next(line_item for line_item in default_agent_db["lines"] if line_item["line_id"] == line_id)
     assert line["roaming_enabled"] is False
 
 
@@ -321,15 +324,13 @@ def test_set_data_usage(default_agent_db):
     payload-compatible dispatch from task ``initialization_actions``)."""
     customer_id, line_id = _first_line_with_customer(default_agent_db)
     set_data_usage(default_agent_db, customer_id=customer_id, line_id=line_id, data_used_gb=7.5)
-    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line = next(line_item for line_item in default_agent_db["lines"] if line_item["line_id"] == line_id)
     assert line["data_used_gb"] == 7.5
 
 
 def test_set_data_usage_missing_line_raises(default_agent_db):
     with pytest.raises(ValueError, match="line .* not found"):
-        set_data_usage(
-            default_agent_db, customer_id="C1001", line_id="L_FAKE", data_used_gb=1.0
-        )
+        set_data_usage(default_agent_db, customer_id="C1001", line_id="L_FAKE", data_used_gb=1.0)
 
 
 def test_suspend_line_for_overdue_bill_creates_new_overdue_bill(default_agent_db):
@@ -349,7 +350,7 @@ def test_suspend_line_for_overdue_bill_creates_new_overdue_bill(default_agent_db
     customer_id = customer["customer_id"]
     line_id = customer["line_ids"][0]
     # Pick a line that's currently active — upstream requires this.
-    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line = next(line_item for line_item in default_agent_db["lines"] if line_item["line_id"] == line_id)
     line["status"] = "Active"  # ensure precondition
     suspend_line_for_overdue_bill(
         default_agent_db,
@@ -358,7 +359,7 @@ def test_suspend_line_for_overdue_bill_creates_new_overdue_bill(default_agent_db
         new_bill_id="B_NEW_OVERDUE",
         contract_ended=False,
     )
-    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line = next(line_item for line_item in default_agent_db["lines"] if line_item["line_id"] == line_id)
     new_bill = next(b for b in default_agent_db["bills"] if b["bill_id"] == "B_NEW_OVERDUE")
     assert line["status"] == "Suspended"
     assert new_bill["status"] == "Overdue"
@@ -381,7 +382,7 @@ def test_suspend_line_for_overdue_bill_contract_ended_sets_contract_end_date(def
     )
     customer_id = customer["customer_id"]
     line_id = customer["line_ids"][0]
-    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line = next(line_item for line_item in default_agent_db["lines"] if line_item["line_id"] == line_id)
     line["status"] = "Active"
     suspend_line_for_overdue_bill(
         default_agent_db,
@@ -390,7 +391,7 @@ def test_suspend_line_for_overdue_bill_contract_ended_sets_contract_end_date(def
         new_bill_id="B_ENDED",
         contract_ended=True,
     )
-    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line = next(line_item for line_item in default_agent_db["lines"] if line_item["line_id"] == line_id)
     assert line["status"] == "Suspended"
     assert line["contract_end_date"] is not None
 
@@ -400,7 +401,7 @@ def test_suspend_line_for_overdue_bill_inactive_line_raises(default_agent_db):
     customer = next(c for c in default_agent_db["customers"] if c.get("line_ids"))
     customer_id = customer["customer_id"]
     line_id = customer["line_ids"][0]
-    line = next(l for l in default_agent_db["lines"] if l["line_id"] == line_id)
+    line = next(line_item for line_item in default_agent_db["lines"] if line_item["line_id"] == line_id)
     line["status"] = "Suspended"  # precondition violation
     with pytest.raises(ValueError, match="must be active"):
         suspend_line_for_overdue_bill(
@@ -422,14 +423,26 @@ def test_all_twenty_init_functions_registered():
     bucket = ALL_INITIALIZATION_FUNCTIONS.get("tau2_telecom", {})
     expected = {
         # 16 user-side
-        "set_user_info", "set_user_location", "set_network_mode_preference",
-        "simulate_network_search", "turn_airplane_mode_on", "turn_data_off",
-        "turn_data_saver_mode_on", "turn_roaming_on", "turn_roaming_off",
-        "unseat_sim_card", "lock_sim_card", "break_apn_settings",
-        "break_apn_mms_setting", "break_vpn", "set_wifi_calling",
+        "set_user_info",
+        "set_user_location",
+        "set_network_mode_preference",
+        "simulate_network_search",
+        "turn_airplane_mode_on",
+        "turn_data_off",
+        "turn_data_saver_mode_on",
+        "turn_roaming_on",
+        "turn_roaming_off",
+        "unseat_sim_card",
+        "lock_sim_card",
+        "break_apn_settings",
+        "break_apn_mms_setting",
+        "break_vpn",
+        "set_wifi_calling",
         "remove_app_permission",
         # 4 agent-side
-        "enable_roaming", "disable_roaming", "set_data_usage",
+        "enable_roaming",
+        "disable_roaming",
+        "set_data_usage",
         "suspend_line_for_overdue_bill",
     }
     missing = expected - set(bucket)
@@ -451,9 +464,7 @@ def test_apply_initialization_actions_dispatches_data_mode_off_init(default_user
         {"func_name": "turn_airplane_mode_on", "arguments": {}},
         {"func_name": "turn_data_off", "arguments": {}},
     ]
-    result = apply_initialization_actions(
-        domain="tau2_telecom", actions=actions, db=default_user_db
-    )
+    result = apply_initialization_actions(domain="tau2_telecom", actions=actions, db=default_user_db)
     assert result == {"success": True, "errors": []}
     assert default_user_db["surroundings"]["name"] == "John Smith"
     assert default_user_db["device"]["airplane_mode"] is True
@@ -470,9 +481,7 @@ def test_apply_initialization_actions_propagates_per_action_failure(default_agen
             "arguments": {"customer_id": "C1001", "line_id": "L_FAKE"},
         },
     ]
-    result = apply_initialization_actions(
-        domain="tau2_telecom", actions=actions, db=default_agent_db
-    )
+    result = apply_initialization_actions(domain="tau2_telecom", actions=actions, db=default_agent_db)
     assert result["success"] is False
     assert len(result["errors"]) == 1
     assert "L_FAKE" in result["errors"][0]
