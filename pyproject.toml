@@ -123,6 +123,7 @@ markers = [
 ]
 
 [tool.coverage.run]
+parallel = true
 concurrency = ["thread", "multiprocessing"]
 source = ["nemo_voice_agent"]
 omit = [

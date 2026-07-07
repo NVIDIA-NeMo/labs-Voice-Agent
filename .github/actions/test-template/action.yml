@@ -56,6 +56,6 @@ runs:
       if: always()
       with:
         name: coverage-${{ inputs.coverage-prefix }}-${{ inputs.script }}-${{ github.run_id }}
-        path: .coverage
+        path: .coverage*
         include-hidden-files: true
         if-no-files-found: ignore
