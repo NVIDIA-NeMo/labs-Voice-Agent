@@ -75,7 +75,10 @@ jobs:
           HEAD_REF: ${{ steps.metadata.outputs.head_ref }}
         working-directory: ./docs/fern
         run: |
-          OUTPUT=$(npx -y fern-api@latest generate --docs --preview --id "$HEAD_REF" 2>&1)
+          FERN_VERSION=$(jq -r .version fern.config.json)
+          npx -y "fern-api@${FERN_VERSION}" docs md generate --library nemo-voice-agent
+          npm run sanitize:generated
+          OUTPUT=$(npx -y "fern-api@${FERN_VERSION}" generate --docs --preview --id "$HEAD_REF" 2>&1)
           echo "$OUTPUT"
           URL=$(echo "$OUTPUT" | grep -oP 'Published docs to \K.*(?= \()')
           if [ -z "$URL" ]; then
