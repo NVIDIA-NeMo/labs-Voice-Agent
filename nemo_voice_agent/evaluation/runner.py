@@ -849,8 +849,7 @@ async def run_dynamic_evaluation(
             f.write(f"  Turns: {result['total_turns']}\n")
             if result.get("insufficient_agent_turns"):
                 f.write(
-                    f"  [COUNTED AS FAILURE: insufficient agent turns / stalled — "
-                    f"excluded from per-signal rates]\n"
+                    "  [COUNTED AS FAILURE: insufficient agent turns / stalled — excluded from per-signal rates]\n"
                 )
             f.write(f"  Duration: {result['scenario_duration']:.1f}s\n")
             if result["scenario_duration"] > 0:
