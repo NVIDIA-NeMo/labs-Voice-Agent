@@ -172,3 +172,14 @@ override-dependencies = [
     "misaki==0.9.4",
     "pillow>=12.2.0"
 ]
+
+# g2p-en declares `distance` (GPL-3.0) in its metadata but never imports it (phantom
+# dependency — verified: not referenced in g2p.py/expand.py/__init__.py). Override
+# g2p-en's requires-dist to drop `distance` so it stays out of the resolved dependency
+# graph, keeping the tree Apache-2.0-clean. g2p-en's real runtime deps are numpy/nltk/
+# inflect only (all permissive). g2p-en itself provides the OOV G2P fallback for Kokoro
+# TTS — see nemo_voice_agent/pipecat/services/nemo/_g2p_fallback.py.
+[[tool.uv.dependency-metadata]]
+name = "g2p-en"
+version = "2.1.0"
+requires-dist = ["numpy>=1.13.1", "nltk>=3.2.4", "inflect>=0.3.1"]

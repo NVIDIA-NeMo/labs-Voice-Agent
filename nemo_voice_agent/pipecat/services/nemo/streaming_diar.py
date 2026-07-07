@@ -66,8 +66,7 @@ class NeMoStreamingDiarService:
         self.right_offset = right_offset
         self.chunk_size = self.cfg.chunk_len
         self.buffer_size_in_secs = (
-            self.cfg.chunk_len * self.frame_len_in_secs
-            + (self.left_offset + self.right_offset) * 0.01
+            self.cfg.chunk_len * self.frame_len_in_secs + (self.left_offset + self.right_offset) * 0.01
         )
         self.max_num_speakers = self.cfg.max_num_speakers
 
@@ -79,23 +78,15 @@ class NeMoStreamingDiarService:
             device=self.device,
         )
         self.streaming_state = self.init_streaming_state(batch_size=1)
-        self.total_preds = torch.zeros(
-            (1, 0, self.max_num_speakers), device=self.diarizer.device
-        )
+        self.total_preds = torch.zeros((1, 0, self.max_num_speakers), device=self.diarizer.device)
 
-        print(
-            f"NeMoStreamingDiarService initialized with model `{model}` on device `{self.device}`"
-        )
+        print(f"NeMoStreamingDiarService initialized with model `{model}` on device `{self.device}`")
 
     def build_diarizer(self):
         if self.cfg.model_path.endswith(".nemo"):
-            diar_model = SortformerEncLabelModel.restore_from(
-                self.cfg.model_path, map_location=self.cfg.device
-            )
+            diar_model = SortformerEncLabelModel.restore_from(self.cfg.model_path, map_location=self.cfg.device)
         else:
-            diar_model = SortformerEncLabelModel.from_pretrained(
-                self.cfg.model_path, map_location=self.cfg.device
-            )
+            diar_model = SortformerEncLabelModel.from_pretrained(self.cfg.model_path, map_location=self.cfg.device)
 
         # Steaming mode setup
         diar_model.sortformer_modules.chunk_len = self.cfg.chunk_len
@@ -104,9 +95,7 @@ class NeMoStreamingDiarService:
         diar_model.sortformer_modules.chunk_right_context = self.cfg.chunk_right_context
         diar_model.sortformer_modules.fifo_len = self.cfg.fifo_len
         diar_model.sortformer_modules.log = self.cfg.log
-        diar_model.sortformer_modules.spkcache_refresh_rate = (
-            self.cfg.spkcache_refresh_rate
-        )
+        diar_model.sortformer_modules.spkcache_refresh_rate = self.cfg.spkcache_refresh_rate
         diar_model.eval()
 
         return diar_model
@@ -119,19 +108,14 @@ class NeMoStreamingDiarService:
             print(f"Time {t}: {spk_probs}")
 
     def diarize(self, audio: bytes, stream_id: str = "default") -> str:
-
         audio_array = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
 
         self.feature_bufferer.update(audio_array)
 
         features = self.feature_bufferer.get_feature_buffer()
         feature_buffers = features.unsqueeze(0)  # add batch dimension
-        feature_buffers = feature_buffers.transpose(
-            1, 2
-        )  # [batch, feature, time] -> [batch, time, feature]
-        feature_buffer_lens = torch.tensor(
-            [feature_buffers.shape[1]], device=self.device
-        )
+        feature_buffers = feature_buffers.transpose(1, 2)  # [batch, feature, time] -> [batch, time, feature]
+        feature_buffer_lens = torch.tensor([feature_buffers.shape[1]], device=self.device)
         self.streaming_state, chunk_preds = self.stream_step(
             processed_signal=feature_buffers,
             processed_signal_length=feature_buffer_lens,
@@ -147,9 +131,7 @@ class NeMoStreamingDiarService:
     def reset_state(self, stream_id: str = "default"):
         self.feature_bufferer.reset()
         self.streaming_state = self.init_streaming_state(batch_size=1)
-        self.total_preds = torch.zeros(
-            (1, 0, self.max_num_speakers), device=self.diarizer.device
-        )
+        self.total_preds = torch.zeros((1, 0, self.max_num_speakers), device=self.diarizer.device)
 
     def init_streaming_state(self, batch_size: int = 1) -> StreamingSortformerState:
         """
@@ -204,23 +186,19 @@ class NeMoStreamingDiarService:
             total_preds = total_preds.to(self.device)
 
         with (
-            torch.amp.autocast(
-                device_type=self.device, dtype=self.compute_dtype, enabled=self.use_amp
-            ),
+            torch.amp.autocast(device_type=self.device, dtype=self.compute_dtype, enabled=self.use_amp),
             torch.inference_mode(),
             torch.no_grad(),
         ):
             try:
                 # Call the model's forward_streaming_step method
-                streaming_state, diar_pred_out_stream = (
-                    self.diarizer.forward_streaming_step(
-                        processed_signal=processed_signal,
-                        processed_signal_length=processed_signal_length,
-                        streaming_state=streaming_state,
-                        total_preds=total_preds,
-                        left_offset=left_offset,
-                        right_offset=right_offset,
-                    )
+                streaming_state, diar_pred_out_stream = self.diarizer.forward_streaming_step(
+                    processed_signal=processed_signal,
+                    processed_signal_length=processed_signal_length,
+                    streaming_state=streaming_state,
+                    total_preds=total_preds,
+                    left_offset=left_offset,
+                    right_offset=right_offset,
                 )
             except Exception as e:
                 print(f"Error in diarizer streaming step: {e}")

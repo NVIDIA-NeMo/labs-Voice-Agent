@@ -112,9 +112,7 @@ class NvidiaAssistantContextAggregator(OpenAIAssistantContextAggregator):
                 context_messages[-1]["content"] = self._aggregation
                 self.context.set_messages(context_messages)
             else:
-                self.context.add_message(
-                    {"role": self._role, "content": self._aggregation}
-                )
+                self.context.add_message({"role": self._role, "content": self._aggregation})
             self._aggregation = ""
             frame = OpenAILLMContextFrame(self.context)
             await self.push_frame(frame)
@@ -196,16 +194,10 @@ class NvidiaUserContextAggregator(OpenAIUserContextAggregator):
             >>> await aggregator.process_frame(frame, FrameDirection.DOWNSTREAM)
         """
         if isinstance(frame, TranscriptionFrame):
-            logger.debug(
-                f"Recieved final transcript at NvidiaUserContextAggregator {frame.text}"
-            )
+            logger.debug(f"Recieved final transcript at NvidiaUserContextAggregator {frame.text}")
             # Only process if this is a new transcript
-            if self.last_transcript is None or (
-                self.last_transcript.rstrip() != frame.text.rstrip()
-            ):
-                logger.debug(
-                    f"Sent final transcript downstream to LLM from NvidiaUserContextAggregator {frame.text}"
-                )
+            if self.last_transcript is None or (self.last_transcript.rstrip() != frame.text.rstrip()):
+                logger.debug(f"Sent final transcript downstream to LLM from NvidiaUserContextAggregator {frame.text}")
                 self._aggregation = frame.text
                 await self.push_aggregation()
                 # Accumulate finals with proper spacing
@@ -297,9 +289,7 @@ class NvidiaUserContextAggregator(OpenAIUserContextAggregator):
                 truncated_context_messages.append(context_message)
 
             # Combine: initial messages + truncated recent messages (in correct order)
-            final_messages = initial_messages + list(
-                reversed(truncated_context_messages)
-            )
+            final_messages = initial_messages + list(reversed(truncated_context_messages))
             truncated_context.set_messages(final_messages)
         return truncated_context
 
@@ -329,22 +319,16 @@ class NvidiaUserContextAggregator(OpenAIUserContextAggregator):
             # Update existing message if same role, otherwise append new one
             if len(context_messages) > 0 and context_messages[-1]["role"] == self._role:
                 if self._last_final_transcript:
-                    context_messages[-1]["content"] = (
-                        self._last_final_transcript + " " + self._aggregation
-                    )
+                    context_messages[-1]["content"] = self._last_final_transcript + " " + self._aggregation
                 else:
                     context_messages[-1]["content"] = self._aggregation
-                logger.debug(
-                    f"Updated existing message in NvidiaUserContextAggregator: {context_messages[-1]}"
-                )
+                logger.debug(f"Updated existing message in NvidiaUserContextAggregator: {context_messages[-1]}")
                 self.context.set_messages(context_messages)
             else:
                 self._last_final_transcript = ""
                 new_message = {"role": self._role, "content": self._aggregation}
                 self.context.add_message(new_message)
-                logger.debug(
-                    f"Added new message to NvidiaUserContextAggregator: {new_message}"
-                )
+                logger.debug(f"Added new message to NvidiaUserContextAggregator: {new_message}")
 
             self._aggregation = ""
             # Get truncated context and send downstream
@@ -421,9 +405,7 @@ class NvidiaTTSResponseCacher(FrameProcessor):
                 self._cache.append(frame)
 
         # Handle TTS frames - cache or forward based on user speaking state
-        elif isinstance(
-            frame, (TTSAudioRawFrame | TTSStartedFrame | TTSStoppedFrame | TTSTextFrame)
-        ):
+        elif isinstance(frame, (TTSAudioRawFrame | TTSStartedFrame | TTSStoppedFrame | TTSTextFrame)):
             if self.user_stopped_speaking:
                 await self.push_frame(frame, direction)
             else:
@@ -433,9 +415,7 @@ class NvidiaTTSResponseCacher(FrameProcessor):
         elif isinstance(frame, LLMFullResponseEndFrame):
             if self.user_stopped_speaking:
                 await self.push_frame(frame, direction)
-                self.user_stopped_speaking = (
-                    False  # Allow user to speak after response ends
-                )
+                self.user_stopped_speaking = False  # Allow user to speak after response ends
             self._cache.append(frame)
 
         # Handle interruptions - clear cache and reset state
@@ -545,10 +525,6 @@ def create_nvidia_context_aggregator(
         preserve_prompt_messages=preserve_prompt_messages,
     )
     # Create assistant aggregator sharing context with user
-    assistant_params = LLMAssistantAggregatorParams(
-        expect_stripped_words=assistant_expect_stripped_words
-    )
-    assistant = NvidiaAssistantContextAggregator(
-        context=user.context, params=assistant_params
-    )
+    assistant_params = LLMAssistantAggregatorParams(expect_stripped_words=assistant_expect_stripped_words)
+    assistant = NvidiaAssistantContextAggregator(context=user.context, params=assistant_params)
     return NvidiaContextAggregatorPair(_user=user, _assistant=assistant)

@@ -114,9 +114,7 @@ class CancellationReason(StrEnum):
     bereavement = "bereavement"
 
 
-ConfirmationNumber = Annotated[
-    str, Field(pattern=r"^[A-Za-z0-9]{6}$", description="6 alphanumeric characters")
-]
+ConfirmationNumber = Annotated[str, Field(pattern=r"^[A-Za-z0-9]{6}$", description="6 alphanumeric characters")]
 FlightNumberStr = Annotated[
     str,
     Field(
@@ -125,9 +123,7 @@ FlightNumberStr = Annotated[
         examples=["SK621"],
     ),
 ]
-DateStr = Annotated[
-    str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$", description="YYYY-MM-DD")
-]
+DateStr = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$", description="YYYY-MM-DD")]
 JourneyIdStr = Annotated[
     str,
     Field(
@@ -136,14 +132,10 @@ JourneyIdStr = Annotated[
         examples=["FL_SK621_20260320"],
     ),
 ]
-PassengerIdStr = Annotated[
-    str, Field(pattern=r"^PAX\d+$", description="PAX<digits>", examples=["PAX001"])
-]
+PassengerIdStr = Annotated[str, Field(pattern=r"^PAX\d+$", description="PAX<digits>", examples=["PAX001"])]
 AirportCode = Annotated[
     str,
-    Field(
-        pattern=r"^[A-Za-z]{3}$", description="3-letter airport code", examples=["JFK"]
-    ),
+    Field(pattern=r"^[A-Za-z]{3}$", description="3-letter airport code", examples=["JFK"]),
 ]
 
 
@@ -293,14 +285,10 @@ def validation_error_response(exc: ValidationError, model: type[BaseModel]) -> d
                 error_type, label = FIELD_ERROR_TYPES[field]
                 input_val = error.get("input", "")
                 msg = f"Invalid {label} '{input_val}'"
-                if (
-                    field_info := model.model_fields.get(field)
-                ) and field_info.description:
+                if (field_info := model.model_fields.get(field)) and field_info.description:
                     msg += f": must be {field_info.description}"
                     if field_info.examples:
-                        msg += (
-                            f" (e.g. {', '.join(str(e) for e in field_info.examples)})"
-                        )
+                        msg += f" (e.g. {', '.join(str(e) for e in field_info.examples)})"
                 elif detail := error.get("msg", ""):
                     msg += f": {detail}"
                 return {

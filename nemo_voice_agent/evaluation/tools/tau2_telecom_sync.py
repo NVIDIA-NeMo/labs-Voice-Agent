@@ -249,7 +249,7 @@ def apply_telecom_sync_delta(db: dict, delta: dict) -> None:
     surroundings_changed = False
     for path, value in delta.items():
         if path.startswith("surroundings."):
-            field = path[len("surroundings."):]
+            field = path[len("surroundings.") :]
             db.setdefault("surroundings", {})[field] = value
             surroundings_changed = True
             continue

@@ -29,7 +29,6 @@ when to call ``EndConversationTool``), see
 are evaluation-specific and live alongside the scenario base classes.
 """
 
-
 GENERAL_PROMPT = (
     "Keep your responses concise and conversational since they will be spoken aloud. "
     "Your output will be passed verbatim to a text-to-speech engine that pronounces "
@@ -92,15 +91,15 @@ VOICE_ALPHANUMERIC_RULE = (
     "code regardless of whether it contains digits, letters, or both: zip codes, "
     "phone numbers, reservation IDs, user IDs, flight numbers, confirmation codes, "
     "account numbers, anything you'd spell out. "
-    "Correct: \"seven, eight, seven, one, two\" — not \"78712, spoken as seven, "
-    "eight, seven, one, two.\" "
-    "Correct: \"X, E, H, M, four, B\" — not \"XEHM4B, spelled X, E, H, M, four, B.\" "
-    "Correct: \"D, A, I, K, I, underscore, M, U, L, L, E, R, underscore, one, one, "
-    "one, six\" — not \"daiki_muller_1116, spelled as D, A, I, K, I, ...\". "
+    'Correct: "seven, eight, seven, one, two" — not "78712, spoken as seven, '
+    'eight, seven, one, two." '
+    'Correct: "X, E, H, M, four, B" — not "XEHM4B, spelled X, E, H, M, four, B." '
+    'Correct: "D, A, I, K, I, underscore, M, U, L, L, E, R, underscore, one, one, '
+    'one, six" — not "daiki_muller_1116, spelled as D, A, I, K, I, ...". '
     "The 'CODE (spelled out as ...)' format that appears throughout this rule is "
     "instructional metadata for you to learn from — it is NOT a response template. "
-    "Exception: proper names (e.g., \"Johnson\", \"Fatima\") are real words, not "
+    'Exception: proper names (e.g., "Johnson", "Fatima") are real words, not '
     "identifier codes — for those you may say the name and then spell it "
-    "(\"Johnson, J, O, H, N, S, O, N\"), since the TTS pronounces the name correctly on "
+    '("Johnson, J, O, H, N, S, O, N"), since the TTS pronounces the name correctly on '
     "its own."
 )

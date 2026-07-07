@@ -80,33 +80,25 @@ class NemoStreamingASRService:
         self.chunk_size_in_secs = chunk_size_in_secs
         self.ignore_eou_eob = ignore_eou_eob
 
-        assert (
-            len(self.att_context_size) == 2
-        ), "Att context size must be a list of two integers"
-        assert (
-            self.att_context_size[0] >= 0
-        ), f"Left att context size must be greater than 0: {self.att_context_size[0]}"
-        assert (
-            self.att_context_size[1] >= 0
-        ), f"Right att context size must be greater than 0: {self.att_context_size[1]}"
+        assert len(self.att_context_size) == 2, "Att context size must be a list of two integers"
+        assert self.att_context_size[0] >= 0, (
+            f"Left att context size must be greater than 0: {self.att_context_size[0]}"
+        )
+        assert self.att_context_size[1] >= 0, (
+            f"Right att context size must be greater than 0: {self.att_context_size[1]}"
+        )
 
         window_stride_in_secs = self.asr_model.cfg.preprocessor.window_stride
         model_stride = self.asr_model.cfg.encoder.subsampling_factor
         self.model_chunk_size = self.asr_model.encoder.streaming_cfg.chunk_size
         if isinstance(self.model_chunk_size, list):
             self.model_chunk_size = self.model_chunk_size[1]
-        self.pre_encode_cache_size = (
-            self.asr_model.encoder.streaming_cfg.pre_encode_cache_size
-        )
+        self.pre_encode_cache_size = self.asr_model.encoder.streaming_cfg.pre_encode_cache_size
         if isinstance(self.pre_encode_cache_size, list):
             self.pre_encode_cache_size = self.pre_encode_cache_size[1]
-        self.pre_encode_cache_size_in_secs = (
-            self.pre_encode_cache_size * window_stride_in_secs
-        )
+        self.pre_encode_cache_size_in_secs = self.pre_encode_cache_size * window_stride_in_secs
 
-        self.tokens_per_frame = math.ceil(
-            np.trunc(self.chunk_size_in_secs / window_stride_in_secs) / model_stride
-        )
+        self.tokens_per_frame = math.ceil(np.trunc(self.chunk_size_in_secs / window_stride_in_secs) / model_stride)
         # overwrite the encoder streaming params with proper shift size for cache aware streaming
         self.asr_model.encoder.setup_streaming_params(
             chunk_size=self.model_chunk_size // model_stride,
@@ -115,9 +107,7 @@ class NemoStreamingASRService:
 
         model_chunk_size_in_secs = self.model_chunk_size * window_stride_in_secs
 
-        self.buffer_size_in_secs = (
-            self.pre_encode_cache_size_in_secs + model_chunk_size_in_secs
-        )
+        self.buffer_size_in_secs = self.pre_encode_cache_size_in_secs + model_chunk_size_in_secs
 
         self._audio_buffer = CacheFeatureBufferer(
             sample_rate=sample_rate,
@@ -129,24 +119,18 @@ class NemoStreamingASRService:
         self._reset_cache()
         self._previous_hypotheses = self._get_blank_hypothesis()
         self._last_transcript_timestamp = time.time()
-        print(
-            f"NemoStreamingASRService initialized with model `{model}` on device `{self.device}`"
-        )
+        print(f"NemoStreamingASRService initialized with model `{model}` on device `{self.device}`")
 
     def _reset_cache(self):
         (
             self._cache_last_channel,  # [17, B, 70, 512]
             self._cache_last_time,  # [17, B, 512, 8]
             self._cache_last_channel_len,  # B
-        ) = self.asr_model.encoder.get_initial_cache_state(
-            1
-        )  # batch size is 1
+        ) = self.asr_model.encoder.get_initial_cache_state(1)  # batch size is 1
 
     def _get_blank_hypothesis(self) -> List[Hypothesis]:
         """Return a fresh empty hypothesis to seed decoding."""
-        blank_hypothesis = Hypothesis(
-            score=0.0, y_sequence=[], dec_state=None, timestamp=[], last_token=None
-        )
+        blank_hypothesis = Hypothesis(score=0.0, y_sequence=[], dec_state=None, timestamp=[], last_token=None)
         return [blank_hypothesis]
 
     @property
@@ -164,22 +148,16 @@ class NemoStreamingASRService:
         tokens = [int(t) for t in tokens if t != self.blank_id]
         if tokens:
             pieces = self.tokenizer.ids_to_tokens(tokens)
-            text = "".join(
-                [p.replace(sep, " ") if p.startswith(sep) else p for p in pieces]
-            )
+            text = "".join([p.replace(sep, " ") if p.startswith(sep) else p for p in pieces])
         else:
             text = ""
         return text
 
     def _load_model(self, model: str):
         if model.endswith(".nemo"):
-            asr_model = nemo_asr.models.ASRModel.restore_from(
-                model, map_location=torch.device(self.device)
-            )
+            asr_model = nemo_asr.models.ASRModel.restore_from(model, map_location=torch.device(self.device))
         else:
-            asr_model = nemo_asr.models.ASRModel.from_pretrained(
-                model, map_location=torch.device(self.device)
-            )
+            asr_model = nemo_asr.models.ASRModel.from_pretrained(model, map_location=torch.device(self.device))
 
         if self.decoder_type is not None and hasattr(asr_model, "cur_decoder"):
             asr_model.change_decoding_strategy(decoder_type=self.decoder_type)
@@ -192,9 +170,7 @@ class NemoStreamingASRService:
 
         if self.att_context_size is not None:
             if hasattr(asr_model.encoder, "set_default_att_context_size"):
-                asr_model.encoder.set_default_att_context_size(
-                    att_context_size=self.att_context_size
-                )
+                asr_model.encoder.set_default_att_context_size(att_context_size=self.att_context_size)
             else:
                 raise ValueError("Model does not support multiple lookaheads.")
         else:
@@ -211,9 +187,7 @@ class NemoStreamingASRService:
             asr_model.change_decoding_strategy(decoding_cfg)
 
         if hasattr(asr_model.encoder, "set_default_att_context_size"):
-            asr_model.encoder.set_default_att_context_size(
-                att_context_size=self.att_context_size
-            )
+            asr_model.encoder.set_default_att_context_size(att_context_size=self.att_context_size)
 
         # chunk_size is set automatically for models trained for streaming.
         # For models trained for offline mode with full context, we need to pass the chunk_size explicitly.
@@ -306,18 +280,14 @@ class NemoStreamingASRService:
                 drop_extra_pre_encoded=self.drop_extra_pre_encoded,
             )
 
-        best_hyp = self._get_best_hypothesis(
-            encoded, encoded_len, partial_hypotheses=self._previous_hypotheses
-        )
+        best_hyp = self._get_best_hypothesis(encoded, encoded_len, partial_hypotheses=self._previous_hypotheses)
 
         self._previous_hypotheses = best_hyp
         self._cache_last_channel = cache_last_channel
         self._cache_last_time = cache_last_time
         self._cache_last_channel_len = cache_last_channel_len
 
-        tokens, probs = self._get_tokens_and_probs_from_alignments(
-            best_hyp[0].alignments
-        )
+        tokens, probs = self._get_tokens_and_probs_from_alignments(best_hyp[0].alignments)
 
         text = self.get_text_from_tokens(tokens)
 
@@ -334,16 +304,12 @@ class NemoStreamingASRService:
             is_final = True
             if self.eou_string in text:
                 eou_latency = (
-                    current_timestamp - self._last_transcript_timestamp
-                    if text.strip() == self.eou_string
-                    else 0.0
+                    current_timestamp - self._last_transcript_timestamp if text.strip() == self.eou_string else 0.0
                 )
                 eou_prob = self.get_eou_probability(tokens, probs, self.eou_string)
             if self.eob_string in text:
                 eob_latency = (
-                    current_timestamp - self._last_transcript_timestamp
-                    if text.strip() == self.eob_string
-                    else 0.0
+                    current_timestamp - self._last_transcript_timestamp if text.strip() == self.eob_string else 0.0
                 )
                 eob_prob = self.get_eou_probability(tokens, probs, self.eob_string)
             self.reset_state(stream_id=stream_id)
@@ -368,9 +334,7 @@ class NemoStreamingASRService:
         self._previous_hypotheses = self._get_blank_hypothesis()
         self._last_transcript_timestamp = time.time()
 
-    def get_eou_probability(
-        self, tokens: List[int], probs: List[float], eou_string: str = "<EOU>"
-    ) -> float:
+    def get_eou_probability(self, tokens: List[int], probs: List[float], eou_string: str = "<EOU>") -> float:
         """Return the probability of the end-of-utterance token in the current hypothesis."""
         text_tokens = self.tokenizer.ids_to_tokens(tokens)
         eou_index = text_tokens.index(eou_string)

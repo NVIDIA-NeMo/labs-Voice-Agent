@@ -12,7 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-try:
-    import pipecat
-except ImportError:
-    raise ImportError("pipecat is not installed. Please install it with `pip install pipecat-ai`.")
+navigation:
+  - page: Home
+    path: ../../index.md
+    slug: ""
+  - section: Getting Started
+    contents:
+      - page: Overview
+        path: ../../index.md
+        slug: overview
+  - section: Reference
+    slug: reference
+    contents:
+      - folder: ../product-docs/nemo-voice-agent/Full-Library-Reference

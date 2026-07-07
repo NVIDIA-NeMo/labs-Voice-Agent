@@ -42,6 +42,7 @@ from pipecat.services.tts_service import TTSService
 
 from nemo_voice_agent.pipecat.services.riva_speech import ResilientNemotronTTSService
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
+from nemo_voice_agent.pipecat.services.riva_speech import NemotronTTSService
 from nemo_voice_agent.pipecat.utils.text.simple_text_aggregator import (
     SimpleSegmentedTextAggregator,
 )
@@ -73,21 +74,17 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
         **kwargs,
     ):
         super().__init__(sample_rate=sample_rate, **kwargs)
-        logger.info(
-            f"Initializing TTS service with model: {model} and device: {device}"
-        )
+        logger.info(f"Initializing TTS service with model: {model} and device: {device}")
         self._model_name = model
         self._device = device
         self._model = self._setup_model()
         self._think_tokens = think_tokens
         self._audio_logger = audio_logger
         if think_tokens is not None:
-            assert (
-                isinstance(think_tokens, list) and len(think_tokens) == 2
-            ), f"think_tokens must be a list of two strings, but got type {type(think_tokens)}: {think_tokens}"
-        self._ignore_strings = (
-            set(ignore_strings) if ignore_strings is not None else None
-        )
+            assert isinstance(think_tokens, list) and len(think_tokens) == 2, (
+                f"think_tokens must be a list of two strings, but got type {type(think_tokens)}: {think_tokens}"
+            )
+        self._ignore_strings = set(ignore_strings) if ignore_strings is not None else None
         # Background processing infrastructure - no response handler needed
         self._tts_queue = asyncio.Queue()
         self._processing_task = None
@@ -161,9 +158,7 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
         try:
             while self._processing_running:
                 try:
-                    future = asyncio.run_coroutine_threadsafe(
-                        self._tts_queue.get(), self.get_event_loop()
-                    )
+                    future = asyncio.run_coroutine_threadsafe(self._tts_queue.get(), self.get_event_loop())
                     request = future.result()
 
                     if request is None:  # Stop signal
@@ -181,9 +176,7 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
                     response_queue = future.result()
 
                     if response_queue is None:
-                        logger.warning(
-                            f"No response queue found for request {request_id}"
-                        )
+                        logger.warning(f"No response queue found for request {request_id}")
                         continue
 
                     # Process TTS generation
@@ -202,9 +195,7 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
                     except Exception as e:
                         logger.error(f"Error in TTS generation: {e}")
                         # Send error directly to the waiting request
-                        asyncio.run_coroutine_threadsafe(
-                            response_queue.put(("error", e)), self.get_event_loop()
-                        )
+                        asyncio.run_coroutine_threadsafe(response_queue.put(("error", e)), self.get_event_loop())
 
                 except Exception as e:
                     logger.error(f"Error in background TTS processor: {e}")
@@ -348,20 +339,14 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
                 # Collect all audio for logging
                 all_audio_bytes = b""
                 # Capture the start time when TTS begins (not when it ends)
-                if (
-                    self._audio_logger is not None
-                    and self._audio_logger.first_audio_timestamp is None
-                ):
+                if self._audio_logger is not None and self._audio_logger.first_audio_timestamp is None:
                     self._audio_logger.first_audio_timestamp = datetime.now()
 
                 # Process the audio result (same as before)
                 if (
                     inspect.isgenerator(audio_result)
                     or isinstance(audio_result, list)
-                    or (
-                        hasattr(audio_result, "__iter__")
-                        and hasattr(audio_result, "__next__")
-                    )
+                    or (hasattr(audio_result, "__iter__") and hasattr(audio_result, "__next__"))
                 ):
                     # Handle generator/list case
                     first_chunk = True
@@ -371,9 +356,7 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
                             first_chunk = False
                             # Capture start time on first chunk
                             if self._audio_logger is not None:
-                                tts_start_time = (
-                                    self._audio_logger.get_time_from_start_of_session()
-                                )
+                                tts_start_time = self._audio_logger.get_time_from_start_of_session()
 
                         if audio_chunk is None:
                             break
@@ -400,9 +383,7 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
                     await self.stop_ttfb_metrics()
                     # Capture start time for single result
                     if self._audio_logger is not None:
-                        tts_start_time = (
-                            self._audio_logger.get_time_from_start_of_session()
-                        )
+                        tts_start_time = self._audio_logger.get_time_from_start_of_session()
                     audio_bytes = self._convert_to_bytes(audio_result)
                     all_audio_bytes = audio_bytes
 
@@ -412,9 +393,7 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
                         if not chunk:
                             break
 
-                        frame = TTSAudioRawFrame(
-                            audio=chunk, sample_rate=self.sample_rate, num_channels=1
-                        )
+                        frame = TTSAudioRawFrame(audio=chunk, sample_rate=self.sample_rate, num_channels=1)
                         yield frame
 
                 # Log the complete audio if logger is available
@@ -454,9 +433,7 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
             # Ensure it's in the right format (16-bit PCM)
             if audio_data.dtype in [np.float32, np.float64]:
                 # Convert float [-1, 1] to int16 [-32768, 32767]
-                audio_data = np.clip(
-                    audio_data, -1.0, 1.0
-                )  # Ensure values are in range
+                audio_data = np.clip(audio_data, -1.0, 1.0)  # Ensure values are in range
                 audio_data = (audio_data * 32767).astype(np.int16)
             elif audio_data.dtype != np.int16:
                 # Convert other integer types to int16
@@ -503,25 +480,17 @@ class NeMoFastPitchHiFiGANTTSService(BaseNemoTTSService):
 
     def _setup_fastpitch_model(self, model_name: str):
         if model_name.endswith(".nemo"):
-            fastpitch_model = FastPitchModel.restore_from(
-                model_name, map_location=torch.device(self._device)
-            )
+            fastpitch_model = FastPitchModel.restore_from(model_name, map_location=torch.device(self._device))
         else:
-            fastpitch_model = FastPitchModel.from_pretrained(
-                model_name, map_location=torch.device(self._device)
-            )
+            fastpitch_model = FastPitchModel.from_pretrained(model_name, map_location=torch.device(self._device))
         fastpitch_model.eval()
         return fastpitch_model
 
     def _setup_hifigan_model(self, model_name: str):
         if model_name.endswith(".nemo"):
-            hifigan_model = HifiGanModel.restore_from(
-                model_name, map_location=torch.device(self._device)
-            )
+            hifigan_model = HifiGanModel.restore_from(model_name, map_location=torch.device(self._device))
         else:
-            hifigan_model = HifiGanModel.from_pretrained(
-                model_name, map_location=torch.device(self._device)
-            )
+            hifigan_model = HifiGanModel.from_pretrained(model_name, map_location=torch.device(self._device))
         hifigan_model.eval()
         return hifigan_model
 
@@ -582,9 +551,7 @@ class KokoroTTSService(BaseNemoTTSService):
             self._model_maps = {}
         super().__init__(model=model, device=device, sample_rate=sample_rate, **kwargs)
 
-    def _setup_model(
-        self, lang_code: Optional[str] = None, voice: Optional[str] = None
-    ):
+    def _setup_model(self, lang_code: Optional[str] = None, voice: Optional[str] = None):
         """Initialize the Kokoro pipeline."""
         from nemo_voice_agent.pipecat.services.nemo import _espeak_gpl_shim
 
@@ -599,15 +566,11 @@ class KokoroTTSService(BaseNemoTTSService):
             lang_code = self._lang_code
         if voice is None:
             voice = self._voice
-        logger.info(
-            f"Loading Kokoro TTS model with model={self._model_name}, lang_code={lang_code}, voice={voice}"
-        )
+        logger.info(f"Loading Kokoro TTS model with model={self._model_name}, lang_code={lang_code}, voice={voice}")
         if lang_code in self._model_maps:
             pipeline = self._model_maps[lang_code]
         else:
-            pipeline = KPipeline(
-                lang_code=lang_code, device=self._device, repo_id=self._model_name
-            )
+            pipeline = KPipeline(lang_code=lang_code, device=self._device, repo_id=self._model_name)
             self._attach_g2p_fallback(pipeline)
             self._model_maps[lang_code] = pipeline
         return pipeline
@@ -632,9 +595,7 @@ class KokoroTTSService(BaseNemoTTSService):
         cache_models=True,
     ):
         """Download all models for Kokoro TTS service."""
-        logger.info(
-            f"Downloading all models for Kokoro TTS service with lang_code={lang_code}"
-        )
+        logger.info(f"Downloading all models for Kokoro TTS service with lang_code={lang_code}")
         from nemo_voice_agent.pipecat.services.nemo import _espeak_gpl_shim
 
         _espeak_gpl_shim.install()
@@ -662,9 +623,7 @@ class KokoroTTSService(BaseNemoTTSService):
         try:
             # Generate audio using Kokoro pipeline
             generator = self._model(text, voice=self._voice, speed=self._speed)
-            logger.debug(
-                f"Kokoro generating audio with voice: {self._voice} and speed: {self._speed}"
-            )
+            logger.debug(f"Kokoro generating audio with voice: {self._voice} and speed: {self._speed}")
             # The generator yields tuples of (gs, ps, audio)
             # We only need the audio component
             for i, (gs, ps, audio) in enumerate(generator):
@@ -703,18 +662,14 @@ class KokoroTTSService(BaseNemoTTSService):
                 "success": False,
                 "message": f"Speed remains unchanged since the change is not a positive number: {speed_lambda}",
             }
-            logger.debug(
-                f"Speed remains unchanged since the change is not a positive number: {speed_lambda}"
-            )
+            logger.debug(f"Speed remains unchanged since the change is not a positive number: {speed_lambda}")
         else:
             self._speed = speed_lambda * self._speed
             result = {
                 "success": True,
                 "message": f"Speed set to {speed_lambda} of the previous speed",
             }
-            logger.debug(
-                f"Speed set to {speed_lambda} of the previous speed {self._original_speed}"
-            )
+            logger.debug(f"Speed set to {speed_lambda} of the previous speed {self._original_speed}")
         await params.result_callback(result)
 
     async def tool_tts_reset_speed(self, params: FunctionCallParams):
@@ -730,9 +685,7 @@ class KokoroTTSService(BaseNemoTTSService):
             "success": True,
             "message": "Speaking speed is reset to the original one",
         }
-        logger.debug(
-            f"Speaking speed is reset to the original speed {self._original_speed}"
-        )
+        logger.debug(f"Speaking speed is reset to the original speed {self._original_speed}")
         await params.result_callback(result)
 
     async def tool_tts_speak_faster(self, params: FunctionCallParams):
@@ -749,9 +702,7 @@ class KokoroTTSService(BaseNemoTTSService):
             "success": True,
             "message": f"Speaking speed is increased to {speed_lambda} of the previous speed",
         }
-        logger.debug(
-            f"Speed is set to {speed_lambda} of the previous speed, new speed is {self._speed}"
-        )
+        logger.debug(f"Speed is set to {speed_lambda} of the previous speed, new speed is {self._speed}")
         await params.result_callback(result)
 
     async def tool_tts_speak_slower(self, params: FunctionCallParams):
@@ -768,14 +719,10 @@ class KokoroTTSService(BaseNemoTTSService):
             "success": True,
             "message": f"Speaking speed is decreased to {speed_lambda} of the previous speed",
         }
-        logger.debug(
-            f"Speed is set to {speed_lambda} of the previous speed, new speed is {self._speed}"
-        )
+        logger.debug(f"Speed is set to {speed_lambda} of the previous speed, new speed is {self._speed}")
         await params.result_callback(result)
 
-    async def tool_tts_set_voice(
-        self, params: FunctionCallParams, accent: str, gender: str
-    ):
+    async def tool_tts_set_voice(self, params: FunctionCallParams, accent: str, gender: str):
         """
         Set the accent and gender of the assistant's voice.
         This tool should be called only when the user specifies the accent and/or gender explicitly.
@@ -792,11 +739,7 @@ class KokoroTTSService(BaseNemoTTSService):
         """
         await params.llm.push_frame(LLMTextFrame("Just a moment."))
 
-        lang_code = (
-            "a"
-            if accent == "American English"
-            else "b" if accent == "British English" else "current"
-        )
+        lang_code = "a" if accent == "American English" else "b" if accent == "British English" else "current"
         new_lang_code = self._lang_code
         new_gender = self._gender
         if lang_code != "current":
@@ -823,9 +766,7 @@ class KokoroTTSService(BaseNemoTTSService):
         self._gender = new_gender
         self._voice = new_voice
         logger.debug(f"Language and voice are set to {new_lang_code} and {new_voice}")
-        await params.result_callback(
-            {"success": True, "message": "Voice has been updated."}
-        )
+        await params.result_callback({"success": True, "message": "Voice has been updated."})
 
     async def tool_tts_reset_voice(self, params: FunctionCallParams):
         """
@@ -838,9 +779,7 @@ class KokoroTTSService(BaseNemoTTSService):
         """
         await params.llm.push_frame(LLMTextFrame("Of course."))
 
-        new_model = await asyncio.to_thread(
-            self._setup_model, self._original_lang_code, self._original_voice
-        )
+        new_model = await asyncio.to_thread(self._setup_model, self._original_lang_code, self._original_voice)
         self._model = new_model
         self._lang_code = self._original_lang_code
         self._gender = self._original_gender
@@ -848,21 +787,15 @@ class KokoroTTSService(BaseNemoTTSService):
         logger.debug(
             f"Language and voice are reset to the original ones {self._original_lang_code} and {self._original_voice}"
         )
-        await params.result_callback(
-            {"success": True, "message": "Voice has been reset to the original one."}
-        )
+        await params.result_callback({"success": True, "message": "Voice has been reset to the original one."})
 
     def setup_tool_calling(self):
         """
         Setup the tool calling mixin by registering all available tools.
         """
         self.register_direct_function("tool_tts_reset_speed", self.tool_tts_reset_speed)
-        self.register_direct_function(
-            "tool_tts_speak_faster", self.tool_tts_speak_faster
-        )
-        self.register_direct_function(
-            "tool_tts_speak_slower", self.tool_tts_speak_slower
-        )
+        self.register_direct_function("tool_tts_speak_faster", self.tool_tts_speak_faster)
+        self.register_direct_function("tool_tts_speak_slower", self.tool_tts_speak_slower)
         self.register_direct_function("tool_tts_set_speed", self.tool_tts_set_speed)
         self.register_direct_function("tool_tts_set_voice", self.tool_tts_set_voice)
         self.register_direct_function("tool_tts_reset_voice", self.tool_tts_reset_voice)
@@ -906,9 +839,7 @@ class MagpieTTSService(BaseNemoTTSService):
         **kwargs,
     ):
         if speaker not in self.SPEAKER_MAP:
-            raise ValueError(
-                f"Invalid speaker: {speaker}, must be one of {list(self.SPEAKER_MAP.keys())}"
-            )
+            raise ValueError(f"Invalid speaker: {speaker}, must be one of {list(self.SPEAKER_MAP.keys())}")
         self._language = language
         self._current_speaker = speaker
         self._apply_TN = apply_TN
@@ -918,13 +849,9 @@ class MagpieTTSService(BaseNemoTTSService):
         from nemo.collections.tts.models import MagpieTTSModel
 
         if self._model_name.endswith(".nemo"):
-            model = MagpieTTSModel.restore_from(
-                self._model_name, map_location=torch.device(self._device)
-            )
+            model = MagpieTTSModel.restore_from(self._model_name, map_location=torch.device(self._device))
         else:
-            model = MagpieTTSModel.from_pretrained(
-                self._model_name, map_location=torch.device(self._device)
-            )
+            model = MagpieTTSModel.from_pretrained(self._model_name, map_location=torch.device(self._device))
         model.eval()
 
         text = "Warming up the Magpie TTS model, this will help the model to respond faster for later requests."
@@ -954,9 +881,7 @@ class MagpieTTSService(BaseNemoTTSService):
         pass
 
 
-def get_tts_service_from_config(
-    config: DictConfig, audio_logger: Optional[AudioLogger] = None
-) -> BaseNemoTTSService:
+def get_tts_service_from_config(config: DictConfig, audio_logger: Optional[AudioLogger] = None) -> BaseNemoTTSService:
     """Get the TTS service from the configuration.
 
     Args:
@@ -969,7 +894,9 @@ def get_tts_service_from_config(
         config = OmegaConf.to_container(config, resolve=True)
 
     available_types = ["nemo", "nvidia", "nemotron"]
-    assert config.get("type") in available_types, f"Invalid TTS type: {config.get('type')}, only {available_types} are supported"
+    assert config.get("type") in available_types, (
+        f"Invalid TTS type: {config.get('type')}, only {available_types} are supported"
+    )
 
     logger.debug(f"Getting TTS service from config: {config}")
     model = config.get("model", None)
@@ -1055,6 +982,4 @@ def get_tts_service_from_config(
             ignore_strings=config.get("ignore_strings", None),
         )
     else:
-        raise ValueError(
-            f"Invalid model: {model}, only 'fastpitch-hifigan', 'magpie' and 'kokoro' are supported"
-        )
+        raise ValueError(f"Invalid model: {model}, only 'fastpitch-hifigan', 'magpie' and 'kokoro' are supported")

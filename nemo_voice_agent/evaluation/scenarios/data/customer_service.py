@@ -32,7 +32,10 @@ from nemo_voice_agent.evaluation.tools.customer_service_tools import (
     DEFAULT_RESOLUTION_TYPES,
 )
 
-RESOLUTION_TYPES_INFO = f"Valid `resolution_type` values for `ResolveTicketTool`: {', '.join(DEFAULT_RESOLUTION_TYPES)}."
+
+RESOLUTION_TYPES_INFO = (
+    f"Valid `resolution_type` values for `ResolveTicketTool`: {', '.join(DEFAULT_RESOLUTION_TYPES)}."
+)
 
 
 class CustomerServiceBaseScenario(Scenario):
@@ -217,8 +220,7 @@ class CustomerServiceBillingDispute(CustomerServiceBaseScenario):
                 "statement that you never authorized."
             ),
             personality=(
-                "You are frustrated but polite. You want a clear explanation and a refund for the unauthorized "
-                "charge."
+                "You are frustrated but polite. You want a clear explanation and a refund for the unauthorized charge."
             ),
         )
 
@@ -458,8 +460,7 @@ class CustomerServiceDefectiveReplacement(CustomerServiceBaseScenario):
         return Task(
             goal="Report the defective laptop with a cracked screen and get a replacement unit.",
             background=(
-                "You just received your TechCorp Pro Laptop and discovered the screen is cracked right out of the "
-                "box."
+                "You just received your TechCorp Pro Laptop and discovered the screen is cracked right out of the box."
             ),
         )
 
@@ -799,8 +800,7 @@ class CustomerServiceAccountAccess(CustomerServiceBaseScenario):
                 "password attempts. Your email on file is david@school.edu."
             ),
             personality=(
-                "You are anxious and a bit embarrassed about forgetting your password. You need step-by-step "
-                "guidance."
+                "You are anxious and a bit embarrassed about forgetting your password. You need step-by-step guidance."
             ),
         )
 
@@ -1136,9 +1136,7 @@ class CustomerServiceWrongItem(CustomerServiceBaseScenario):
     """Customer received the wrong item in their order."""
 
     name = "customer_service__wrong_item"
-    description = (
-        "Customer received the wrong item and needs the correct product shipped."
-    )
+    description = "Customer received the wrong item and needs the correct product shipped."
     reference_answer = {
         "issue_summary": "Customer ordered TechCorp Wireless Earbuds Pro but received TechCorp Wireless Earbuds Basic instead.",
         "resolution_type": "replacement",

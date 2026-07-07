@@ -156,35 +156,40 @@ jobs:
             sed "s|path: |path: ${TAG_VERSION}-content/|g" > "docs/fern/versions/${TAG_VERSION}.yml"
 
           export TAG_VERSION
-          EXPR='.products[0].versions += [{"display-name": env(TAG_VERSION),'
+          EXPR='.versions += [{"display-name": env(TAG_VERSION),'
           EXPR+=' "path": "versions/" + env(TAG_VERSION) + ".yml",'
           EXPR+=' "slug": env(TAG_VERSION), "availability": "stable"}]'
           yq -i "$EXPR" docs/fern/docs.yml
 
           # Sort all version entries by semver descending
-          SORTED_SLUGS=$(yq '.products[0].versions[].slug' docs/fern/docs.yml | sort -rV)
-          yq -i '.products[0].versions = []' docs/fern/docs.yml
+          SORTED_SLUGS=$(yq '.versions[].slug | select(. != "nightly")' docs/fern/docs.yml | sort -rV)
+          yq -i '.versions = [.versions[] | select(.slug == "nightly")]' docs/fern/docs.yml
           for slug in $SORTED_SLUGS; do
             export slug
-            yq -i '.products[0].versions += [{"display-name": env(slug), "path": "versions/" + env(slug) + ".yml", "slug": env(slug), "availability": "stable"}]' docs/fern/docs.yml
+            yq -i '.versions += [{"display-name": env(slug), "path": "versions/" + env(slug) + ".yml", "slug": env(slug), "availability": "stable"}]' docs/fern/docs.yml
           done
 
           echo "--- docs.yml versions after insert + sort ---"
-          yq '.products[0].versions[].display-name' docs/fern/docs.yml
+          yq '.versions[].display-name' docs/fern/docs.yml
 
       - name: Prune old versions
         if: steps.resolve.outputs.is_release == 'true'
         run: |
           set -eo pipefail
-          TOTAL=$(yq '.products[0].versions | length' docs/fern/docs.yml)
+          TOTAL=$(yq '[.versions[] | select(.slug != "nightly")] | length' docs/fern/docs.yml)
 
           if [ "$TOTAL" -le "$MAX_VERSIONS" ]; then
             echo "Only $TOTAL versions — nothing to prune (keeping $MAX_VERSIONS)"
             exit 0
           fi
 
-          PRUNED=$(yq ".products[0].versions[$MAX_VERSIONS:][].slug" docs/fern/docs.yml)
-          yq -i ".products[0].versions |= .[:$MAX_VERSIONS]" docs/fern/docs.yml
+          PRUNED=$(yq "[.versions[] | select(.slug != \"nightly\")][$MAX_VERSIONS:][].slug" docs/fern/docs.yml)
+          KEEP=$(yq "[.versions[] | select(.slug != \"nightly\")][:$MAX_VERSIONS][].slug" docs/fern/docs.yml)
+          yq -i '.versions = [.versions[] | select(.slug == "nightly")]' docs/fern/docs.yml
+          for slug in $KEEP; do
+            export slug
+            yq -i '.versions += [{"display-name": env(slug), "path": "versions/" + env(slug) + ".yml", "slug": env(slug), "availability": "stable"}]' docs/fern/docs.yml
+          done
 
           for slug in $PRUNED; do
             rm -f "docs/fern/versions/${slug}.yml"
@@ -192,7 +197,7 @@ jobs:
           done
 
           echo "--- docs.yml versions after prune ---"
-          yq '.products[0].versions[].display-name' docs/fern/docs.yml
+          yq '.versions[].display-name' docs/fern/docs.yml
 
       - name: Checkout frozen version content
         run: |
@@ -217,13 +222,13 @@ jobs:
       - name: Stamp newest version as Latest
         run: |
           cp docs/fern/docs.yml /tmp/docs.yml.preStamp
-          NEWEST=$(yq '.products[0].versions[0].display-name' docs/fern/docs.yml)
+          NEWEST=$(yq '.versions[1].display-name' docs/fern/docs.yml)
           if [ -n "$NEWEST" ] && [ "$NEWEST" != "null" ]; then
             export NEWEST
-            yq -i '.products[0].versions[0].display-name = "Latest · " + env(NEWEST)' docs/fern/docs.yml
+            yq -i '.versions[1].display-name = "Latest · " + env(NEWEST)' docs/fern/docs.yml
           fi
           echo "--- docs.yml versions after stamp ---"
-          yq '.products[0].versions[].display-name' docs/fern/docs.yml
+          yq '.versions[].display-name' docs/fern/docs.yml
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -239,6 +244,8 @@ jobs:
         working-directory: ./docs/fern
         run: |
           set -o pipefail
+          fern docs md generate --library nemo-voice-agent
+          npm run sanitize:generated
           fern generate --docs 2>&1 | tee /tmp/fern-output.log
           URL=$(grep -oP 'Published docs to \K.*(?= \()' /tmp/fern-output.log || true)
           if [ -n "$URL" ]; then

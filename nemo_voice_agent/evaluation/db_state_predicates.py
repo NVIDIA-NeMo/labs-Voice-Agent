@@ -59,6 +59,7 @@ from typing import Any, Callable, Dict, Optional
 
 from loguru import logger
 
+
 # Predicate signature: ``(db: dict, **arguments) -> bool``.
 Predicate = Callable[..., bool]
 
@@ -176,9 +177,7 @@ def evaluate_db_state_assertion(
     elif side == "agent":
         target_db = db
     else:
-        verdict["error"] = (
-            f"Unknown side {side!r}; expected 'user' or 'agent'."
-        )
+        verdict["error"] = f"Unknown side {side!r}; expected 'user' or 'agent'."
         return verdict
 
     if target_db is None:

@@ -485,7 +485,7 @@ def create_get_scenario_summary_action(
             db = shared_state_ref.state.get("db") or {}
             db_hash = get_dict_hash(db) if db else None
             logger.debug(
-                f"Returning scenario summary: {len(actions)} action(s), " f"db_hash={db_hash}, include_db={include_db}"
+                f"Returning scenario summary: {len(actions)} action(s), db_hash={db_hash}, include_db={include_db}"
             )
             await _maybe_end_task(task_ref)
             response: dict[str, Any] = {
@@ -614,7 +614,7 @@ def create_apply_initialization_action(
             if not isinstance(init_payload, dict):
                 return {
                     "success": False,
-                    "errors": [f"shared_state_init must decode to a dict, got " f"{type(init_payload).__name__}."],
+                    "errors": [f"shared_state_init must decode to a dict, got {type(init_payload).__name__}."],
                 }
             shared_state.update(init_payload)
 
@@ -646,7 +646,7 @@ def create_apply_initialization_action(
             #    only entries belonging to this bot before sending. The
             #    handler is side-agnostic.
             db = shared_state.get("db")
-            logger.info(f"[APPLY INIT] domain={domain!r}, actions={len(actions)}, " f"db_present={db is not None}")
+            logger.info(f"[APPLY INIT] domain={domain!r}, actions={len(actions)}, db_present={db is not None}")
             if actions and db is None:
                 return {
                     "success": False,
@@ -660,14 +660,14 @@ def create_apply_initialization_action(
                 # No init mutations to apply; the DB-load step above is
                 # the entire purpose of this call. Return success so the
                 # bridge can proceed to the conversation.
-                logger.info(f"[APPLY INIT] no actions to apply (DB-load-only call)")
+                logger.info("[APPLY INIT] no actions to apply (DB-load-only call)")
                 return {"success": True, "errors": []}
 
             result = _apply(domain=domain, actions=actions, db=db)
             if result["success"]:
                 logger.info(f"[APPLY INIT] success ({len(actions)} action(s) applied)")
             else:
-                logger.warning(f"[APPLY INIT] failure with {len(result['errors'])} error(s): " f"{result['errors']}")
+                logger.warning(f"[APPLY INIT] failure with {len(result['errors'])} error(s): {result['errors']}")
             return result
         except Exception as e:
             logger.error(f"Error applying initialization: {e}")
@@ -739,7 +739,7 @@ def create_apply_sync_delta_action(
                 }
             db = shared_state_ref.state.get("db") if shared_state_ref.state else None
             logger.info(
-                f"[APPLY SYNC] domain={domain!r}, delta_keys={list(delta.keys())}, " f"db_present={db is not None}"
+                f"[APPLY SYNC] domain={domain!r}, delta_keys={list(delta.keys())}, db_present={db is not None}"
             )
             if db is None:
                 return {

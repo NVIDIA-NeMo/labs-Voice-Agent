@@ -28,10 +28,9 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response import LLMUserContextAggregator
 from pipecat.processors.frame_processor import FrameProcessor
 
+
 DEFAULT_TEXT_PROMPT_FOR_AUDIO = "Follow instructions or answer questions in the audio."
-DEFAULT_TEXT_PROMPT_FOR_TRANSCRIPT = (
-    "Here is the pseudo-transcript of the audio for reference:"
-)
+DEFAULT_TEXT_PROMPT_FOR_TRANSCRIPT = "Here is the pseudo-transcript of the audio for reference:"
 
 
 class UserAudioBuffer(FrameProcessor):
@@ -66,12 +65,8 @@ class UserAudioBuffer(FrameProcessor):
         self._user_speaking = False
         self._transcript_buffer = []
         self._use_transcript = use_transcript
-        self._text_prompt_for_audio = (
-            text_prompt_for_audio or DEFAULT_TEXT_PROMPT_FOR_AUDIO
-        )
-        self._text_prompt_for_transcript = (
-            text_prompt_for_transcript or DEFAULT_TEXT_PROMPT_FOR_TRANSCRIPT
-        )
+        self._text_prompt_for_audio = text_prompt_for_audio or DEFAULT_TEXT_PROMPT_FOR_AUDIO
+        self._text_prompt_for_transcript = text_prompt_for_transcript or DEFAULT_TEXT_PROMPT_FOR_TRANSCRIPT
         self._raw_audio_frame_len_in_secs = raw_audio_frame_len_in_secs
         self._previsous_user_text = ""
         self._keep_only_last_audio_turn = keep_only_last_audio_turn
@@ -112,9 +107,7 @@ class UserAudioBuffer(FrameProcessor):
             seen_user_turns += 1
 
         if last_audio_turn_idx is not None:
-            self._context.messages[last_audio_turn_idx][
-                "content"
-            ] = self._previsous_user_text
+            self._context.messages[last_audio_turn_idx]["content"] = self._previsous_user_text
             logger.debug(f"Replaced old audio turn with: {self._previsous_user_text}")
             logger.debug(f"New context: {self._context.messages}")
 
@@ -123,26 +116,24 @@ class UserAudioBuffer(FrameProcessor):
 
         if isinstance(frame, TranscriptionFrame):
             self._transcript_buffer.append(frame.text)
-            logger.debug(
-                f"Added transcript to buffer: `{frame.text}`. New buffer: {self._transcript_buffer}"
-            )
+            logger.debug(f"Added transcript to buffer: `{frame.text}`. New buffer: {self._transcript_buffer}")
             return
         elif isinstance(frame, UserStartedSpeakingFrame):
-            logger.debug(f"User started speaking")
+            logger.debug("User started speaking")
             self._user_speaking = True
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._user_speaking = False
-            logger.debug(f"User stopped speaking")
+            logger.debug("User stopped speaking")
             if self._keep_only_last_audio_turn:
                 self._replace_previous_audio_turns()
             text = self._text_prompt_for_audio
             current_transcript = self._finalize_transcript()
             if self._use_transcript and self._transcript_buffer:
                 text += f"\n{self._text_prompt_for_transcript}\n{current_transcript}"
-            self._previsous_user_text = f"{self._text_prompt_for_audio}\n{self._text_prompt_for_transcript}\n`{current_transcript}`".strip()
-            await self._context.add_audio_frames_message(
-                audio_frames=self._audio_frames, text=text
+            self._previsous_user_text = (
+                f"{self._text_prompt_for_audio}\n{self._text_prompt_for_transcript}\n`{current_transcript}`".strip()
             )
+            await self._context.add_audio_frames_message(audio_frames=self._audio_frames, text=text)
             logger.debug(
                 f"Adding audio frames message to context: {text}. Audio duration: {self.buffer_duration} seconds."
             )

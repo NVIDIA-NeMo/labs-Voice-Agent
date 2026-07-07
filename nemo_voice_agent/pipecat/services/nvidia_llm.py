@@ -90,19 +90,11 @@ class NvidiaLLMService(OpenAILLMService):
         hint = "Check NVIDIA_LLM_URL, NVIDIA_LLM_MODEL, and NVIDIA_API_KEY."
         if isinstance(err, httpx.HTTPStatusError):
             if err.response.status_code == 404:
-                raise ValueError(
-                    f"Nvidia LLM returned 404 (wrong URL or model). {hint}"
-                ) from err
+                raise ValueError(f"Nvidia LLM returned 404 (wrong URL or model). {hint}") from err
             if err.response.status_code == 401:
-                raise ValueError(
-                    f"Nvidia LLM returned 401 (bad API key). {hint}"
-                ) from err
-            raise ValueError(
-                f"Nvidia LLM returned HTTP {err.response.status_code}. {hint}"
-            ) from err
-        if isinstance(
-            err, (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException)
-        ):
+                raise ValueError(f"Nvidia LLM returned 401 (bad API key). {hint}") from err
+            raise ValueError(f"Nvidia LLM returned HTTP {err.response.status_code}. {hint}") from err
+        if isinstance(err, (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException)):
             raise ValueError(f"Cannot connect to Nvidia LLM. {hint}") from err
         if "404" in msg or "not found" in msg:
             raise ValueError(f"Nvidia LLM 404 or model not found. {hint}") from err
@@ -158,9 +150,7 @@ class NvidiaLLMService(OpenAILLMService):
             else:
                 # New role, add the previous combined message if it exists
                 if current_role is not None:
-                    processed_messages.append(
-                        {"role": current_role, "content": combined_content}
-                    )
+                    processed_messages.append({"role": current_role, "content": combined_content})
 
                 # Start new combined message
                 current_role = role
@@ -168,9 +158,7 @@ class NvidiaLLMService(OpenAILLMService):
 
         # Add the last combined message
         if current_role is not None:
-            processed_messages.append(
-                {"role": current_role, "content": combined_content}
-            )
+            processed_messages.append({"role": current_role, "content": combined_content})
 
         return processed_messages
 
@@ -195,15 +183,11 @@ class NvidiaLLMService(OpenAILLMService):
         if self._mistral_model_support:
             original_messages = context.get_messages()
             if original_messages:
-                processed_messages = self._preprocess_messages_for_mistral(
-                    original_messages
-                )
+                processed_messages = self._preprocess_messages_for_mistral(original_messages)
 
                 # Skip processing if the last (or only) message is a system message
                 if processed_messages[-1].get("role") == "system":
-                    logger.debug(
-                        "Only system message is provided in the context, so skipping the LLM call."
-                    )
+                    logger.debug("Only system message is provided in the context, so skipping the LLM call.")
                     return
 
                 context.set_messages(processed_messages)
@@ -229,9 +213,7 @@ class NvidiaLLMService(OpenAILLMService):
 
         try:
             await self.start_ttfb_metrics()
-            chunk_stream = await self._stream_chat_completions_universal_context(
-                context
-            )
+            chunk_stream = await self._stream_chat_completions_universal_context(context)
 
             async for chunk in chunk_stream:
                 if chunk.usage:
@@ -292,23 +274,12 @@ class NvidiaLLMService(OpenAILLMService):
                                 if end_of_sentence_pos > 0:
                                     self._first_sentence_detected = True
 
-                            if (
-                                self._first_sentence_detected
-                                and self._first_sentence_start_time is not None
-                            ):
-                                first_sentence_time = (
-                                    time.time() - self._first_sentence_start_time
-                                )
-                                logger.debug(
-                                    f"{self} LLM first sentence generation time: {first_sentence_time:.3f}"
-                                )
+                            if self._first_sentence_detected and self._first_sentence_start_time is not None:
+                                first_sentence_time = time.time() - self._first_sentence_start_time
+                                logger.debug(f"{self} LLM first sentence generation time: {first_sentence_time:.3f}")
 
             # Process any remaining content in buffers
-            if (
-                self._filter_think_tokens
-                and not self._seen_end_tag
-                and self._thinking_aggregation
-            ):
+            if self._filter_think_tokens and not self._seen_end_tag and self._thinking_aggregation:
                 # No </think> tag was ever seen even after enabling filtering thinking tokens,
                 # so treat everything as actual response and push the aggregated content
                 await self.push_frame(LLMTextFrame(self._thinking_aggregation))
@@ -466,9 +437,7 @@ class NvidiaLLMService(OpenAILLMService):
                 and self._first_sentence_start_time is not None
             ):
                 processing_time = time.time() - self._first_sentence_start_time
-                logger.debug(
-                    f"{self} LLM first sentence generation time: {processing_time:.3f}"
-                )
+                logger.debug(f"{self} LLM first sentence generation time: {processing_time:.3f}")
 
             await self.push_frame(LLMFullResponseEndFrame())
 
@@ -504,11 +473,7 @@ class NvidiaLLMService(OpenAILLMService):
                 await self.cancel_task(self._current_task)
                 self._current_task = None
                 logger.trace("Old Nvidia LLM task terminated")
-            self._current_task = self.create_task(
-                self._process_context_and_frames(context)
-            )
+            self._current_task = self.create_task(self._process_context_and_frames(context))
             logger.trace("New Nvidia LLM task created")
 
-            self._current_task.add_done_callback(
-                lambda _: setattr(self, "_current_task", None)
-            )
+            self._current_task.add_done_callback(lambda _: setattr(self, "_current_task", None))

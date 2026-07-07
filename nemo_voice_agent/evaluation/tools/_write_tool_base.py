@@ -28,12 +28,13 @@ time based on which WebSocket produced the record; the gold-replay path stamps
 """
 
 import asyncio
-import json
 from typing import ClassVar, List
 
 from loguru import logger
 from pipecat.processors.frameworks.rtvi import RTVIProcessor, RTVIServerMessage, RTVITextMessageData
+
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
+
 
 _EXIT_START = "<exit>"
 _EXIT_END = "</exit>"
@@ -77,8 +78,7 @@ class WriteScenarioTool(StandardSchemaTool):
         """
         if action.get("action_type") not in self.ACTION_TYPES:
             logger.warning(
-                f"{type(self).__name__}._record_action: action_type "
-                f"{action.get('action_type')!r} not in ACTION_TYPES"
+                f"{type(self).__name__}._record_action: action_type {action.get('action_type')!r} not in ACTION_TYPES"
             )
         self.state.setdefault("actions", []).append(action)
         self._emit_action_applied(action)
@@ -129,14 +129,9 @@ class WriteScenarioTool(StandardSchemaTool):
                 try:
                     asyncio.get_event_loop().create_task(coro)
                 except RuntimeError:
-                    logger.debug(
-                        "action-applied push skipped: no event loop available"
-                    )
+                    logger.debug("action-applied push skipped: no event loop available")
         except Exception as exc:
-            logger.warning(
-                f"action-applied push failed for {action.get('name')!r}: "
-                f"{type(exc).__name__}: {exc}"
-            )
+            logger.warning(f"action-applied push failed for {action.get('name')!r}: {type(exc).__name__}: {exc}")
 
     async def _send_exit_message(self) -> None:
         """Emit ``<exit>`` to the bridge, ending the scenario immediately.

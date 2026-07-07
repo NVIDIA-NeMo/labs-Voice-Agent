@@ -106,9 +106,7 @@ def test_compute_returns_na_when_no_whitelisted_signal_applicable():
 
 
 def test_compute_returns_true_when_all_applicable_pass():
-    scenario = _make_minimal_scenario(
-        (SuccessSignal.DB_STATE_MATCH, SuccessSignal.NL_ASSERTION)
-    )
+    scenario = _make_minimal_scenario((SuccessSignal.DB_STATE_MATCH, SuccessSignal.NL_ASSERTION))
     signals = {
         SuccessSignal.ACTION_MATCH: None,
         SuccessSignal.DB_STATE_MATCH: True,
@@ -120,9 +118,7 @@ def test_compute_returns_true_when_all_applicable_pass():
 
 
 def test_compute_returns_false_when_any_applicable_fails():
-    scenario = _make_minimal_scenario(
-        (SuccessSignal.DB_STATE_MATCH, SuccessSignal.NL_ASSERTION)
-    )
+    scenario = _make_minimal_scenario((SuccessSignal.DB_STATE_MATCH, SuccessSignal.NL_ASSERTION))
     signals = {
         SuccessSignal.ACTION_MATCH: True,  # not in whitelist — excluded
         SuccessSignal.DB_STATE_MATCH: True,
@@ -218,9 +214,7 @@ def test_clean_exit_gates_when_in_whitelist():
     policy-refusal scenarios where ``expected_scenario_db == initial_scenario_db``,
     making `db_state_match=True` a "win by inaction" — `CLEAN_EXIT` plugs that gap.
     """
-    scenario = _make_minimal_scenario(
-        (SuccessSignal.DB_STATE_MATCH, SuccessSignal.CLEAN_EXIT)
-    )
+    scenario = _make_minimal_scenario((SuccessSignal.DB_STATE_MATCH, SuccessSignal.CLEAN_EXIT))
     # DB matches BUT conversation TIMEOUTed — CLEAN_EXIT=False → composite=False.
     signals = {
         SuccessSignal.ACTION_MATCH: None,

@@ -29,9 +29,7 @@ def voice_agent_server_base_path():
     """Retrieve the repo root path from __file__ variable"""
     repo_root_path = Path(__file__).resolve().parents[2]
 
-    voice_agent_root_path = os.path.join(
-        repo_root_path, "examples", "generic_voice_agent", "server"
-    )
+    voice_agent_root_path = os.path.join(repo_root_path, "examples", "generic_voice_agent", "server")
     return voice_agent_root_path
 
 
@@ -74,8 +72,7 @@ class TestDefaultConfigs:
 
         # STT_MODEL can be either a fastconformer model or an EOU model (e.g., parakeet_realtime_eou)
         assert (
-            "stt_en_fastconformer" in config_manager.STT_MODEL
-            or "parakeet_realtime_eou" in config_manager.STT_MODEL
+            "stt_en_fastconformer" in config_manager.STT_MODEL or "parakeet_realtime_eou" in config_manager.STT_MODEL
         )
         assert isinstance(config_manager.stt_params, NeMoSTTInputParams)
 
@@ -90,21 +87,17 @@ class TestDefaultConfigs:
         """Test diarization configuration."""
         config_manager = ConfigManager(voice_agent_server_base_path)
 
-        assert hasattr(config_manager, "DIAR_MODEL") and isinstance(
-            config_manager.DIAR_MODEL, str
-        )
-        assert hasattr(config_manager, "USE_DIAR") and isinstance(
-            config_manager.USE_DIAR, bool
-        )
+        assert hasattr(config_manager, "DIAR_MODEL") and isinstance(config_manager.DIAR_MODEL, str)
+        assert hasattr(config_manager, "USE_DIAR") and isinstance(config_manager.USE_DIAR, bool)
         assert isinstance(config_manager.diar_params, NeMoDiarInputParams)
 
     @pytest.mark.unit
     def test_configure_turn_taking(self, voice_agent_server_base_path):
         """Test turn taking configuration."""
         config_manager = ConfigManager(voice_agent_server_base_path)
-        assert hasattr(
-            config_manager, "TURN_TAKING_BACKCHANNEL_PHRASES_PATH"
-        ) and isinstance(config_manager.TURN_TAKING_BACKCHANNEL_PHRASES_PATH, str)
+        assert hasattr(config_manager, "TURN_TAKING_BACKCHANNEL_PHRASES_PATH") and isinstance(
+            config_manager.TURN_TAKING_BACKCHANNEL_PHRASES_PATH, str
+        )
         assert hasattr(config_manager, "TURN_TAKING_MAX_BUFFER_SIZE") and isinstance(
             config_manager.TURN_TAKING_MAX_BUFFER_SIZE, int
         )
@@ -113,9 +106,7 @@ class TestDefaultConfigs:
         )
 
     @pytest.mark.unit
-    def test_configure_turn_taking_backchannel_phrases(
-        self, voice_agent_server_base_path
-    ):
+    def test_configure_turn_taking_backchannel_phrases(self, voice_agent_server_base_path):
         """Test turn taking configuration."""
         config_manager = ConfigManager(voice_agent_server_base_path)
         # Load backchannel phrases yaml file
@@ -135,35 +126,25 @@ class TestDefaultConfigs:
         """Test LLM configuration with model from registry."""
         config_manager = ConfigManager(voice_agent_server_base_path)
 
-        assert hasattr(config_manager, "SYSTEM_ROLE") and isinstance(
-            config_manager.SYSTEM_ROLE, str
-        )
-        assert hasattr(config_manager, "SYSTEM_PROMPT") and isinstance(
-            config_manager.SYSTEM_PROMPT, str
-        )
+        assert hasattr(config_manager, "SYSTEM_ROLE") and isinstance(config_manager.SYSTEM_ROLE, str)
+        assert hasattr(config_manager, "SYSTEM_PROMPT") and isinstance(config_manager.SYSTEM_PROMPT, str)
 
     @pytest.mark.unit
     def test_configure_llm_with_file_system_prompt(self, voice_agent_server_base_path):
         config_manager = ConfigManager(voice_agent_server_base_path)
-        assert hasattr(config_manager, "SYSTEM_PROMPT") and isinstance(
-            config_manager.SYSTEM_PROMPT, str
-        )
+        assert hasattr(config_manager, "SYSTEM_PROMPT") and isinstance(config_manager.SYSTEM_PROMPT, str)
 
     @pytest.mark.unit
     def test_configure_llm_reasoning_model(self, voice_agent_server_base_path):
         """Test LLM configuration for reasoning model."""
         config_manager = ConfigManager(voice_agent_server_base_path)
-        assert hasattr(config_manager, "SYSTEM_ROLE") and isinstance(
-            config_manager.SYSTEM_ROLE, str
-        )
+        assert hasattr(config_manager, "SYSTEM_ROLE") and isinstance(config_manager.SYSTEM_ROLE, str)
 
     @pytest.mark.unit
     def test_configure_llm_fallback_to_generic(self, voice_agent_server_base_path):
         """Test LLM configuration fallback to generic HF model."""
         config_manager = ConfigManager(voice_agent_server_base_path)
-        assert hasattr(config_manager, "SYSTEM_ROLE") and isinstance(
-            config_manager.SYSTEM_ROLE, str
-        )
+        assert hasattr(config_manager, "SYSTEM_ROLE") and isinstance(config_manager.SYSTEM_ROLE, str)
 
     @pytest.mark.unit
     def test_configure_tts_nemo_model(self, voice_agent_server_base_path):
@@ -179,13 +160,9 @@ class TestDefaultConfigs:
         """Test TTS configuration with optional parameters."""
         config_manager = ConfigManager(voice_agent_server_base_path)
 
-        assert hasattr(config_manager, "TTS_THINK_TOKENS") and isinstance(
-            config_manager.TTS_THINK_TOKENS, list
-        )
+        assert hasattr(config_manager, "TTS_THINK_TOKENS") and isinstance(config_manager.TTS_THINK_TOKENS, list)
         assert all(isinstance(item, str) for item in config_manager.TTS_THINK_TOKENS)
-        assert hasattr(config_manager, "TTS_EXTRA_SEPARATOR") and isinstance(
-            config_manager.TTS_EXTRA_SEPARATOR, list
-        )
+        assert hasattr(config_manager, "TTS_EXTRA_SEPARATOR") and isinstance(config_manager.TTS_EXTRA_SEPARATOR, list)
         assert all(isinstance(item, str) for item in config_manager.TTS_EXTRA_SEPARATOR)
 
     @pytest.mark.unit
@@ -215,16 +192,10 @@ class TestDefaultConfigs:
         vad_params = config_manager.get_vad_params()
 
         assert isinstance(vad_params, VADParams)
-        assert (
-            isinstance(vad_params.confidence, float)
-            and 0.0 <= vad_params.confidence <= 1.0
-        )
+        assert isinstance(vad_params.confidence, float) and 0.0 <= vad_params.confidence <= 1.0
         assert isinstance(vad_params.start_secs, float) and vad_params.start_secs >= 0.0
         assert isinstance(vad_params.stop_secs, float) and vad_params.stop_secs >= 0.0
-        assert (
-            isinstance(vad_params.min_volume, float)
-            and 0.0 <= vad_params.min_volume <= 1.0
-        )
+        assert isinstance(vad_params.min_volume, float) and 0.0 <= vad_params.min_volume <= 1.0
 
     @pytest.mark.unit
     def test_get_stt_params(self, voice_agent_server_base_path):
@@ -235,10 +206,7 @@ class TestDefaultConfigs:
         assert isinstance(stt_params, NeMoSTTInputParams)
         assert isinstance(stt_params.att_context_size, list)
         assert all(isinstance(item, int) for item in stt_params.att_context_size)
-        assert (
-            isinstance(stt_params.frame_len_in_secs, float)
-            and 0.0 <= stt_params.frame_len_in_secs <= 1.0
-        )
+        assert isinstance(stt_params.frame_len_in_secs, float) and 0.0 <= stt_params.frame_len_in_secs <= 1.0
         assert (
             isinstance(stt_params.raw_audio_frame_len_in_secs, float)
             and 0.0 <= stt_params.raw_audio_frame_len_in_secs <= 1.0
@@ -251,12 +219,8 @@ class TestDefaultConfigs:
         diar_params = config_manager.get_diar_params()
 
         assert isinstance(diar_params, NeMoDiarInputParams)
-        assert hasattr(diar_params, "frame_len_in_secs") and isinstance(
-            diar_params.frame_len_in_secs, float
-        )
-        assert hasattr(diar_params, "threshold") and isinstance(
-            diar_params.threshold, float
-        )
+        assert hasattr(diar_params, "frame_len_in_secs") and isinstance(diar_params.frame_len_in_secs, float)
+        assert hasattr(diar_params, "threshold") and isinstance(diar_params.threshold, float)
 
     @pytest.mark.unit
     def test_transport_configuration(self, voice_agent_server_base_path):

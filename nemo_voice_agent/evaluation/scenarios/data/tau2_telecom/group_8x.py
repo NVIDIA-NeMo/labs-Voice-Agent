@@ -36,119 +36,149 @@ from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
 
 @register_eval_scenario
 class Tau2TelecomMobileDataIssueDataModeOffDataUsageExceeded(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mobile_data_issue__data_mode_off__data_usage_exceeded'
-    tau2_id = '[mobile_data_issue]data_mode_off|data_usage_exceeded[PERSONA:None]'
+    name = "tau2_telecom__mobile_data_issue__data_mode_off__data_usage_exceeded"
+    tau2_id = "[mobile_data_issue]data_mode_off|data_usage_exceeded[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowMobileDataIssueDataModeOffDataUsageExceeded(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mobile_data_issue__data_mode_off__data_usage_exceeded'
-    tau2_id = '[mobile_data_issue]data_mode_off|data_usage_exceeded[PERSONA:None]'
+    name = "tau2_telecom_workflow__mobile_data_issue__data_mode_off__data_usage_exceeded"
+    tau2_id = "[mobile_data_issue]data_mode_off|data_usage_exceeded[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomMobileDataIssueDataModeOffDataUsageExceededUserAbroadRoamingDisabledOffHard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mobile_data_issue__data_mode_off__data_usage_exceeded__user_abroad_roaming_disabled_off__hard'
-    tau2_id = '[mobile_data_issue]data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Hard]'
+    name = (
+        "tau2_telecom__mobile_data_issue__data_mode_off__data_usage_exceeded__user_abroad_roaming_disabled_off__hard"
+    )
+    tau2_id = "[mobile_data_issue]data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Hard]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMobileDataIssueDataModeOffDataUsageExceededUserAbroadRoamingDisabledOffHard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mobile_data_issue__data_mode_off__data_usage_exceeded__user_abroad_roaming_disabled_off__hard'
-    tau2_id = '[mobile_data_issue]data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Hard]'
+class Tau2TelecomWorkflowMobileDataIssueDataModeOffDataUsageExceededUserAbroadRoamingDisabledOffHard(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mobile_data_issue__data_mode_off__data_usage_exceeded__user_abroad_roaming_disabled_off__hard"
+    tau2_id = "[mobile_data_issue]data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Hard]"
 
 
 @register_eval_scenario
 class Tau2TelecomMobileDataIssueDataSaverModeOnDataUsageExceededEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mobile_data_issue__data_saver_mode_on__data_usage_exceeded__easy'
-    tau2_id = '[mobile_data_issue]data_saver_mode_on|data_usage_exceeded[PERSONA:Easy]'
+    name = "tau2_telecom__mobile_data_issue__data_saver_mode_on__data_usage_exceeded__easy"
+    tau2_id = "[mobile_data_issue]data_saver_mode_on|data_usage_exceeded[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowMobileDataIssueDataSaverModeOnDataUsageExceededEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mobile_data_issue__data_saver_mode_on__data_usage_exceeded__easy'
-    tau2_id = '[mobile_data_issue]data_saver_mode_on|data_usage_exceeded[PERSONA:Easy]'
+    name = "tau2_telecom_workflow__mobile_data_issue__data_saver_mode_on__data_usage_exceeded__easy"
+    tau2_id = "[mobile_data_issue]data_saver_mode_on|data_usage_exceeded[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomMobileDataIssueDataSaverModeOnUserAbroadRoamingEnabledOffEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mobile_data_issue__data_saver_mode_on__user_abroad_roaming_enabled_off__easy'
-    tau2_id = '[mobile_data_issue]data_saver_mode_on|user_abroad_roaming_enabled_off[PERSONA:Easy]'
+    name = "tau2_telecom__mobile_data_issue__data_saver_mode_on__user_abroad_roaming_enabled_off__easy"
+    tau2_id = "[mobile_data_issue]data_saver_mode_on|user_abroad_roaming_enabled_off[PERSONA:Easy]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMobileDataIssueDataSaverModeOnUserAbroadRoamingEnabledOffEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mobile_data_issue__data_saver_mode_on__user_abroad_roaming_enabled_off__easy'
-    tau2_id = '[mobile_data_issue]data_saver_mode_on|user_abroad_roaming_enabled_off[PERSONA:Easy]'
+class Tau2TelecomWorkflowMobileDataIssueDataSaverModeOnUserAbroadRoamingEnabledOffEasy(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mobile_data_issue__data_saver_mode_on__user_abroad_roaming_enabled_off__easy"
+    tau2_id = "[mobile_data_issue]data_saver_mode_on|user_abroad_roaming_enabled_off[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomMobileDataIssueDataUsageExceededUserAbroadRoamingEnabledOffEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__mobile_data_issue__data_usage_exceeded__user_abroad_roaming_enabled_off__easy'
-    tau2_id = '[mobile_data_issue]data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]'
+    name = "tau2_telecom__mobile_data_issue__data_usage_exceeded__user_abroad_roaming_enabled_off__easy"
+    tau2_id = "[mobile_data_issue]data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowMobileDataIssueDataUsageExceededUserAbroadRoamingEnabledOffEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__mobile_data_issue__data_usage_exceeded__user_abroad_roaming_enabled_off__easy'
-    tau2_id = '[mobile_data_issue]data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]'
+class Tau2TelecomWorkflowMobileDataIssueDataUsageExceededUserAbroadRoamingEnabledOffEasy(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__mobile_data_issue__data_usage_exceeded__user_abroad_roaming_enabled_off__easy"
+    tau2_id = "[mobile_data_issue]data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsHard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__hard'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings[PERSONA:Hard]'
+    name = "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__hard"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings[PERSONA:Hard]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsHard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__hard'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings[PERSONA:Hard]'
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__hard"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings[PERSONA:Hard]"
 
 
 @register_eval_scenario
-class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionLockSimCardPin(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__lock_sim_card_pin'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|lock_sim_card_pin[PERSONA:None]'
+class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionLockSimCardPin(
+    Tau2TelecomBaseScenario
+):
+    name = (
+        "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__lock_sim_card_pin"
+    )
+    tau2_id = (
+        "[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|lock_sim_card_pin[PERSONA:None]"
+    )
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionLockSimCardPin(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__lock_sim_card_pin'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|lock_sim_card_pin[PERSONA:None]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionLockSimCardPin(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__lock_sim_card_pin"
+    tau2_id = (
+        "[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|lock_sim_card_pin[PERSONA:None]"
+    )
 
 
 @register_eval_scenario
-class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionLockSimCardPinUnseatSimCardEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__lock_sim_card_pin__unseat_sim_card__easy'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|lock_sim_card_pin|unseat_sim_card[PERSONA:Easy]'
+class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionLockSimCardPinUnseatSimCardEasy(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__lock_sim_card_pin__unseat_sim_card__easy"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|lock_sim_card_pin|unseat_sim_card[PERSONA:Easy]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionLockSimCardPinUnseatSimCardEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__lock_sim_card_pin__unseat_sim_card__easy'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|lock_sim_card_pin|unseat_sim_card[PERSONA:Easy]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionLockSimCardPinUnseatSimCardEasy(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__lock_sim_card_pin__unseat_sim_card__easy"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|lock_sim_card_pin|unseat_sim_card[PERSONA:Easy]"
 
 
 @register_eval_scenario
-class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionUnseatSimCardEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__unseat_sim_card__easy'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|unseat_sim_card[PERSONA:Easy]'
+class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionUnseatSimCardEasy(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__unseat_sim_card__easy"
+    tau2_id = (
+        "[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|unseat_sim_card[PERSONA:Easy]"
+    )
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionUnseatSimCardEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__unseat_sim_card__easy'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|unseat_sim_card[PERSONA:Easy]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsContractEndSuspensionUnseatSimCardEasy(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__contract_end_suspension__unseat_sim_card__easy"
+    tau2_id = (
+        "[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|unseat_sim_card[PERSONA:Easy]"
+    )
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPin(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin[PERSONA:None]'
+    name = "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPin(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin[PERSONA:None]'
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin[PERSONA:None]"

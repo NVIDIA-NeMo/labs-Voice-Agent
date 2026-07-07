@@ -38,10 +38,10 @@ from nemo_voice_agent.pipecat.processors.frameworks.rtvi import RTVIObserver
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     SharedStateRef,
     TaskRef,
-    create_get_context_history_action,
-    create_get_scenario_summary_action,
     create_apply_initialization_action,
     create_apply_sync_delta_action,
+    create_get_context_history_action,
+    create_get_scenario_summary_action,
     create_reset_context_action,
     create_update_system_prompt_action,
 )
@@ -61,6 +61,7 @@ from nemo_voice_agent.pipecat.services.nemo.builders import (
 from nemo_voice_agent.utils import ConfigManager, setup_rotating_log
 from nemo_voice_agent.utils.tool_calling import register_schema_tools_to_llm
 
+
 load_dotenv(override=True)
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
 WEBSOCKET_PORT = int(os.getenv("WEBSOCKET_PORT", 8765))
@@ -77,13 +78,9 @@ async def run_bot_websocket(
     port: int = 8765,
 ):
     """Start the evaluation bot websocket server (agent or user role, selected by SERVER_CONFIG_PATH); runs until Ctrl+C."""
-    logger.info(
-        f"Starting websocket server on {host}:{port} with server config path: {server_config_path}"
-    )
+    logger.info(f"Starting websocket server on {host}:{port} with server config path: {server_config_path}")
 
-    config_manager = ConfigManager(
-        server_base_path=server_base_path, server_config_path=server_config_path
-    )
+    config_manager = ConfigManager(server_base_path=server_base_path, server_config_path=server_config_path)
     server_config = config_manager.get_server_config()
     logger.info(f"Server config: {OmegaConf.to_container(server_config, resolve=True)}")
 
@@ -111,9 +108,7 @@ async def run_bot_websocket(
     setup_rotating_log(log_file=log_file, log_level=log_level)
 
     llm = build_llm(config_manager)
-    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(
-        llm, config_manager
-    )
+    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(llm, config_manager)
 
     llm_enable_tool_calling = server_config.llm.get("enable_tool_calling", False)
     if llm_enable_tool_calling:
@@ -126,17 +121,11 @@ async def run_bot_websocket(
         user_audio_buffer = UserAudioBuffer(
             context=context,
             user_context_aggregator=user_agg,
-            pre_cache_duration_secs=server_config.llm.get(
-                "pre_cache_duration_secs", 0.3
-            ),
+            pre_cache_duration_secs=server_config.llm.get("pre_cache_duration_secs", 0.3),
             use_transcript=server_config.llm.get("use_stt_transcript", False),
-            keep_only_last_audio_turn=server_config.llm.get(
-                "keep_only_last_audio_turn", True
-            ),
+            keep_only_last_audio_turn=server_config.llm.get("keep_only_last_audio_turn", True),
             text_prompt_for_audio=server_config.llm.get("text_prompt_for_audio", None),
-            text_prompt_for_transcript=server_config.llm.get(
-                "text_prompt_for_transcript", None
-            ),
+            text_prompt_for_transcript=server_config.llm.get("text_prompt_for_transcript", None),
         )
     else:
         user_audio_buffer = None
@@ -156,11 +145,7 @@ async def run_bot_websocket(
     resettable = [stt, tts, turn_taking, diar, user_audio_buffer]
     task_ref = TaskRef()
     shared_state_ref = SharedStateRef()
-    rtvi.register_action(
-        create_reset_context_action(
-            task_ref, user_agg, assistant_agg, original_messages, resettable
-        )
-    )
+    rtvi.register_action(create_reset_context_action(task_ref, user_agg, assistant_agg, original_messages, resettable))
     rtvi.register_action(
         create_update_system_prompt_action(
             task_ref,

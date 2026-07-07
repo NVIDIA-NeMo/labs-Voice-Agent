@@ -25,6 +25,7 @@ from nemo_voice_agent.evaluation.scenarios.data.eva_airline.base import (
 )
 from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
 
+
 # ---------------------------------------------------------------------------
 # eva 7.1.1: You want the agent to look up your flight to Chicago and change it, without you having to provide yo
 # ---------------------------------------------------------------------------

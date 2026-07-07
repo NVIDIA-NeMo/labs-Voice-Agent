@@ -22,6 +22,7 @@ import numpy as np
 import soxr
 from loguru import logger
 
+
 STREAM_TIMEOUT_SECS = 0.2
 
 
@@ -29,9 +30,7 @@ def audio_bytes_to_float32(audio_bytes: bytes) -> np.ndarray:
     """
     Convert PCM-16 audio bytes to float32 numpy array, clamped to -1.0 to 1.0.
     """
-    audio_float32 = (
-        np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-    )
+    audio_float32 = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
     return np.clip(audio_float32, -1.0, 1.0)
 
 
@@ -94,11 +93,7 @@ class NoiseGenerator:
         noise_audio_data = []
         for noise_audio_file in self.noise_audio_files:
             audio_duration = librosa.get_duration(path=noise_audio_file)
-            if (
-                self.random_offset
-                and self.max_duration is not None
-                and audio_duration > self.max_duration
-            ):
+            if self.random_offset and self.max_duration is not None and audio_duration > self.max_duration:
                 offset = np.random.uniform(0, audio_duration - self.max_duration)
             else:
                 offset = 0
@@ -151,9 +146,7 @@ class NoiseGenerator:
         if chunk_size_in_samples > total_samples:
             # Calculate how many times we need to repeat
             num_repeats = (chunk_size_in_samples // total_samples) + 1
-            noise_chunk = np.tile(self.noise_audio_data, num_repeats)[
-                :chunk_size_in_samples
-            ]
+            noise_chunk = np.tile(self.noise_audio_data, num_repeats)[:chunk_size_in_samples]
             # Reset position to handle the wraparound
             self.current_position = chunk_size_in_samples % total_samples
             return noise_chunk
@@ -164,9 +157,7 @@ class NoiseGenerator:
         if end_position <= total_samples:
             # We have enough samples without wrapping around
             noise_chunk = self.noise_audio_data[self.current_position : end_position]
-            self.current_position = (
-                end_position % total_samples
-            )  # Wrap to 0 if we hit the end
+            self.current_position = end_position % total_samples  # Wrap to 0 if we hit the end
         else:
             # We need to wrap around to the beginning
             samples_from_end = total_samples - self.current_position
@@ -228,9 +219,7 @@ class SOXRAudioResampler:
         if self.in_sample_rate == self.out_sample_rate:
             return audio
         audio_data = np.frombuffer(audio, dtype=np.int16)
-        resampled_audio = soxr.resample(
-            audio_data, self.in_sample_rate, self.out_sample_rate, quality=self.quality
-        )
+        resampled_audio = soxr.resample(audio_data, self.in_sample_rate, self.out_sample_rate, quality=self.quality)
         result = resampled_audio.astype(np.int16).tobytes()
         return result
 
@@ -347,9 +336,7 @@ class AudioStream:
         self.input_sample_rate = input_sample_rate
         self.output_sample_rate = output_sample_rate
         self.stream_resampler = stream_resampler
-        self.output_chunk_bytes = (
-            int(self.output_sample_rate * self.chunk_size_in_seconds) * 2
-        )  # 16-bit audio
+        self.output_chunk_bytes = int(self.output_sample_rate * self.chunk_size_in_seconds) * 2  # 16-bit audio
         self.tag = tag
         self.min_buffer_chunks = min_buffer_chunks
         self._buffer_ready = False
@@ -372,13 +359,9 @@ class AudioStream:
 
         # Initialize the appropriate resampler
         if self.stream_resampler:
-            self.resampler = SOXRAudioStreamResampler(
-                input_sample_rate, output_sample_rate, quality="VHQ"
-            )
+            self.resampler = SOXRAudioStreamResampler(input_sample_rate, output_sample_rate, quality="VHQ")
         else:
-            self.resampler = SOXRAudioResampler(
-                input_sample_rate, output_sample_rate, quality="VHQ"
-            )
+            self.resampler = SOXRAudioResampler(input_sample_rate, output_sample_rate, quality="VHQ")
 
         # Use asyncio.Queue for async/await compatibility
         self.audio_cache = asyncio.Queue()
@@ -417,9 +400,7 @@ class AudioStream:
 
         return self.resampler.resample(audio_chunk)
 
-    def _augment_with_noise(
-        self, audio_chunk: bytes, noise_chunk: Optional[bytes] = None
-    ) -> bytes:
+    def _augment_with_noise(self, audio_chunk: bytes, noise_chunk: Optional[bytes] = None) -> bytes:
         """
         Augment audio with noise based on random SNR sampling.
 
@@ -463,9 +444,7 @@ class AudioStream:
         mixed_bytes = audio_float32_to_bytes(mixed_float32)
         return mixed_bytes
 
-    def get_output_chunk(
-        self, audio_chunk: bytes, noise_chunk: Optional[bytes] = None
-    ) -> bytes:
+    def get_output_chunk(self, audio_chunk: bytes, noise_chunk: Optional[bytes] = None) -> bytes:
         """
         Pad audio chunk with silence/noise if shorter than expected output chunk size.
 
@@ -538,9 +517,7 @@ class AudioStream:
         """
         return await self.get_wait(no_wait=True)
 
-    async def get_wait(
-        self, timeout: float = None, no_wait: bool = False
-    ) -> Tuple[bytes, bool]:
+    async def get_wait(self, timeout: float = None, no_wait: bool = False) -> Tuple[bytes, bool]:
         """
         Get the next output chunk of audio, WAITING for audio to be available.
 
@@ -573,9 +550,7 @@ class AudioStream:
                 else:
                     remaining_timeout = None
                 if remaining_timeout is not None:
-                    chunk = await asyncio.wait_for(
-                        self.audio_cache.get(), timeout=remaining_timeout
-                    )
+                    chunk = await asyncio.wait_for(self.audio_cache.get(), timeout=remaining_timeout)
                 else:
                     chunk = self.audio_cache.get_nowait()
                 chunk = self.resample(chunk)
@@ -607,9 +582,7 @@ class AudioStream:
 
         # get noise chunk if needed
         if self.noise_generator is not None:
-            noise_chunk = self.noise_generator.get_noise_chunk_bytes(
-                self.chunk_size_in_seconds
-            )
+            noise_chunk = self.noise_generator.get_noise_chunk_bytes(self.chunk_size_in_seconds)
         else:
             noise_chunk = None
 
@@ -641,9 +614,7 @@ class AudioStream:
             # Only reset ready after 5 consecutive underflows (~80ms of silence)
             if self._buffer_empty_count > self.drain_threshold:
                 self._buffer_ready = False
-                logger.warning(
-                    f"[{self.tag}] Buffer drained, resetting (empty count: {self._buffer_empty_count})"
-                )
+                logger.warning(f"[{self.tag}] Buffer drained, resetting (empty count: {self._buffer_empty_count})")
             # logger.debug(f"[{self.tag}] Buffer partial, returning silence (empty count: {self._buffer_empty_count})")
             output_audio_chunk = b"\x00" * self.output_chunk_bytes
             has_speech = False

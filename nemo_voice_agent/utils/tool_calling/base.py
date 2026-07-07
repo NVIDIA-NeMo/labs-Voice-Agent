@@ -27,9 +27,7 @@ class StandardSchemaTool:
     Base class for all standard tools with FunctionSchema.
     """
 
-    def __init__(
-        self, *, description: Optional[str] = None, name: Optional[str] = None
-    ):
+    def __init__(self, *, description: Optional[str] = None, name: Optional[str] = None):
         if name is None:
             # Honor a class-level ``name`` attribute when set (e.g.
             # ``class ToggleDataTool(...): name = "toggle_data"``). The
@@ -121,9 +119,7 @@ class StandardSchemaTool:
         }
         ```
         """
-        raise NotImplementedError(
-            "Subclasses must implement this method to return the properties for the tool."
-        )
+        raise NotImplementedError("Subclasses must implement this method to return the properties for the tool.")
 
     @property
     def required_properties(self) -> List[str]:
@@ -151,9 +147,7 @@ class StandardSchemaTool:
         }
         ```
         """
-        raise NotImplementedError(
-            "Subclasses must implement this method to implement the tool logic."
-        )
+        raise NotImplementedError("Subclasses must implement this method to implement the tool logic.")
 
 
 def _current_context_tool_names(context: Any) -> List[str]:
@@ -230,10 +224,7 @@ async def _unknown_tool_handler(params: FunctionCallParams) -> None:
         {
             "status": "error",
             "error_type": "unknown_tool",
-            "message": (
-                f"There is no tool named '{params.function_name}'. Use one of the "
-                f"available tools instead."
-            ),
+            "message": (f"There is no tool named '{params.function_name}'. Use one of the available tools instead."),
             "available_tools": available,
         }
     )
@@ -265,14 +256,10 @@ def register_schema_tools_to_llm(
     all_schemas = []
     for tool in tools:
         if not isinstance(tool, StandardSchemaTool):
-            logger.warning(
-                f"Tool {tool.__class__.__name__} is not a `StandardSchemaTool`, skipping..."
-            )
+            logger.warning(f"Tool {tool.__class__.__name__} is not a `StandardSchemaTool`, skipping...")
             continue
         all_schemas.append(tool.schema)
-        logger.info(
-            f"Registering standard schematool `{tool.name}` with schema properties: {tool.schema.properties}"
-        )
+        logger.info(f"Registering standard schematool `{tool.name}` with schema properties: {tool.schema.properties}")
         llm.register_function(
             function_name=tool.name,
             handler=tool,

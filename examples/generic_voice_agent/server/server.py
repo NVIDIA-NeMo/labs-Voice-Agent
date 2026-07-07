@@ -55,6 +55,7 @@ from nemo_voice_agent.utils import ConfigManager, setup_logging
 from nemo_voice_agent.utils.tool_calling.basic_tools import tool_get_city_weather
 from nemo_voice_agent.utils.tool_calling.mixins import register_direct_tools_to_llm
 
+
 load_dotenv(override=True)
 
 SERVER_HOST = os.getenv("SERVER_HOST", "0.0.0.0")
@@ -68,9 +69,7 @@ WEBSOCKET_SCHEME = os.getenv("WEBSOCKET_SCHEME", "ws")
 async def run_bot_websocket(host: str, port: int):
     """Start the production bot websocket server; runs until Ctrl+C."""
     logger.info(f"Starting websocket server on {host}:{port}")
-    logger.info(
-        "Server configured to run indefinitely with no timeouts, use Ctrl+C to quit."
-    )
+    logger.info("Server configured to run indefinitely with no timeouts, use Ctrl+C to quit.")
 
     setup_logging()
 
@@ -92,25 +91,17 @@ async def run_bot_websocket(host: str, port: int):
     setup_logging()
 
     llm = build_llm(config_manager)
-    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(
-        llm, config_manager
-    )
+    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(llm, config_manager)
 
     if server_config.llm.get("is_omni_model", False):
         user_audio_buffer = UserAudioBuffer(
             context=context,
             user_context_aggregator=user_agg,
-            pre_cache_duration_secs=server_config.llm.get(
-                "pre_cache_duration_secs", 0.3
-            ),
+            pre_cache_duration_secs=server_config.llm.get("pre_cache_duration_secs", 0.3),
             use_transcript=server_config.llm.get("use_stt_transcript", False),
-            keep_only_last_audio_turn=server_config.llm.get(
-                "keep_only_last_audio_turn", False
-            ),
+            keep_only_last_audio_turn=server_config.llm.get("keep_only_last_audio_turn", False),
             text_prompt_for_audio=server_config.llm.get("text_prompt_for_audio", None),
-            text_prompt_for_transcript=server_config.llm.get(
-                "text_prompt_for_transcript", None
-            ),
+            text_prompt_for_transcript=server_config.llm.get("text_prompt_for_transcript", None),
         )
     else:
         user_audio_buffer = None
@@ -130,18 +121,12 @@ async def run_bot_websocket(host: str, port: int):
 
     if server_config.llm.get("enable_tool_calling", False):
         logger.info("Tool calling enabled; registering initial tools...")
-        register_direct_tools_to_llm(
-            llm=llm, context=context, tool_mixins=[tts], tools=[tool_get_city_weather]
-        )
+        register_direct_tools_to_llm(llm=llm, context=context, tool_mixins=[tts], tools=[tool_get_city_weather])
     else:
         logger.info("Tool calling disabled; skipping initial tool registration.")
 
     task_ref = TaskRef()
-    rtvi.register_action(
-        create_reset_context_action(
-            task_ref, user_agg, assistant_agg, original_messages, resettable
-        )
-    )
+    rtvi.register_action(create_reset_context_action(task_ref, user_agg, assistant_agg, original_messages, resettable))
 
     task = PipelineTask(
         pipeline,
@@ -177,9 +162,7 @@ app = create_fastapi_app(WEBSOCKET_PORT, SERVER_PUBLIC_HOST, WEBSOCKET_SCHEME)
 
 
 async def main():
-    logger.info(
-        f"Starting servers - WebSocket on port {WEBSOCKET_PORT}, FastAPI on port {FASTAPI_PORT}"
-    )
+    logger.info(f"Starting servers - WebSocket on port {WEBSOCKET_PORT}, FastAPI on port {FASTAPI_PORT}")
     await run_bot_with_fastapi(
         ws_coro=run_bot_websocket(host=SERVER_HOST, port=WEBSOCKET_PORT),
         app=app,

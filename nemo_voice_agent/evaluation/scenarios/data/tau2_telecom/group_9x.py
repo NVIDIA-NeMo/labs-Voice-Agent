@@ -35,120 +35,154 @@ from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
 
 
 @register_eval_scenario
-class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinOverdueBillSuspensionHard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__overdue_bill_suspension__hard'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Hard]'
+class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinOverdueBillSuspensionHard(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__overdue_bill_suspension__hard"
+    tau2_id = (
+        "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Hard]"
+    )
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinOverdueBillSuspensionHard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__overdue_bill_suspension__hard'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Hard]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinOverdueBillSuspensionHard(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__overdue_bill_suspension__hard"
+    tau2_id = (
+        "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Hard]"
+    )
 
 
 @register_eval_scenario
-class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinOverdueBillSuspensionUnseatSimCard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__overdue_bill_suspension__unseat_sim_card'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|overdue_bill_suspension|unseat_sim_card[PERSONA:None]'
+class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinOverdueBillSuspensionUnseatSimCard(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__overdue_bill_suspension__unseat_sim_card"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|overdue_bill_suspension|unseat_sim_card[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinOverdueBillSuspensionUnseatSimCard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__overdue_bill_suspension__unseat_sim_card'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|overdue_bill_suspension|unseat_sim_card[PERSONA:None]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinOverdueBillSuspensionUnseatSimCard(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__overdue_bill_suspension__unseat_sim_card"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|overdue_bill_suspension|unseat_sim_card[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinUnseatSimCard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__unseat_sim_card'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|unseat_sim_card[PERSONA:None]'
+    name = "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__unseat_sim_card"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|unseat_sim_card[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinUnseatSimCard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__unseat_sim_card'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|unseat_sim_card[PERSONA:None]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsLockSimCardPinUnseatSimCard(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__lock_sim_card_pin__unseat_sim_card"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|unseat_sim_card[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsOverdueBillSuspension(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__overdue_bill_suspension'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension[PERSONA:None]'
+    name = "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__overdue_bill_suspension"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsOverdueBillSuspension(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__overdue_bill_suspension'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension[PERSONA:None]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsOverdueBillSuspension(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__overdue_bill_suspension"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsOverdueBillSuspensionUnseatSimCard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__overdue_bill_suspension__unseat_sim_card'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension|unseat_sim_card[PERSONA:None]'
+    name = (
+        "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__overdue_bill_suspension__unseat_sim_card"
+    )
+    tau2_id = (
+        "[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension|unseat_sim_card[PERSONA:None]"
+    )
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsOverdueBillSuspensionUnseatSimCard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__overdue_bill_suspension__unseat_sim_card'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension|unseat_sim_card[PERSONA:None]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsOverdueBillSuspensionUnseatSimCard(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__overdue_bill_suspension__unseat_sim_card"
+    tau2_id = (
+        "[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension|unseat_sim_card[PERSONA:None]"
+    )
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueAirplaneModeOnBreakApnSettingsUnseatSimCard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__unseat_sim_card'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|unseat_sim_card[PERSONA:None]'
+    name = "tau2_telecom__service_issue__airplane_mode_on__break_apn_settings__unseat_sim_card"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|unseat_sim_card[PERSONA:None]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowServiceIssueAirplaneModeOnBreakApnSettingsUnseatSimCard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__unseat_sim_card'
-    tau2_id = '[service_issue]airplane_mode_on|break_apn_settings|unseat_sim_card[PERSONA:None]'
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__break_apn_settings__unseat_sim_card"
+    tau2_id = "[service_issue]airplane_mode_on|break_apn_settings|unseat_sim_card[PERSONA:None]"
 
 
 @register_eval_scenario
-class Tau2TelecomServiceIssueAirplaneModeOnContractEndSuspensionLockSimCardPinUnseatSimCardHard(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__contract_end_suspension__lock_sim_card_pin__unseat_sim_card__hard'
-    tau2_id = '[service_issue]airplane_mode_on|contract_end_suspension|lock_sim_card_pin|unseat_sim_card[PERSONA:Hard]'
+class Tau2TelecomServiceIssueAirplaneModeOnContractEndSuspensionLockSimCardPinUnseatSimCardHard(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__service_issue__airplane_mode_on__contract_end_suspension__lock_sim_card_pin__unseat_sim_card__hard"
+    tau2_id = "[service_issue]airplane_mode_on|contract_end_suspension|lock_sim_card_pin|unseat_sim_card[PERSONA:Hard]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnContractEndSuspensionLockSimCardPinUnseatSimCardHard(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__contract_end_suspension__lock_sim_card_pin__unseat_sim_card__hard'
-    tau2_id = '[service_issue]airplane_mode_on|contract_end_suspension|lock_sim_card_pin|unseat_sim_card[PERSONA:Hard]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnContractEndSuspensionLockSimCardPinUnseatSimCardHard(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__contract_end_suspension__lock_sim_card_pin__unseat_sim_card__hard"
+    tau2_id = "[service_issue]airplane_mode_on|contract_end_suspension|lock_sim_card_pin|unseat_sim_card[PERSONA:Hard]"
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueAirplaneModeOnLockSimCardPinEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__lock_sim_card_pin__easy'
-    tau2_id = '[service_issue]airplane_mode_on|lock_sim_card_pin[PERSONA:Easy]'
+    name = "tau2_telecom__service_issue__airplane_mode_on__lock_sim_card_pin__easy"
+    tau2_id = "[service_issue]airplane_mode_on|lock_sim_card_pin[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomWorkflowServiceIssueAirplaneModeOnLockSimCardPinEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__lock_sim_card_pin__easy'
-    tau2_id = '[service_issue]airplane_mode_on|lock_sim_card_pin[PERSONA:Easy]'
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__lock_sim_card_pin__easy"
+    tau2_id = "[service_issue]airplane_mode_on|lock_sim_card_pin[PERSONA:Easy]"
 
 
 @register_eval_scenario
 class Tau2TelecomServiceIssueAirplaneModeOnLockSimCardPinOverdueBillSuspensionEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__lock_sim_card_pin__overdue_bill_suspension__easy'
-    tau2_id = '[service_issue]airplane_mode_on|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]'
+    name = "tau2_telecom__service_issue__airplane_mode_on__lock_sim_card_pin__overdue_bill_suspension__easy"
+    tau2_id = "[service_issue]airplane_mode_on|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnLockSimCardPinOverdueBillSuspensionEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__lock_sim_card_pin__overdue_bill_suspension__easy'
-    tau2_id = '[service_issue]airplane_mode_on|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnLockSimCardPinOverdueBillSuspensionEasy(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__lock_sim_card_pin__overdue_bill_suspension__easy"
+    tau2_id = "[service_issue]airplane_mode_on|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]"
 
 
 @register_eval_scenario
-class Tau2TelecomServiceIssueAirplaneModeOnLockSimCardPinOverdueBillSuspensionUnseatSimCardEasy(Tau2TelecomBaseScenario):
-    name = 'tau2_telecom__service_issue__airplane_mode_on__lock_sim_card_pin__overdue_bill_suspension__unseat_sim_card__easy'
-    tau2_id = '[service_issue]airplane_mode_on|lock_sim_card_pin|overdue_bill_suspension|unseat_sim_card[PERSONA:Easy]'
+class Tau2TelecomServiceIssueAirplaneModeOnLockSimCardPinOverdueBillSuspensionUnseatSimCardEasy(
+    Tau2TelecomBaseScenario
+):
+    name = "tau2_telecom__service_issue__airplane_mode_on__lock_sim_card_pin__overdue_bill_suspension__unseat_sim_card__easy"
+    tau2_id = "[service_issue]airplane_mode_on|lock_sim_card_pin|overdue_bill_suspension|unseat_sim_card[PERSONA:Easy]"
 
 
 @register_eval_scenario
-class Tau2TelecomWorkflowServiceIssueAirplaneModeOnLockSimCardPinOverdueBillSuspensionUnseatSimCardEasy(Tau2TelecomWorkflowBaseScenario):
-    name = 'tau2_telecom_workflow__service_issue__airplane_mode_on__lock_sim_card_pin__overdue_bill_suspension__unseat_sim_card__easy'
-    tau2_id = '[service_issue]airplane_mode_on|lock_sim_card_pin|overdue_bill_suspension|unseat_sim_card[PERSONA:Easy]'
+class Tau2TelecomWorkflowServiceIssueAirplaneModeOnLockSimCardPinOverdueBillSuspensionUnseatSimCardEasy(
+    Tau2TelecomWorkflowBaseScenario
+):
+    name = "tau2_telecom_workflow__service_issue__airplane_mode_on__lock_sim_card_pin__overdue_bill_suspension__unseat_sim_card__easy"
+    tau2_id = "[service_issue]airplane_mode_on|lock_sim_card_pin|overdue_bill_suspension|unseat_sim_card[PERSONA:Easy]"

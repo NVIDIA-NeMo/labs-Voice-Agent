@@ -111,7 +111,7 @@ def _write_run_args(
         if mismatches:
             logger.info(
                 "WARNING: --resume invocation differs from the original run on these "
-                f"scoring-relevant fields:\n" + "\n".join(mismatches) + "\n"
+                "scoring-relevant fields:\n" + "\n".join(mismatches) + "\n"
                 "Proceeding — aggregate metrics may mix scenarios scored with different "
                 "settings. Re-run from scratch (omit --resume) for a clean comparison."
             )
@@ -172,9 +172,7 @@ Examples:
         nargs="*",
         help="Scenario names to run (default: all registered scenarios). Use --list to see available names.",
     )
-    parser.add_argument(
-        "--list", action="store_true", help="List all available scenarios and exit"
-    )
+    parser.add_argument("--list", action="store_true", help="List all available scenarios and exit")
     parser.add_argument(
         "--domain",
         type=str,
@@ -220,9 +218,7 @@ Examples:
         default="nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
         help="Model name for the judge API (default: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4)",
     )
-    parser.add_argument(
-        "--judge-api-key", default=None, help="API key for the LLM judge"
-    )
+    parser.add_argument("--judge-api-key", default=None, help="API key for the LLM judge")
     parser.add_argument(
         "--judge-threshold",
         type=float,
@@ -312,9 +308,7 @@ Examples:
         scenario_names = args.scenarios
     elif args.domain:
         prefix = f"{args.domain}__"
-        scenario_names = [
-            name for name in list_eval_scenarios() if name.startswith(prefix)
-        ]
+        scenario_names = [name for name in list_eval_scenarios() if name.startswith(prefix)]
         if not scenario_names:
             print(f"No scenarios found for domain '{args.domain}'.", file=sys.stderr)
             return 1
@@ -334,9 +328,7 @@ Examples:
         scenario = get_eval_scenario(name)
         if scenario is None:
             available = list_eval_scenarios()
-            print(
-                f"Unknown scenario: '{name}'. Available: {available}", file=sys.stderr
-            )
+            print(f"Unknown scenario: '{name}'. Available: {available}", file=sys.stderr)
             return 1
         scenarios.append(scenario)
 

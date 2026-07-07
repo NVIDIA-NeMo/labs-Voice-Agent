@@ -15,6 +15,7 @@
 import os as _os
 import subprocess as _subprocess
 
+
 MAJOR = 0
 MINOR = 1
 PATCH = 0

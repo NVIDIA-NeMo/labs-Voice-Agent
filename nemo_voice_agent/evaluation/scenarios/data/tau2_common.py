@@ -131,7 +131,7 @@ def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, D
     if split_path.exists():
         splits = json.loads(split_path.read_text())
         if split not in splits:
-            raise KeyError(f"{domain}/split_tasks.json has no '{split}' key; " f"available: {sorted(splits.keys())}")
+            raise KeyError(f"{domain}/split_tasks.json has no '{split}' key; available: {sorted(splits.keys())}")
         voice_ids &= set(splits[split])
 
     tasks_by_id = {t["id"]: t for t in json.loads((domain_dir / "tasks.json").read_text())}
@@ -202,7 +202,7 @@ class Tau2BaseScenario(Scenario):
     @cached_property
     def _index_entry(self) -> Dict[str, Any]:
         if not self.domain or not self.tau2_id:
-            raise ValueError(f"{type(self).__name__} must declare class attributes " f"`domain` and `tau2_id`")
+            raise ValueError(f"{type(self).__name__} must declare class attributes `domain` and `tau2_id`")
         index = _load_tau2_voice_task_index(self.domain, self.split)
         if self.tau2_id not in index:
             raise KeyError(
@@ -311,6 +311,7 @@ class Tau2BaseScenario(Scenario):
             from nemo_voice_agent.evaluation.initialization_functions import (
                 apply_initialization_actions,
             )
+
             # Init actions mutate either ``gold_state["db"]`` (agent side)
             # or ``gold_state["user_db"]`` (user side) by ``side``. The
             # dispatcher takes a single ``db`` arg, so dispatch each side's
@@ -322,13 +323,10 @@ class Tau2BaseScenario(Scenario):
                 target_db = gold_state["db"] if side == "agent" else gold_state.get("user_db")
                 if target_db is None:
                     continue
-                result = apply_initialization_actions(
-                    domain=self.domain, actions=subset, db=target_db
-                )
+                result = apply_initialization_actions(domain=self.domain, actions=subset, db=target_db)
                 if not result["success"]:
                     logger.warning(
-                        f"Gold-replay init-action failure for {self.domain}/{self.tau2_id}: "
-                        f"{result['errors']}"
+                        f"Gold-replay init-action failure for {self.domain}/{self.tau2_id}: {result['errors']}"
                     )
 
         # Mirror the bridge's cross-side sync pipeline in-process so the

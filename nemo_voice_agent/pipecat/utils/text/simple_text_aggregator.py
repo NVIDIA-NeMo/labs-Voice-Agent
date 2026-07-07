@@ -171,9 +171,7 @@ class SimpleSegmentedTextAggregator(SimpleTextAggregator):
             self._punctuation_marks = list()
         else:
             punctuation_marks = (
-                [c for c in punctuation_marks]
-                if isinstance(punctuation_marks, str)
-                else punctuation_marks
+                [c for c in punctuation_marks] if isinstance(punctuation_marks, str) else punctuation_marks
             )
             punctuation_marks = list(set(punctuation_marks))
             if "." in punctuation_marks:
@@ -233,11 +231,7 @@ class SimpleSegmentedTextAggregator(SimpleTextAggregator):
 
         eos_end_index = self._find_segment_end(self._text)
 
-        if (
-            not eos_end_index
-            and not has_partial_decimal(self._text)
-            and self._use_legacy_eos_detection
-        ):
+        if not eos_end_index and not has_partial_decimal(self._text) and self._use_legacy_eos_detection:
             # if the text doesn't have partial decimal, and no punctuation marks,
             # we use match_endofsentence to find the end of the sentence
             eos_end_index = match_endofsentence(self._text)
@@ -250,16 +244,12 @@ class SimpleSegmentedTextAggregator(SimpleTextAggregator):
                 )
                 result = None
             else:
-                logger.debug(
-                    f"Text Aggregator Result: `{result}`, full text: `{self._text}`, input text: `{text}`"
-                )
+                logger.debug(f"Text Aggregator Result: `{result}`, full text: `{self._text}`, input text: `{text}`")
                 self._text = self._text[eos_end_index:]
 
         if result:
             for ignore_mark in self._ignore_marks:
                 if ignore_mark in result:
-                    logger.debug(
-                        f"Ignoring string: `{ignore_mark}` in result: `{result}`"
-                    )
+                    logger.debug(f"Ignoring string: `{ignore_mark}` in result: `{result}`")
                     result = result.replace(ignore_mark, "")
             yield Aggregation(text=result, type=AggregationType.SENTENCE)

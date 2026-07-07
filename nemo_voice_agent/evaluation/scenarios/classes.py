@@ -44,6 +44,7 @@ class SuccessSignal(StrEnum):
     JUDGE_PASSED = "judge_passed"
     CLEAN_EXIT = "clean_exit"
 
+
 # Re-export ``GENERAL_PROMPT`` from its canonical home so existing imports
 # (``from nemo_voice_agent.evaluation.scenarios.classes import GENERAL_PROMPT``)
 # keep working after the constant moved to ``utils.voice_prompts`` for cross-
@@ -256,7 +257,7 @@ class Actions:
                 "You must follow the following instructions step by step in the given order "
                 "to complete the task, do not perform multiple instructions in a single turn:\n"
             )
-            numbered = "\n".join(f"Step {i+1}: {inst}" for i, inst in enumerate(self.instructions))
+            numbered = "\n".join(f"Step {i + 1}: {inst}" for i, inst in enumerate(self.instructions))
             sections.append(f"## Instructions\n{header}{numbered}")
         if self.guidelines:
             header = "You must always comply with the following guidelines during the task:\n"
@@ -313,9 +314,7 @@ class Scenario:
                 f"override per-scenario."
             )
 
-    def compute_is_successful(
-        self, signals: Dict["SuccessSignal", Optional[bool]]
-    ) -> Union[bool, str]:
+    def compute_is_successful(self, signals: Dict["SuccessSignal", Optional[bool]]) -> Union[bool, str]:
         """Combine per-signal verdicts into the composite ``is_successful``.
 
         Default behavior: strict AND over the intersection of
@@ -341,8 +340,7 @@ class Scenario:
         whitelist = self.success_signals
         if not whitelist:
             raise ValueError(
-                f"{type(self).__name__}: success_signals is empty. Set the "
-                f"whitelist on the domain base class."
+                f"{type(self).__name__}: success_signals is empty. Set the whitelist on the domain base class."
             )
         valid_keys = set(SuccessSignal)
         unknown = {s for s in whitelist if s not in valid_keys}
@@ -668,9 +666,11 @@ class Scenario:
         # ``db_state_match`` failures without dropping into a REPL.
         if self.expected_scenario_db is not None:
             from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+
             metadata["expected_db_hash"] = get_dict_hash(self.expected_scenario_db)
         if getattr(self, "expected_user_db", None) is not None:
             from nemo_voice_agent.evaluation.db_hash import get_dict_hash
+
             metadata["expected_user_db_hash"] = get_dict_hash(self.expected_user_db)
         with open(output_dir / "metadata.json", "w") as f:
             json.dump(metadata, f, indent=4)

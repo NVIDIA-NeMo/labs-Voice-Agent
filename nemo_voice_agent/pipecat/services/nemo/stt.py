@@ -42,6 +42,7 @@ from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
 from nemo_voice_agent.pipecat.services.nemo.streaming_asr import NemoStreamingASRService
 from nemo_voice_agent.pipecat.services.riva_speech import NemotronASRService
 
+
 ASR_EOU_MODELS = ["nvidia/parakeet_realtime_eou_120m-v1"]
 
 try:

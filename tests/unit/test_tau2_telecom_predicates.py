@@ -41,6 +41,7 @@ from nemo_voice_agent.evaluation.db_state_predicates import (
     ALL_DB_STATE_PREDICATES,
     evaluate_db_state_assertion,
 )
+
 # Importing the module triggers @register_db_state_predicate decorators.
 from nemo_voice_agent.evaluation.tools import tau2_telecom_predicates  # noqa: F401
 from nemo_voice_agent.evaluation.tools.tau2_telecom_predicates import (
@@ -242,19 +243,9 @@ def test_assert_internet_speed_with_threshold_only(default_user_db):
 def test_assert_internet_speed_with_desc_constraint(default_user_db):
     """The data_mode_off scenario uses
     (expected_speed=200, expected_desc='excellent') — both must pass."""
-    assert (
-        assert_internet_speed(
-            default_user_db, expected_speed=200, expected_desc="excellent"
-        )
-        is True
-    )
+    assert assert_internet_speed(default_user_db, expected_speed=200, expected_desc="excellent") is True
     # Same speed but wrong description label → fails
-    assert (
-        assert_internet_speed(
-            default_user_db, expected_speed=200, expected_desc="good"
-        )
-        is False
-    )
+    assert assert_internet_speed(default_user_db, expected_speed=200, expected_desc="good") is False
 
 
 def test_assert_internet_speed_zero_speed_when_data_off(default_user_db):
@@ -280,9 +271,7 @@ def test_assert_data_refueling_amount(default_agent_db):
     """Pull a real line and check refueling against its actual value."""
     line = default_agent_db["lines"][0]
     customer_id = next(
-        c["customer_id"]
-        for c in default_agent_db["customers"]
-        if line["line_id"] in (c.get("line_ids") or [])
+        c["customer_id"] for c in default_agent_db["customers"] if line["line_id"] in (c.get("line_ids") or [])
     )
     expected = line["data_refueling_gb"]
     assert (
@@ -321,10 +310,7 @@ def test_assert_data_refueling_amount_missing_line_returns_false(default_agent_d
 
 def test_assert_no_overdue_bill_missing_bill_is_true(default_agent_db):
     """Upstream semantic: a non-existent bill ID counts as 'no overdue' = True."""
-    assert (
-        assert_no_overdue_bill(default_agent_db, overdue_bill_id="B_DOES_NOT_EXIST")
-        is True
-    )
+    assert assert_no_overdue_bill(default_agent_db, overdue_bill_id="B_DOES_NOT_EXIST") is True
 
 
 def test_assert_no_overdue_bill_paid_bill_is_true(default_agent_db):
@@ -338,9 +324,7 @@ def test_assert_no_overdue_bill_paid_bill_is_true(default_agent_db):
 def test_assert_no_overdue_bill_existing_overdue_is_false(default_agent_db):
     bill = default_agent_db["bills"][0]
     bill["status"] = "Overdue"
-    assert (
-        assert_no_overdue_bill(default_agent_db, overdue_bill_id=bill["bill_id"]) is False
-    )
+    assert assert_no_overdue_bill(default_agent_db, overdue_bill_id=bill["bill_id"]) is False
 
 
 # ---------------------------------------------------------------------------

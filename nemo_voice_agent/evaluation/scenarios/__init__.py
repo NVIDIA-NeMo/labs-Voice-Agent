@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario
 
+
 ALL_EVAL_SCENARIOS: Dict[str, Scenario] = {}
 
 

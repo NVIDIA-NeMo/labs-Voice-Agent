@@ -38,6 +38,7 @@ from nemo_voice_agent.vllm.v1.sample.logits_processor.reasoning_budget_logits_pr
     ReasoningBudgetLogitsProcessor,
 )
 
+
 MODEL_NAME = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"
 DEVICE = torch.device("cuda:0")
 pytestmark = [pytest.mark.functional, pytest.mark.gpu]
@@ -56,9 +57,7 @@ THINKING_TEXT = (
 )
 
 # The answer portion after thinking.
-ANSWER_TEXT = (
-    "\nSoft paws on the sill\nWhiskers catch the morning light\nPurring fills the room"
-)
+ANSWER_TEXT = "\nSoft paws on the sill\nWhiskers catch the morning light\nPurring fills the room"
 
 
 # ------------------------------------------------------------------
@@ -87,9 +86,7 @@ def tokenizer():
 @pytest.fixture(scope="module")
 def processor():
     """Module-scoped processor on cuda:0 (tokenizer loaded once)."""
-    return ReasoningBudgetLogitsProcessor(
-        _make_vllm_config(), device=DEVICE, is_pin_memory=False
-    )
+    return ReasoningBudgetLogitsProcessor(_make_vllm_config(), device=DEVICE, is_pin_memory=False)
 
 
 def _sampling_params(
@@ -135,15 +132,9 @@ class TestTokenizerSetup:
     """Verify the processor resolved token IDs correctly from the real tokenizer."""
 
     def test_think_delimiters(self, processor, tokenizer):
-        assert processor.think_start_ids == tokenizer.encode(
-            "<think>", add_special_tokens=False
-        )
-        assert processor.think_end_detect_ids == tokenizer.encode(
-            "</think>", add_special_tokens=False
-        )
-        assert processor.think_end_force_ids == tokenizer.encode(
-            "\n</think>", add_special_tokens=False
-        )
+        assert processor.think_start_ids == tokenizer.encode("<think>", add_special_tokens=False)
+        assert processor.think_end_detect_ids == tokenizer.encode("</think>", add_special_tokens=False)
+        assert processor.think_end_force_ids == tokenizer.encode("\n</think>", add_special_tokens=False)
 
     def test_newline_is_single_token(self, processor, tokenizer):
         assert processor.newline_ids == tokenizer.encode("\n", add_special_tokens=False)
@@ -191,9 +182,7 @@ class TestValidateParams:
 class TestRequestWithoutBudget:
     def test_no_tracking(self, processor, tokenizer):
         processor.req_states.clear()
-        output_tok_ids = tokenizer.encode(
-            "<think>hello world</think>", add_special_tokens=False
-        )
+        output_tok_ids = tokenizer.encode("<think>hello world</think>", add_special_tokens=False)
         params = SamplingParams.from_optional()
         update = _batch_update_add(0, params, output_tok_ids)
         processor.update_state(update)
@@ -304,14 +293,10 @@ class TestHardCutoff:
         # ".\n</think>" will be tokenized into multiple token IDs.
         custom_end_text = ".\n</think>"
         custom_end_ids = tokenizer.encode(custom_end_text, add_special_tokens=False)
-        assert (
-            len(custom_end_ids) >= 2
-        ), f"Expected multi-token end sequence, got {custom_end_ids}"
+        assert len(custom_end_ids) >= 2, f"Expected multi-token end sequence, got {custom_end_ids}"
 
         output_tok_ids = [think_start_id] + [100] * budget
-        params = _sampling_params(
-            thinking_budget=budget, think_end_tokens=custom_end_text
-        )
+        params = _sampling_params(thinking_budget=budget, think_end_tokens=custom_end_text)
 
         update = _batch_update_add(0, params, output_tok_ids)
         processor.update_state(update)
@@ -344,9 +329,7 @@ class TestHardCutoff:
         budget = 5
 
         # Append the full end sequence (e.g. [\n, </think>]) after the thinking tokens.
-        output_tok_ids = (
-            [think_start_id] + [100] * budget + processor.think_end_detect_ids
-        )
+        output_tok_ids = [think_start_id] + [100] * budget + processor.think_end_detect_ids
         params = _sampling_params(thinking_budget=budget)
 
         update = _batch_update_add(0, params, output_tok_ids)
@@ -397,13 +380,11 @@ class TestStepByStepSimulation:
 
         assert full_thinking_ids[0] == think_start_id
 
-        print(f"\n{'='*70}")
-        print(
-            f"Step-by-step simulation — budget={budget}, grace_period={grace_period}, grace_start={grace_start}"
-        )
+        print(f"\n{'=' * 70}")
+        print(f"Step-by-step simulation — budget={budget}, grace_period={grace_period}, grace_start={grace_start}")
         print(f"Full thinking text ({len(full_thinking_ids)} tokens):")
         print(f"  {THINKING_TEXT!r}")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         output_tok_ids: list[int] = []
         params = _sampling_params(thinking_budget=budget, grace_period=grace_period)
@@ -420,9 +401,7 @@ class TestStepByStepSimulation:
 
             decoded = tokenizer.decode([tok])
             if 0 not in processor.req_states:
-                print(
-                    f"  step {step:3d}: tok={tok:6d}  {decoded!r:20s}  → request removed (thinking ended)"
-                )
+                print(f"  step {step:3d}: tok={tok:6d}  {decoded!r:20s}  → request removed (thinking ended)")
                 break
 
             state = processor.req_states[0]
@@ -434,9 +413,7 @@ class TestStepByStepSimulation:
                 phase = "FORCED"
                 saw_forced = True
                 assert logits[0, first_forced].item() != float("-inf")
-                check_mask = torch.ones(
-                    logits.shape[1], dtype=torch.bool, device=DEVICE
-                )
+                check_mask = torch.ones(logits.shape[1], dtype=torch.bool, device=DEVICE)
                 check_mask[first_forced] = False
                 assert (logits[0, check_mask] == float("-inf")).all()
                 print(
@@ -453,11 +430,9 @@ class TestStepByStepSimulation:
                 if state.inside_thinking and state.thinking_token_count > 0:
                     saw_unconstrained = True
 
-            print(
-                f"  step {step:3d}: tok={tok:6d}  {decoded!r:20s}  count={state.thinking_token_count:3d}  [{phase}]"
-            )
+            print(f"  step {step:3d}: tok={tok:6d}  {decoded!r:20s}  count={state.thinking_token_count:3d}  [{phase}]")
 
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         assert saw_unconstrained, "Should have seen unconstrained phase"
         assert saw_grace, "Should have seen grace period"
@@ -591,12 +566,12 @@ class TestRealPromptTokenization:
         update = _batch_update_add(0, params, output_tok_ids)
         processor.update_state(update)
 
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"Real prompt: thinking + answer (budget={budget})")
         print(f"Messages: {MESSAGES}")
         print(f"Thinking ({len(thinking_ids)} tokens): {THINKING_TEXT!r}")
         print(f"Answer: {ANSWER_TEXT!r}")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         for step, tok in enumerate(all_ids):
             output_tok_ids.append(tok)
@@ -604,9 +579,7 @@ class TestRealPromptTokenization:
 
             decoded = tokenizer.decode([tok])
             if 0 not in processor.req_states:
-                print(
-                    f"  step {step:3d}: tok={tok:6d}  {decoded!r:20s}  → request removed (thinking done)"
-                )
+                print(f"  step {step:3d}: tok={tok:6d}  {decoded!r:20s}  → request removed (thinking done)")
                 break
             else:
                 state = processor.req_states[0]
@@ -627,20 +600,18 @@ class TestRealPromptTokenization:
         logits_before = logits.clone()
         processor.apply(logits)
         assert torch.equal(logits, logits_before)
-        print(f"  Logits are unconstrained after </think>")
-        print(f"{'='*70}")
+        print("  Logits are unconstrained after </think>")
+        print(f"{'=' * 70}")
 
     def test_chat_template_tokens(self, processor, tokenizer):
-        prompt = tokenizer.apply_chat_template(
-            MESSAGES, tokenize=False, add_generation_prompt=True
-        )
+        prompt = tokenizer.apply_chat_template(MESSAGES, tokenize=False, add_generation_prompt=True)
         prompt_ids = tokenizer.encode(prompt, add_special_tokens=False)
 
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"Chat template for: {MESSAGES}")
         print(f"Rendered prompt ({len(prompt_ids)} tokens):")
         print(f"  {prompt}")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         think_end_id = processor.think_end_detect_ids[0]
         assert len(prompt_ids) > 0
@@ -675,9 +646,7 @@ class TestVLLMOfflineGeneration:
     @pytest.mark.skip(reason="this feature is deprecated to in favor of the native budget control in vllm")
     def test_generate_with_thinking_budget(self, llm, tok):
         """Send MESSAGES with thinking_budget=64, max_tokens=256, print full response."""
-        prompt = tok.apply_chat_template(
-            MESSAGES, tokenize=False, add_generation_prompt=True
-        )
+        prompt = tok.apply_chat_template(MESSAGES, tokenize=False, add_generation_prompt=True)
 
         sampling_params_list = [
             SamplingParams(
@@ -692,34 +661,30 @@ class TestVLLMOfflineGeneration:
 
         outputs = llm.generate([prompt], sampling_params_list)
 
-        print(f"\n{'='*70}")
-        print(f"vllm.LLM generation — thinking_budget=64, max_tokens=256")
+        print(f"\n{'=' * 70}")
+        print("vllm.LLM generation — thinking_budget=64, max_tokens=256")
         print(f"Messages: {MESSAGES}")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
         for output in outputs:
             generated_text = output.outputs[0].text
             num_tokens = len(output.outputs[0].token_ids)
             print(f"Prompt:    {output.prompt!r}")
             print(f"Output ({num_tokens} tokens):")
             print(f"  {generated_text}")
-            print(f"-" * 60)
+            print("-" * 60)
 
             assert generated_text is not None and len(generated_text) > 0
 
     @pytest.mark.skip(reason="this feature is deprecated to in favor of the native budget control in vllm")
     def test_generate_multiple_budgets(self, llm, tok):
         """Compare outputs with different thinking budgets side by side."""
-        prompt = tok.apply_chat_template(
-            MESSAGES, tokenize=False, add_generation_prompt=True
-        )
+        prompt = tok.apply_chat_template(MESSAGES, tokenize=False, add_generation_prompt=True)
         # Also test a different prompt.
         messages_2 = [
             {"role": "system", "content": "You are a helpful assistant. /think"},
             {"role": "user", "content": "What is 25 * 37?"},
         ]
-        prompt_2 = tok.apply_chat_template(
-            messages_2, tokenize=False, add_generation_prompt=True
-        )
+        prompt_2 = tok.apply_chat_template(messages_2, tokenize=False, add_generation_prompt=True)
 
         sampling_params_list = [
             SamplingParams(
@@ -744,12 +709,12 @@ class TestVLLMOfflineGeneration:
 
         outputs = llm.generate([prompt, prompt_2], sampling_params_list)
 
-        print(f"\n{'='*70}")
-        print(f"vllm.LLM generation — multiple budgets")
-        print(f"{'='*70}")
+        print(f"\n{'=' * 70}")
+        print("vllm.LLM generation — multiple budgets")
+        print(f"{'=' * 70}")
         labels = [
-            f"budget=150, grace=30, end='Reached thinking limit.\\n</think>'",
-            f"budget=20,  grace=5,  end='</think>'",
+            "budget=150, grace=30, end='Reached thinking limit.\\n</think>'",
+            "budget=20,  grace=5,  end='</think>'",
         ]
         prompts_used = [MESSAGES, messages_2]
         for i, output in enumerate(outputs):
@@ -759,6 +724,6 @@ class TestVLLMOfflineGeneration:
             print(f"  Messages: {prompts_used[i]}")
             print(f"  Output ({num_tokens} tokens):")
             print(f"  {generated_text}")
-            print(f"  {'-'*60}")
+            print(f"  {'-' * 60}")
 
             assert generated_text is not None and len(generated_text) > 0

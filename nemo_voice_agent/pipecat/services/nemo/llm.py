@@ -43,6 +43,7 @@ from vllm.config import ModelConfig as vllmModelConfig
 
 from nemo_voice_agent.pipecat.services.nvidia_llm_traced import NvidiaLLMService
 
+
 DEFAULT_GENERATION_KWARGS = {
     "max_new_tokens": 256,
     "temperature": 0.7,
@@ -344,8 +345,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         self._vllm_server_params = vllm_server_params
         self._start_vllm_on_init = start_vllm_on_init
         logger.info(
-            f"VLLMService initialized with model: {model}, api_key: {api_key}, base_url: {base_url},"
-            f"params: {params}"
+            f"VLLMService initialized with model: {model}, api_key: {api_key}, base_url: {base_url},params: {params}"
         )
 
     def _start_vllm_server(

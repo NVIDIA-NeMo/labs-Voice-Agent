@@ -56,6 +56,7 @@ import sys
 from pathlib import Path
 from typing import List, Tuple
 
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "data" / "tau2_telecom"
 TARGET_PKG = REPO_ROOT / "nemo_voice_agent" / "evaluation" / "scenarios" / "data" / "tau2_telecom"
@@ -116,7 +117,7 @@ def class_name_for(tau2_id: str, variant: str = "manual") -> str:
     return stem + "".join(parts)
 
 
-GROUP_HEADER = '''# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
+GROUP_HEADER = """# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -152,7 +153,7 @@ from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom.base import (
 )
 
 
-'''
+"""
 
 
 def emit_group(ids: List[str]) -> str:
@@ -162,15 +163,11 @@ def emit_group(ids: List[str]) -> str:
         # the workflow scenario class for the same upstream task. The
         # adjacency makes it easy to spot when one variant drifts from
         # the other on review.
-        for variant, base in (("manual", "Tau2TelecomBaseScenario"),
-                              ("workflow", "Tau2TelecomWorkflowBaseScenario")):
+        for variant, base in (("manual", "Tau2TelecomBaseScenario"), ("workflow", "Tau2TelecomWorkflowBaseScenario")):
             cls = class_name_for(tid, variant=variant)
             name = scenario_name_for(tid, variant=variant)
             parts.append(
-                f"@register_eval_scenario\n"
-                f"class {cls}({base}):\n"
-                f"    name = {name!r}\n"
-                f"    tau2_id = {tid!r}\n\n\n"
+                f"@register_eval_scenario\nclass {cls}({base}):\n    name = {name!r}\n    tau2_id = {tid!r}\n\n\n"
             )
     return "".join(parts).rstrip() + "\n"
 
@@ -223,13 +220,11 @@ def main() -> int:
             name = scenario_name_for(tid, variant=variant)
             if cls in by_class:
                 raise RuntimeError(
-                    f"Class-name collision: {cls!r} for ids "
-                    f"{by_class[cls]!r} and ({variant!r}, {tid!r})"
+                    f"Class-name collision: {cls!r} for ids {by_class[cls]!r} and ({variant!r}, {tid!r})"
                 )
             if name in by_name:
                 raise RuntimeError(
-                    f"Scenario-name collision: {name!r} for ids "
-                    f"{by_name[name]!r} and ({variant!r}, {tid!r})"
+                    f"Scenario-name collision: {name!r} for ids {by_name[name]!r} and ({variant!r}, {tid!r})"
                 )
             by_class[cls] = (variant, tid)
             by_name[name] = (variant, tid)
@@ -252,9 +247,7 @@ def main() -> int:
         f"from nemo_voice_agent.evaluation.scenarios.data.tau2_telecom import {f[:-3]}  # noqa: F401"
         for f in sorted(group_files, key=lambda s: int(s.split("_")[1].rstrip("x.py")))
     )
-    (TARGET_PKG / "__init__.py").write_text(
-        INIT_TEMPLATE.format(n_total=n_total, import_lines=import_lines)
-    )
+    (TARGET_PKG / "__init__.py").write_text(INIT_TEMPLATE.format(n_total=n_total, import_lines=import_lines))
     print(f"  wrote __init__.py with {len(group_files)} group side-imports")
 
     return 0

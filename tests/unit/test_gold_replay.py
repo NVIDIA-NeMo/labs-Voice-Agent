@@ -375,9 +375,7 @@ def test_user_resources_carries_unknown_info_when_present():
         @property
         def _index_entry(self):
             entry = super()._index_entry
-            entry["task"]["user_scenario"]["instructions"]["unknown_info"] = (
-                "You do not remember your email address."
-            )
+            entry["task"]["user_scenario"]["instructions"]["unknown_info"] = "You do not remember your email address."
             return entry
 
     scenario = _ScenarioWithUnknown()

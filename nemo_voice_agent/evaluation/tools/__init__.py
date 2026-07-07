@@ -213,13 +213,13 @@ import nemo_voice_agent.evaluation.tools.basic_tools
 import nemo_voice_agent.evaluation.tools.customer_service_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.eva_airline_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.restaurant_tools  # noqa: E402, F401
+
+# Import subpackages to trigger @register_schema_tool_for_eval decorators.
+# Must be at the end to avoid circular imports (data modules import register_schema_tool_for_eval).
+import nemo_voice_agent.evaluation.tools.rtvi_control
 import nemo_voice_agent.evaluation.tools.tau2_airline_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.tau2_retail_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.tau2_telecom_sync  # noqa: E402, F401  — registers cross-side sync applier
 import nemo_voice_agent.evaluation.tools.tau2_telecom_tools  # noqa: E402, F401
 import nemo_voice_agent.evaluation.tools.tau2_telecom_user_tools  # noqa: E402, F401
-
-# Import subpackages to trigger @register_schema_tool_for_eval decorators.
-# Must be at the end to avoid circular imports (data modules import register_schema_tool_for_eval).
-import nemo_voice_agent.evaluation.tools.rtvi_control
 import nemo_voice_agent.evaluation.tools.waitlist_tools  # noqa: E402, F401
