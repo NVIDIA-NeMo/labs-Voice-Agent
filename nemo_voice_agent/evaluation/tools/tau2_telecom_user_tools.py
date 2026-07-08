@@ -54,7 +54,7 @@ from typing import Any, ClassVar, Dict, List, Optional, Type
 from pipecat.services.llm_service import FunctionCallParams
 from pydantic import BaseModel, ValidationError
 
-from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
+from nemo_voice_agent.evaluation.tools import normalize_tool_result, register_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools._write_tool_base import WriteScenarioTool
 from nemo_voice_agent.evaluation.tools.tau2_telecom_init_functions import (
     _DEFAULT_VPN_DETAILS,
@@ -280,7 +280,9 @@ class _Tau2InvokeMixin:
 
     async def _execute(self, params: FunctionCallParams) -> None:
         result = self.invoke(**(params.arguments or {}))
-        await params.result_callback(result)
+        # Guard against pipecat masking a falsy result (e.g. an empty match
+        # list) as the literal "COMPLETED"; the LLM would read that as success.
+        await params.result_callback(normalize_tool_result(result))
 
     def _do_work(self, p) -> Any:  # pragma: no cover - abstract
         raise NotImplementedError(f"{type(self).__name__} must implement _do_work(p)")

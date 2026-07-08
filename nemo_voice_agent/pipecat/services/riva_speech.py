@@ -15,6 +15,7 @@ import asyncio
 import concurrent.futures
 import os
 import re
+import time
 import warnings
 from collections.abc import AsyncGenerator, Sequence
 from pathlib import Path
@@ -692,6 +693,102 @@ class NemotronTTSService(TTSService):
         except Exception as e:
             logger.error(f"{self} Failed to list available voices: {e}")
             raise
+
+
+class ResilientNemotronTTSService(NemotronTTSService):
+    """``NemotronTTSService`` with auto-recovery from transient synthesis errors.
+
+    **Problem.** The NVCF-hosted Riva TTS endpoint periodically fails a
+    synthesis RPC with a transient gRPC status — ``DEADLINE_EXCEEDED`` (e.g.
+    ``reason:"failed to establish link to worker"``), ``UNAVAILABLE``, or
+    ``INTERNAL`` (RST_STREAM, cloud pod restart / abrupt close). The base
+    ``run_tts`` catches the error, logs ``"Error invoking TTS"``, and breaks —
+    dropping the whole utterance, so the user hears silence.
+
+    **Fix.** A drop-in subclass (mirrors ``ResilientNvidiaSTTService``) that
+    wraps ``self._service.synthesize_online`` with a bounded retry. When the
+    synthesis stream fails *before yielding its first audio chunk* — exactly
+    when the "failed to establish link to worker" error fires — it re-issues a
+    fresh RPC (up to ``MAX_TTS_RETRIES``, with linear backoff). Once any audio
+    has been produced the wrapper stops retrying, so already-played audio is
+    never duplicated; a later mid-stream error propagates to the base handler
+    unchanged. Everything else (auth, invalid-argument, etc.) propagates
+    immediately so real misconfigurations fail fast.
+
+    The base drives synthesis by iterating the object returned from
+    ``synthesize_online`` inside a worker thread (``run_in_executor``), so the
+    wrapper is a **synchronous** generator — backoff uses ``time.sleep`` on that
+    worker thread and never blocks the event loop. No base behavior changes: if
+    the first RPC succeeds, this class is byte-for-byte identical to the base.
+    """
+
+    # gRPC ``StatusCode`` names treated as transient, retryable failures.
+    # Strings (not enum values) so no hard ``grpc`` import is needed — duck-typed
+    # lookup via ``exc.code().name`` works for any grpc.RpcError subclass
+    # (``_MultiThreadedRendezvous`` included).
+    _RETRYABLE_GRPC_STATUS_NAMES = frozenset(
+        [
+            "DEADLINE_EXCEEDED",  # "failed to establish link to worker" / long-synth timeout
+            "UNAVAILABLE",  # transient endpoint unavailability
+            "INTERNAL",  # RST_STREAM with INTERNAL_ERROR — cloud pod restart / abrupt close
+        ]
+    )
+
+    # Max retries per synthesis RPC, and base backoff (seconds) between attempts.
+    MAX_TTS_RETRIES = 3
+    TTS_RETRY_BACKOFF_S = 0.5
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._install_resilient_synthesis()
+
+    def _is_retryable_tts_error(self, exc: BaseException) -> bool:
+        """True if ``exc`` is a transient gRPC failure worth re-establishing.
+
+        Duck-typed lookup via ``exc.code().name`` against
+        ``_RETRYABLE_GRPC_STATUS_NAMES``. Everything else returns ``False``.
+        """
+        try:
+            status_name = exc.code().name  # type: ignore[attr-defined]
+        except (AttributeError, TypeError):
+            return False
+        return status_name in self._RETRYABLE_GRPC_STATUS_NAMES
+
+    def _install_resilient_synthesis(self) -> None:
+        """Wrap ``self._service.synthesize_online`` with the retry generator.
+
+        Stores the original callable on the service so re-installing (e.g. in
+        tests) never stacks wrappers.
+        """
+        original = getattr(self._service, "_synthesize_online_original", None) or self._service.synthesize_online
+        self._service._synthesize_online_original = original
+
+        def resilient_synthesize_online(*args, **kwargs):
+            attempts = 0
+            while True:
+                try:
+                    iterator = iter(original(*args, **kwargs))
+                    first = next(iterator)
+                except StopIteration:
+                    return  # empty response — nothing to synthesize
+                except Exception as e:
+                    if self._is_retryable_tts_error(e) and attempts < self.MAX_TTS_RETRIES:
+                        attempts += 1
+                        logger.warning(
+                            f"{self}: transient TTS error "
+                            f"(retry {attempts}/{self.MAX_TTS_RETRIES}); "
+                            f"re-establishing synthesis RPC. Error: {str(e)[:300]}"
+                        )
+                        time.sleep(self.TTS_RETRY_BACKOFF_S * attempts)
+                        continue  # re-issue a fresh synthesize_online RPC
+                    raise
+                # First chunk arrived — past this point a restart would replay
+                # audio, so stream the remainder without any further retry.
+                yield first
+                yield from iterator
+                return
+
+        self._service.synthesize_online = resilient_synthesize_online
 
 
 class NemotronASRService(STTService):
