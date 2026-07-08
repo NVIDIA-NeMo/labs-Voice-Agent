@@ -349,15 +349,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flag:
-          - unit-test
-          - e2e
+        include:
+          - flag: unit-test
+            pattern: coverage-unit-test-*
+            upload-codecov: true
+          - flag: e2e
+            pattern: coverage-e2e-*
+            upload-codecov: true
+          - flag: all
+            pattern: coverage-*
+            upload-codecov: false
     steps:
       - uses: actions/checkout@v6
       - name: Download coverage artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: coverage-${{ matrix.flag }}-*
+          pattern: ${{ matrix.pattern }}
           merge-multiple: false
       - name: Combine coverage
         id: combine-coverage
@@ -381,7 +388,7 @@ jobs:
           path: coverage-${{ matrix.flag }}.xml
           if-no-files-found: error
       - name: Upload to Codecov
-        if: env.UPLOAD_CODECOV == 'true' && steps.combine-coverage.outputs.has_coverage == 'true'
+        if: matrix.upload-codecov && env.UPLOAD_CODECOV == 'true' && steps.combine-coverage.outputs.has_coverage == 'true'
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
