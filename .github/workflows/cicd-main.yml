@@ -244,6 +244,7 @@ jobs:
       fail-fast: false
       matrix:
         script:
+          - L0_Functional_Model_Free_Runtime
           - L0_Functional_VLLM_Reasoning_Budget
     steps:
       - uses: actions/checkout@v6
