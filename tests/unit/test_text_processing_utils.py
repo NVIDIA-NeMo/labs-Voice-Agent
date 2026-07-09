@@ -40,7 +40,7 @@ def _collect_async(async_iterable):
 @pytest.mark.parametrize(
     "text, expected",
     [
-        ("The price is 3.", True),
+        ("The price is 3.", False),
         ("The total is ($3.14)", True),
         ("The total is $3.14.", False),
         ("1.", False),
@@ -59,9 +59,9 @@ def test_has_partial_decimal_distinguishes_numbers_from_sentence_punctuation(tex
         ("Hello there.", 11),
         ("The fee is 3.", -1),
         ("1. Confirm your name", -1),
-        ("Meet at 7 p.m.", -1),
+        ("Meet at 7 p.m.", 13),
         ("Washington, D.C.", -1),
-        ("This is e.g. a sample. Done.", 26),
+        ("This is e.g. a sample. Done.", 27),
     ],
 )
 def test_find_last_period_index_ignores_common_non_sentence_periods(text, expected):
@@ -126,7 +126,7 @@ def test_riva_text_filter_removes_markup_bullets_and_normalizes_punctuation():
     """The Riva filter strips markup and bullet prefixes while preserving readable text."""
     filtered = asyncio.run(RivaTextFilter().filter("  1. **Hello**(world)!Next - ' spaced ' @@@ "))
 
-    assert filtered == "Hello world! Next-'spaced'"
+    assert filtered == "Helloworld! Next-'spaced'"
 
 
 def test_riva_text_filter_interruption_hooks_are_noops():

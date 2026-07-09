@@ -24,7 +24,7 @@ from nemo_voice_agent.evaluation.scenarios import (
     list_eval_scenarios,
     register_eval_scenario,
 )
-from nemo_voice_agent.evaluation.scenarios.classes import Scenario
+from nemo_voice_agent.evaluation.scenarios.classes import Scenario, SuccessSignal
 from nemo_voice_agent.evaluation.tools.restaurant_tools import GetMenuTool
 
 
@@ -54,6 +54,7 @@ def test_register_eval_scenario_lists_and_instantiates_registered_class():
 
             name = "unit_registry__scenario"
             description = "registry test"
+            success_signals = (SuccessSignal.CLEAN_EXIT,)
 
         assert list_eval_scenarios() == ["unit_registry__scenario"]
         assert isinstance(get_eval_scenario("unit_registry__scenario"), _UnitRegistryScenario)

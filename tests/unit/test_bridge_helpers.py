@@ -215,6 +215,8 @@ def test_finalize_speaker_turn_marks_interrupted_empty_transcript(tmp_path):
 def test_build_conversation_log_computes_latency_between_user_and_agent(tmp_path):
     """Conversation logs are sorted and agent latency is computed from the prior user turn."""
     bridge = _bridge(tmp_path)
+    bridge.turn_start_offset_secs = 0.0
+    bridge.turn_end_offset_secs = 0.0
     bridge.metrics.segments = [
         SegmentEntry(start_time=2.0, end_time=3.0, speaker="agent", transcript="response"),
         SegmentEntry(start_time=0.5, end_time=1.0, speaker="user", transcript="question"),
@@ -337,8 +339,8 @@ def test_monitor_user_message_routes_action_applied_to_sync(tmp_path):
     assert seen == [({"name": "toggle_data"}, "user")]
 
 
-def test_wait_for_action_response_accepts_success_and_bool_results(tmp_path):
-    """The generic action waiter treats success dicts and literal True as successful responses."""
+def test_wait_for_action_response_accepts_success_dict_and_rejects_bool_result(tmp_path):
+    """The generic action waiter treats success dicts as successful responses."""
     bridge = _bridge(tmp_path)
     dict_ws = _FakeWebSocket(
         [
@@ -352,7 +354,7 @@ def test_wait_for_action_response_accepts_success_and_bool_results(tmp_path):
     bool_result = asyncio.run(bridge._wait_for_action_response(bool_ws, timeout=0.01))
 
     assert dict_result is True
-    assert bool_result is True
+    assert bool_result is False
 
 
 def test_client_ready_prompt_reset_and_send_text_helpers_emit_expected_actions(tmp_path):

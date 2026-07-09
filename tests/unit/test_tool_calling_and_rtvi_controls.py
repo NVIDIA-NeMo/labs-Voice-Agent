@@ -229,11 +229,11 @@ class _DirectToolMixin(ToolCallingMixin):
         self.register_direct_function("direct_tool", _direct_tool)
 
 
-def _direct_tool():
+async def _direct_tool(params):
     """Fake direct function registered into the LLM."""
 
 
-def _extra_direct_tool():
+async def _extra_direct_tool(params):
     """Second fake direct function supplied without a mixin."""
 
 

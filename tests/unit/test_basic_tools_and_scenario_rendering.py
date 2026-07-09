@@ -239,8 +239,10 @@ def test_scenario_save_writes_prompts_metadata_tools_and_reference(tmp_path):
 
     assert (tmp_path / "user_prompt.txt").exists()
     assert (tmp_path / "agent_prompt.txt").exists()
-    assert json.loads((tmp_path / "user_tools.json").read_text()) == {"ReadFileTool": {"file_path": "doc.txt"}}
-    assert json.loads((tmp_path / "agent_tools.json").read_text()) == {}
+    assert json.loads(json.loads((tmp_path / "user_tools.json").read_text())) == {
+        "ReadFileTool": {"file_path": "doc.txt"}
+    }
+    assert json.loads(json.loads((tmp_path / "agent_tools.json").read_text())) == {}
     assert metadata["name"] == "render__scenario"
     assert metadata["clean_text"] is True
     assert metadata["disallow_extra_items"] is True
