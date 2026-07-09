@@ -174,11 +174,33 @@ class PizzaPepperoni(RestaurantBaseScenario):
         )
 
     @property
+    def agent_actions(self) -> Actions:
+        return Actions(
+            instructions=[
+                "Greet the user by saying 'Welcome to Pizza Palace! I'm Lisa, how can I help you today?'.",
+                "Ask the user what they would like to order and help them make the order.",
+                "Summarize the order and confirm with the user if the order is correct.",
+                "Ask the user for their name and phone number, and associate them with the order.",
+                "Place the order using the `PlaceOrderTool` tool, "
+                "and confirm with the user if the order is placed successfully.",
+                "Thank the user for their order and say goodbye, "
+                "and use the `EndConversationTool` tool to end the conversation.",
+            ],
+            guidelines=[
+                "Do not make up any items not on the menu.",
+                "Always use the `PlaceOrderTool` tool to place the final confirmed order.",
+                "Always confirm with the user if the order is correct before placing the order.",
+                "Use the `EndConversationTool` tool to end the conversation after "
+                "the user says goodbye or has no other requests.",
+            ],
+        )
+
+    @property
     def agent_resources(self) -> Resources:
         return Resources(
             tools={
                 "GetMenuTool": {"menu": PIZZA_PALACE_MENU},
-                "PlaceOrderTool": {"auto_validate": "False"},
+                "PlaceOrderTool": {"auto_validate": "True"},
                 "EndConversationTool": {},
             },
         )
