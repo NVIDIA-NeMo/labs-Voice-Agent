@@ -255,6 +255,7 @@ jobs:
           script-dir: tests/functional/launch_scripts/h100/active
           timeout: "120"
           coverage-prefix: e2e
+          test-data-path: ${{ needs.pre-flight.outputs.test_data_path }}
 
   Nemo_CICD_Test:
     needs:
