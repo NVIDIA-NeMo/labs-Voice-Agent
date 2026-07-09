@@ -229,12 +229,20 @@ class _DirectToolMixin(ToolCallingMixin):
         self.register_direct_function("direct_tool", _direct_tool)
 
 
-async def _direct_tool(params):
-    """Fake direct function registered into the LLM."""
+async def _direct_tool(params, value: str = "default"):
+    """Fake direct function registered into the LLM.
+
+    Args:
+        value: Synthetic value used to exercise direct-function schema extraction.
+    """
 
 
-async def _extra_direct_tool(params):
-    """Second fake direct function supplied without a mixin."""
+async def _extra_direct_tool(params, value: str = "extra"):
+    """Second fake direct function supplied without a mixin.
+
+    Args:
+        value: Synthetic value used to exercise direct-function schema extraction.
+    """
 
 
 def test_tool_calling_mixin_and_direct_tool_registration():
@@ -269,7 +277,11 @@ def test_tool_calling_mixin_and_direct_tool_registration():
     )
 
     assert mixin.available_tools == {"direct_tool": _direct_tool}
-    assert context._tools.standard_tools == [_direct_tool, _extra_direct_tool, _extra_direct_tool]
+    assert [tool.name for tool in context._tools.standard_tools] == [
+        "_direct_tool",
+        "_extra_direct_tool",
+        "_extra_direct_tool",
+    ]
     assert registered == [
         (_direct_tool, False),
         (_extra_direct_tool, False),
