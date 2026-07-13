@@ -246,6 +246,7 @@ jobs:
         script:
           - L0_Functional_Model_Free_Runtime
           - L0_Functional_VLLM_Reasoning_Budget
+          - L1_Functional_Cached_Model_Runtime
     steps:
       - uses: actions/checkout@v6
       - name: Run functional test
