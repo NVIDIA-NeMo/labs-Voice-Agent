@@ -21,5 +21,6 @@ coverage run -a --data-file="${COVERAGE_FILE:-.coverage}" --source=nemo_voice_ag
     -o log_cli=true \
     -o log_cli_level=INFO \
     --disable-warnings \
+    -rs \
     -vs tests/functional/models \
     -m "functional and gpu and not pleasefixme"

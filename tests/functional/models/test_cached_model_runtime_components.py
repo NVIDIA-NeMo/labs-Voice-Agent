@@ -16,8 +16,6 @@
 
 import asyncio
 import gc
-import os
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -33,53 +31,6 @@ MAGPIE_MODEL = "nvidia/magpie_tts_multilingual_357m"
 FASTPITCH_MODEL = "nvidia/tts_en_fastpitch"
 HIFIGAN_MODEL = "nvidia/tts_hifigan"
 QWEN_MODEL = "Qwen/Qwen2.5-7B-Instruct"
-
-
-def _require_cached_model(model_id: str) -> Path:
-    """Return a cached model directory or skip when it is unavailable offline."""
-    hf_cache_name = f"models--{model_id.replace('/', '--')}"
-    nemo_cache_names = [
-        model_id.replace("/", "--"),
-        model_id.replace("/", "_"),
-        model_id.rsplit("/", maxsplit=1)[-1],
-    ]
-    hf_home = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface"))
-    nemo_home = Path(os.environ.get("NEMO_HOME", Path.home() / ".cache" / "torch" / "NeMo"))
-    candidates = [hf_home / hf_cache_name, hf_home / "hub" / hf_cache_name]
-    candidates.extend(nemo_home / cache_name for cache_name in nemo_cache_names)
-
-    for candidate in candidates:
-        snapshots = candidate / "snapshots"
-        if snapshots.is_dir() and any(snapshots.iterdir()):
-            return candidate
-        if candidate.is_dir() and any(candidate.iterdir()):
-            return candidate
-
-    pytest.skip(f"{model_id} is not available in the offline model caches under {hf_home} or {nemo_home}")
-
-
-def _require_cached_model_weights(model_id: str) -> Path:
-    """Require cached Hugging Face checkpoint weights before loading a local CausalLM."""
-    model_root = _require_cached_model(model_id)
-    snapshots = model_root / "snapshots"
-    search_roots = [snapshot for snapshot in snapshots.iterdir() if snapshot.is_dir()] if snapshots.is_dir() else []
-    if not search_roots:
-        search_roots = [model_root]
-
-    weight_patterns = (
-        "model.safetensors",
-        "model.safetensors.index.json",
-        "model-*.safetensors",
-        "pytorch_model.bin",
-        "pytorch_model.bin.index.json",
-        "pytorch_model-*.bin",
-    )
-    for search_root in search_roots:
-        for pattern in weight_patterns:
-            if any(search_root.rglob(pattern)):
-                return model_root
-
-    pytest.skip(f"{model_id} is cached under {model_root}, but no checkpoint weight files are present")
 
 
 def _require_cuda() -> None:
@@ -109,7 +60,6 @@ def _pcm_silence(seconds: float, sample_rate: int = 16000) -> bytes:
 def test_realtime_eou_asr_model_streams_silence_from_cache():
     """NemoStreamingASRService loads the repo's realtime EOU ASR model and runs one streaming step."""
     _require_cuda()
-    _require_cached_model(REALTIME_EOU_ASR_MODEL)
 
     from nemo_voice_agent.pipecat.services.nemo.streaming_asr import ASRResult, NemoStreamingASRService
 
@@ -134,7 +84,6 @@ def test_realtime_eou_asr_model_streams_silence_from_cache():
 def test_small_parakeet_asr_model_loads_through_streaming_wrapper_when_compatible():
     """A small cached Parakeet ASR fallback can exercise the streaming ASR wrapper when compatible."""
     _require_cuda()
-    _require_cached_model(SMALL_PARAKEET_ASR_MODEL)
 
     from nemo_voice_agent.pipecat.services.nemo.streaming_asr import NemoStreamingASRService
 
@@ -162,7 +111,6 @@ def test_small_parakeet_asr_model_loads_through_streaming_wrapper_when_compatibl
 def test_streaming_diarization_model_returns_speaker_probabilities_from_cache():
     """NeMoStreamingDiarService loads Sortformer diarization and returns frame speaker probabilities."""
     _require_cuda()
-    _require_cached_model(DIAR_MODEL)
 
     from nemo_voice_agent.pipecat.services.nemo.streaming_diar import DiarizationConfig, NeMoStreamingDiarService
 
@@ -184,7 +132,6 @@ def test_streaming_diarization_model_returns_speaker_probabilities_from_cache():
 def test_kokoro_tts_model_generates_audio_from_cache():
     """KokoroTTSService loads the cached Kokoro model and generates at least one audio chunk."""
     _require_cuda()
-    _require_cached_model(KOKORO_MODEL)
     pytest.importorskip("kokoro")
 
     from nemo_voice_agent.pipecat.services.nemo.tts import KokoroTTSService
@@ -209,8 +156,6 @@ def test_kokoro_tts_model_generates_audio_from_cache():
 def test_fastpitch_hifigan_tts_models_generate_audio_from_cache():
     """FastPitch and HiFiGAN cached NeMo TTS models generate PCM-ready audio."""
     _require_cuda()
-    _require_cached_model(FASTPITCH_MODEL)
-    _require_cached_model(HIFIGAN_MODEL)
 
     from nemo_voice_agent.pipecat.services.nemo.tts import NeMoFastPitchHiFiGANTTSService
 
@@ -233,7 +178,6 @@ def test_fastpitch_hifigan_tts_models_generate_audio_from_cache():
 def test_magpie_tts_model_generates_audio_from_cache():
     """MagpieTTSService loads the cached Magpie model and synthesizes a short utterance."""
     _require_cuda()
-    _require_cached_model(MAGPIE_MODEL)
 
     from nemo_voice_agent.pipecat.services.nemo.tts import MagpieTTSService
 
@@ -252,7 +196,6 @@ def test_magpie_tts_model_generates_audio_from_cache():
 def test_huggingface_llm_local_service_streams_from_cached_qwen_model():
     """HuggingFaceLLMLocalService loads cached Qwen and streams a short chat completion."""
     _require_cuda()
-    _require_cached_model_weights(QWEN_MODEL)
 
     from nemo_voice_agent.pipecat.services.nemo.llm import HuggingFaceLLMLocalService
 
