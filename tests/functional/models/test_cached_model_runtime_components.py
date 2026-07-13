@@ -58,6 +58,30 @@ def _require_cached_model(model_id: str) -> Path:
     pytest.skip(f"{model_id} is not available in the offline model caches under {hf_home} or {nemo_home}")
 
 
+def _require_cached_model_weights(model_id: str) -> Path:
+    """Require cached Hugging Face checkpoint weights before loading a local CausalLM."""
+    model_root = _require_cached_model(model_id)
+    snapshots = model_root / "snapshots"
+    search_roots = [snapshot for snapshot in snapshots.iterdir() if snapshot.is_dir()] if snapshots.is_dir() else []
+    if not search_roots:
+        search_roots = [model_root]
+
+    weight_patterns = (
+        "model.safetensors",
+        "model.safetensors.index.json",
+        "model-*.safetensors",
+        "pytorch_model.bin",
+        "pytorch_model.bin.index.json",
+        "pytorch_model-*.bin",
+    )
+    for search_root in search_roots:
+        for pattern in weight_patterns:
+            if any(search_root.rglob(pattern)):
+                return model_root
+
+    pytest.skip(f"{model_id} is cached under {model_root}, but no checkpoint weight files are present")
+
+
 def _require_cuda() -> None:
     """Skip model-backed functional tests when no CUDA device is visible."""
     torch = pytest.importorskip("torch")
@@ -228,7 +252,7 @@ def test_magpie_tts_model_generates_audio_from_cache():
 def test_huggingface_llm_local_service_streams_from_cached_qwen_model():
     """HuggingFaceLLMLocalService loads cached Qwen and streams a short chat completion."""
     _require_cuda()
-    _require_cached_model(QWEN_MODEL)
+    _require_cached_model_weights(QWEN_MODEL)
 
     from nemo_voice_agent.pipecat.services.nemo.llm import HuggingFaceLLMLocalService
 
