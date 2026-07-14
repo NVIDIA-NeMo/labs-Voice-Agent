@@ -1,5 +1,5 @@
-# Copyright (c) 2026, NVIDIA CORPORATION.  All rights reserved.
-# Licensed under the Apache License, Version 2.0.
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 """Tests for the resume path in ``run_dynamic_evaluation``.
 

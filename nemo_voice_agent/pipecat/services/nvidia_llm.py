@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: BSD 2-Clause License
+# SPDX-License-Identifier: Apache-2.0
 
 """NVIDIA LLM service implementation for interacting with NIM (NVIDIA Inference Microservice) API."""
 
