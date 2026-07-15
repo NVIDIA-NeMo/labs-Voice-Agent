@@ -230,8 +230,9 @@ def test_kokoro_tts_model_generates_audio_from_cache():
 
     from nemo_voice_agent.pipecat.services.nemo.tts import KokoroTTSService
 
+    _cached_snapshot(KOKORO_MODEL)
     service = KokoroTTSService(
-        model=str(_cached_snapshot(KOKORO_MODEL)),
+        model=KOKORO_MODEL,
         device="cuda",
         download_all=False,
         cache_models=False,

@@ -17,6 +17,8 @@
 # GPU_COUNT=x2
 set -xeuo pipefail
 
+uv pip install phonemizer-fork==3.3.2 espeakng-loader==0.2.4
+
 python <<'PY'
 import os
 from huggingface_hub import constants
