@@ -20,23 +20,29 @@ from types import SimpleNamespace
 import httpx
 import numpy as np
 import pytest
+from pipecat.audio.vad.vad_analyzer import VADState
 from pipecat.frames.frames import (
     ErrorFrame,
+    InputAudioRawFrame,
     InterimTranscriptionFrame,
+    LLMRunFrame,
     StartInterruptionFrame,
     TranscriptionFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
     VADUserStartedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
 )
 from pipecat.metrics.metrics import LLMTokenUsage
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.transcriptions.language import Language
 
+from nemo_voice_agent.pipecat.services.common import UserAudioBuffer
 from nemo_voice_agent.pipecat.services.nemo.stt import NemoSTTInputParams, NemoSTTService
 from nemo_voice_agent.pipecat.services.nemo.tts import BaseNemoTTSService
 from nemo_voice_agent.pipecat.services.nemo.turn_taking import NeMoTurnTakingService
 from nemo_voice_agent.pipecat.services.nvidia_llm import NvidiaLLMService
+from nemo_voice_agent.pipecat.transports.base_input import BaseInputTransport
 from nemo_voice_agent.pipecat.transports.network.websocket_server import (
     WebsocketServerParams,
     WebsocketServerTransport,
@@ -119,6 +125,64 @@ def _bare_stt(fake_model, *, has_turn_taking=False):
     service.start_processing_metrics = _noop
     service.stop_processing_metrics = _noop
     return service
+
+
+class _FakeContext:
+    """Fake LLM context that captures audio-frame messages."""
+
+    def __init__(self, messages=None):
+        """Initialize context messages and add-audio call capture."""
+        self.messages = list(messages or [])
+        self.audio_messages = []
+
+    async def add_audio_frames_message(self, audio_frames, text):
+        """Capture the added audio turn and mirror it into context messages."""
+        self.audio_messages.append((list(audio_frames), text))
+        self.messages.append({"role": "user", "content": list(audio_frames)})
+
+
+class _FakeAggregator:
+    """Fake user context aggregator that captures pushed frames."""
+
+    def __init__(self):
+        """Initialize pushed frame capture."""
+        self.frames = []
+
+    async def push_frame(self, frame):
+        """Capture one frame."""
+        self.frames.append(frame)
+
+
+def _audio_frame(value: int = 1) -> InputAudioRawFrame:
+    """Build a small input audio frame."""
+    return InputAudioRawFrame(audio=np.array([value], dtype=np.int16).tobytes(), sample_rate=16000, num_channels=1)
+
+
+def _bare_input_transport(*, new_vad_state, can_create_user_frames=True, turn_analyzer=None):
+    """Construct BaseInputTransport with fake VAD analysis and frame capture."""
+    transport = BaseInputTransport.__new__(BaseInputTransport)
+    transport._params = SimpleNamespace(
+        turn_analyzer=turn_analyzer,
+        can_create_user_frames=can_create_user_frames,
+        audio_in_enabled=True,
+    )
+    transport._paused = False
+    transport._audio_in_queue = asyncio.Queue()
+    transport._vad_analyze = lambda _frame: asyncio.sleep(0, result=new_vad_state)
+    transport.pushed = []
+    transport.interruptions = []
+
+    async def _push_frame(frame, direction=None):
+        """Capture pushed VAD/user frames."""
+        transport.pushed.append((frame, direction))
+
+    async def _handle_user_interruption(vad_state):
+        """Capture interruption handling calls."""
+        transport.interruptions.append(vad_state)
+
+    transport.push_frame = _push_frame
+    transport._handle_user_interruption = _handle_user_interruption
+    return transport
 
 
 def test_turn_taking_loads_backchannels_from_list_and_cleans_text():
@@ -454,3 +518,114 @@ def test_websocket_transport_connection_callbacks_route_to_output_and_handlers()
         ("on_session_timeout", (websocket,)),
         ("on_websocket_ready", ()),
     ]
+
+
+def test_user_audio_buffer_keeps_preroll_then_adds_audio_turn_with_transcript():
+    """UserAudioBuffer keeps pre-roll audio, appends speech frames, and emits an LLM run frame."""
+    context = _FakeContext()
+    aggregator = _FakeAggregator()
+    service = UserAudioBuffer(
+        context=context,
+        user_context_aggregator=aggregator,
+        pre_cache_duration_secs=0.032,
+        raw_audio_frame_len_in_secs=0.016,
+        use_transcript=True,
+    )
+    pushed = _capture_pushes(service)
+
+    _drive(service.process_frame(_audio_frame(1), FrameDirection.DOWNSTREAM))
+    _drive(service.process_frame(_audio_frame(2), FrameDirection.DOWNSTREAM))
+    _drive(service.process_frame(_audio_frame(3), FrameDirection.DOWNSTREAM))
+    _drive(service.process_frame(UserStartedSpeakingFrame(), FrameDirection.DOWNSTREAM))
+    _drive(service.process_frame(_audio_frame(4), FrameDirection.DOWNSTREAM))
+    _drive(service.process_frame(TranscriptionFrame("hello there", "", "now"), FrameDirection.DOWNSTREAM))
+    _drive(service.process_frame(UserStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM))
+
+    audio_frames, text = context.audio_messages[0]
+    assert len(audio_frames) == 3
+    assert "Follow instructions" in text
+    assert "hello there" in text
+    assert isinstance(aggregator.frames[0], LLMRunFrame)
+    assert service._audio_frames == []
+    assert service._transcript_buffer == []
+    assert any(isinstance(frame, UserStoppedSpeakingFrame) for frame, _ in pushed)
+
+
+def test_user_audio_buffer_replaces_previous_audio_turn_when_configured():
+    """When configured for only the latest audio turn, older audio content is replaced by transcript text."""
+    context = _FakeContext(messages=[{"role": "user", "content": [_audio_frame(1)]}])
+    aggregator = _FakeAggregator()
+    service = UserAudioBuffer(
+        context=context,
+        user_context_aggregator=aggregator,
+        use_transcript=True,
+        keep_only_last_audio_turn=True,
+    )
+    service._previsous_user_text = "previous transcript"
+    service._audio_frames = [_audio_frame(2)]
+    service._transcript_buffer = ["new transcript"]
+
+    _drive(service.process_frame(UserStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM))
+
+    assert context.messages[0]["content"] == "previous transcript"
+    assert context.audio_messages[0][1].endswith("new transcript")
+
+
+def test_user_audio_buffer_reset_clears_audio_and_transcript_state():
+    """UserAudioBuffer.reset clears buffered audio, transcript, and speaking state."""
+    service = UserAudioBuffer(context=_FakeContext(), user_context_aggregator=_FakeAggregator())
+    service._audio_frames = [_audio_frame()]
+    service._transcript_buffer = ["hello"]
+    service._user_speaking = True
+
+    service.reset()
+
+    assert service._audio_frames == []
+    assert service._transcript_buffer == []
+    assert service._user_speaking is False
+
+
+def test_base_input_transport_vad_speaking_emits_vad_and_user_frames():
+    """BaseInputTransport emits VAD start and handles user interruption on speaking transitions."""
+    transport = _bare_input_transport(new_vad_state=VADState.SPEAKING)
+
+    state = _drive(transport._handle_vad(_audio_frame(), VADState.QUIET))
+
+    assert state is VADState.SPEAKING
+    assert any(isinstance(frame, VADUserStartedSpeakingFrame) for frame, _ in transport.pushed)
+    assert transport.interruptions == [VADState.SPEAKING]
+
+
+def test_base_input_transport_vad_quiet_respects_turn_analyzer_gate():
+    """Turn-analyzer speech-triggered state suppresses user-frame interruption handling."""
+    turn_analyzer = SimpleNamespace(speech_triggered=True)
+    transport = _bare_input_transport(new_vad_state=VADState.QUIET, turn_analyzer=turn_analyzer)
+
+    state = _drive(transport._handle_vad(_audio_frame(), VADState.SPEAKING))
+
+    assert state is VADState.QUIET
+    assert any(isinstance(frame, VADUserStoppedSpeakingFrame) for frame, _ in transport.pushed)
+    assert transport.interruptions == []
+
+
+def test_base_input_transport_push_audio_frame_sets_timestamp_and_queues_when_enabled():
+    """Audio frames are timestamped and queued only when audio input is enabled and not paused."""
+    transport = _bare_input_transport(new_vad_state=VADState.SPEAKING)
+    frame = _audio_frame()
+
+    _drive(transport.push_audio_frame(frame))
+
+    assert frame.timestamp is not None
+    assert transport._audio_in_queue.get_nowait() is frame
+
+
+def test_base_input_transport_push_audio_frame_does_not_queue_when_paused():
+    """Paused audio input still timestamps frames but does not enqueue them."""
+    transport = _bare_input_transport(new_vad_state=VADState.SPEAKING)
+    transport._paused = True
+    frame = _audio_frame()
+
+    _drive(transport.push_audio_frame(frame))
+
+    assert frame.timestamp is not None
+    assert transport._audio_in_queue.empty()
