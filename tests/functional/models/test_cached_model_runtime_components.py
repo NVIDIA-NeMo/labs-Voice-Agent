@@ -16,6 +16,7 @@
 
 import asyncio
 import gc
+import os
 from pathlib import Path
 
 import numpy as np
@@ -33,11 +34,23 @@ MAGPIE_MODEL = "nvidia/magpie_tts_multilingual_357m"
 FASTPITCH_MODEL = "nvidia/tts_en_fastpitch"
 HIFIGAN_MODEL = "nvidia/tts_hifigan"
 QWEN_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+ALL_MODEL_IDS = (
+    REALTIME_EOU_ASR_MODEL,
+    SMALL_PARAKEET_ASR_MODEL,
+    DIAR_MODEL,
+    KOKORO_MODEL,
+    FASTPITCH_MODEL,
+    HIFIGAN_MODEL,
+    MAGPIE_MODEL,
+    QWEN_MODEL,
+)
 
 
 def _cached_snapshot(model_id: str) -> Path:
     """Resolve a Hugging Face model from the mounted offline cache."""
-    return Path(snapshot_download(model_id, local_files_only=True))
+    snapshot = Path(snapshot_download(model_id, local_files_only=True))
+    print(f"[model-cache] {model_id} snapshot={snapshot}")
+    return snapshot
 
 
 def _cached_nemo_model_arg(model_id: str) -> str:
@@ -45,8 +58,69 @@ def _cached_nemo_model_arg(model_id: str) -> str:
     snapshot = _cached_snapshot(model_id)
     nemo_files = sorted(snapshot.glob("*.nemo"))
     if nemo_files:
+        print(f"[model-cache] {model_id} using nemo artifact={nemo_files[0]}")
         return str(nemo_files[0])
+    print(f"[model-cache] {model_id} using snapshot directory={snapshot}")
     return str(snapshot)
+
+
+def _snapshot_file_summary(snapshot: Path) -> dict[str, object]:
+    """Return a compact summary of files relevant to HF/NeMo model loading."""
+    patterns = {
+        "nemo": "*.nemo",
+        "config": "config.json",
+        "safetensors_index": "model.safetensors.index.json",
+        "safetensors": "model*.safetensors",
+        "pytorch_bin": "pytorch_model*.bin",
+        "tokenizer": "tokenizer*",
+    }
+    summary = {}
+    for name, pattern in patterns.items():
+        matches = sorted(snapshot.glob(pattern))
+        summary[name] = {
+            "count": len(matches),
+            "sample": [match.name for match in matches[:3]],
+        }
+    return summary
+
+
+def test_cached_hf_snapshots_are_resolvable_and_report_contents():
+    """HF cache diagnostics show each model's resolved snapshot and key artifact files."""
+    print(f"[model-cache] HF_HOME={os.environ.get('HF_HOME')}")
+    print(f"[model-cache] HF_HUB_CACHE={os.environ.get('HF_HUB_CACHE')}")
+    print(f"[model-cache] NEMO_HOME={os.environ.get('NEMO_HOME')}")
+    print(f"[model-cache] TRANSFORMERS_OFFLINE={os.environ.get('TRANSFORMERS_OFFLINE')}")
+    print(f"[model-cache] HF_HUB_OFFLINE={os.environ.get('HF_HUB_OFFLINE')}")
+
+    for model_id in ALL_MODEL_IDS:
+        snapshot = _cached_snapshot(model_id)
+        summary = _snapshot_file_summary(snapshot)
+        print(f"[model-cache] {model_id} files={summary}")
+        assert snapshot.exists()
+
+
+def test_cached_qwen_snapshot_loads_with_transformers_auto_classes():
+    """Transformers can instantiate the cached Qwen tokenizer and causal LM directly from the snapshot."""
+    _require_cuda()
+    transformers = pytest.importorskip("transformers")
+    snapshot = str(_cached_snapshot(QWEN_MODEL))
+
+    tokenizer = transformers.AutoTokenizer.from_pretrained(snapshot, local_files_only=True)
+    model = transformers.AutoModelForCausalLM.from_pretrained(
+        snapshot,
+        device_map="cuda:0",
+        dtype="bfloat16",
+        trust_remote_code=True,
+        local_files_only=True,
+    )
+    try:
+        assert tokenizer is not None
+        assert model is not None
+        assert getattr(model.config, "_name_or_path", None)
+    finally:
+        del model
+        del tokenizer
+        _cleanup_cuda()
 
 
 def _require_cuda() -> None:
