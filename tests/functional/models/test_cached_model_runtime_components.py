@@ -160,7 +160,7 @@ def test_realtime_eou_asr_model_streams_silence_from_cache():
         ignore_eou_eob=True,
     )
     try:
-        result = service.transcribe(_pcm_silence(1.0), stream_id="functional-asr")
+        result = service.transcribe(_pcm_silence(service._audio_buffer.chunk_size_in_secs), stream_id="functional-asr")
 
         assert isinstance(result, ASRResult)
         assert isinstance(result.text, str)
@@ -188,7 +188,9 @@ def test_small_parakeet_asr_model_loads_through_streaming_wrapper_when_compatibl
         pytest.skip(f"{SMALL_PARAKEET_ASR_MODEL} is cached but not compatible with the streaming wrapper: {exc}")
 
     try:
-        result = service.transcribe(_pcm_silence(1.0), stream_id="functional-small-asr")
+        result = service.transcribe(
+            _pcm_silence(service._audio_buffer.chunk_size_in_secs), stream_id="functional-small-asr"
+        )
 
         assert isinstance(result.text, str)
         assert result.eou_prob is None
@@ -210,7 +212,9 @@ def test_streaming_diarization_model_returns_speaker_probabilities_from_cache():
         sample_rate=16000,
     )
     try:
-        diar_result = service.diarize(_pcm_silence(1.0), stream_id="functional-diar")
+        diar_result = service.diarize(
+            _pcm_silence(service.feature_bufferer.chunk_size_in_secs), stream_id="functional-diar"
+        )
 
         assert diar_result.shape == (service.chunk_size, service.max_num_speakers)
         assert np.isfinite(diar_result).all()
