@@ -355,12 +355,15 @@ jobs:
         include:
           - flag: unit-test
             pattern: coverage-unit-test-*
+            fail-under: 75
             upload-codecov: true
           - flag: e2e
             pattern: coverage-e2e-*
+            fail-under: 0
             upload-codecov: true
           - flag: all
             pattern: coverage-*
+            fail-under: 80
             upload-codecov: false
     steps:
       - uses: actions/checkout@v6
@@ -380,7 +383,7 @@ jobs:
             exit 0
           fi
           coverage combine --keep $files
-          coverage report -i
+          coverage report -i --precision=2 --fail-under=${{ matrix.fail-under }}
           coverage xml -i -o coverage-${{ matrix.flag }}.xml
           echo "has_coverage=true" >> "$GITHUB_OUTPUT"
       - name: Upload combined coverage artifact
