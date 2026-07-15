@@ -294,7 +294,7 @@ class NvidiaUserContextAggregator(OpenAIUserContextAggregator):
                     or context_message["role"] == "function"
                     or context_message["role"] == "tool"
                 ):
-                    if current_size == self.chat_history_limit:
+                    if context_message["role"] in ("user", "assistant") and current_size == self.chat_history_limit:
                         continue
                     if context_message["role"] == "user":
                         current_size = current_size + 1

@@ -244,7 +244,9 @@ jobs:
       fail-fast: false
       matrix:
         script:
+          - L0_Functional_Model_Free_Runtime
           - L0_Functional_VLLM_Reasoning_Budget
+          - L1_Functional_Cached_Model_Runtime
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Run functional test
@@ -255,6 +257,7 @@ jobs:
           script-dir: tests/functional/launch_scripts/h100/active
           timeout: "120"
           coverage-prefix: e2e
+          test-data-path: ${{ needs.pre-flight.outputs.test_data_path }}
 
   Nemo_CICD_Test:
     needs:
@@ -349,15 +352,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        flag:
-          - unit-test
-          - e2e
+        include:
+          - flag: unit-test
+            pattern: coverage-unit-test-*
+            fail-under: 75
+            upload-codecov: true
+          - flag: e2e
+            pattern: coverage-e2e-*
+            fail-under: 0
+            upload-codecov: true
+          - flag: all
+            pattern: coverage-*
+            fail-under: 80
+            upload-codecov: false
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Download coverage artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: coverage-${{ matrix.flag }}-*
+          pattern: ${{ matrix.pattern }}
           merge-multiple: false
       - name: Combine coverage
         id: combine-coverage
@@ -370,7 +383,7 @@ jobs:
             exit 0
           fi
           coverage combine --keep $files
-          coverage report -i
+          coverage report -i --precision=2 --fail-under=${{ matrix.fail-under }}
           coverage xml -i -o coverage-${{ matrix.flag }}.xml
           echo "has_coverage=true" >> "$GITHUB_OUTPUT"
       - name: Upload combined coverage artifact
@@ -381,7 +394,7 @@ jobs:
           path: coverage-${{ matrix.flag }}.xml
           if-no-files-found: error
       - name: Upload to Codecov
-        if: env.UPLOAD_CODECOV == 'true' && steps.combine-coverage.outputs.has_coverage == 'true'
+        if: matrix.upload-codecov && env.UPLOAD_CODECOV == 'true' && steps.combine-coverage.outputs.has_coverage == 'true'
         uses: codecov/codecov-action@04b047e8bb82a0c002c8312c1c880fbc6a999d45 # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

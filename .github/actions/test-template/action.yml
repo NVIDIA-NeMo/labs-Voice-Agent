@@ -33,6 +33,10 @@ inputs:
     description: Coverage artifact prefix.
     required: false
     default: unit-test
+  test-data-path:
+    description: Host path containing shared CI test data and HF_HOME cache. If empty, no test data is mounted.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -41,12 +45,21 @@ runs:
       shell: bash
       run: |
         set -xeuo pipefail
+        VOLUME_ARGS=()
+        if [[ -n "${{ inputs.test-data-path }}" ]]; then
+          VOLUME_ARGS+=(
+            --volume "${{ inputs.test-data-path }}:/home/TestData"
+            --env HF_HOME=/home/TestData/HF_HOME
+            --env HF_HUB_OFFLINE=1
+          )
+        fi
         docker run --rm \
           --runtime=nvidia --gpus all \
           --shm-size=32g \
           --workdir /opt/Voice-Agent \
           --env COVERAGE_FILE=/opt/Voice-Agent/.coverage \
           --volume "${{ github.workspace }}:/opt/Voice-Agent" \
+          "${VOLUME_ARGS[@]}" \
           "${{ inputs.image }}" \
           timeout "$(( ${{ inputs.timeout }} * 60 ))s" \
           bash "${{ inputs.script-dir }}/${{ inputs.script }}.sh"
@@ -56,12 +69,23 @@ runs:
       if: always()
       run: |
         set -xeuo pipefail
+        VOLUME_ARGS=()
+        if [[ -n "${{ inputs.test-data-path }}" ]]; then
+          VOLUME_ARGS+=(
+            --volume "${{ inputs.test-data-path }}:/home/TestData"
+            --env HF_HOME=/home/TestData/HF_HOME
+            --env NEMO_HOME=/home/TestData/nemo_home
+            --env TRANSFORMERS_OFFLINE=1
+            --env HF_HUB_OFFLINE=1
+          )
+        fi
         docker run --rm \
           --runtime=nvidia --gpus all \
           --shm-size=32g \
           --workdir /opt/Voice-Agent \
           --env COVERAGE_FILE=/opt/Voice-Agent/.coverage \
           --volume "${{ github.workspace }}:/opt/Voice-Agent" \
+          "${VOLUME_ARGS[@]}" \
           "${{ inputs.image }}" \
           bash -c "coverage combine || true; coverage report -i || true; coverage xml -i || true"
 
