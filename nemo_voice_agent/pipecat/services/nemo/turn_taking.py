@@ -257,6 +257,9 @@ class NeMoTurnTakingService(FrameProcessor):
                 if len(completed_words) >= self.max_buffer_size:
                     completed_text = " ".join(completed_words)
                     await self._handle_completed_text(completed_text, direction, is_final=False)
+                    # Retain only the trailing, potentially incomplete word so
+                    # already-emitted interim text is not sent again.
+                    _, _, self._user_speaking_buffer = self._user_speaking_buffer.partition(completed_text)
 
         else:
             # if vad is not detecting user speaking

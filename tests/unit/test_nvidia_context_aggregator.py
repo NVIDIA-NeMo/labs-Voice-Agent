@@ -18,6 +18,7 @@ import asyncio
 from copy import deepcopy
 
 from pipecat.frames.frames import (
+    AggregationType,
     InterruptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
@@ -73,7 +74,7 @@ class _FakeContext:
 def _bare_user_aggregator(messages=None, *, chat_history_limit=-1, preserve_prompt_messages=1):
     """Construct a NvidiaUserContextAggregator without initializing the Pipecat base class."""
     aggregator = NvidiaUserContextAggregator.__new__(NvidiaUserContextAggregator)
-    aggregator.context = _FakeContext(messages)
+    aggregator._context = _FakeContext(messages)
     aggregator._role = "user"
     aggregator._aggregation = ""
     aggregator.send_interims = True
@@ -102,7 +103,7 @@ def _bare_user_aggregator(messages=None, *, chat_history_limit=-1, preserve_prom
 def _bare_assistant_aggregator(messages=None):
     """Construct a NvidiaAssistantContextAggregator without initializing the Pipecat base class."""
     aggregator = NvidiaAssistantContextAggregator.__new__(NvidiaAssistantContextAggregator)
-    aggregator.context = _FakeContext(messages)
+    aggregator._context = _FakeContext(messages)
     aggregator._role = "assistant"
     aggregator._aggregation = ""
     aggregator.pushed = []
@@ -219,7 +220,9 @@ def test_tts_response_cacher_releases_cached_response_after_user_stops_speaking(
             FrameDirection.DOWNSTREAM,
         )
     )
-    _drive(cacher.process_frame(TTSTextFrame("hello"), FrameDirection.DOWNSTREAM))
+    _drive(
+        cacher.process_frame(TTSTextFrame("hello", aggregated_by=AggregationType.SENTENCE), FrameDirection.DOWNSTREAM)
+    )
     _drive(cacher.process_frame(LLMFullResponseEndFrame(), FrameDirection.DOWNSTREAM))
     _drive(cacher.process_frame(UserStoppedSpeakingFrame(), FrameDirection.DOWNSTREAM))
 
