@@ -16,9 +16,11 @@
 
 import asyncio
 import gc
+from pathlib import Path
 
 import numpy as np
 import pytest
+from huggingface_hub import snapshot_download
 
 
 pytestmark = [pytest.mark.functional, pytest.mark.gpu]
@@ -31,6 +33,20 @@ MAGPIE_MODEL = "nvidia/magpie_tts_multilingual_357m"
 FASTPITCH_MODEL = "nvidia/tts_en_fastpitch"
 HIFIGAN_MODEL = "nvidia/tts_hifigan"
 QWEN_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+
+
+def _cached_snapshot(model_id: str) -> Path:
+    """Resolve a Hugging Face model from the mounted offline cache."""
+    return Path(snapshot_download(model_id, local_files_only=True))
+
+
+def _cached_nemo_model_arg(model_id: str) -> str:
+    """Return a local .nemo artifact when present, otherwise the cached snapshot directory."""
+    snapshot = _cached_snapshot(model_id)
+    nemo_files = sorted(snapshot.glob("*.nemo"))
+    if nemo_files:
+        return str(nemo_files[0])
+    return str(snapshot)
 
 
 def _require_cuda() -> None:
@@ -64,7 +80,7 @@ def test_realtime_eou_asr_model_streams_silence_from_cache():
     from nemo_voice_agent.pipecat.services.nemo.streaming_asr import ASRResult, NemoStreamingASRService
 
     service = NemoStreamingASRService(
-        model=REALTIME_EOU_ASR_MODEL,
+        model=_cached_nemo_model_arg(REALTIME_EOU_ASR_MODEL),
         device="cuda:0",
         decoder_type="rnnt",
         ignore_eou_eob=True,
@@ -89,7 +105,7 @@ def test_small_parakeet_asr_model_loads_through_streaming_wrapper_when_compatibl
 
     try:
         service = NemoStreamingASRService(
-            model=SMALL_PARAKEET_ASR_MODEL,
+            model=_cached_nemo_model_arg(SMALL_PARAKEET_ASR_MODEL),
             device="cuda:0",
             decoder_type=None,
             ignore_eou_eob=True,
@@ -116,7 +132,7 @@ def test_streaming_diarization_model_returns_speaker_probabilities_from_cache():
 
     service = NeMoStreamingDiarService(
         cfg=DiarizationConfig(device="cuda"),
-        model=DIAR_MODEL,
+        model=_cached_nemo_model_arg(DIAR_MODEL),
         sample_rate=16000,
     )
     try:
@@ -137,7 +153,7 @@ def test_kokoro_tts_model_generates_audio_from_cache():
     from nemo_voice_agent.pipecat.services.nemo.tts import KokoroTTSService
 
     service = KokoroTTSService(
-        model=KOKORO_MODEL,
+        model=str(_cached_snapshot(KOKORO_MODEL)),
         device="cuda",
         download_all=False,
         cache_models=False,
@@ -160,8 +176,8 @@ def test_fastpitch_hifigan_tts_models_generate_audio_from_cache():
     from nemo_voice_agent.pipecat.services.nemo.tts import NeMoFastPitchHiFiGANTTSService
 
     service = NeMoFastPitchHiFiGANTTSService(
-        fastpitch_model=FASTPITCH_MODEL,
-        hifigan_model=HIFIGAN_MODEL,
+        fastpitch_model=_cached_nemo_model_arg(FASTPITCH_MODEL),
+        hifigan_model=_cached_nemo_model_arg(HIFIGAN_MODEL),
         device="cuda",
     )
     try:
@@ -181,7 +197,7 @@ def test_magpie_tts_model_generates_audio_from_cache():
 
     from nemo_voice_agent.pipecat.services.nemo.tts import MagpieTTSService
 
-    service = MagpieTTSService(model=MAGPIE_MODEL, device="cuda")
+    service = MagpieTTSService(model=_cached_nemo_model_arg(MAGPIE_MODEL), device="cuda")
     try:
         chunks = list(service._generate_audio("Hello from Magpie."))
 
@@ -200,7 +216,7 @@ def test_huggingface_llm_local_service_streams_from_cached_qwen_model():
     from nemo_voice_agent.pipecat.services.nemo.llm import HuggingFaceLLMLocalService
 
     service = HuggingFaceLLMLocalService(
-        model=QWEN_MODEL,
+        model=str(_cached_snapshot(QWEN_MODEL)),
         device="cuda:0",
         dtype="bfloat16",
         generation_kwargs={"max_new_tokens": 4, "do_sample": False},
