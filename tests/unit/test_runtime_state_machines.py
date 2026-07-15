@@ -18,8 +18,10 @@ import asyncio
 from types import SimpleNamespace
 
 import httpx
+import numpy as np
 import pytest
 from pipecat.frames.frames import (
+    ErrorFrame,
     InterimTranscriptionFrame,
     StartInterruptionFrame,
     TranscriptionFrame,
@@ -31,8 +33,14 @@ from pipecat.metrics.metrics import LLMTokenUsage
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.transcriptions.language import Language
 
+from nemo_voice_agent.pipecat.services.nemo.stt import NemoSTTInputParams, NemoSTTService
+from nemo_voice_agent.pipecat.services.nemo.tts import BaseNemoTTSService
 from nemo_voice_agent.pipecat.services.nemo.turn_taking import NeMoTurnTakingService
 from nemo_voice_agent.pipecat.services.nvidia_llm import NvidiaLLMService
+from nemo_voice_agent.pipecat.transports.network.websocket_server import (
+    WebsocketServerParams,
+    WebsocketServerTransport,
+)
 
 
 def _drive(awaitable):
@@ -69,6 +77,47 @@ def _bare_nvidia_llm(**attrs):
     for name, value in attrs.items():
         setattr(service, name, value)
     service._reset_think_filter_state()
+    return service
+
+
+def _bare_tts(**attrs):
+    """Construct BaseNemoTTSService without loading a real TTS model."""
+    service = BaseNemoTTSService.__new__(BaseNemoTTSService)
+    service._think_tokens = attrs.pop("_think_tokens", None)
+    service._have_seen_think_tokens = attrs.pop("_have_seen_think_tokens", False)
+    service._ignore_strings = attrs.pop("_ignore_strings", None)
+    for name, value in attrs.items():
+        setattr(service, name, value)
+    return service
+
+
+def _bare_stt(fake_model, *, has_turn_taking=False):
+    """Construct NemoSTTService with a fake streaming ASR model."""
+    service = NemoSTTService.__new__(NemoSTTService)
+    service._audio_logger = None
+    service._audio_buffer = bytearray()
+    service._audio_timestamps = []
+    service._has_logged_audio_chunk = False
+    service._bytes_per_buffer = 4
+    service._params = NemoSTTInputParams(buffer_size=1)
+    service._model = fake_model
+    service._sample_rate = 16000
+    service._has_generated_metrics = False
+    service._has_turn_taking = has_turn_taking
+    service._user_id = ""
+    service._model_name = "fake-asr"
+    service._backend = "legacy"
+    service.user_is_speaking = False
+    service._is_vad_active = False
+
+    async def _noop(*_args, **_kwargs):
+        """Metrics no-op for bare service tests."""
+        return None
+
+    service.start_ttfb_metrics = _noop
+    service.stop_ttfb_metrics = _noop
+    service.start_processing_metrics = _noop
+    service.stop_processing_metrics = _noop
     return service
 
 
@@ -261,3 +310,147 @@ def test_nvidia_llm_usage_metrics_accumulate_only_while_processing():
     assert service._prompt_tokens == 5
     assert service._completion_tokens == 3
     assert service._has_reported_prompt_tokens is True
+
+
+def test_base_nemo_tts_think_token_filtering_tracks_multi_chunk_thoughts():
+    """TTS think-token filtering suppresses thought chunks and resumes after the end marker."""
+    service = _bare_tts(_think_tokens=["<think>", "</think>"])
+
+    assert service._handle_think_tokens("before <think>hidden") == "before "
+    assert service._have_seen_think_tokens is True
+    assert service._handle_think_tokens("still hidden") is None
+    assert service._handle_think_tokens("done</think> visible") == " visible"
+    assert service._have_seen_think_tokens is False
+    assert service._handle_think_tokens("<think>hidden</think> answer") == " answer"
+
+
+def test_base_nemo_tts_drops_special_tokens_and_converts_audio_formats():
+    """TTS helpers remove ignored strings and convert common audio containers to bytes."""
+    service = _bare_tts(_ignore_strings={"<noise>", "[silence]"})
+
+    assert service._drop_special_tokens("hello <noise> world [silence]") == "hello  world "
+    assert service._convert_to_bytes(b"abc") == b"abc"
+    assert service._convert_to_bytes(bytearray(b"def")) == b"def"
+    assert (
+        service._convert_to_bytes(np.array([0.0, 1.0, -1.0], dtype=np.float32))
+        == np.array([0, 32767, -32767], dtype=np.int16).tobytes()
+    )
+    assert (
+        service._convert_to_bytes(np.array([1, 2, 3], dtype=np.int32)) == np.array([1, 2, 3], dtype=np.int16).tobytes()
+    )
+
+
+def test_nemo_stt_run_stt_emits_final_transcription_from_fake_model():
+    """NemoSTTService buffering emits a final transcription frame from a fake ASR result."""
+    fake_model = SimpleNamespace(
+        transcribe=lambda _audio: SimpleNamespace(
+            text="hello",
+            is_final=True,
+            eou_latency=0.1,
+            eob_latency=None,
+            eou_prob=0.9,
+            eob_prob=None,
+            processing_time=0.01,
+        )
+    )
+    service = _bare_stt(fake_model, has_turn_taking=False)
+
+    frames = _drive(_collect_async(service.run_stt(np.array([1, 2], dtype=np.int16).tobytes())))
+
+    assert len(frames) == 1
+    assert isinstance(frames[0], TranscriptionFrame)
+    assert frames[0].text == "hello"
+    assert service.user_is_speaking is False
+    assert service._has_generated_metrics is True
+
+
+def test_nemo_stt_run_stt_uses_interim_frames_when_turn_taking_enabled():
+    """Turn-taking mode emits interim frames even when the ASR result is final."""
+    fake_model = SimpleNamespace(
+        transcribe=lambda _audio: SimpleNamespace(
+            text="partial",
+            is_final=True,
+            eou_latency=None,
+            eob_latency=None,
+            eou_prob=None,
+            eob_prob=None,
+            processing_time=0.01,
+        )
+    )
+    service = _bare_stt(fake_model, has_turn_taking=True)
+
+    frames = _drive(_collect_async(service.run_stt(np.array([1, 2], dtype=np.int16).tobytes())))
+
+    assert len(frames) == 1
+    assert isinstance(frames[0], InterimTranscriptionFrame)
+    assert frames[0].text == "partial"
+    assert service.user_is_speaking is True
+
+
+def test_nemo_stt_run_stt_wraps_model_errors_in_error_frame():
+    """ASR exceptions are converted to ErrorFrame instances instead of escaping."""
+
+    def _raise(_audio):
+        """Raise a fake ASR failure."""
+        raise RuntimeError("asr boom")
+
+    service = _bare_stt(SimpleNamespace(transcribe=_raise))
+
+    frames = _drive(_collect_async(service.run_stt(np.array([1, 2], dtype=np.int16).tobytes())))
+
+    assert len(frames) == 1
+    assert isinstance(frames[0], ErrorFrame)
+    assert "asr boom" in frames[0].error
+
+
+async def _collect_async(async_iterable):
+    """Collect an async iterable into a list."""
+    return [item async for item in async_iterable]
+
+
+class _FakeWebsocketOutput:
+    """Fake websocket output transport for callback routing tests."""
+
+    def __init__(self):
+        """Initialize captured connections."""
+        self.connections = []
+
+    async def set_client_connection(self, websocket):
+        """Capture the websocket assigned by the transport callback."""
+        self.connections.append(websocket)
+
+
+def test_websocket_transport_reuses_input_and_output_instances():
+    """WebsocketServerTransport lazily creates and caches input/output transports."""
+    transport = WebsocketServerTransport(WebsocketServerParams(), host="127.0.0.1", port=9999)
+
+    assert transport.input() is transport.input()
+    assert transport.output() is transport.output()
+
+
+def test_websocket_transport_connection_callbacks_route_to_output_and_handlers():
+    """Client connect/disconnect callbacks update output transport and call registered handlers."""
+    transport = WebsocketServerTransport(WebsocketServerParams())
+    output = _FakeWebsocketOutput()
+    events = []
+    websocket = object()
+    transport._output = output
+
+    async def _call_event_handler(name, *args):
+        """Capture event handler calls."""
+        events.append((name, args))
+
+    transport._call_event_handler = _call_event_handler
+
+    _drive(transport._on_client_connected(websocket))
+    _drive(transport._on_client_disconnected(websocket))
+    _drive(transport._on_session_timeout(websocket))
+    _drive(transport._on_websocket_ready())
+
+    assert output.connections == [websocket, None]
+    assert events == [
+        ("on_client_connected", (websocket,)),
+        ("on_client_disconnected", (websocket,)),
+        ("on_session_timeout", (websocket,)),
+        ("on_websocket_ready", ()),
+    ]
