@@ -73,9 +73,7 @@ def test_existing_server_with_requested_model_is_reused(monkeypatch):
             SimpleNamespace(laddr=SimpleNamespace(port=8123), status=llm_module.psutil.CONN_LISTEN, pid=77)
         ],
     )
-    assert service._start_vllm_server("model", base_url="http://localhost:8123/v1") == (
-        "http://localhost:8123/v1"
-    )
+    assert service._start_vllm_server("model", base_url="http://localhost:8123/v1") == ("http://localhost:8123/v1")
 
 
 def test_server_launch_builds_command_sets_device_and_waits_until_ready(monkeypatch):
@@ -94,9 +92,7 @@ def test_server_launch_builds_command_sets_device_and_waits_until_ready(monkeypa
         return process
 
     monkeypatch.setattr(llm_module.subprocess, "Popen", launch)
-    url = service._start_vllm_server(
-        "model", "--port 8124 --tensor-parallel-size 1", "http://localhost:8123/v1"
-    )
+    url = service._start_vllm_server("model", "--port 8124 --tensor-parallel-size 1", "http://localhost:8123/v1")
     assert url == "http://localhost:8124/v1"
     assert popen["command"] == ["vllm", "serve", "model", "--port", "8124", "--tensor-parallel-size", "1"]
     assert popen["kwargs"]["env"]["CUDA_VISIBLE_DEVICES"] == "2"

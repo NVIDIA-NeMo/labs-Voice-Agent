@@ -58,9 +58,7 @@ def test_new_state_handles_defaults_overrides_prompts_and_existing_tokens():
     assert processor._prompt_ends_with(None, [1], [3]) is False
     assert processor._prompt_ends_with([9, 1, 3], [1], [3]) is True
     assert processor._new_state(SamplingParams.from_optional(), None, []) is None
-    assert (
-        processor._new_state(SamplingParams.from_optional(extra_args={"thinking_budget": 0}), None, []) is None
-    )
+    assert processor._new_state(SamplingParams.from_optional(extra_args={"thinking_budget": 0}), None, []) is None
 
     params = SamplingParams.from_optional(
         extra_args={
@@ -77,9 +75,7 @@ def test_new_state_handles_defaults_overrides_prompts_and_existing_tokens():
     assert state.detect_start_ids == [4] and state.force_end_ids == [4]
 
     capped = processor._new_state(
-        SamplingParams.from_optional(
-            extra_args={"thinking_budget": 2, "thinking_budget_grace_period": 9}
-        ),
+        SamplingParams.from_optional(extra_args={"thinking_budget": 2, "thinking_budget_grace_period": 9}),
         None,
         [1, 7, 2],
     )
@@ -115,9 +111,7 @@ def test_scan_apply_grace_force_and_cleanup(monkeypatch):
 
     def update(states, batch_update, callback):
         assert batch_update is SimpleNamespace
-        states[1] = callback(
-            SamplingParams.from_optional(extra_args={"thinking_budget": 2}), [1], [7]
-        )
+        states[1] = callback(SamplingParams.from_optional(extra_args={"thinking_budget": 2}), [1], [7])
 
     monkeypatch.setattr(
         "nemo_voice_agent.vllm.v1.sample.logits_processor.reasoning_budget_logits_processor.process_dict_updates",
