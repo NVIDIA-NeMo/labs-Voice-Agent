@@ -17,7 +17,17 @@
 # GPU_COUNT=x2
 set -xeuo pipefail
 
-python -c 'import os; from huggingface_hub import constants; print(f"HF_HOME={os.environ.get(\"HF_HOME\")}"); print(f"HF_HUB_CACHE={os.environ.get(\"HF_HUB_CACHE\")}"); print(f"resolved_HF_HUB_CACHE={constants.HF_HUB_CACHE}"); print(f"NEMO_HOME={os.environ.get(\"NEMO_HOME\")}"); print(f"TRANSFORMERS_OFFLINE={os.environ.get(\"TRANSFORMERS_OFFLINE\")}"); print(f"HF_HUB_OFFLINE={os.environ.get(\"HF_HUB_OFFLINE\")}")'
+python <<'PY'
+import os
+from huggingface_hub import constants
+
+print(f"HF_HOME={os.environ.get('HF_HOME')}")
+print(f"HF_HUB_CACHE={os.environ.get('HF_HUB_CACHE')}")
+print(f"resolved_HF_HUB_CACHE={constants.HF_HUB_CACHE}")
+print(f"NEMO_HOME={os.environ.get('NEMO_HOME')}")
+print(f"TRANSFORMERS_OFFLINE={os.environ.get('TRANSFORMERS_OFFLINE')}")
+print(f"HF_HUB_OFFLINE={os.environ.get('HF_HUB_OFFLINE')}")
+PY
 
 coverage run -a --data-file="${COVERAGE_FILE:-.coverage}" --source=nemo_voice_agent -m pytest \
     -o log_cli=true \
