@@ -40,8 +40,17 @@ dependencies = [
     "num2words",   # misaki's `en` extra to drop its GPL-3.0 phonemizer-fork/espeakng_loader deps
     # misaki.en.G2P unconditionally loads this spaCy pipeline (tokenizer/tagger) on
     # every construction and self-installs it via `pip` if missing. Pin it explicitly
-    # (MIT-licensed, not on PyPI so it needs a direct wheel URL) so `uv sync` doesn't
-    # keep stripping it and misaki doesn't fall back to an unpinned network install.
+    # (not on PyPI, so it needs a direct wheel URL) so `uv sync` doesn't keep stripping
+    # it and misaki doesn't fall back to an unpinned network install.
+    #
+    # LICENSE: en_core_web_sm 3.8.0 is MIT (Apache-2.0-compatible), confirmed by the
+    # wheel's own meta.json ("license": "MIT") and the official release page
+    # <https://github.com/explosion/spacy-models/releases/tag/en_core_web_sm-3.8.0>.
+    # The CC-BY-NC-SA-3.0 that circulates for "spaCy English models" applied only to the
+    # v1.x models: they were trained on OntoNotes 5 (LDC, non-commercial). From v2.2.0 on,
+    # Explosion licensed OntoNotes commercially and relicensed the derived models to MIT
+    # (meta.json lists source OntoNotes 5 as "commercial (licensed by Explosion)").
+    # Keep this pin at >= 3.8.0 — do NOT let it float to a v1.x model.
     "en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     "silero-vad",
     "onnxruntime",
