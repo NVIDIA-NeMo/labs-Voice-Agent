@@ -38,7 +38,7 @@ from pipecat.processors.frame_processor import FrameDirection
 from pipecat.transcriptions.language import Language
 
 from nemo_voice_agent.pipecat.services.common import UserAudioBuffer
-from nemo_voice_agent.pipecat.services.nemo.stt import NemoSTTInputParams, NemoSTTService
+from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams, NemoSTTService
 from nemo_voice_agent.pipecat.services.nemo.tts import BaseNemoTTSService
 from nemo_voice_agent.pipecat.services.nemo.turn_taking import NeMoTurnTakingService
 from nemo_voice_agent.pipecat.services.nvidia_llm import NvidiaLLMService
@@ -105,7 +105,7 @@ def _bare_stt(fake_model, *, has_turn_taking=False):
     service._audio_timestamps = []
     service._has_logged_audio_chunk = False
     service._bytes_per_buffer = 4
-    service._params = NemoSTTInputParams(buffer_size=1)
+    service._params = NeMoSTTInputParams(buffer_size=1)
     service._model = fake_model
     service._sample_rate = 16000
     service._has_generated_metrics = False
