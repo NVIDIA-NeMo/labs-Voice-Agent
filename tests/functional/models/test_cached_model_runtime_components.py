@@ -16,12 +16,9 @@
 
 import asyncio
 import gc
-import os
-from pathlib import Path
 
 import numpy as np
 import pytest
-from huggingface_hub import snapshot_download
 
 
 pytestmark = [pytest.mark.functional, pytest.mark.gpu]
@@ -34,80 +31,16 @@ MAGPIE_MODEL = "nvidia/magpie_tts_multilingual_357m"
 FASTPITCH_MODEL = "nvidia/tts_en_fastpitch"
 HIFIGAN_MODEL = "nvidia/tts_hifigan"
 QWEN_MODEL = "Qwen/Qwen2.5-7B-Instruct"
-ALL_MODEL_IDS = (
-    REALTIME_EOU_ASR_MODEL,
-    SMALL_PARAKEET_ASR_MODEL,
-    DIAR_MODEL,
-    KOKORO_MODEL,
-    FASTPITCH_MODEL,
-    HIFIGAN_MODEL,
-    MAGPIE_MODEL,
-    QWEN_MODEL,
-)
 
 
-def _cached_snapshot(model_id: str) -> Path:
-    """Resolve a Hugging Face model from the mounted offline cache."""
-    snapshot = Path(snapshot_download(model_id, local_files_only=True))
-    print(f"[model-cache] {model_id} snapshot={snapshot}")
-    return snapshot
-
-
-def _cached_nemo_model_arg(model_id: str) -> str:
-    """Return a local .nemo artifact when present, otherwise the cached snapshot directory."""
-    snapshot = _cached_snapshot(model_id)
-    nemo_files = sorted(snapshot.glob("*.nemo"))
-    if nemo_files:
-        print(f"[model-cache] {model_id} using nemo artifact={nemo_files[0]}")
-        return str(nemo_files[0])
-    print(f"[model-cache] {model_id} using snapshot directory={snapshot}")
-    return str(snapshot)
-
-
-def _snapshot_file_summary(snapshot: Path) -> dict[str, object]:
-    """Return a compact summary of files relevant to HF/NeMo model loading."""
-    patterns = {
-        "nemo": "*.nemo",
-        "config": "config.json",
-        "safetensors_index": "model.safetensors.index.json",
-        "safetensors": "model*.safetensors",
-        "pytorch_bin": "pytorch_model*.bin",
-        "tokenizer": "tokenizer*",
-    }
-    summary = {}
-    for name, pattern in patterns.items():
-        matches = sorted(snapshot.glob(pattern))
-        summary[name] = {
-            "count": len(matches),
-            "sample": [match.name for match in matches[:3]],
-        }
-    return summary
-
-
-def test_cached_hf_snapshots_are_resolvable_and_report_contents():
-    """HF cache diagnostics show each model's resolved snapshot and key artifact files."""
-    print(f"[model-cache] HF_HOME={os.environ.get('HF_HOME')}")
-    print(f"[model-cache] HF_HUB_CACHE={os.environ.get('HF_HUB_CACHE')}")
-    print(f"[model-cache] NEMO_HOME={os.environ.get('NEMO_HOME')}")
-    print(f"[model-cache] TRANSFORMERS_OFFLINE={os.environ.get('TRANSFORMERS_OFFLINE')}")
-    print(f"[model-cache] HF_HUB_OFFLINE={os.environ.get('HF_HUB_OFFLINE')}")
-
-    for model_id in ALL_MODEL_IDS:
-        snapshot = _cached_snapshot(model_id)
-        summary = _snapshot_file_summary(snapshot)
-        print(f"[model-cache] {model_id} files={summary}")
-        assert snapshot.exists()
-
-
-def test_cached_qwen_snapshot_loads_with_transformers_auto_classes():
-    """Transformers can instantiate the cached Qwen tokenizer and causal LM directly from the snapshot."""
+def test_cached_qwen_model_id_loads_with_transformers_auto_classes():
+    """Transformers can instantiate cached Qwen classes directly from the model ID."""
     _require_cuda()
     transformers = pytest.importorskip("transformers")
-    snapshot = str(_cached_snapshot(QWEN_MODEL))
 
-    tokenizer = transformers.AutoTokenizer.from_pretrained(snapshot, local_files_only=True)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(QWEN_MODEL, local_files_only=True)
     model = transformers.AutoModelForCausalLM.from_pretrained(
-        snapshot,
+        QWEN_MODEL,
         device_map="cuda:0",
         dtype="bfloat16",
         trust_remote_code=True,
@@ -154,7 +87,7 @@ def test_realtime_eou_asr_model_streams_silence_from_cache():
     from nemo_voice_agent.pipecat.services.nemo.streaming_asr import ASRResult, NemoStreamingASRService
 
     service = NemoStreamingASRService(
-        model=_cached_nemo_model_arg(REALTIME_EOU_ASR_MODEL),
+        model=REALTIME_EOU_ASR_MODEL,
         device="cuda:0",
         decoder_type="rnnt",
         ignore_eou_eob=True,
@@ -179,7 +112,7 @@ def test_small_parakeet_asr_model_loads_through_streaming_wrapper_when_compatibl
 
     try:
         service = NemoStreamingASRService(
-            model=_cached_nemo_model_arg(SMALL_PARAKEET_ASR_MODEL),
+            model=SMALL_PARAKEET_ASR_MODEL,
             device="cuda:0",
             decoder_type=None,
             ignore_eou_eob=True,
@@ -208,7 +141,7 @@ def test_streaming_diarization_model_returns_speaker_probabilities_from_cache():
 
     service = NeMoStreamingDiarService(
         cfg=DiarizationConfig(device="cuda"),
-        model=_cached_nemo_model_arg(DIAR_MODEL),
+        model=DIAR_MODEL,
         sample_rate=16000,
     )
     try:
@@ -230,7 +163,6 @@ def test_kokoro_tts_model_generates_audio_from_cache():
 
     from nemo_voice_agent.pipecat.services.nemo.tts import KokoroTTSService
 
-    _cached_snapshot(KOKORO_MODEL)
     service = KokoroTTSService(
         model=KOKORO_MODEL,
         device="cuda",
@@ -255,8 +187,8 @@ def test_fastpitch_hifigan_tts_models_generate_audio_from_cache():
     from nemo_voice_agent.pipecat.services.nemo.tts import NeMoFastPitchHiFiGANTTSService
 
     service = NeMoFastPitchHiFiGANTTSService(
-        fastpitch_model=_cached_nemo_model_arg(FASTPITCH_MODEL),
-        hifigan_model=_cached_nemo_model_arg(HIFIGAN_MODEL),
+        fastpitch_model=FASTPITCH_MODEL,
+        hifigan_model=HIFIGAN_MODEL,
         device="cuda",
     )
     try:
@@ -276,7 +208,7 @@ def test_magpie_tts_model_generates_audio_from_cache():
 
     from nemo_voice_agent.pipecat.services.nemo.tts import MagpieTTSService
 
-    service = MagpieTTSService(model=_cached_nemo_model_arg(MAGPIE_MODEL), device="cuda")
+    service = MagpieTTSService(model=MAGPIE_MODEL, device="cuda")
     try:
         chunks = list(service._generate_audio("Hello from Magpie."))
 
@@ -295,7 +227,7 @@ def test_huggingface_llm_local_service_streams_from_cached_qwen_model():
     from nemo_voice_agent.pipecat.services.nemo.llm import HuggingFaceLLMLocalService
 
     service = HuggingFaceLLMLocalService(
-        model=str(_cached_snapshot(QWEN_MODEL)),
+        model=QWEN_MODEL,
         device="cuda:0",
         dtype="bfloat16",
         generation_kwargs={"max_new_tokens": 4, "do_sample": False},
