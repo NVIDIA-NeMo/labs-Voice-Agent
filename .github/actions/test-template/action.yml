@@ -50,8 +50,6 @@ runs:
           VOLUME_ARGS+=(
             --volume "${{ inputs.test-data-path }}:/home/TestData"
             --env HF_HOME=/home/TestData/HF_HOME
-            --env NEMO_HOME=/home/TestData/nemo_home
-            --env TRANSFORMERS_OFFLINE=1
             --env HF_HUB_OFFLINE=1
           )
         fi
