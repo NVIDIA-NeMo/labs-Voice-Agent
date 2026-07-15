@@ -25,25 +25,7 @@ permissions:
   id-token: write
 
 jobs:
-  acknowledge:
-    if: >-
-      github.event.issue.pull_request &&
-      contains(github.event.comment.body, '/claude review')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Add eyes reaction to comment
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
-        with:
-          script: |
-            await github.rest.reactions.createForIssueComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: context.payload.comment.id,
-              content: 'eyes'
-            });
-
   claude-review:
-    needs: acknowledge
     uses: NVIDIA-NeMo/FW-CI-templates/.github/workflows/_claude_review.yml@209ac7913b0419a5ccbac47b02d00fbea4939243 # v1.8.4
     with:
       model: ${{ vars.CLAUDE_MODEL }}
