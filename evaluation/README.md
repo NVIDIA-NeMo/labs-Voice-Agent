@@ -166,11 +166,11 @@ If neither `--scenarios` nor `--domain` is given, all registered scenarios run.
 ## Available Domains and Scenarios
 
 
-**Primary benchmarks** (eva_airline + tau2_*) come first — these are the ported, externally-comparable evaluation sets. The simpler in-repo domains (`restaurant` / `customer_service` / `qa`) below them serve as smoke tests + integration examples, not headline benchmarks.
+**Primary benchmarks** 
 
 | Domain | Count | Summary tool | Description |
 |--------|-------|--------------|-------------|
-| `eva_airline` | 2 | bridge-pulled (no LLM summary tool) | SkyWay Airlines voice agent — flight changes, IRROPS, refunds, vouchers. Full 15-tool eva surface ported from [ServiceNow/eva](https://github.com/ServiceNow/eva/tree/0.1.3) (MIT). Action records are auto-aggregated by write tools and pulled by the bridge at end-of-scenario via the `get_scenario_summary` RTVI action — not emitted by an LLM-callable tool. Currently: `eva_airline__smoke` (auth + exit), `eva_airline__voluntary_date_change`. See [eva_airline domain notes](#eva_airline-domain-notes) below. |
+| `eva_airline` | 50 | bridge-pulled (no LLM summary tool) | SkyWay Airlines voice agent — flight changes, IRROPS, refunds, vouchers. Full 15-tool eva surface ported from [ServiceNow/eva](https://github.com/ServiceNow/eva/tree/0.1.3) (MIT). See [eva_airline domain notes](#eva_airline-domain-notes) below. |
 | `tau2_airline` | 50 | bridge-pulled | Airline reservation flows (cancel / refund / rebook / upgrade) ported from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0) (MIT). 13 LLM-callable agent tools + DB-state hash scoring. See [tau2 domain notes](#tau2-domain-notes) below. |
 | `tau2_retail` | 114 | bridge-pulled | Online retail customer service — order cancel / exchange / return, address changes, partial-fulfillment edge cases. Same upstream source. 16 agent tools. 40 of 114 tasks also carry `nl_assertions` natural-language claims judged by the LLM. |
 | `tau2_telecom` | 114 | bridge-pulled | Telecom tech support — mobile data troubleshooting, MMS issues, line suspension + payment recovery. **First dual-side domain**: the user-sim has its own 30 phone-control tools (toggle airplane mode, run speed test, etc.) alongside the agent's 13 lookup/billing/line-management tools. Cross-side state-propagation pipeline mirrors upstream's `Environment.sync_tools()`. Uses the `manual` policy variant. |
@@ -178,7 +178,8 @@ If neither `--scenarios` nor `--domain` is given, all registered scenarios run.
 | `restaurant` | 11 | `PlaceOrderTool`, `JoinWaitListTool` / `DropWaitListTool` | Ordering food at pizza, burger, and deli restaurants, plus a waitlist join/drop scenario (demonstrates shared state across tools). Integration example for the in-repo scenario authoring pattern. |
 | `customer_service` | 10 | `ResolveTicketTool` | TechCorp customer service — billing disputes, order delays, defective returns, plan upgrades, account access, warranty claims, subscription cancellations, wrong items, and service outages. In-repo smoke set. |
 | `qa` | 10 | `SaveQuestionAnswerTool` | Single-turn Q&A — geography, math, science, history, literature, weather (uses `GetCityWeatherTool`), and general knowledge. In-repo smoke set. |
-| *legacy (no domain)* | 4 | — | `fastbite`, `simple_qa_1`, `simple_qa_2`, `simple_qa_3` — original scenarios kept for backward compatibility. |
+
+(eva_airline + tau2_*) come first — these are the ported, externally-comparable evaluation sets. The simpler in-repo domains (`restaurant` / `customer_service` / `qa`) below them serve as smoke tests + integration examples, not headline benchmarks.
 
 Run `python run_evaluation.py --list` for the full list of scenario names, or `--list-domains` for just the domain summary.
 
