@@ -14,15 +14,92 @@
 # limitations under the License.
 
 import json
+import math
 import os
 import re
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import requests
 from dotenv import load_dotenv
 from loguru import logger
-from nemo.collections.asr.parts.utils.eval_utils import clean_label, remove_punctuations
+
+
+_JUDGE_CONTEXT_MESSAGE_LIMIT = 40
+_JUDGE_CONTEXT_SYSTEM_STRING_LIMIT = 2500
+_JUDGE_CONTEXT_STRING_LIMIT = 6000
+
+
+def _remove_punctuations(text: str) -> str:
+    """Deterministic local punctuation normalizer used by evaluator matching."""
+    return re.sub(r"[^\w\s]", "", text)
+
+
+def _clean_label(text: str, lowercase: bool = False) -> str:
+    """Deterministic local text normalizer used by evaluator matching."""
+    return text.lower() if lowercase else text
+
+
+def _positive_int(name: str, value: int) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer; got {value!r}")
+    return value
+
+
+def _positive_float(name: str, value: float) -> float:
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be greater than 0; got {value!r}") from None
+    if isinstance(value, bool) or not math.isfinite(numeric_value) or numeric_value <= 0:
+        raise ValueError(f"{name} must be greater than 0; got {value!r}")
+    return numeric_value
+
+
+def _validate_threshold(name: str, value: float) -> float:
+    try:
+        numeric_value = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be between 0 and 1 inclusive; got {value!r}") from None
+    if isinstance(value, bool) or not math.isfinite(numeric_value) or not 0 <= numeric_value <= 1:
+        raise ValueError(f"{name} must be between 0 and 1 inclusive; got {value!r}")
+    return numeric_value
+
+
+def validate_judge_numeric_options(
+    *,
+    judge_threshold: Optional[float] = None,
+    judge_timeout: Optional[float] = None,
+    judge_thinking_token_budget: Optional[int] = None,
+    judge_context_message_limit: Optional[int] = None,
+    judge_context_system_string_limit: Optional[int] = None,
+    judge_context_string_limit: Optional[int] = None,
+) -> None:
+    """Validate judge-related numeric options shared by CLI and library tests."""
+    if judge_threshold is not None:
+        _validate_threshold("--judge-threshold", judge_threshold)
+    if judge_timeout is not None:
+        _positive_float("--judge-timeout", judge_timeout)
+    if judge_thinking_token_budget is not None:
+        _positive_int("--judge-thinking-token-budget", judge_thinking_token_budget)
+    if judge_context_message_limit is not None:
+        _positive_int("--judge-context-message-limit", judge_context_message_limit)
+    if judge_context_system_string_limit is not None:
+        _positive_int("--judge-context-system-string-limit", judge_context_system_string_limit)
+    if judge_context_string_limit is not None:
+        _positive_int("--judge-context-string-limit", judge_context_string_limit)
+
+
+def _failed_nl_assertion_verdicts(nl_assertions: List[str], reason: str) -> List[dict]:
+    return [
+        {
+            "index": i + 1,
+            "assertion": assertion,
+            "passed": False,
+            "reason": reason,
+        }
+        for i, assertion in enumerate(nl_assertions)
+    ]
 
 
 def match_str_and_float(
@@ -60,21 +137,11 @@ def match_str_and_float(
             ref_value = ref_value.lower()
             pred_value = pred_value.lower()
         if ignore_punctuation:
-            ref_value = remove_punctuations(ref_value)
-            pred_value = remove_punctuations(pred_value)
+            ref_value = _remove_punctuations(ref_value)
+            pred_value = _remove_punctuations(pred_value)
         if clean_text:
-            ref_value = clean_label(
-                ref_value,
-                langid="en",
-                num_to_words=False,
-                lowercase=ignore_capitalization,
-            )
-            pred_value = clean_label(
-                pred_value,
-                langid="en",
-                num_to_words=False,
-                lowercase=ignore_capitalization,
-            )
+            ref_value = _clean_label(ref_value, lowercase=ignore_capitalization)
+            pred_value = _clean_label(pred_value, lowercase=ignore_capitalization)
         logger.debug(f"after processing: ref_value: {ref_value}, pred_value: {pred_value}")
         return ref_value == pred_value
     else:
@@ -207,6 +274,80 @@ def normalize_scenario_payload(payload):
     if isinstance(payload, list) and len(payload) == 1 and isinstance(payload[0], dict):
         return payload[0]
     return payload
+
+
+def _compact_context_history_for_judge(
+    history: Optional[list],
+    *,
+    message_limit: int,
+    system_string_limit: int,
+    string_limit: int,
+) -> Optional[list]:
+    """Keep judge input useful without sending full prompt/history dumps."""
+    if not history:
+        return history
+    messages = list(history)
+    if len(messages) > message_limit:
+        first = messages[:1] if _is_system_message(messages[0]) else []
+        tail_limit = max(message_limit - len(first), 0)
+        messages = first + (messages[-tail_limit:] if tail_limit else [])
+    return [
+        _compact_context_value_for_judge(
+            message,
+            message_limit=message_limit,
+            system_string_limit=system_string_limit,
+            string_limit=string_limit,
+        )
+        for message in messages
+    ]
+
+
+def _is_system_message(value: Any) -> bool:
+    return isinstance(value, dict) and str(value.get("role") or "").lower() == "system"
+
+
+def _compact_context_value_for_judge(
+    value: Any,
+    *,
+    message_limit: int,
+    system_string_limit: int,
+    string_limit: int,
+) -> Any:
+    if isinstance(value, str):
+        return _truncate_for_judge(value, string_limit)
+    if isinstance(value, list):
+        return [
+            _compact_context_value_for_judge(
+                item,
+                message_limit=message_limit,
+                system_string_limit=system_string_limit,
+                string_limit=string_limit,
+            )
+            for item in value[-message_limit:]
+        ]
+    if isinstance(value, dict):
+        role = str(value.get("role") or "").lower()
+        compacted = {}
+        for key, item in value.items():
+            if key == "content" and isinstance(item, str):
+                limit = system_string_limit if role == "system" else string_limit
+                compacted[key] = _truncate_for_judge(item, limit)
+            else:
+                compacted[key] = _compact_context_value_for_judge(
+                    item,
+                    message_limit=message_limit,
+                    system_string_limit=system_string_limit,
+                    string_limit=string_limit,
+                )
+        return compacted
+    return value
+
+
+def _truncate_for_judge(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    omitted = len(value) - limit
+    return f"{value[:limit]}\n...[truncated {omitted} chars for judge input]"
 
 
 def check_if_task_success(
@@ -436,6 +577,11 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
         api_key: Optional[str] = None,
         api_key_name: str = "API_KEY",
         default_prompt: Optional[str] = None,
+        timeout: Optional[float] = 120.0,
+        compact_context: bool = False,
+        context_message_limit: Optional[int] = None,
+        context_system_string_limit: Optional[int] = None,
+        context_string_limit: Optional[int] = None,
         **kwargs,
     ):
         self.url = url
@@ -450,6 +596,25 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
             "Content-Type": "application/json",
         }
         self.default_prompt = default_prompt or self.DEFAULT_PROMPT
+        self.timeout = _positive_float("timeout", 120.0 if timeout is None else timeout)
+        self.compact_context = compact_context
+        self.context_message_limit = _positive_int(
+            "context_message_limit",
+            context_message_limit if context_message_limit is not None else _JUDGE_CONTEXT_MESSAGE_LIMIT,
+        )
+        self.context_system_string_limit = _positive_int(
+            "context_system_string_limit",
+            context_system_string_limit
+            if context_system_string_limit is not None
+            else _JUDGE_CONTEXT_SYSTEM_STRING_LIMIT,
+        )
+        self.context_string_limit = _positive_int(
+            "context_string_limit",
+            context_string_limit if context_string_limit is not None else _JUDGE_CONTEXT_STRING_LIMIT,
+        )
+        for key in ("max_tokens", "thinking_token_budget"):
+            if key in kwargs and kwargs[key] is not None:
+                kwargs[key] = _positive_int(key, kwargs[key])
         self.kwargs = kwargs
 
     def _get_payload(self, user_content: str, prompt: Optional[str] = None) -> dict:
@@ -517,7 +682,7 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
         # surprising scores or iterating on the prompt.
         judge_input = {"system_prompt": prompt or self.default_prompt, "user_content": user_content}
         try:
-            response = requests.post(self.url, headers=self.headers, json=payload)
+            response = requests.post(self.url, headers=self.headers, json=payload, timeout=self.timeout)
             result = self._parse_response(response)
             result["score"] = float(result["score"])
             if "reason" not in result:
@@ -543,27 +708,23 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
         with open(reference, "r") as f:
             reference_content = f.read()
             ref_json = json.loads(reference_content)
-            # if the reference is a dictionary, convert it to a list of dictionaries
-            if isinstance(ref_json, dict):
-                ref_json = [ref_json]
-            reference_content = json.dumps(ref_json)
+            reference_content = json.dumps(normalize_scenario_payload(ref_json))
         with open(prediction, "r") as f:
             prediction_content = f.read()
             pred_json = json.loads(prediction_content)
-            if isinstance(pred_json, dict):
-                pred_json = [pred_json]
-            prediction_content = json.dumps(pred_json)
+            prediction_content = json.dumps(normalize_scenario_payload(pred_json))
         logger.debug(f"reference_content: {reference_content}")
         logger.debug(f"prediction_content: {prediction_content}")
         return self.judge(reference_content, prediction_content, prompt)
 
     def judge_scenario(
         self,
-        reference: str,
-        prediction: str,
+        reference: Optional[str] = None,
+        prediction: Optional[str] = None,
         conversation: Optional[list] = None,
         agent_context_history: Optional[list] = None,
         user_context_history: Optional[list] = None,
+        context_history: Optional[list] = None,
         nl_assertions: Optional[List[str]] = None,
         prompt: Optional[str] = None,
     ) -> dict:
@@ -571,8 +732,8 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
         Judge agent performance with full scenario context including conversation history.
 
         Args:
-            reference: The reference answer string (or JSON string).
-            prediction: The prediction answer string (or JSON string).
+            reference: Optional reference answer string (or JSON string).
+            prediction: Optional prediction answer string (or JSON string).
             conversation: List of conversation turns, each a dict with "role" and "text" keys.
             agent_context_history: Agent's LLM context messages (from
                 ``bot_logs_agent/llm_context.json``). Contains the agent's
@@ -583,6 +744,7 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
                 domains like telecom where reference actions with
                 ``side="user"`` are executed by the user-sim, not the
                 agent. Rendered as ``<user_context_history>``.
+            context_history: Backward-compatible alias for agent_context_history.
             nl_assertions: Optional natural-language assertions (tau2 retail). When provided,
                 each assertion is appended to the prompt and the LLM is instructed to emit
                 a per-assertion verdict list. The returned dict gains a
@@ -600,10 +762,23 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
         if not prompt:
             prompt = self.SCENARIO_PROMPT
 
-        sections = [
-            f"<reference>\n{reference}\n</reference>",
-            f"<prediction>\n{prediction}\n</prediction>",
-        ]
+        if context_history and not agent_context_history:
+            agent_context_history = context_history
+
+        has_observed_evidence = any(
+            [
+                prediction is not None and str(prediction).strip() != "",
+                bool(conversation),
+                bool(agent_context_history),
+                bool(user_context_history),
+            ]
+        )
+
+        sections = []
+        if reference is not None:
+            sections.append(f"<reference>\n{reference}\n</reference>")
+        if prediction is not None:
+            sections.append(f"<prediction>\n{prediction}\n</prediction>")
 
         if conversation:
             turns_text = "\n".join(f"[{turn.get('role', 'unknown')}]: {turn.get('text', '')}" for turn in conversation)
@@ -612,6 +787,20 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
         if nl_assertions:
             numbered = "\n".join(f"{i + 1}. {a}" for i, a in enumerate(nl_assertions))
             sections.append(f"<nl_assertions>\n{numbered}\n</nl_assertions>")
+
+        if self.compact_context:
+            agent_context_history = _compact_context_history_for_judge(
+                agent_context_history,
+                message_limit=self.context_message_limit,
+                system_string_limit=self.context_system_string_limit,
+                string_limit=self.context_string_limit,
+            )
+            user_context_history = _compact_context_history_for_judge(
+                user_context_history,
+                message_limit=self.context_message_limit,
+                system_string_limit=self.context_system_string_limit,
+                string_limit=self.context_string_limit,
+            )
 
         if agent_context_history:
             sections.append(
@@ -623,6 +812,26 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
             )
 
         user_content = "\n\n".join(sections)
+        if not has_observed_evidence:
+            reason = (
+                "No observed agent evidence was provided. At least one of prediction, conversation, "
+                "agent_context_history, user_context_history, or context_history is required."
+            )
+            result = {
+                "score": 0.0,
+                "reason": reason,
+                "judge_input": {"system_prompt": prompt, "user_content": user_content},
+            }
+            if nl_assertions:
+                result["nl_assertion_verdicts"] = _failed_nl_assertion_verdicts(nl_assertions, reason)
+                result["nl_assertion_pass_count"] = 0
+                result["nl_assertion_total"] = len(nl_assertions)
+                result["nl_assertion_pass_rate"] = 0.0
+            return result
+
+        if not sections:
+            return {"score": 0.0, "reason": "No judge evidence was provided."}
+
         payload = self._get_payload(user_content, prompt)
         # Attached to the returned dict (and saved into ``judge_result.json``
         # by the runner) so the exact text the judge saw is debuggable
@@ -630,7 +839,7 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
         # surprising scores or iterating on the prompt.
         judge_input = {"system_prompt": prompt, "user_content": user_content}
         try:
-            response = requests.post(self.url, headers=self.headers, json=payload)
+            response = requests.post(self.url, headers=self.headers, json=payload, timeout=self.timeout)
             result = self._parse_response(response)
             result["score"] = float(result["score"])
             result.setdefault("reason", "")
@@ -671,15 +880,16 @@ The ``nl_assertion_verdicts`` array MUST contain exactly one entry per assertion
                     if passed:
                         passes += 1
                 result["nl_assertion_verdicts"] = normalized
+                result["nl_assertion_pass_count"] = passes
+                result["nl_assertion_total"] = len(nl_assertions)
                 result["nl_assertion_pass_rate"] = passes / len(nl_assertions)
             return result
         except Exception as e:
             logger.error(f"LLMJudge error: {e}")
             err_result = {"score": 0.0, "reason": f"Error: {e}", "judge_input": judge_input}
             if nl_assertions:
-                err_result["nl_assertion_verdicts"] = [
-                    {"index": i + 1, "assertion": nl_assertions[i], "passed": False, "reason": f"Judge error: {e}"}
-                    for i in range(len(nl_assertions))
-                ]
+                err_result["nl_assertion_verdicts"] = _failed_nl_assertion_verdicts(nl_assertions, f"Judge error: {e}")
+                err_result["nl_assertion_pass_count"] = 0
+                err_result["nl_assertion_total"] = len(nl_assertions)
                 err_result["nl_assertion_pass_rate"] = 0.0
             return err_result

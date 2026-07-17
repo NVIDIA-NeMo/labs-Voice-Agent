@@ -212,6 +212,15 @@ class RunAggregator:
                 self.run_token_usage[side][key] += sub.get(key, 0)
 
 
+def _load_optional_trace_metrics(scenario_dir: str) -> Optional[dict]:
+    for relative_path in ("trace_metrics.json", os.path.join("bot_logs_agent", "trace_metrics.json")):
+        path = os.path.join(scenario_dir, relative_path)
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                return json.load(f)
+    return None
+
+
 async def run_dynamic_evaluation(
     user_url: str,
     agent_url: str,
@@ -229,6 +238,7 @@ async def run_dynamic_evaluation(
     logger: FileLogger = None,
     judge: Optional[LLMJudge] = None,
     judge_threshold: Optional[float] = None,
+    judge_include_conversation: bool = False,
     strict_match: bool = False,
     min_agent_turns: int = 0,
 ):
@@ -252,6 +262,8 @@ async def run_dynamic_evaluation(
         logger: FileLogger instance for logging
         judge: LLMJudge instance for judging the scenario
         judge_threshold: Threshold for judging the scenario if binary result is desired, None for score based result
+        judge_include_conversation: If True, include bridge transcript turns in the judge input.
+            Disabled by default because interrupted/cross-talk segments can make these turns noisy.
         strict_match: If True, force ``disallow_extra_items=True`` on every scenario for this run,
             overriding each scenario's own setting. Default False respects per-scenario flags.
         min_agent_turns: scenarios with agent turns less than this number will be treated as incomplete
@@ -470,14 +482,17 @@ async def run_dynamic_evaluation(
             action_match_results.append(is_action_match)
             per_domain_action_match.setdefault(domain, []).append(is_action_match)
 
+        # Collect bridge metrics before judge scoring so the judge can use the
+        # transcript even when reference/prediction artifacts are absent.
+        metrics = bridge.get_metrics()
+
         # ----- Signal 2: LLM judge (independent of action-list) --------------
-        # Runs whenever judge is configured AND both reference + prediction
-        # files exist. Produces ``judge_score`` (float) and (when threshold
-        # is set) ``judge_passed`` (bool). Also produces per-assertion
-        # nl_assertion verdicts when the scenario carries nl_assertions.
+        # Runs whenever judge is configured and scores the evidence that exists:
+        # reference/prediction artifacts, conversation transcript, context
+        # history, and/or scenario nl_assertions.
         judge_score: Optional[float] = None
         judge_passed: Optional[bool] = None
-        if judge is not None and os.path.exists(reference_file) and os.path.exists(prediction_file):
+        if judge is not None:
             # Shape-normalize both files before handing to the judge: the
             # deterministic comparator's "Situation 2" logic treats
             # ``{...}`` and ``[{...}]`` as equivalent payloads, but the
@@ -485,12 +500,20 @@ async def run_dynamic_evaluation(
             # cosmetic wrapping difference. ``normalize_scenario_payload``
             # collapses list-of-1-dict → single dict on both sides so the
             # judge sees identical shapes when the content matches.
-            with open(reference_file, "r") as f:
-                ref_obj = normalize_scenario_payload(json.load(f))
-            with open(prediction_file, "r") as f:
-                pred_obj = normalize_scenario_payload(json.load(f))
-            ref_content = json.dumps(ref_obj, indent=2)
-            pred_content = json.dumps(pred_obj, indent=2)
+            ref_content = None
+            pred_content = None
+            if os.path.exists(reference_file):
+                with open(reference_file, "r") as f:
+                    ref_obj = normalize_scenario_payload(json.load(f))
+                ref_content = json.dumps(ref_obj, indent=2)
+            else:
+                logger.info(f"Reference file {reference_file} not found; calling judge without reference.")
+            if os.path.exists(prediction_file):
+                with open(prediction_file, "r") as f:
+                    pred_obj = normalize_scenario_payload(json.load(f))
+                pred_content = json.dumps(pred_obj, indent=2)
+            else:
+                logger.info(f"Prediction file {prediction_file} not found; calling judge without prediction.")
             # Load the agent's LLM context history written by
             # bridge._save_user_agent_history at scenario end. Shape is a list
             # of {role, content} dicts including tool calls — gives the judge
@@ -522,6 +545,7 @@ async def run_dynamic_evaluation(
             result = judge.judge_scenario(
                 reference=ref_content,
                 prediction=pred_content,
+                conversation=metrics.get("turns") if judge_include_conversation else None,
                 agent_context_history=agent_context_history,
                 user_context_history=user_context_history,
                 nl_assertions=scenario_nl_assertions,
@@ -552,8 +576,6 @@ async def run_dynamic_evaluation(
                         scenario_passes += 1
                 scenario_nl_pass_rate = scenario_passes / len(verdicts)
 
-        # Collect metrics for this scenario
-        metrics = bridge.get_metrics()
         metrics["scenario_name"] = scenario.name
         metrics["scenario_directory"] = scenario_dir
         metrics["scenario_duration"] = (scenario_end - scenario_start).total_seconds()
@@ -720,6 +742,10 @@ async def run_dynamic_evaluation(
                 metrics["is_task_successful"] = len(failed_excl_exit) == 0
                 task_success_results.append(metrics["is_task_successful"])
                 per_domain_task_success.setdefault(domain, []).append(metrics["is_task_successful"])
+
+        trace_metrics = _load_optional_trace_metrics(scenario_dir)
+        if trace_metrics is not None:
+            metrics["trace_metrics"] = trace_metrics
 
         # Save metrics to file
         metrics_file = os.path.join(scenario_dir, "metrics.json")
