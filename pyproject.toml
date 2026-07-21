@@ -29,7 +29,7 @@ dependencies = [
     # NeMo speech stack (ASR + TTS models)
     "nemo-toolkit[asr,tts]>=2.7.3",
     # Real-time voice pipeline framework
-    "pipecat-ai==0.0.98",
+    "pipecat-ai==1.2.0",
     # LLM backends
     "transformers>=5.8.0",
     "vllm>=0.24.0",
