@@ -22,7 +22,7 @@ from loguru import logger
 from omegaconf import OmegaConf
 from pipecat.frames.frames import LLMRunFrame
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.worker import PipelineParams, PipelineTask
+from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.frameworks.rtvi import (
     RTVIObserverParams,
     RTVIProcessor,
@@ -100,7 +100,9 @@ async def run_bot_websocket(host: str, port: int):
     setup_logging()
 
     llm = build_llm(config_manager)
-    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(llm, config_manager)
+    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(
+        llm, config_manager, turn_taking
+    )
 
     if server_config.llm.get("is_omni_model", False):
         user_audio_buffer = UserAudioBuffer(
@@ -146,7 +148,7 @@ async def run_bot_websocket(host: str, port: int):
         [create_reset_context_action(task_ref, user_agg, assistant_agg, original_messages, resettable)],
     )
 
-    task = PipelineTask(
+    task = PipelineWorker(
         pipeline,
         params=PipelineParams(
             enable_metrics=True,

@@ -15,7 +15,7 @@
 
 """Shared bot-server runner.
 
-Bots build their own services, RTVI processor, pipeline, and ``PipelineTask``;
+Bots build their own services, RTVI processor, pipeline, and ``PipelineWorker``;
 this module handles the boilerplate that sits around the task — transport event
 handlers, the RTVI ``on_client_ready`` kick-off, audio-logger finalization,
 shutdown, and optional FastAPI ``/connect`` endpoint.
@@ -36,7 +36,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 from pipecat.frames.frames import EndWorkerFrame, Frame
 from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.worker import PipelineTask
+from pipecat.pipeline.worker import PipelineWorker
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
 from pipecat.transports.websocket.server import SingleClientWebsocketServerTransport
 
@@ -52,7 +52,7 @@ def _reset_services(services: Optional[List[Any]]) -> None:
 
 
 async def run_bot_websocket_server(
-    task: PipelineTask,
+    task: PipelineWorker,
     ws_transport: SingleClientWebsocketServerTransport,
     rtvi: RTVIProcessor,
     *,
@@ -66,7 +66,7 @@ async def run_bot_websocket_server(
     """Wire event handlers onto ``ws_transport``/``rtvi`` and run the pipeline.
 
     Args:
-        task: Fully constructed ``PipelineTask`` with observers already attached.
+        task: Fully constructed ``PipelineWorker`` with observers already attached.
         ws_transport: Transport the task's pipeline uses for I/O.
         rtvi: RTVI processor embedded in the pipeline. Must already have any
             actions the bot wants registered.

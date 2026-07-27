@@ -36,7 +36,7 @@ pipeline shapes: pass in whichever aggregators, services, and handlers the bot
 actually has. ``None`` entries in ``resettable_services`` are silently skipped.
 
 The reset and update-prompt handlers need to queue an ``EndWorkerFrame`` onto a
-``PipelineTask`` that is typically created *after* the RTVI processor (because
+``PipelineWorker`` that is typically created *after* the RTVI processor (because
 the task needs ``rtvi`` in its observer list). ``TaskRef`` is a tiny holder the
 bot sets after constructing the task.
 """
@@ -50,7 +50,7 @@ from typing import Any, Callable, List, Optional
 import pipecat.processors.frameworks.rtvi.models as RTVI
 from loguru import logger
 from pipecat.frames.frames import EndWorkerFrame
-from pipecat.pipeline.worker import PipelineTask
+from pipecat.pipeline.worker import PipelineWorker
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
 from pipecat.services.ai_service import AIService
 
@@ -172,14 +172,14 @@ def sanitize_context_for_transport(obj: Any, _media_key: Optional[str] = None) -
 
 @dataclasses.dataclass
 class TaskRef:
-    """Mutable handle to a PipelineTask and its running flag.
+    """Mutable handle to a PipelineWorker and its running flag.
 
     Construct early, hand to RTVI action factories, then populate once the task
     exists. ``running`` is flipped by the bot runner during shutdown so handlers
     can avoid queueing frames onto a dead task.
     """
 
-    task: Optional[PipelineTask] = None
+    task: Optional[PipelineWorker] = None
     running: bool = False
 
 

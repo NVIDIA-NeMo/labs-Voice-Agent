@@ -366,3 +366,50 @@ def test_llm_text_processor_carries_the_custom_segmented_aggregator():
 
     config.server_config.tts = OmegaConf.create({"type": "nemo", "use_text_aggregator": False})
     assert builders.build_llm_text_processor(config) is None
+
+
+def _turn_strategies(config, turn_taking):
+    """Return the user-turn strategies build_context_and_aggregators selects."""
+    _, user_agg, _, _ = builders.build_context_and_aggregators(object(), config, turn_taking)
+    return user_agg._params.user_turn_strategies
+
+
+def test_exactly_one_component_emits_user_speaking_frames():
+    """Whoever owns turn detection is the sole emitter of the user speaking frames.
+
+    In pipecat 1.x the LLMUserAggregator — not the transport and not VAD —
+    emits UserStartedSpeakingFrame / UserStoppedSpeakingFrame, gated on each
+    strategy's ``enable_user_speaking_frames``. So when NeMoTurnTakingService is
+    in the pipeline the aggregator must stay quiet (or both would emit), and
+    when it is absent the aggregator must emit (or nothing would).
+    """
+    config = _config()
+
+    # Turn-taking present: it pushes the frames, so the aggregator defers.
+    with_service = _turn_strategies(config, object())
+    assert isinstance(with_service, ExternalUserTurnStrategies)
+    assert not any(s._enable_user_speaking_frames for s in with_service.start)
+    assert not any(s._enable_user_speaking_frames for s in with_service.stop)
+
+    # Turn-taking absent: VAD drives the turn and the aggregator emits.
+    config.server_config.turn_taking = {"enabled": False}
+    without_service = _turn_strategies(config, None)
+    assert not isinstance(without_service, ExternalUserTurnStrategies)
+    assert all(s._enable_user_speaking_frames for s in without_service.start)
+    assert [type(s).__name__ for s in without_service.start] == ["VADUserTurnStartStrategy"]
+    # Named explicitly so we don't inherit pipecat's default stop strategy,
+    # which would pull in LocalSmartTurnAnalyzerV3.
+    assert [type(s).__name__ for s in without_service.stop] == ["SpeechTimeoutUserTurnStopStrategy"]
+
+
+def test_turn_taking_instance_overrides_the_config_flag():
+    """The passed-in service decides, not a re-derived read of turn_taking.enabled.
+
+    A bot may construct its turn-taking service inline; re-deriving the answer
+    from config would then silently pick the wrong strategy pair.
+    """
+    config = _config()
+    config.server_config.turn_taking = {"enabled": False}
+
+    assert isinstance(_turn_strategies(config, object()), ExternalUserTurnStrategies)
+    assert not isinstance(_turn_strategies(config, None), ExternalUserTurnStrategies)

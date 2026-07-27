@@ -78,7 +78,7 @@ class _Service:
 
 
 class _Task:
-    """PipelineTask fake that captures queued frames."""
+    """PipelineWorker fake that captures queued frames."""
 
     def __init__(self):
         """Initialize frame capture."""

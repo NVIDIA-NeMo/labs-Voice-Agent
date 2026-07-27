@@ -192,32 +192,45 @@ def build_llm(config_manager: ConfigManager) -> LLMService:
     return get_llm_service_from_config(config_manager.server_config.llm)
 
 
-def build_context_and_aggregators(llm: BaseOpenAILLMService, config_manager: ConfigManager):
+def build_context_and_aggregators(
+    llm: BaseOpenAILLMService,
+    config_manager: ConfigManager,
+    turn_taking: Optional[NeMoTurnTakingService] = None,
+):
     """Build the ``LLMContext`` and its user/assistant aggregators.
 
     Returns ``(context, user_aggregator, assistant_aggregator, original_messages)``.
     ``original_messages`` is a fresh deep-copy of the initial message list, safe
     to hand to the reset/update-prompt RTVI handler factories.
 
-    Pipecat 1.0+ made the user aggregator the owner of turn detection, so the
-    strategy pair has to mirror whichever component actually decides turn
-    boundaries in this config. Both branches read the VAD frames emitted by the
-    ``VADProcessor`` that :func:`build_vad_processor` puts right after
-    ``transport.input()`` — neither needs its own analyzer.
+    ``turn_taking`` is the service from :func:`build_turn_taking` (or ``None``
+    when turn-taking is disabled). **Pass it.** In pipecat 1.0+ the user
+    aggregator owns turn detection, so exactly one component may emit
+    ``UserStartedSpeakingFrame`` / ``UserStoppedSpeakingFrame``, and this
+    argument is what decides which:
 
-    - ``turn_taking.enabled: true`` (all the local-NeMo configs):
-      ``NeMoTurnTakingService`` pushes ``UserStartedSpeakingFrame`` /
-      ``UserStoppedSpeakingFrame`` itself, so we select
-      ``ExternalUserTurnStrategies`` — the supported way to tell the aggregator
-      that an upstream processor owns turn detection. This replaces the old
-      ``transport.can_create_user_frames=False`` knob, which pipecat removed
-      along with transport-side VAD.
-    - ``turn_taking.enabled: false`` (``*_nvidia.yaml``): nothing upstream emits
-      user-turn frames — these configs used to rely on the transport's VAD doing
-      it, which is what their now-obsolete ``can_create_user_frames: true`` was
-      for. Drive the turn off VAD directly instead. Note we name the stop
-      strategy explicitly rather than taking pipecat's default, which would pull
-      in ``LocalSmartTurnAnalyzerV3``.
+    - ``turn_taking`` given: ``NeMoTurnTakingService`` pushes those frames
+      itself, so we select ``ExternalUserTurnStrategies`` — the supported way to
+      tell the aggregator an upstream processor owns turn detection. It sets
+      ``enable_user_speaking_frames=False`` on both the start and stop strategy,
+      so the aggregator stays quiet and there is no double emission. This
+      replaces the old ``transport.can_create_user_frames=False`` knob, which
+      pipecat removed along with transport-side VAD.
+    - ``turn_taking`` is ``None`` (the ``*_nvidia.yaml`` configs, which set
+      ``turn_taking.enabled: false``): nothing upstream emits user-turn frames,
+      so drive the turn from VAD directly and let the aggregator emit them.
+      These configs used to rely on the transport's VAD for this, which is what
+      their now-obsolete ``can_create_user_frames: true`` was for. Note we name
+      the stop strategy explicitly rather than taking pipecat's default, which
+      would pull in ``LocalSmartTurnAnalyzerV3``.
+
+    Either way the strategies read the ``VADUserStartedSpeakingFrame`` /
+    ``VADUserStoppedSpeakingFrame`` that :func:`build_vad_processor` emits right
+    after ``transport.input()`` — neither branch needs its own analyzer.
+
+    Omitting ``turn_taking`` falls back to re-deriving the answer from
+    ``turn_taking.enabled``, which is correct for the stock builders but silently
+    wrong for a bot that constructs its turn-taking service inline.
     """
     messages = [
         {
@@ -232,7 +245,12 @@ def build_context_and_aggregators(llm: BaseOpenAILLMService, config_manager: Con
     context = LLMContext(messages=messages)
     original_messages = copy.deepcopy(context.get_messages())
 
-    if config_manager.server_config.turn_taking.get("enabled", True):
+    owns_turn_detection = (
+        turn_taking is not None
+        if turn_taking is not None
+        else config_manager.server_config.turn_taking.get("enabled", True)
+    )
+    if owns_turn_detection:
         user_turn_strategies = ExternalUserTurnStrategies()
     else:
         user_turn_strategies = UserTurnStrategies(

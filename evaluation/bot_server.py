@@ -25,7 +25,7 @@ from pipecat.observers.user_bot_latency_observer import (
     UserBotLatencyObserver,
 )
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.worker import PipelineParams, PipelineTask
+from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
 
 from nemo_voice_agent.evaluation.tools import get_schema_tool_for_eval
@@ -118,7 +118,9 @@ async def run_bot_websocket(
     setup_rotating_log(log_file=log_file, log_level=log_level)
 
     llm = build_llm(config_manager)
-    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(llm, config_manager)
+    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(
+        llm, config_manager, turn_taking
+    )
 
     llm_enable_tool_calling = server_config.llm.get("enable_tool_calling", False)
     if llm_enable_tool_calling:
@@ -188,7 +190,7 @@ async def run_bot_websocket(
         ],
     )
 
-    task = PipelineTask(
+    task = PipelineWorker(
         pipeline,
         params=PipelineParams(
             enable_metrics=True,
