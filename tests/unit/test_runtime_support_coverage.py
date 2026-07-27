@@ -27,7 +27,6 @@ import pytest
 from nemo_voice_agent.pipecat.services.nemo import _espeak_gpl_shim as espeak_shim
 from nemo_voice_agent.pipecat.services.nemo import _g2p_fallback as g2p
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
-from nemo_voice_agent.pipecat.services.nvidia_llm_traced import NvidiaLLMService
 
 
 @pytest.mark.parametrize(
@@ -81,51 +80,6 @@ def test_espeak_shim_stubs():
             sys.modules.pop(name, None)
             if saved[name] is not None:
                 sys.modules[name] = saved[name]
-
-
-class _Stream:
-    def __init__(self, values, error=None):
-        self.values, self.error = values, error
-
-    def __aiter__(self):
-        async def iterate():
-            for value in self.values:
-                yield value
-            if self.error:
-                raise self.error
-
-        return iterate()
-
-
-async def _collect(stream):
-    return [chunk async for chunk in stream]
-
-
-def _traced(stream=None, error=None):
-    service = NvidiaLLMService.__new__(NvidiaLLMService)
-    service.build_chat_completion_params = lambda params: {"model": "m", "messages": [{"role": "user"}], "tools": [{}]}
-
-    async def create(**kwargs):
-        if error:
-            raise error
-        return stream
-
-    service._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    return service
-
-
-def test_traced_llm_success_and_errors():
-    traced = asyncio.run(_traced(_Stream(["one", "two"])).get_chat_completions(SimpleNamespace()))
-    assert asyncio.run(_collect(traced)) == ["one", "two"]
-    traced = asyncio.run(
-        _traced(_Stream(["one"], RuntimeError("stream failed"))).get_chat_completions(SimpleNamespace())
-    )
-    with pytest.raises(RuntimeError, match="stream failed"):
-        asyncio.run(_collect(traced))
-    error = RuntimeError("dispatch failed")
-    error.response = SimpleNamespace(status_code=503, text="down")
-    with pytest.raises(RuntimeError, match="dispatch failed"):
-        asyncio.run(_traced(error=error).get_chat_completions(SimpleNamespace()))
 
 
 def test_audio_logger_full_session(tmp_path, monkeypatch):

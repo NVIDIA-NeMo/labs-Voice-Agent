@@ -36,18 +36,11 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import pipecat.processors.frameworks.rtvi.models as RTVI
 import soxr
 import websockets
 from loguru import logger
 from pipecat.frames.frames import OutputAudioRawFrame
-from pipecat.processors.frameworks.rtvi import (
-    RTVIBotStartedSpeakingMessage,
-    RTVIBotStoppedSpeakingMessage,
-    RTVIBotTranscriptionMessage,
-    RTVIBotTTSTextMessage,
-    RTVIServerMessage,
-    RTVITextMessageData,
-)
 from pipecat.serializers.protobuf import MessageFrame, ProtobufFrameSerializer
 
 from nemo_voice_agent.evaluation.tools.rtvi_control import (
@@ -63,11 +56,11 @@ from nemo_voice_agent.utils.audio import AudioStream, NoiseConfig
 
 
 # RTVI message type constants - automatically adapts to pipecat changes
-RTVI_BOT_STOPPED_SPEAKING = RTVIBotStoppedSpeakingMessage().type
-RTVI_BOT_STARTED_SPEAKING = RTVIBotStartedSpeakingMessage().type
-RTVI_BOT_TRANSCRIPTION = RTVIBotTranscriptionMessage(data=RTVITextMessageData(text="")).type
-RTVI_BOT_TTS_TEXT = RTVIBotTTSTextMessage(data=RTVITextMessageData(text="")).type
-RTVI_BOT_SERVER_MESSAGE = RTVIServerMessage(data=RTVITextMessageData(text="")).type
+RTVI_BOT_STOPPED_SPEAKING = RTVI.BotStoppedSpeakingMessage().type
+RTVI_BOT_STARTED_SPEAKING = RTVI.BotStartedSpeakingMessage().type
+RTVI_BOT_TRANSCRIPTION = RTVI.BotTranscriptionMessage(data=RTVI.TextMessageData(text="")).type
+RTVI_BOT_TTS_TEXT = RTVI.BotTTSTextMessage(data=RTVI.TextMessageData(text="")).type
+RTVI_BOT_SERVER_MESSAGE = RTVI.ServerMessage(data=RTVI.TextMessageData(text="")).type
 
 # Message types whose per-event side context is already conveyed by an
 # existing dedicated log line in the monitors below (e.g. ``[AGENT TTS] ...``,
@@ -727,17 +720,16 @@ class VoiceAgentEvaluationBridge:
         # Create RTVI action message
         action_msg = {
             "label": "rtvi-ai",
-            "type": "action",
+            "type": "client-message",
             "id": f"update_prompt_{datetime.now().timestamp()}",
             "data": {
-                "service": "context",
-                "action": "update_system_prompt",
-                "arguments": [
-                    {"name": "prompt", "value": prompt},
-                    {"name": "tools", "value": tools},
-                    {"name": "add_suffix", "value": add_suffix},
-                    {"name": "tool_domain", "value": tool_domain},
-                ],
+                "t": "update_system_prompt",
+                "d": {
+                    "prompt": prompt,
+                    "tools": tools,
+                    "add_suffix": add_suffix,
+                    "tool_domain": tool_domain,
+                },
             },
         }
 
@@ -784,17 +776,16 @@ class VoiceAgentEvaluationBridge:
         # Create RTVI action message
         action_msg = {
             "label": "rtvi-ai",
-            "type": "action",
+            "type": "client-message",
             "id": f"update_prompt_{datetime.now().timestamp()}",
             "data": {
-                "service": "context",
-                "action": "update_system_prompt",
-                "arguments": [
-                    {"name": "prompt", "value": prompt},
-                    {"name": "tools", "value": tools},
-                    {"name": "add_suffix", "value": add_suffix},
-                    {"name": "tool_domain", "value": tool_domain},
-                ],
+                "t": "update_system_prompt",
+                "d": {
+                    "prompt": prompt,
+                    "tools": tools,
+                    "add_suffix": add_suffix,
+                    "tool_domain": tool_domain,
+                },
             },
         }
 
@@ -825,12 +816,11 @@ class VoiceAgentEvaluationBridge:
 
         reset_msg = {
             "label": "rtvi-ai",
-            "type": "action",
+            "type": "client-message",
             "id": f"reset_{datetime.now().timestamp()}",
             "data": {
-                "service": "context",
-                "action": "reset",
-                "arguments": [],
+                "t": "reset",
+                "d": {},
             },
         }
 
@@ -917,29 +907,6 @@ class VoiceAgentEvaluationBridge:
         await self.agent_ws.send(serialized)
 
         logger.info(f"Sent text to agent: {text[:50]}...")
-
-    async def _wait_for_action_response(self, ws, timeout=5.0):
-        """Wait for RTVI action response"""
-        try:
-            start_time = asyncio.get_event_loop().time()
-            while asyncio.get_event_loop().time() - start_time < timeout:
-                try:
-                    msg = await asyncio.wait_for(ws.recv(), timeout=0.5)
-
-                    if isinstance(msg, str):
-                        data = json.loads(msg)
-
-                        if data.get("data", {}).get("message_type") == "action-response":
-                            result = data.get("data", {}).get("result", {})
-                            return result.get("success", False) or result is True
-                except asyncio.TimeoutError:
-                    continue
-
-            logger.warning("Timeout waiting for action response")
-            return False
-        except Exception as e:
-            logger.error(f"Error waiting for response: {e}")
-            return False
 
     async def _receive_to_queue(
         self,
@@ -1299,12 +1266,11 @@ class VoiceAgentEvaluationBridge:
         try:
             action_msg = {
                 "label": "rtvi-ai",
-                "type": "action",
+                "type": "client-message",
                 "id": f"get_context_history_{datetime.now().timestamp()}",
                 "data": {
-                    "service": "context",
-                    "action": "get_context_history",
-                    "arguments": [],
+                    "t": "get_context_history",
+                    "d": {},
                 },
             }
 
@@ -1315,7 +1281,7 @@ class VoiceAgentEvaluationBridge:
 
             logger.info("[CONTEXT HISTORY] Sent get_context_history action, waiting for response...")
 
-            # Wait for the action-response with a longer timeout since log content can be large
+            # Wait for the server-response with a longer timeout since log content can be large
             timeout = 15.0
             start_time = asyncio.get_event_loop().time()
             while asyncio.get_event_loop().time() - start_time < timeout:
@@ -1333,8 +1299,18 @@ class VoiceAgentEvaluationBridge:
 
                     data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
 
-                    if data.get("type") == "action-response":
-                        result = data.get("data", {}).get("result", {})
+                    if data.get("type") == "error-response":
+                        logger.warning(
+                            f"[CONTEXT HISTORY] bot returned an error: {(data.get('data') or {}).get('error')}"
+                        )
+                        break
+                    if data.get("type") == "error-response":
+                        logger.warning(
+                            f"[SCENARIO SUMMARY] bot returned an error: {(data.get('data') or {}).get('error')}"
+                        )
+                        break
+                    if data.get("type") == "server-response":
+                        result = data.get("data", {}).get("d", {})
                         logger.info(
                             f"[CONTEXT HISTORY] Received context history "
                             f"(context: {len(result.get('context', []))} messages, "
@@ -1384,14 +1360,13 @@ class VoiceAgentEvaluationBridge:
         try:
             action_msg = {
                 "label": "rtvi-ai",
-                "type": "action",
+                "type": "client-message",
                 "id": f"get_scenario_summary_{datetime.now().timestamp()}",
                 "data": {
-                    "service": "context",
-                    "action": "get_scenario_summary",
-                    "arguments": [
-                        {"name": "include_db", "value": include_db},
-                    ],
+                    "t": "get_scenario_summary",
+                    "d": {
+                        "include_db": include_db,
+                    },
                 },
             }
             msg_frame = MessageFrame(data=json.dumps(action_msg))
@@ -1410,8 +1385,8 @@ class VoiceAgentEvaluationBridge:
                     if not (hasattr(frame, "message") and frame.message):
                         continue
                     data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
-                    if data.get("type") == "action-response":
-                        result = data.get("data", {}).get("result", {})
+                    if data.get("type") == "server-response":
+                        result = data.get("data", {}).get("d", {})
                         actions = result.get("actions", [])
                         # ``db`` is only inlined when the bot received
                         # ``include_db=True``. Log dict size when present;
@@ -1528,26 +1503,15 @@ class VoiceAgentEvaluationBridge:
         action_id = f"apply_init_{side_label}_{datetime.now().timestamp()}"
         action_msg = {
             "label": "rtvi-ai",
-            "type": "action",
+            "type": "client-message",
             "id": action_id,
             "data": {
-                "service": "context",
-                "action": "apply_initialization",
-                "arguments": [
-                    {"name": "domain", "value": domain},
-                    # JSON-serialize the shared_state_init dict so the
-                    # bot receives a string (matching the action
-                    # signature). The bot's handler json.loads it back.
-                    {"name": "shared_state_init", "value": json.dumps(shared_state_init)},
-                    # No ``side`` in the payload: each bot owns exactly
-                    # one DB at ``shared_state["db"]``, and the bridge
-                    # has already filtered the upstream action list to
-                    # only the entries belonging to this bot before
-                    # calling. The ``side_label`` is bridge-internal
-                    # — used here for the action ID + log lines, not
-                    # sent to the bot.
-                    {"name": "actions", "value": actions},
-                ],
+                "t": "apply_initialization",
+                "d": {
+                    "domain": domain,
+                    "shared_state_init": json.dumps(shared_state_init),
+                    "actions": actions,
+                },
             },
         }
         msg_frame = MessageFrame(data=json.dumps(action_msg))
@@ -1580,15 +1544,22 @@ class VoiceAgentEvaluationBridge:
                 if not (hasattr(frame, "message") and frame.message):
                     continue
                 data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
-                if data.get("type") != "action-response":
+                if data.get("type") not in ("server-response", "error-response"):
                     continue
                 # Only consume responses whose id matches the request we sent.
-                # Skip stragglers (e.g. update_system_prompt action-response
+                # Skip stragglers (e.g. update_system_prompt server-response
                 # that races us at scenario start).
                 if data.get("id") != action_id:
-                    logger.debug(f"[APPLY INIT] Skipping unrelated action-response id={data.get('id')!r}")
+                    logger.debug(f"[APPLY INIT] Skipping unrelated response id={data.get('id')!r}")
                     continue
-                result = data.get("data", {}).get("result", {})
+                # A handler that raised produces error-response, not a
+                # success=False payload. Fail loudly rather than sitting here
+                # until the timeout expires.
+                if data.get("type") == "error-response":
+                    raise RuntimeError(
+                        f"[APPLY INIT] {side_label} bot returned an error: {(data.get('data') or {}).get('error')}"
+                    )
+                result = data.get("data", {}).get("d", {})
                 if result.get("success"):
                     logger.info(f"[APPLY INIT] {side_label} bot applied {len(actions)} action(s) successfully")
                     return
@@ -1810,15 +1781,14 @@ class VoiceAgentEvaluationBridge:
         action_id = f"apply_sync_delta_{side_label}_{datetime.now().timestamp()}"
         action_msg = {
             "label": "rtvi-ai",
-            "type": "action",
+            "type": "client-message",
             "id": action_id,
             "data": {
-                "service": "context",
-                "action": "apply_sync_delta",
-                "arguments": [
-                    {"name": "domain", "value": domain},
-                    {"name": "delta", "value": delta},
-                ],
+                "t": "apply_sync_delta",
+                "d": {
+                    "domain": domain,
+                    "delta": delta,
+                },
             },
         }
         msg_frame = MessageFrame(data=json.dumps(action_msg))

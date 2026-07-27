@@ -42,7 +42,6 @@ from pipecat.services.nvidia.tts import NvidiaTTSService
 from pipecat.services.tts_service import TTSService
 
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
-from nemo_voice_agent.pipecat.services.riva_speech import ResilientNemotronTTSService
 from nemo_voice_agent.pipecat.utils.text.simple_text_aggregator import (
     SimpleSegmentedTextAggregator,
 )
@@ -284,7 +283,7 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
                 text = text.replace(ignore_string, "")
         return text
 
-    async def run_tts(self, text: str) -> AsyncGenerator[Frame, None]:
+    async def run_tts(self, text: str, context_id: str) -> AsyncGenerator[Frame, None]:
         """Generate speech from text using the Nemo TTS model."""
 
         if self._think_tokens is not None:
@@ -881,6 +880,25 @@ class MagpieTTSService(BaseNemoTTSService):
         pass
 
 
+def build_text_aggregator(config: DictConfig) -> Optional[SimpleSegmentedTextAggregator]:
+    """Build the sentence aggregator for TTS, or ``None`` if disabled by config.
+
+    Since pipecat 1.0, ``TTSService`` no longer accepts a ``text_aggregator``
+    argument — text aggregation belongs to an ``LLMTextProcessor`` placed
+    upstream of the TTS service. Note that pipecat silently ignores unknown
+    constructor kwargs, so passing it to the service would drop our
+    segmentation with no error at all.
+    """
+    if not config.get("use_text_aggregator", True):
+        return None
+    return SimpleSegmentedTextAggregator(
+        punctuation_marks=config.get("extra_separator", None),
+        ignore_marks=config.get("ignore_strings", None),
+        min_sentence_length=config.get("min_sentence_length", 5),
+        use_legacy_eos_detection=config.get("use_legacy_eos_detection", False),
+    )
+
+
 def get_tts_service_from_config(config: DictConfig, audio_logger: Optional[AudioLogger] = None) -> BaseNemoTTSService:
     """Get the TTS service from the configuration.
 
@@ -901,16 +919,6 @@ def get_tts_service_from_config(config: DictConfig, audio_logger: Optional[Audio
     logger.debug(f"Getting TTS service from config: {config}")
     model = config.get("model", None)
     device = config.get("device", "cuda")
-    if config.get("use_text_aggregator", True):
-        text_aggregator = SimpleSegmentedTextAggregator(
-            punctuation_marks=config.get("extra_separator", None),
-            ignore_marks=config.get("ignore_strings", None),
-            min_sentence_length=config.get("min_sentence_length", 5),
-            use_legacy_eos_detection=config.get("use_legacy_eos_detection", False),
-        )
-    else:
-        text_aggregator = None
-
     if config.get("type", None) == "nvidia":
         api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
         model_name = config.get("model", "magpie_tts_ensemble-Magpie-Multilingual")
@@ -924,26 +932,7 @@ def get_tts_service_from_config(config: DictConfig, audio_logger: Optional[Audio
             model_function_map={"function_id": function_id, "model_name": model_name},
             language=language,
             sample_rate=22050,
-            text_aggregator=text_aggregator,
         )
-    elif config.get("type", None) == "nemotron":
-        api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
-        model_name = config.get("model", "magpie_tts_ensemble-Magpie-Multilingual")
-        function_id = config.get("function_id", "877104f7-e885-42b9-8de8-f6e4c6303969")
-        voice_id = config.get("voice_id", "Magpie-Multilingual.EN-US.Aria")
-        language = config.get("language", "en-US")
-        # ResilientNemotronTTSService is a drop-in subclass that auto-recovers
-        # from transient NVCF synthesis errors (DEADLINE_EXCEEDED "failed to
-        # establish link to worker", UNAVAILABLE, INTERNAL). See its docstring.
-        return ResilientNemotronTTSService(
-            api_key=api_key,
-            server=config.get("server", "grpc.nvcf.nvidia.com:443"),
-            voice_id=voice_id,
-            model_function_map={"function_id": function_id, "model_name": model_name},
-            language=language,
-            sample_rate=22050,
-        )
-
     if model is None:
         raise ValueError("Model is required for NeMo TTS service")
 
@@ -952,7 +941,6 @@ def get_tts_service_from_config(config: DictConfig, audio_logger: Optional[Audio
             fastpitch_model=config.get("main_model_id", None),
             hifigan_model=config.get("sub_model_id", None),
             device=device,
-            text_aggregator=text_aggregator,
             think_tokens=config.get("think_tokens", None),
             audio_logger=audio_logger,
             ignore_strings=config.get("ignore_strings", None),
@@ -964,7 +952,6 @@ def get_tts_service_from_config(config: DictConfig, audio_logger: Optional[Audio
             speaker=config.get("speaker", "Sofia"),
             apply_TN=config.get("apply_TN", False),
             device=device,
-            text_aggregator=text_aggregator,
             think_tokens=config.get("think_tokens", None),
             audio_logger=audio_logger,
             ignore_strings=config.get("ignore_strings", None),
@@ -975,7 +962,6 @@ def get_tts_service_from_config(config: DictConfig, audio_logger: Optional[Audio
             voice=config.get("sub_model_id", "af_heart"),
             device=device,
             speed=config.get("speed", 1.0),
-            text_aggregator=text_aggregator,
             think_tokens=config.get("think_tokens", None),
             sample_rate=24000,
             audio_logger=audio_logger,

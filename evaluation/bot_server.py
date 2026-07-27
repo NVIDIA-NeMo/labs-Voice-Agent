@@ -21,12 +21,12 @@ from dotenv import load_dotenv
 from loguru import logger
 from omegaconf import OmegaConf
 from pipecat.frames.frames import LLMRunFrame
-from pipecat.observers.loggers.user_bot_latency_log_observer import (
-    UserBotLatencyLogObserver,
+from pipecat.observers.user_bot_latency_observer import (
+    UserBotLatencyObserver,
 )
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIProcessor
+from pipecat.pipeline.worker import PipelineParams, PipelineTask
+from pipecat.processors.frameworks.rtvi import RTVIProcessor
 
 from nemo_voice_agent.evaluation.tools import get_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools.basic_tools import GetCityWeatherTool
@@ -45,6 +45,7 @@ from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     create_get_scenario_summary_action,
     create_reset_context_action,
     create_update_system_prompt_action,
+    register_client_message_handlers,
 )
 from nemo_voice_agent.pipecat.services.common import UserAudioBuffer
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import RTVIAudioLoggerObserver
@@ -53,10 +54,12 @@ from nemo_voice_agent.pipecat.services.nemo.builders import (
     build_context_and_aggregators,
     build_diar,
     build_llm,
+    build_llm_text_processor,
     build_stt,
     build_tts,
     build_turn_taking,
     build_vad_analyzer,
+    build_vad_processor,
     build_ws_transport,
 )
 from nemo_voice_agent.utils import ConfigManager, setup_rotating_log
@@ -100,10 +103,16 @@ async def run_bot_websocket(
     audio_logger = build_audio_logger(config_manager)
     vad_analyzer = build_vad_analyzer(config_manager)
     ws_transport = build_ws_transport(config_manager, vad_analyzer, host, port)
+    # Pipecat 1.0 moved VAD out of the input transport; run it here instead so
+    # NeMoTurnTakingService still sees VADUserStarted/StoppedSpeakingFrame.
+    vad_processor = build_vad_processor(vad_analyzer)
     stt = build_stt(config_manager, audio_logger)
     diar = build_diar(config_manager, audio_logger)
     turn_taking = build_turn_taking(config_manager, audio_logger)
     tts = build_tts(config_manager, audio_logger)
+    # Pipecat 1.0 moved text aggregation out of TTSService into a pipeline
+    # processor placed just before it.
+    llm_text_processor = build_llm_text_processor(config_manager)
 
     # Re-setup logging so the service initialization does not clobber loguru config.
     setup_rotating_log(log_file=log_file, log_level=log_level)
@@ -131,44 +140,53 @@ async def run_bot_websocket(
     else:
         user_audio_buffer = None
 
-    rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
+    rtvi = RTVIProcessor()
 
-    pipeline_list = [ws_transport.input(), rtvi, stt]
+    pipeline_list = [ws_transport.input()]
+    if vad_processor is not None:
+        pipeline_list.append(vad_processor)
+    pipeline_list.extend([rtvi, stt])
     if diar is not None:
         pipeline_list.append(diar)
     if turn_taking is not None:
         pipeline_list.append(turn_taking)
     if user_audio_buffer is not None:
         pipeline_list.append(user_audio_buffer)
-    pipeline_list.extend([user_agg, llm, tts, ws_transport.output(), assistant_agg])
+    pipeline_list.extend([user_agg, llm])
+    if llm_text_processor is not None:
+        pipeline_list.append(llm_text_processor)
+    pipeline_list.extend([tts, ws_transport.output(), assistant_agg])
     pipeline = Pipeline(pipeline_list)
 
     resettable = [stt, tts, turn_taking, diar, user_audio_buffer]
     task_ref = TaskRef()
     shared_state_ref = SharedStateRef()
-    rtvi.register_action(create_reset_context_action(task_ref, user_agg, assistant_agg, original_messages, resettable))
-    rtvi.register_action(
-        create_update_system_prompt_action(
-            task_ref,
-            user_agg,
-            assistant_agg,
-            original_messages,
-            resettable,
-            system_role=config_manager.SYSTEM_ROLE,
-            system_prompt_suffix=config_manager.SYSTEM_PROMPT_SUFFIX,
-            enable_tool_calling=llm_enable_tool_calling,
-            llm=llm,
-            context=context,
-            rtvi=rtvi,
-            tool_factory=get_schema_tool_for_eval,
-            register_schema_tools=register_schema_tools_to_llm,
-            shared_state_ref=shared_state_ref,
-        )
+    register_client_message_handlers(
+        rtvi,
+        [
+            create_reset_context_action(task_ref, user_agg, assistant_agg, original_messages, resettable),
+            create_update_system_prompt_action(
+                task_ref,
+                user_agg,
+                assistant_agg,
+                original_messages,
+                resettable,
+                system_role=config_manager.SYSTEM_ROLE,
+                system_prompt_suffix=config_manager.SYSTEM_PROMPT_SUFFIX,
+                enable_tool_calling=llm_enable_tool_calling,
+                llm=llm,
+                context=context,
+                rtvi=rtvi,
+                tool_factory=get_schema_tool_for_eval,
+                register_schema_tools=register_schema_tools_to_llm,
+                shared_state_ref=shared_state_ref,
+            ),
+            create_get_context_history_action(task_ref, assistant_agg),
+            create_get_scenario_summary_action(task_ref, shared_state_ref),
+            create_apply_initialization_action(shared_state_ref),
+            create_apply_sync_delta_action(shared_state_ref),
+        ],
     )
-    rtvi.register_action(create_get_context_history_action(task_ref, assistant_agg))
-    rtvi.register_action(create_get_scenario_summary_action(task_ref, shared_state_ref))
-    rtvi.register_action(create_apply_initialization_action(shared_state_ref))
-    rtvi.register_action(create_apply_sync_delta_action(shared_state_ref))
 
     task = PipelineTask(
         pipeline,
@@ -180,7 +198,7 @@ async def run_bot_websocket(
         observers=[
             RTVIObserver(rtvi),
             RTVIAudioLoggerObserver(audio_logger=audio_logger),
-            UserBotLatencyLogObserver(),
+            UserBotLatencyObserver(),
         ],
         idle_timeout_secs=None,
         cancel_on_idle_timeout=False,

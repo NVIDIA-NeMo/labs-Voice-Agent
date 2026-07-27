@@ -68,7 +68,7 @@ def test_run_tts_streams_list_chunks_and_logs_audio():
     logger.log_agent_audio = lambda **kwargs: logger.logs.append(kwargs)
     chunks = [np.array([0.5, -0.5], dtype=np.float32), b"\x01\x00" * 3, None]
     service = _service(("success", chunks), audio_logger=logger)
-    frames = asyncio.run(_collect(service.run_tts("hello")))
+    frames = asyncio.run(_collect(service.run_tts("hello", "ctx")))
     assert isinstance(frames[0], TTSStartedFrame)
     assert isinstance(frames[-1], TTSStoppedFrame)
     assert sum(isinstance(frame, TTSAudioRawFrame) for frame in frames) >= 2
@@ -78,14 +78,14 @@ def test_run_tts_streams_list_chunks_and_logs_audio():
 
 def test_run_tts_single_audio_errors_and_empty_results():
     single = _service(("success", np.array([1, 2], dtype=np.int32)))
-    frames = asyncio.run(_collect(single.run_tts("single")))
+    frames = asyncio.run(_collect(single.run_tts("single", "ctx")))
     assert any(isinstance(frame, TTSAudioRawFrame) for frame in frames)
     failed = _service(("error", RuntimeError("generation failed")))
-    assert any(isinstance(frame, ErrorFrame) for frame in asyncio.run(_collect(failed.run_tts("bad"))))
+    assert any(isinstance(frame, ErrorFrame) for frame in asyncio.run(_collect(failed.run_tts("bad", "ctx"))))
     empty = _service(("success", None))
-    assert any(isinstance(frame, ErrorFrame) for frame in asyncio.run(_collect(empty.run_tts("empty"))))
+    assert any(isinstance(frame, ErrorFrame) for frame in asyncio.run(_collect(empty.run_tts("empty", "ctx"))))
     broken = _service(None, queue_error=RuntimeError("queue failed"))
-    assert any(isinstance(frame, ErrorFrame) for frame in asyncio.run(_collect(broken.run_tts("broken"))))
+    assert any(isinstance(frame, ErrorFrame) for frame in asyncio.run(_collect(broken.run_tts("broken", "ctx"))))
 
 
 def test_think_tokens_special_strings_and_byte_conversion():
@@ -100,5 +100,5 @@ def test_think_tokens_special_strings_and_byte_conversion():
     assert service._convert_to_bytes(np.array([1.0, -1.0]))
     assert service._convert_to_bytes(np.array([1, 2], dtype=np.int32))
     assert service._convert_to_bytes(memoryview(b"z")) == b"z"
-    frames = asyncio.run(_collect(service.run_tts("<think>hidden")))
+    frames = asyncio.run(_collect(service.run_tts("<think>hidden", "ctx")))
     assert frames == [None]

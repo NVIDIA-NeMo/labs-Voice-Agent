@@ -27,14 +27,15 @@ def _fake(name):
 
 def test_stt_factory_routes_all_backends(monkeypatch):
     monkeypatch.setattr(stt, "NemoSTTService", _fake("nemo"))
-    monkeypatch.setattr(stt, "ResilientNvidiaSTTService", _fake("nvidia"))
-    monkeypatch.setattr(stt, "NemotronASRService", _fake("nemotron"))
+    monkeypatch.setattr(stt, "NvidiaSTTService", _fake("nvidia"))
     nemo = stt.get_stt_service_from_config(OmegaConf.create({"type": "nemo", "model": "m", "device": "cpu"}), "log")
     assert nemo[0] == "nemo" and nemo[1]["audio_logger"] == "log"
     nvidia = stt.get_stt_service_from_config(OmegaConf.create({"type": "nvidia", "model": "m", "sample_rate": 8000}))
     assert nvidia[0] == "nvidia" and nvidia[1]["sample_rate"] == 8000
-    nemotron = stt.get_stt_service_from_config(OmegaConf.create({"type": "nemotron", "generate_interruptions": True}))
-    assert nemotron[0] == "nemotron" and nemotron[1]["generate_interruptions"] is True
+    # The "nemotron" backend was removed with the vendored riva_speech fork; the
+    # "nvidia" branch now uses pipecat's own NvidiaSTTService.
+    with pytest.raises(AssertionError, match="Invalid STT backend"):
+        stt.get_stt_service_from_config(OmegaConf.create({"type": "nemotron"}))
     with pytest.raises(AssertionError, match="Invalid STT backend"):
         stt.get_stt_service_from_config(OmegaConf.create({"type": "bad"}))
 
@@ -57,9 +58,11 @@ def test_nemo_tts_factory_models(monkeypatch, model, expected):
 def test_remote_tts_factories_and_errors(monkeypatch):
     monkeypatch.setattr(tts, "SimpleSegmentedTextAggregator", _fake("aggregator"))
     monkeypatch.setattr(tts, "NvidiaTTSService", _fake("nvidia"))
-    monkeypatch.setattr(tts, "ResilientNemotronTTSService", _fake("nemotron"))
     assert tts.get_tts_service_from_config({"type": "nvidia"})[0] == "nvidia"
-    assert tts.get_tts_service_from_config({"type": "nemotron", "use_text_aggregator": False})[0] == "nemotron"
+    # The "nemotron" TTS branch went away with the vendored riva_speech fork; it
+    # now falls through to the local-model path and fails the model check.
+    with pytest.raises(ValueError, match="Model is required"):
+        tts.get_tts_service_from_config({"type": "nemotron", "use_text_aggregator": False})
     with pytest.raises(ValueError, match="Model is required"):
         tts.get_tts_service_from_config({"type": "nemo"})
     with pytest.raises(ValueError, match="Invalid model"):

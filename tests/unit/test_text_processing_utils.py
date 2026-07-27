@@ -19,7 +19,6 @@ import asyncio
 
 import pytest
 
-from nemo_voice_agent.pipecat.utils.riva_text_filter import RivaTextFilter, _normalize_whitespace
 from nemo_voice_agent.pipecat.utils.text.simple_text_aggregator import (
     SimpleSegmentedTextAggregator,
     find_last_comma_index,
@@ -116,23 +115,3 @@ def test_segmented_aggregator_uses_legacy_eos_detection_when_enabled():
 
     assert [r.text for r in results] == ["Hello world!"]
     assert aggregator._text == " trailing"
-
-
-def test_normalize_whitespace_collapses_runs_without_trimming_edges():
-    """Whitespace normalization collapses runs but keeps leading and trailing intent."""
-    assert _normalize_whitespace("  hello\n\tthere  ") == " hello there "
-
-
-def test_riva_text_filter_removes_markup_bullets_and_normalizes_punctuation():
-    """The Riva filter strips markup and bullet prefixes while preserving readable text."""
-    filtered = asyncio.run(RivaTextFilter().filter("  1. **Hello**(world)!Next - ' spaced ' @@@ "))
-
-    assert filtered == "Helloworld! Next-'spaced'"
-
-
-def test_riva_text_filter_interruption_hooks_are_noops():
-    """The interruption hooks are compatibility no-ops for this stateless filter."""
-    filter_ = RivaTextFilter()
-
-    assert asyncio.run(filter_.handle_interruption()) is None
-    assert asyncio.run(filter_.reset_interruption()) is None

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.openai.llm import OpenAILLMService
 
@@ -154,7 +154,7 @@ class StandardSchemaTool:
 def _current_context_tool_names(context: Any) -> List[str]:
     """Extract the tool names the LLM actually sees in its current schema.
 
-    ``context._tools`` (set by ``OpenAILLMContext.set_tools``) is the LLM's
+    ``context._tools`` (set by ``LLMContext.set_tools``) is the LLM's
     canonical view; ``llm._functions`` is the Python-side registry which
     accumulates entries across bootstrap + per-scenario RTVI re-registrations.
     The two diverge whenever ``register_schema_tools_to_llm`` is called with
@@ -233,7 +233,7 @@ async def _unknown_tool_handler(params: FunctionCallParams) -> None:
 
 def register_schema_tools_to_llm(
     llm: OpenAILLMService,
-    context: OpenAILLMContext,
+    context: LLMContext,
     tools: List[StandardSchemaTool],
     cancel_on_interruption: bool = True,
     keep_existing_tools: bool = True,

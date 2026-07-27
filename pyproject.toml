@@ -28,8 +28,11 @@ dependencies = [
     "torchaudio",
     # NeMo speech stack (ASR + TTS models)
     "nemo-toolkit[asr,tts]>=2.7.3",
-    # Real-time voice pipeline framework
-    "pipecat-ai==0.0.98",
+    # Real-time voice pipeline framework.
+    # NOTE: deliberately NOT the `[nvidia]` extra — it requires protobuf>=6.31.1,
+    # which nemo-toolkit forbids (it pins protobuf~=5.29.5). We supply the Riva
+    # client ourselves below. See the nvidia-riva-client comment for the details.
+    "pipecat-ai[websocket,tracing]==1.6.0",
     # LLM backends
     "transformers>=5.8.0",
     "vllm>=0.24.0",
@@ -38,8 +41,10 @@ dependencies = [
     "kokoro",
     "spacy",       # misaki[en] runtime need, pulled in directly since we override
     "num2words",   # misaki's `en` extra to drop its GPL-3.0 phonemizer-fork/espeakng_loader deps
-    "silero-vad",
-    "onnxruntime",
+    # silero-vad is no longer a direct dep: pipecat >=1.0 bundles
+    # audio/vad/data/silero_vad.onnx and runs it through onnxruntime, which is
+    # now a pipecat core dependency. Only pipecat's SileroVADAnalyzer is used.
+    "onnxruntime~=1.24.3",
     "kaldialign",
     # Web / API / client
     "fastapi",
@@ -51,7 +56,15 @@ dependencies = [
     "loguru",
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-exporter-otlp-proto-http",
-    # Riva client
+    # Riva client. PINNED — do not bump without reading this.
+    # nvidia-riva-client >=2.25.1 ships protobuf gencode that declares a 6.31.1
+    # runtime requirement, so it raises VersionError at *import* time against the
+    # protobuf 5.x runtime that nemo-toolkit forces (protobuf~=5.29.5). The pin
+    # would resolve cleanly in uv.lock and only fail when a Riva bot starts.
+    # 2.21.1's gencode declares 5.27.2 and exposes every symbol pipecat 1.6's
+    # pipecat/services/nvidia/{stt,tts}.py uses. Revisit once nemo-toolkit
+    # relaxes its protobuf pin; then protobuf>=6.33.5 + riva-client>=2.26.0 +
+    # pipecat-ai[nvidia] can all move together.
     "nvidia-riva-client==2.21.1",
     "g2p-en>=2.1.0",
 ]
@@ -158,6 +171,10 @@ torch-backend = "cu130"
 
 # Force patched versions for known CVEs
 override-dependencies = [
+    # protobuf 5.29.6 patches BOTH live advisories: CVE-2025-4565 (recursion DoS,
+    # fixed 5.29.5) and CVE-2026-0994 (JSON recursion depth bypass, fixed 5.29.6).
+    # Do NOT "upgrade" to >=6.31.1 — that only fixes the first; the 6.x line needs
+    # >=6.33.5. In any case nemo-toolkit pins protobuf~=5.29.5, so 6.x is blocked.
     "protobuf==5.29.6",
     "numba==0.65.0",
     "transformers>=5.8.0",

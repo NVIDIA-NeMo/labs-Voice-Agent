@@ -26,7 +26,7 @@ from pipecat.frames.frames import (
     UserStoppedSpeakingFrame,
 )
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response import LLMUserContextAggregator
+from pipecat.processors.aggregators.llm_response_universal import LLMUserAggregator
 from pipecat.processors.frame_processor import FrameProcessor
 
 
@@ -39,7 +39,7 @@ class UserAudioBuffer(FrameProcessor):
         self,
         *,
         context: LLMContext,
-        user_context_aggregator: LLMUserContextAggregator,
+        user_context_aggregator: LLMUserAggregator,
         pre_cache_duration_secs: float = 0.2,
         use_transcript: bool = False,
         text_prompt_for_audio: Optional[str] = None,

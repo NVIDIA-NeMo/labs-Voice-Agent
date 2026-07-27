@@ -170,8 +170,8 @@ def test_get_scenario_summary_action_returns_actions_and_hash():
         "db": db_contents,
         "_call_counts": {"rebook_flight": 1},  # internal marker, not in response
     }
-    action = create_get_scenario_summary_action(None, ref)
-    result = asyncio.run(action.handler(None, "context", {}))
+    _name, handler = create_get_scenario_summary_action(None, ref)
+    result = asyncio.run(handler(None, {}))
     assert result["actions"] == [{"action_type": "rebook_flight", "x": 1}]
     assert result["db_hash"] == get_dict_hash(db_contents)
     # Each bot returns only its own db; user_db labeling happens at the
@@ -186,8 +186,8 @@ def test_get_scenario_summary_action_returns_actions_and_hash():
 def test_get_scenario_summary_action_uninitialized_state():
     """Empty state returns ``{actions: [], db_hash: None}`` — minimal shape."""
     ref = SharedStateRef()
-    action = create_get_scenario_summary_action(None, ref)
-    result = asyncio.run(action.handler(None, "context", {}))
+    _name, handler = create_get_scenario_summary_action(None, ref)
+    result = asyncio.run(handler(None, {}))
     assert result == {"actions": [], "db_hash": None}
 
 
@@ -200,15 +200,17 @@ def test_get_scenario_summary_action_metadata():
     bot returns only its own DB; the bridge labels them by source.
     """
     ref = SharedStateRef()
-    action = create_get_scenario_summary_action(None, ref)
-    assert action.service == "context"
-    assert action.action == "get_scenario_summary"
-    assert len(action.arguments) == 1
-    arg = action.arguments[0]
-    assert arg.name == "include_db"
-    assert arg.type == "bool"
-    # Default ``include_db=False`` preserves retail's hash-out behavior;
-    # only opt-in domains (telecom) ask for the inline DB.
+    name, handler = create_get_scenario_summary_action(None, ref)
+    # The wire name is the RTVI client-message type in pipecat 1.x (the "t"
+    # field); keeping it stable is what lets the bridge speak unchanged.
+    assert name == "get_scenario_summary"
+    assert callable(handler)
+    # ``include_db`` defaults to False, preserving retail's hash-out behavior;
+    # only opt-in domains (telecom) ask for the inline DB. There is no schema
+    # layer on the 1.x path, so the default lives in the handler itself.
+    ref.state = {"actions": [], "db": {"x": 1}}
+    assert "db" not in asyncio.run(handler(None, {}))
+    assert "db" in asyncio.run(handler(None, {"include_db": True}))
 
 
 # ---------------------------------------------------------------------------

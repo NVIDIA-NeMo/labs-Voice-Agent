@@ -27,25 +27,35 @@ from typing import Optional
 
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
+)
+from pipecat.processors.aggregators.llm_text_processor import LLMTextProcessor
+from pipecat.processors.audio.vad_processor import VADProcessor
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat.services.llm_service import LLMService
-from pipecat.services.openai import BaseOpenAILLMService
+from pipecat.services.openai.base_llm import BaseOpenAILLMService
 from pipecat.services.stt_service import STTService
 from pipecat.services.tts_service import TTSService
-
-from nemo_voice_agent.pipecat.processors.aggregators.openai_llm_context import (
-    OpenAILLMContext,
+from pipecat.transports.websocket.server import (
+    SingleClientWebsocketServerParams,
+    SingleClientWebsocketServerTransport,
 )
+from pipecat.turns.user_start import VADUserTurnStartStrategy
+from pipecat.turns.user_stop import SpeechTimeoutUserTurnStopStrategy
+from pipecat.turns.user_turn_strategies import (
+    ExternalUserTurnStrategies,
+    UserTurnStrategies,
+)
+
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
 from nemo_voice_agent.pipecat.services.nemo.diar import NemoDiarService
 from nemo_voice_agent.pipecat.services.nemo.llm import get_llm_service_from_config
 from nemo_voice_agent.pipecat.services.nemo.stt import get_stt_service_from_config
-from nemo_voice_agent.pipecat.services.nemo.tts import get_tts_service_from_config
+from nemo_voice_agent.pipecat.services.nemo.tts import build_text_aggregator, get_tts_service_from_config
 from nemo_voice_agent.pipecat.services.nemo.turn_taking import NeMoTurnTakingService
-from nemo_voice_agent.pipecat.transports.network.websocket_server import (
-    WebsocketServerParams,
-    WebsocketServerTransport,
-)
 from nemo_voice_agent.utils import ConfigManager
 
 
@@ -68,25 +78,45 @@ def build_vad_analyzer(config_manager: ConfigManager) -> SileroVADAnalyzer:
     return SileroVADAnalyzer(sample_rate=sample_rate, params=config_manager.get_vad_params())
 
 
+def build_vad_processor(vad_analyzer: SileroVADAnalyzer | None) -> Optional[VADProcessor]:
+    """Wrap ``vad_analyzer`` in the pipeline processor that emits VAD frames.
+
+    Pipecat 1.0 removed ``vad_analyzer`` from ``TransportParams`` — VAD is no
+    longer run by the input transport. Placing a ``VADProcessor`` immediately
+    after ``transport.input()`` restores the old frame ordering, so
+    ``NeMoTurnTakingService`` keeps receiving ``VADUserStartedSpeakingFrame`` /
+    ``VADUserStoppedSpeakingFrame`` at exactly the point it used to.
+
+    Returns ``None`` when there is no analyzer, so callers can drop it from the
+    pipeline list with the same ``if x is not None`` pattern used elsewhere.
+    """
+    if vad_analyzer is None:
+        return None
+    return VADProcessor(vad_analyzer=vad_analyzer)
+
+
 def build_ws_transport(
     config_manager: ConfigManager,
-    vad_analyzer: SileroVADAnalyzer | None,
+    vad_analyzer: SileroVADAnalyzer | None,  # noqa: ARG001 - kept for call-site compatibility
     host: str,
     port: int,
-) -> WebsocketServerTransport:
-    """Build the no-timeout websocket server transport used by all bots."""
+) -> SingleClientWebsocketServerTransport:
+    """Build the no-timeout websocket server transport used by all bots.
+
+    ``vad_analyzer`` is accepted but unused: since pipecat 1.0 the transport no
+    longer runs VAD. Pass the analyzer to :func:`build_vad_processor` and insert
+    the result right after ``transport.input()`` instead.
+    """
     server_config = config_manager.server_config
-    return WebsocketServerTransport(
-        params=WebsocketServerParams(
+    return SingleClientWebsocketServerTransport(
+        params=SingleClientWebsocketServerParams(
             serializer=ProtobufFrameSerializer(),
             audio_in_enabled=True,
             audio_out_enabled=True,
             add_wav_header=False,
-            vad_analyzer=vad_analyzer,
             session_timeout=None,
             audio_in_sample_rate=server_config.transport.get("audio_in_sample_rate", config_manager.SAMPLE_RATE),
             audio_out_sample_rate=server_config.transport.get("audio_out_sample_rate", None),
-            can_create_user_frames=server_config.transport.get("can_create_user_frames", False),
             audio_out_10ms_chunks=config_manager.TRANSPORT_AUDIO_OUT_10MS_CHUNKS,
         ),
         host=host,
@@ -140,17 +170,54 @@ def build_tts(config_manager: ConfigManager, audio_logger: Optional[AudioLogger]
     return get_tts_service_from_config(config_manager.server_config.tts, audio_logger)
 
 
+def build_llm_text_processor(config_manager: ConfigManager) -> Optional[LLMTextProcessor]:
+    """Build the processor that segments LLM text into TTS-sized chunks.
+
+    Pipecat 1.0 removed ``TTSService(text_aggregator=...)``; aggregation now
+    belongs to an ``LLMTextProcessor`` sitting immediately upstream of the TTS
+    service. Insert the result there — pipecat *silently ignores* unknown
+    constructor kwargs, so passing the aggregator to the service instead would
+    quietly fall back to plain sentence splitting with no error to notice.
+
+    Returns ``None`` when ``tts.use_text_aggregator`` is False.
+    """
+    aggregator = build_text_aggregator(config_manager.server_config.tts)
+    if aggregator is None:
+        return None
+    return LLMTextProcessor(text_aggregator=aggregator)
+
+
 def build_llm(config_manager: ConfigManager) -> LLMService:
     """Build the LLM service via ``get_llm_service_from_config``."""
     return get_llm_service_from_config(config_manager.server_config.llm)
 
 
 def build_context_and_aggregators(llm: BaseOpenAILLMService, config_manager: ConfigManager):
-    """Build ``OpenAILLMContext`` and its user/assistant aggregators.
+    """Build the ``LLMContext`` and its user/assistant aggregators.
 
     Returns ``(context, user_aggregator, assistant_aggregator, original_messages)``.
     ``original_messages`` is a fresh deep-copy of the initial message list, safe
-    to hand to the reset/update-prompt RTVI action factories.
+    to hand to the reset/update-prompt RTVI handler factories.
+
+    Pipecat 1.0+ made the user aggregator the owner of turn detection, so the
+    strategy pair has to mirror whichever component actually decides turn
+    boundaries in this config. Both branches read the VAD frames emitted by the
+    ``VADProcessor`` that :func:`build_vad_processor` puts right after
+    ``transport.input()`` — neither needs its own analyzer.
+
+    - ``turn_taking.enabled: true`` (all the local-NeMo configs):
+      ``NeMoTurnTakingService`` pushes ``UserStartedSpeakingFrame`` /
+      ``UserStoppedSpeakingFrame`` itself, so we select
+      ``ExternalUserTurnStrategies`` — the supported way to tell the aggregator
+      that an upstream processor owns turn detection. This replaces the old
+      ``transport.can_create_user_frames=False`` knob, which pipecat removed
+      along with transport-side VAD.
+    - ``turn_taking.enabled: false`` (``*_nvidia.yaml``): nothing upstream emits
+      user-turn frames — these configs used to rely on the transport's VAD doing
+      it, which is what their now-obsolete ``can_create_user_frames: true`` was
+      for. Drive the turn off VAD directly instead. Note we name the stop
+      strategy explicitly rather than taking pipecat's default, which would pull
+      in ``LocalSmartTurnAnalyzerV3``.
     """
     messages = [
         {
@@ -162,10 +229,21 @@ def build_context_and_aggregators(llm: BaseOpenAILLMService, config_manager: Con
         dummy_message = config_manager.server_config.llm.get("dummy_user_message", "Hello.")
         messages.append({"role": "user", "content": dummy_message})
 
-    context = OpenAILLMContext(messages=messages)
+    context = LLMContext(messages=messages)
     original_messages = copy.deepcopy(context.get_messages())
 
-    context_aggregator = llm.create_context_aggregator(context)
+    if config_manager.server_config.turn_taking.get("enabled", True):
+        user_turn_strategies = ExternalUserTurnStrategies()
+    else:
+        user_turn_strategies = UserTurnStrategies(
+            start=[VADUserTurnStartStrategy()],
+            stop=[SpeechTimeoutUserTurnStopStrategy()],
+        )
+
+    context_aggregator = LLMContextAggregatorPair(
+        context,
+        user_params=LLMUserAggregatorParams(user_turn_strategies=user_turn_strategies),
+    )
     return (
         context,
         context_aggregator.user(),
@@ -199,11 +277,13 @@ def overwrite_existing_log(config_manager: ConfigManager) -> bool:
 __all__ = [
     "build_audio_logger",
     "build_vad_analyzer",
+    "build_vad_processor",
     "build_ws_transport",
     "build_stt",
     "build_diar",
     "build_turn_taking",
     "build_tts",
+    "build_llm_text_processor",
     "build_llm",
     "build_context_and_aggregators",
     "resolve_log_file_path",

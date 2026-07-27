@@ -41,7 +41,6 @@ from pydantic import BaseModel
 
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
 from nemo_voice_agent.pipecat.services.nemo.streaming_asr import NemoStreamingASRService
-from nemo_voice_agent.pipecat.services.riva_speech import NemotronASRService
 
 
 ASR_EOU_MODELS = ["nvidia/parakeet_realtime_eou_120m-v1"]
@@ -389,162 +388,10 @@ class NemoSTTService(STTService):
         await super().process_frame(frame, direction)
 
 
-class ResilientNvidiaSTTService(NvidiaSTTService):
-    """``NvidiaSTTService`` with auto-recovery from transient streaming errors.
-
-    **Problem.** The Riva streaming ASR endpoint (NVCF-hosted
-    ``parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer`` and similar
-    sequence models) periodically fails mid-stream with one of two distinct
-    error classes that the upstream ``NvidiaSTTService`` doesn't recover from:
-
-    1. **Sequence-state error** (``StatusCode.INVALID_ARGUMENT``)::
-
-           "inference request for sequence X to model '...' must specify the
-            START flag on the first request of the sequence"
-
-       Occurs when the NVCF backend GCs an idle session (observed during long
-       agent LLM-thinking turns of 60-145s in tau2 scenarios) and the next
-       audio chunk arrives without a fresh START flag.
-
-    2. **Transient gRPC stream resets** (``StatusCode.INTERNAL``,
-       ``UNAVAILABLE``, ``DEADLINE_EXCEEDED``) — most commonly
-       ``RST_STREAM with error code 2`` (HTTP/2 ``INTERNAL_ERROR``), which
-       fires when the cloud-side endpoint abruptly closes the bidirectional
-       stream (pod restart, load-balancer reset, server-side timeout).
-
-    Both classes are recoverable by **opening a fresh streaming session**,
-    which is what ``streaming_response_generator(...)`` does on each call.
-
-    **Fix.** Override ``_thread_task_handler`` with a bounded retry loop
-    around ``_response_handler``. The retry policy is conservative:
-
-    - ``INVALID_ARGUMENT`` is retried only when the message matches
-      ``SEQUENCE_ERROR_FRAGMENT`` — we don't want to retry every
-      client-validation error (malformed audio, bad config, etc.).
-    - ``INTERNAL`` / ``UNAVAILABLE`` / ``DEADLINE_EXCEEDED`` are always retried
-      (within budget) — these are the canonical "transient cloud" status codes.
-    - Everything else propagates immediately (auth, permission, not_found,
-      pipeline-cancel) so real configuration issues fail fast.
-
-    ``self._thread_running`` stays ``True`` across retries so ``__next__``
-    continues to feed audio chunks from ``self._queue``; only explicit
-    ``cancel_task`` sets it to ``False`` (in the ``CancelledError`` branch).
-    Audio chunks already in flight when the stream errored may be lost, but the
-    next user utterance will be transcribed cleanly.
-
-    Borrows the "opening new streaming-ASR session" log line from
-    ``NemotronASRService._response_handler`` (in
-    ``nemo_voice_agent/pipecat/services/riva_speech.py``) so each retry is
-    visible in ``bot_logs_agent/``.
-    """
-
-    # Exact substring match for the sequence-state error. The full gRPC error
-    # message includes a server-generated sequence_id, so we can't match the
-    # whole thing — this fragment is the stable identifier.
-    SEQUENCE_ERROR_FRAGMENT = "must specify the START flag on the first request"
-
-    # gRPC ``StatusCode`` names treated as transient, retryable failures.
-    # Stored as strings (not enum values) so we don't need a hard import on
-    # ``grpc`` at class-definition time — duck-typed lookup via
-    # ``exc.code().name`` works against any grpc.RpcError subclass.
-    _RETRYABLE_GRPC_STATUS_NAMES = frozenset(
-        [
-            "INTERNAL",  # RST_STREAM with INTERNAL_ERROR — cloud pod restart / abrupt close
-            "UNAVAILABLE",  # transient endpoint unavailability
-            "DEADLINE_EXCEEDED",  # long-stream timeout
-        ]
-    )
-
-    MAX_RETRIES = 5
-
-    def _is_retryable_error(self, exc: BaseException) -> bool:
-        """Decide whether ``exc`` warrants restarting the streaming session.
-
-        Two retryable classes:
-
-        1. **Sequence-state errors** (Triton's "must specify START flag" message)
-           — match the canonical substring regardless of the wrapping exception
-           type so the rule works for both ``grpc.RpcError`` and plain
-           ``RuntimeError`` (the latter used in unit tests).
-
-        2. **Transient gRPC status codes** (``INTERNAL`` / ``UNAVAILABLE`` /
-           ``DEADLINE_EXCEEDED``) — duck-typed lookup via ``exc.code().name``
-           so we don't take a hard import on ``grpc`` at module level. Any
-           exception that exposes a ``code()`` method returning an object with
-           a ``name`` attribute matching the set qualifies.
-
-        Everything else returns ``False`` — propagate immediately.
-        """
-        if self.SEQUENCE_ERROR_FRAGMENT in str(exc):
-            return True
-        try:
-            status_name = exc.code().name  # type: ignore[attr-defined]
-        except (AttributeError, TypeError):
-            return False
-        return status_name in self._RETRYABLE_GRPC_STATUS_NAMES
-
-    def _response_handler(self):
-        """Mirror upstream behavior with an extra debug log at start of stream.
-
-        The base class's ``_response_handler`` opens the gRPC streaming generator
-        and pushes responses into ``self._response_queue``. Adding the log line
-        makes session restarts (driven by ``_thread_task_handler`` below) visible
-        in the bot log without having to subclass everything.
-        """
-        logger.debug(f"{self}: opening new streaming-ASR session")
-        super()._response_handler()
-
-    async def _thread_task_handler(self):
-        """Retry the streaming session on transient errors.
-
-        Loops up to ``MAX_RETRIES`` times. Each iteration:
-          - Runs ``_response_handler`` in a worker thread (same as upstream).
-          - On clean return (server closed the stream), exits normally.
-          - On a retryable exception (see ``_is_retryable_error``), logs a
-            warning and re-enters the loop — the next
-            ``streaming_response_generator`` call opens a fresh gRPC stream.
-          - On any other exception, propagates immediately so configuration
-            errors fail fast.
-
-        ``self._thread_running`` stays ``True`` across retries so ``__next__``
-        continues to feed audio chunks; only explicit ``cancel_task`` sets it
-        to ``False`` (in the ``CancelledError`` branch below).
-        """
-        attempts = 0
-        try:
-            self._thread_running = True
-            while True:
-                try:
-                    await asyncio.to_thread(self._response_handler)
-                    return  # Stream ended cleanly.
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    if self._is_retryable_error(e) and attempts < self.MAX_RETRIES:
-                        attempts += 1
-                        logger.warning(
-                            f"{self}: transient STT streaming error "
-                            f"(retry {attempts}/{self.MAX_RETRIES}); "
-                            f"restarting streaming session. Error: {str(e)[:300]}"
-                        )
-                        # Fall through to next loop iteration — the next call
-                        # to streaming_response_generator opens a fresh stream.
-                        continue
-                    logger.error(
-                        f"{self}: STT thread giving up after {attempts} retries "
-                        f"(non-retryable error or budget exhausted); will not "
-                        f"transcribe further. Error: {e!r}"
-                    )
-                    raise
-        except asyncio.CancelledError:
-            self._thread_running = False
-            raise
-
-
 def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[AudioLogger] = None) -> STTService:
     """Get the STT service from the config."""
     backend = config.type
-    available_backends = ["nemo", "nvidia", "nemotron"]
+    available_backends = ["nemo", "nvidia"]
     assert backend in available_backends, f"Invalid STT backend: {backend}, only {available_backends} are supported"
 
     if backend == "nemo":
@@ -575,28 +422,17 @@ def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[Audio
         model_name = config.get("model", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer")
         function_id = config.get("function_id", "1598d209-5e27-4d3c-8079-4751568b1081")
         language = config.get("language", "en-US")
-        # ResilientNvidiaSTTService is a drop-in subclass that auto-recovers
-        # from Triton "must specify START flag" sequence-state errors. See
-        # the class docstring for the rationale.
-        return ResilientNvidiaSTTService(
+        # Upstream NvidiaSTTService handles transient gRPC stream drops itself
+        # since pipecat 1.0 (``_handle_stream_drop`` -> ``_request_reconnect``),
+        # including the Triton "must specify START flag" sequence-state error
+        # that used to need a local retry subclass. Its reconnect is also
+        # turn-aware: it defers until the user stops speaking.
+        return NvidiaSTTService(
             api_key=api_key,
             server=config.get("server", "grpc.nvcf.nvidia.com:443"),
             model_function_map={"function_id": function_id, "model_name": model_name},
             language=language,
             sample_rate=config.get("sample_rate", 16000),
-        )
-    elif backend == "nemotron":
-        api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
-        model_name = config.get("model", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer")
-        function_id = config.get("function_id", "1598d209-5e27-4d3c-8079-4751568b1081")
-        language = config.get("language", "en-US")
-        return NemotronASRService(
-            api_key=api_key,
-            server=config.get("server", "grpc.nvcf.nvidia.com:443"),
-            model_function_map={"function_id": function_id, "model_name": model_name},
-            language=language,
-            sample_rate=config.get("sample_rate", 16000),
-            generate_interruptions=config.get("generate_interruptions", False),
         )
     else:
         raise ValueError(f"Invalid ASR backend: {backend}")
