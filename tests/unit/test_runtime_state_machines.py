@@ -630,3 +630,33 @@ def test_base_input_transport_push_audio_frame_does_not_queue_when_paused():
 
     assert frame.timestamp is not None
     assert transport._audio_in_queue.empty()
+
+
+def test_turn_taking_missing_backchannel_file_blames_the_file_not_the_type(tmp_path):
+    """A bad path must raise FileNotFoundError naming the path.
+
+    This used to fall through the string branch (which also required is_file())
+    into the type-error branch, reporting "Invalid backchannel phrases of type
+    <class 'str'>" — which pointed at the wrong thing entirely.
+    """
+    missing = str(tmp_path / "no_such_backchannels.yaml")
+    with pytest.raises(FileNotFoundError) as excinfo:
+        NeMoTurnTakingService(backchannel_phrases=missing, use_vad=True)
+    assert missing in str(excinfo.value)
+
+
+def test_turn_taking_rejects_genuinely_wrong_types():
+    """Values that are neither a path nor a list still raise ValueError."""
+    with pytest.raises(ValueError, match="Invalid backchannel phrases of type"):
+        NeMoTurnTakingService(backchannel_phrases={"not": "supported"}, use_vad=True)
+
+
+def test_turn_taking_loads_backchannels_from_yaml_file(tmp_path):
+    """A real file is read and its phrases normalized for matching."""
+    path = tmp_path / "backchannels.yaml"
+    path.write_text("- Uh huh\n- Yeah!\n")
+
+    service = NeMoTurnTakingService(backchannel_phrases=str(path), use_vad=True)
+
+    assert service.is_backchannel("uh huh") is True
+    assert service.is_backchannel("what is the weather") is False

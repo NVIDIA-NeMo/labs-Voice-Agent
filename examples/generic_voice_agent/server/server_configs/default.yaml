@@ -37,7 +37,7 @@ diar:
   frame_len_in_secs: 0.08  # default for Sortformer, do not change unless using other architechtures
 
 turn_taking:
-  backchannel_phrases_path: "./server/backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
+  backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
   max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
   bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
 

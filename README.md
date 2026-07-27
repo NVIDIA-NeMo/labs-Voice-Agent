@@ -104,7 +104,8 @@ Open a terminal and run the server via:
 # export SERVER_CONFIG_PATH="/path/to/your/server/config.yaml"  # change to the server config you want to use, otherwise it will use the default config in `examples/generic_voice_agent/server/server_configs/default.yaml`
 # export SERVER_PUBLIC_HOST="[YOUR MACHINE IP ADDRESS]"  # hostname or IP the browser will use to reach the WebSocket server; defaults to 127.0.0.1 (local only)
 # export WEBSOCKET_SCHEME="ws"  # set to "wss" if the WebSocket server is behind TLS termination
-python examples/generic_voice_agent/server/server.py
+cd examples/generic_voice_agent/server/
+python server.py
 ```
 
 ### Launch the client
