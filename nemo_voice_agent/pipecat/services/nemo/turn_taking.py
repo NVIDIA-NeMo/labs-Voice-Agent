@@ -16,7 +16,7 @@
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import yaml
 from loguru import logger
@@ -84,24 +84,49 @@ class NeMoTurnTakingService(FrameProcessor):
             # if vad is not used, we assume the user is always speaking
             self._vad_user_speaking = True
 
-    def _load_backchannel_phrases(self, backchannel_phrases: Optional[Union[str, List[str]]] = None):
+    def _load_backchannel_phrases(self, backchannel_phrases: Any = None):
+        """Load backchannel phrases from a YAML file path or an inline list.
+
+        Args:
+            backchannel_phrases: Path to a YAML file containing a list of
+                phrases, an inline list of phrases, or a falsy value to disable
+                backchanneling (any speech then interrupts the bot). Typed as
+                ``Any`` because it arrives straight from user YAML and may be
+                any type at all; this method is where that gets validated.
+
+        Raises:
+            FileNotFoundError: A path was given but no file exists there.
+            ValueError: The value is neither a path nor a list, or the YAML file
+                does not contain a list.
+        """
         if not backchannel_phrases:
             return []
 
-        if isinstance(backchannel_phrases, str) and Path(backchannel_phrases).is_file():
-            logger.info(f"Loading backchannel phrases from file: {backchannel_phrases}")
-            if not Path(backchannel_phrases).exists():
-                raise FileNotFoundError(f"Backchannel phrases file not found: {backchannel_phrases}")
-            with open(backchannel_phrases, "r") as f:
-                backchannel_phrases = yaml.safe_load(f)
-            if not isinstance(backchannel_phrases, list):
-                raise ValueError(f"Backchannel phrases must be a list, got {type(backchannel_phrases)}")
-            logger.info(f"Loaded {len(backchannel_phrases)} backchannel phrases from file: {backchannel_phrases}")
-        elif isinstance(backchannel_phrases, (list, ListConfig)):
+        # Validate the type up front. Previously this was an `else` on the
+        # dispatch below, and the string branch also required `is_file()` — so a
+        # *missing file* fell through to it and was reported as "Invalid
+        # backchannel phrases of type <class 'str'>", blaming the type and
+        # hiding the real problem.
+        if not isinstance(backchannel_phrases, (str, list, ListConfig)):
+            raise ValueError(f"Invalid backchannel phrases of type {type(backchannel_phrases)}: {backchannel_phrases}")
+
+        if isinstance(backchannel_phrases, (list, ListConfig)):
             backchannel_phrases = list(backchannel_phrases)
             logger.info(f"Using backchannel phrases from list: {backchannel_phrases}")
-        else:
-            raise ValueError(f"Invalid backchannel phrases of type {type(backchannel_phrases)}: {backchannel_phrases}")
+            return backchannel_phrases
+
+        if not Path(backchannel_phrases).is_file():
+            raise FileNotFoundError(
+                f"Backchannel phrases file not found: {backchannel_phrases}. Set "
+                "turn_taking.backchannel_phrases_path to an existing YAML file, to an "
+                "inline list of phrases, or to null to let any speech interrupt the bot."
+            )
+        logger.info(f"Loading backchannel phrases from file: {backchannel_phrases}")
+        with open(backchannel_phrases, "r") as f:
+            backchannel_phrases = yaml.safe_load(f)
+        if not isinstance(backchannel_phrases, list):
+            raise ValueError(f"Backchannel phrases must be a list, got {type(backchannel_phrases)}")
+        logger.info(f"Loaded {len(backchannel_phrases)} backchannel phrases from file: {backchannel_phrases}")
         return backchannel_phrases
 
     def reset(self):
