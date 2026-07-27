@@ -232,3 +232,45 @@ class TestDefaultConfigs:
             raise ValueError(
                 f"TRANSPORT_AUDIO_OUT_10MS_CHUNKS is not an integer: {config_manager.TRANSPORT_AUDIO_OUT_10MS_CHUNKS}"
             )
+
+
+class TestResolveBackchannelPhrases:
+    """Coverage for turn_taking.backchannel_phrases_path resolution."""
+
+    @pytest.fixture
+    def config_manager(self, voice_agent_server_base_path):
+        return ConfigManager(voice_agent_server_base_path)
+
+    @pytest.mark.unit
+    def test_shipped_config_resolves_regardless_of_working_directory(self, voice_agent_server_base_path, monkeypatch):
+        """The shipped relative path works from the repo root, not just from the server dir.
+
+        The path is relative to the server directory, so launching from the repo
+        root used to leave it unresolved and surface much later as a confusing
+        type error out of NeMoTurnTakingService.
+        """
+        repo_root = Path(voice_agent_server_base_path).parents[2]
+        for cwd in (repo_root, voice_agent_server_base_path):
+            monkeypatch.chdir(cwd)
+            resolved = ConfigManager(voice_agent_server_base_path).TURN_TAKING_BACKCHANNEL_PHRASES_PATH
+            assert os.path.exists(resolved), f"unresolved when launched from {cwd}"
+
+    @pytest.mark.unit
+    def test_non_path_values_pass_through_untouched(self, config_manager):
+        """An inline phrase list is a documented option and must not hit os.path.
+
+        os.path.exists() raises TypeError on a ListConfig, so resolution has to
+        recognize the non-path forms before touching the filesystem.
+        """
+        inline = OmegaConf.create({"phrases": ["uh huh", "yeah"]}).phrases
+        assert list(config_manager._resolve_backchannel_phrases(inline)) == ["uh huh", "yeah"]
+        assert config_manager._resolve_backchannel_phrases(None) is None
+        assert config_manager._resolve_backchannel_phrases("") == ""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("missing", ["./no_such_file.yaml", "/absolute/no_such_file.yaml"])
+    def test_missing_file_fails_immediately_and_names_what_it_tried(self, config_manager, missing):
+        """Fail at config load, not later with a message that blames the type."""
+        with pytest.raises(FileNotFoundError) as excinfo:
+            config_manager._resolve_backchannel_phrases(missing)
+        assert missing in str(excinfo.value)

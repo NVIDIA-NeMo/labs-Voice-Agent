@@ -190,10 +190,55 @@ class ConfigManager:
                 threshold=self.server_config.diar.threshold,
             )
 
+    def _resolve_backchannel_phrases(self, backchannel_phrases):
+        """Resolve ``turn_taking.backchannel_phrases_path`` to something usable.
+
+        The setting is either an inline list of phrases, ``None``/``""`` to
+        disable backchanneling, or a path to a YAML file. Only the path form
+        needs resolving; the others are passed through untouched.
+
+        A relative path is tried against the current working directory first,
+        then against the server base directory, so the shipped config works
+        whether the server is launched from the repo root or from
+        ``examples/generic_voice_agent/server``.
+
+        Raises:
+            FileNotFoundError: If a path was given but exists at neither
+                location. Failing here, naming both paths tried, beats letting
+                it reach ``NeMoTurnTakingService`` — which used to report a bad
+                path as "Invalid backchannel phrases of type <class 'str'>".
+        """
+        # Not a path: an inline list, or None/"" meaning "no backchanneling".
+        # Guard before touching os.path, which raises TypeError on a ListConfig.
+        if not isinstance(backchannel_phrases, str) or not backchannel_phrases:
+            return backchannel_phrases
+
+        if os.path.exists(backchannel_phrases):
+            return backchannel_phrases
+
+        tried = [backchannel_phrases]
+        if not os.path.isabs(backchannel_phrases):
+            resolved = os.path.join(self._server_base_path, backchannel_phrases)
+            if os.path.exists(resolved):
+                logger.debug(
+                    f"Backchannel phrases path {backchannel_phrases} not found relative to the working "
+                    f"directory; resolved against the server base path to {resolved}"
+                )
+                return resolved
+            tried.append(resolved)
+
+        raise FileNotFoundError(
+            f"Backchannel phrases file not found. Tried: {', '.join(tried)}. Set "
+            "turn_taking.backchannel_phrases_path to an existing YAML file, to an inline "
+            "list of phrases, or to null to let any speech interrupt the bot."
+        )
+
     def _configure_turn_taking(self):
         """Configure turn taking parameters."""
         if self.server_config.turn_taking.get("enabled", True):
-            self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = self.server_config.turn_taking.backchannel_phrases_path
+            self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = self._resolve_backchannel_phrases(
+                self.server_config.turn_taking.backchannel_phrases_path
+            )
             self.TURN_TAKING_MAX_BUFFER_SIZE = self.server_config.turn_taking.max_buffer_size
             self.TURN_TAKING_BOT_STOP_DELAY = self.server_config.turn_taking.bot_stop_delay
         else:
