@@ -233,6 +233,7 @@ class NeMoTurnTakingService(FrameProcessor):
         text_segment = frame.text
         if self._vad_user_speaking:
             self._user_speaking_buffer += text_segment
+            logger.debug(f"Appending `{text_segment}` to user speaking buffer: `{self._user_speaking_buffer}`")
             has_eou = self._user_speaking_buffer.endswith(self.eou_string)
             has_eob = self._user_speaking_buffer.endswith(self.eob_string)
             if has_eou:
@@ -282,11 +283,9 @@ class NeMoTurnTakingService(FrameProcessor):
                 completed_words = self._user_speaking_buffer.strip().split()[:-1]
                 if len(completed_words) >= self.max_buffer_size:
                     completed_text = " ".join(completed_words)
+                    # Send the partial text as an interim transcription frame, while the full utterance is
+                    # accumulated in the user speaking buffer until EOU or EOB is detected.
                     await self._handle_completed_text(completed_text, direction, is_final=False)
-                    # Retain only the trailing, potentially incomplete word so
-                    # already-emitted interim text is not sent again.
-                    _, _, self._user_speaking_buffer = self._user_speaking_buffer.partition(completed_text)
-
         else:
             # if vad is not detecting user speaking
             logger.debug(
@@ -335,7 +334,7 @@ class NeMoTurnTakingService(FrameProcessor):
                     self._user_speaking_buffer = ""
                     self._have_sent_user_started_speaking = False
                     return
-                logger.debug(f"Appending text segment to user speaking buffer: `{self._user_speaking_buffer}`")
+                logger.debug(f"Appending `{text_segment}` to user speaking buffer: `{self._user_speaking_buffer}`")
 
     async def _handle_completed_text(self, completed_text: str, direction: FrameDirection, is_final: bool = True):
         if not self._have_sent_user_started_speaking:

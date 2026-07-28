@@ -199,7 +199,11 @@ def test_turn_taking_eou_transcription_emits_completed_turn_and_stop():
 
 
 def test_turn_taking_partial_buffer_emits_interim_completed_words():
-    """Long partial transcripts emit completed words while keeping the trailing unfinished word buffered."""
+    """Mid-utterance, the completed words go out as an interim frame.
+
+    The trailing word is held back because it may still be growing; only whole
+    words are published.
+    """
     service = NeMoTurnTakingService(max_buffer_size=2, use_vad=True)
     pushed = _capture_pushes(service)
     service._vad_user_speaking = True
@@ -207,7 +211,30 @@ def test_turn_taking_partial_buffer_emits_interim_completed_words():
     _drive(service._handle_transcription(_transcription("hello there friend"), FrameDirection.DOWNSTREAM))
 
     assert any(isinstance(frame, InterimTranscriptionFrame) and frame.text == "hello there" for frame, _ in pushed)
-    assert service._user_speaking_buffer == " friend"
+
+
+def test_turn_taking_interims_are_cumulative_and_final_carries_whole_utterance():
+    """Interim frames restate the utterance from the start; the final frame is complete.
+
+    Each InterimTranscriptionFrame supersedes the previous one, so the buffer
+    must keep accumulating rather than being trimmed to the emitted tail —
+    trimming would leave the closing TranscriptionFrame holding only the last
+    fragment and silently drop the beginning of what the user said.
+    """
+    service = NeMoTurnTakingService(max_buffer_size=2, use_vad=True)
+    pushed = _capture_pushes(service)
+    service._vad_user_speaking = True
+
+    _drive(service._handle_transcription(_transcription("hello there friend"), FrameDirection.DOWNSTREAM))
+    _drive(service._handle_transcription(_transcription(" how are you"), FrameDirection.DOWNSTREAM))
+
+    interims = [f.text for f, _ in pushed if isinstance(f, InterimTranscriptionFrame)]
+    assert interims == ["hello there", "hello there friend how are"]
+
+    _drive(service._handle_transcription(_transcription(f" today{service.eou_string}"), FrameDirection.DOWNSTREAM))
+
+    finals = [f.text for f, _ in pushed if type(f) is TranscriptionFrame]
+    assert finals == ["hello there friend how are you today"]
 
 
 def test_turn_taking_backchannel_while_bot_speaking_goes_upstream():
