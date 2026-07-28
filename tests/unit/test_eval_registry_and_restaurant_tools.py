@@ -76,8 +76,10 @@ def test_get_menu_tool_schema_and_execution_return_configured_menu():
     tool = GetMenuTool(menu="Pizza - $10")
     params = _Params()
 
-    asyncio.run(tool._execute(params))
+    asyncio.run(tool(params))
 
     assert tool.properties == {}
     assert tool.required_properties == []
+    # Exactly one delivery: __call__ is the single result-delivery point, and the
+    # truthy dict passes through _normalize_empty_result untouched.
     assert params.results == [{"menu": "Pizza - $10"}]

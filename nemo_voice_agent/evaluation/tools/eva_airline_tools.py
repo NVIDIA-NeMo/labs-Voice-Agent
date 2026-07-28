@@ -255,39 +255,33 @@ class GetReservationTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "last_name"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — get_reservation
         try:
-            p = GetReservationParams.model_validate(params.arguments)
+            p = GetReservationParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, GetReservationParams))
-            return
+            return validation_error_response(exc, GetReservationParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         last_name = p.last_name
 
         reservation = _lookup_reservation(db, confirmation_number)
         if not reservation:
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         if last_name:
             passengers = reservation.get("passengers", [])
             last_name_match = any(p2.get("last_name", "").lower() == last_name.lower() for p2 in passengers)
             if not last_name_match:
-                await params.result_callback(
-                    {
-                        "status": "error",
-                        "error_type": "authentication_failed",
-                        "message": f"Last name does not match reservation {confirmation_number}",
-                    }
-                )
-                return
+                return {
+                    "status": "error",
+                    "error_type": "authentication_failed",
+                    "message": f"Last name does not match reservation {confirmation_number}",
+                }
 
         # Sort journeys by first segment's date, then journey_id, for readability.
         result_reservation = copy.deepcopy(reservation)
@@ -297,7 +291,7 @@ class GetReservationTool(StandardSchemaTool):
                 j.get("journey_id", ""),
             )
         )
-        await params.result_callback({"status": "success", "reservation": result_reservation})
+        return {"status": "success", "reservation": result_reservation}
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -331,18 +325,16 @@ class GetFlightStatusTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["flight_number", "flight_date"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — get_flight_status
         try:
-            p = GetFlightStatusParams.model_validate(params.arguments)
+            p = GetFlightStatusParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, GetFlightStatusParams))
-            return
+            return validation_error_response(exc, GetFlightStatusParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         flight_number = p.flight_number.upper()
         normalized_date = p.flight_date.replace("-", "")
@@ -362,16 +354,13 @@ class GetFlightStatusTool(StandardSchemaTool):
                     break
 
         if not flight:
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "not_found",
-                    "message": f"Flight {p.flight_number} not found for date {p.flight_date}",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "not_found",
+                "message": f"Flight {p.flight_number} not found for date {p.flight_date}",
+            }
 
-        await params.result_callback({"status": "success", "journey": copy.deepcopy(flight)})
+        return {"status": "success", "journey": copy.deepcopy(flight)}
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -404,18 +393,16 @@ class GetDisruptionInfoTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["flight_number", "date"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — get_disruption_info
         try:
-            p = GetDisruptionInfoParams.model_validate(params.arguments)
+            p = GetDisruptionInfoParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, GetDisruptionInfoParams))
-            return
+            return validation_error_response(exc, GetDisruptionInfoParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         flight_number = p.flight_number.upper()
         date = p.date
@@ -431,16 +418,13 @@ class GetDisruptionInfoTool(StandardSchemaTool):
                     break
 
         if not disruption:
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "not_found",
-                    "message": f"No disruption info found for flight {flight_number}",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "not_found",
+                "message": f"No disruption info found for flight {flight_number}",
+            }
 
-        await params.result_callback({"status": "success", "disruption": copy.deepcopy(disruption)})
+        return {"status": "success", "disruption": copy.deepcopy(disruption)}
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -488,18 +472,16 @@ class SearchRebookingOptionsTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["origin", "destination", "date", "passenger_count", "fare_class"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — search_rebooking_options
         try:
-            p = SearchRebookingOptionsParams.model_validate(params.arguments)
+            p = SearchRebookingOptionsParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, SearchRebookingOptionsParams))
-            return
+            return validation_error_response(exc, SearchRebookingOptionsParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         origin = p.origin.upper()
         destination = p.destination.upper()
@@ -565,14 +547,12 @@ class SearchRebookingOptionsTool(StandardSchemaTool):
             )
 
         results.sort(key=lambda x: x.get("departure_time", ""))
-        await params.result_callback(
-            {
-                "status": "success",
-                "options": results,
-                "count": len(results),
-                "message": f"{len(results)} flight(s) found",
-            }
-        )
+        return {
+            "status": "success",
+            "options": results,
+            "count": len(results),
+            "message": f"{len(results)} flight(s) found",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -650,18 +630,16 @@ class RebookFlightTool(WriteAirlineTool):
             "waive_change_fee",
         ]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — rebook_flight
         try:
-            p = RebookFlightParams.model_validate(params.arguments)
+            p = RebookFlightParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, RebookFlightParams))
-            return
+            return validation_error_response(exc, RebookFlightParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         journey_id = p.journey_id
@@ -673,35 +651,27 @@ class RebookFlightTool(WriteAirlineTool):
 
         reservation = _lookup_reservation(db, confirmation_number)
         if not reservation:
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         booking = _find_booking_journey(reservation, journey_id)
         if not booking:
-            await params.result_callback(_journey_not_found(journey_id))
-            return
+            return _journey_not_found(journey_id)
 
         journeys = db.get("journeys", {})
         new_flight = journeys.get(new_journey_id)
         if not new_flight:
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "flight_not_found",
-                    "message": f"Flight {new_journey_id} not found",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "flight_not_found",
+                "message": f"Flight {new_journey_id} not found",
+            }
 
         if not new_flight.get("bookable", True):
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "not_bookable",
-                    "message": f"Flight {new_journey_id} is not available for booking",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "not_bookable",
+                "message": f"Flight {new_journey_id} is not available for booking",
+            }
 
         original_fare_class = booking.get("fare_class", "main_cabin")
         target_fare_class = new_fare_class or original_fare_class
@@ -727,8 +697,7 @@ class RebookFlightTool(WriteAirlineTool):
         if flight_number:
             targets, error = _find_booking_segment(booking, journey_id, flight_number)
             if error:
-                await params.result_callback(error)
-                return
+                return error
             replaced_segment = targets[0]
 
         if flight_number:
@@ -739,25 +708,19 @@ class RebookFlightTool(WriteAirlineTool):
         new_fare = journey_fares.get(target_fare_class)
 
         if new_fare is None:
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "fare_class_not_available",
-                    "message": f"Fare class '{target_fare_class}' is not available on flight {new_journey_id}",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "fare_class_not_available",
+                "message": f"Fare class '{target_fare_class}' is not available on flight {new_journey_id}",
+            }
 
         journey_seats = _get_journey_available_seats(new_flight)
         if journey_seats.get(target_fare_class, 0) <= 0:
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "no_seats_available",
-                    "message": f"No seats available in {target_fare_class} on flight {new_journey_id}",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "no_seats_available",
+                "message": f"No seats available in {target_fare_class} on flight {new_journey_id}",
+            }
 
         fare_difference = new_fare - old_fare
         credit_due = max(0, -fare_difference)
@@ -891,7 +854,7 @@ class RebookFlightTool(WriteAirlineTool):
             action["replaced_flight_number"] = flight_number
         self._record_action(action)
 
-        await params.result_callback(response)
+        return response
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -930,18 +893,16 @@ class CancelReservationTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "journey_id", "cancellation_reason"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — cancel_reservation
         try:
-            p = CancelReservationParams.model_validate(params.arguments)
+            p = CancelReservationParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, CancelReservationParams))
-            return
+            return validation_error_response(exc, CancelReservationParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         journey_id = p.journey_id
@@ -949,23 +910,18 @@ class CancelReservationTool(WriteAirlineTool):
 
         reservation = _lookup_reservation(db, confirmation_number)
         if not reservation:
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         booking = _find_booking_journey(reservation, journey_id)
         if not booking:
-            await params.result_callback(_journey_not_found(journey_id))
-            return
+            return _journey_not_found(journey_id)
 
         if booking.get("status") == "cancelled":
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "already_cancelled",
-                    "message": f"Journey {journey_id} is already cancelled",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "already_cancelled",
+                "message": f"Journey {journey_id} is already cancelled",
+            }
 
         booking_fare = _get_booking_total_fare(booking)
 
@@ -1005,19 +961,17 @@ class CancelReservationTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "confirmation_number": confirmation_number,
-                "journey_id": journey_id,
-                "is_refundable": is_refundable,
-                "cancellation_fee": cancellation_fee,
-                "refund_amount_eligible": refund_amount,
-                "credit_amount_eligible": credit_amount,
-                "reservation_status": "cancelled" if all_cancelled else "active",
-                "message": f"Journey {journey_id} cancelled successfully",
-            }
-        )
+        return {
+            "status": "success",
+            "confirmation_number": confirmation_number,
+            "journey_id": journey_id,
+            "is_refundable": is_refundable,
+            "cancellation_fee": cancellation_fee,
+            "refund_amount_eligible": refund_amount,
+            "credit_amount_eligible": credit_amount,
+            "reservation_status": "cancelled" if all_cancelled else "active",
+            "message": f"Journey {journey_id} cancelled successfully",
+        }
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -1055,36 +1009,30 @@ class ProcessRefundTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "refund_amount", "refund_type"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — process_refund
         try:
-            p = ProcessRefundParams.model_validate(params.arguments)
+            p = ProcessRefundParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, ProcessRefundParams))
-            return
+            return validation_error_response(exc, ProcessRefundParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         refund_amount = p.refund_amount
         refund_type = p.refund_type
 
         if not _lookup_reservation(db, confirmation_number):
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         if refund_amount <= 0:
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "invalid_amount",
-                    "message": f"Refund amount must be greater than 0, got {refund_amount}",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "invalid_amount",
+                "message": f"Refund amount must be greater than 0, got {refund_amount}",
+            }
 
         call_index = self._next_call_index("process_refund")
         refund_id = f"REF-{confirmation_number}-{str(call_index).zfill(3)}"
@@ -1110,17 +1058,15 @@ class ProcessRefundTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "confirmation_number": confirmation_number,
-                "refund_id": refund_id,
-                "refund_amount": refund_amount,
-                "refund_type": refund_type,
-                "processing_days": processing_days,
-                "message": f"${refund_amount} refund initiated, processing time {processing_days} business days",
-            }
-        )
+        return {
+            "status": "success",
+            "confirmation_number": confirmation_number,
+            "refund_id": refund_id,
+            "refund_amount": refund_amount,
+            "refund_type": refund_type,
+            "processing_days": processing_days,
+            "message": f"${refund_amount} refund initiated, processing time {processing_days} business days",
+        }
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -1165,18 +1111,16 @@ class AssignSeatTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "passenger_id", "journey_id", "seat_preference"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — assign_seat
         try:
-            p = AssignSeatParams.model_validate(params.arguments)
+            p = AssignSeatParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, AssignSeatParams))
-            return
+            return validation_error_response(exc, AssignSeatParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         passenger_id = p.passenger_id
@@ -1186,18 +1130,15 @@ class AssignSeatTool(WriteAirlineTool):
 
         reservation = _lookup_reservation(db, confirmation_number)
         if not reservation:
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         booking = _find_booking_journey(reservation, journey_id)
         if not booking:
-            await params.result_callback(_journey_not_found(journey_id))
-            return
+            return _journey_not_found(journey_id)
 
         targets, error = _find_booking_segment(booking, journey_id, flight_number)
         if error:
-            await params.result_callback(error)
-            return
+            return error
         flight_seg = targets[0]
         if not flight_number:
             flight_number = flight_seg.get("flight_number", "")
@@ -1215,14 +1156,11 @@ class AssignSeatTool(WriteAirlineTool):
         if journey_seg:
             seg_seats = journey_seg.get("available_seats", {}).get(fare_class, 0)
             if seg_seats <= 0:
-                await params.result_callback(
-                    {
-                        "status": "error",
-                        "error_type": "no_seats_available",
-                        "message": f"No seats available in {fare_class} fare class",
-                    }
-                )
-                return
+                return {
+                    "status": "error",
+                    "error_type": "no_seats_available",
+                    "message": f"No seats available in {fare_class} fare class",
+                }
 
             raw_seat_types = journey_seg.get("available_seat_types")
             if raw_seat_types and isinstance(raw_seat_types, dict):
@@ -1230,17 +1168,14 @@ class AssignSeatTool(WriteAirlineTool):
             else:
                 available_seat_types = ["window", "aisle", "middle"]
             if seat_preference != "no_preference" and seat_preference not in available_seat_types:
-                await params.result_callback(
-                    {
-                        "status": "error",
-                        "error_type": "seat_type_unavailable",
-                        "message": (
-                            f"No {seat_preference} seats available in {fare_class} on this flight. "
-                            f"Available types: {', '.join(available_seat_types)}"
-                        ),
-                    }
-                )
-                return
+                return {
+                    "status": "error",
+                    "error_type": "seat_type_unavailable",
+                    "message": (
+                        f"No {seat_preference} seats available in {fare_class} on this flight. "
+                        f"Available types: {', '.join(available_seat_types)}"
+                    ),
+                }
 
         passenger_index = int(passenger_id[-3:]) if passenger_id and len(passenger_id) >= 3 else 0
         base_row_map = {
@@ -1275,19 +1210,17 @@ class AssignSeatTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "confirmation_number": confirmation_number,
-                "passenger_id": passenger_id,
-                "journey_id": journey_id,
-                "flight_number": flight_number,
-                "seat_assigned": seat_number,
-                "fare_class": fare_class,
-                "preference": seat_preference,
-                "message": f"Seat {seat_number} ({seat_preference}) successfully assigned",
-            }
-        )
+        return {
+            "status": "success",
+            "confirmation_number": confirmation_number,
+            "passenger_id": passenger_id,
+            "journey_id": journey_id,
+            "flight_number": flight_number,
+            "seat_assigned": seat_number,
+            "fare_class": fare_class,
+            "preference": seat_preference,
+            "message": f"Seat {seat_number} ({seat_preference}) successfully assigned",
+        }
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -1325,18 +1258,16 @@ class AddBaggageAllowanceTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "journey_id", "num_bags"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — add_baggage_allowance
         try:
-            p = AddBaggageAllowanceParams.model_validate(params.arguments)
+            p = AddBaggageAllowanceParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, AddBaggageAllowanceParams))
-            return
+            return validation_error_response(exc, AddBaggageAllowanceParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         journey_id = p.journey_id
@@ -1345,29 +1276,23 @@ class AddBaggageAllowanceTool(WriteAirlineTool):
 
         reservation = _lookup_reservation(db, confirmation_number)
         if not reservation:
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         booking = _find_booking_journey(reservation, journey_id)
         if not booking:
-            await params.result_callback(_journey_not_found(journey_id))
-            return
+            return _journey_not_found(journey_id)
 
         if num_bags < 0 or num_bags > 5:
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "invalid_bag_count",
-                    "message": f"Invalid number of bags {num_bags}. Must be between 0 and 5",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "invalid_bag_count",
+                "message": f"Invalid number of bags {num_bags}. Must be between 0 and 5",
+            }
 
         if flight_number:
             targets, error = _find_booking_segment(booking, journey_id, flight_number)
             if error:
-                await params.result_callback(error)
-                return
+                return error
         else:
             targets = booking.get("segments", [])
 
@@ -1384,15 +1309,13 @@ class AddBaggageAllowanceTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "confirmation_number": confirmation_number,
-                "journey_id": journey_id,
-                "bags_checked": num_bags,
-                "message": f"Baggage allowance set to {num_bags} checked bag(s)",
-            }
-        )
+        return {
+            "status": "success",
+            "confirmation_number": confirmation_number,
+            "journey_id": journey_id,
+            "bags_checked": num_bags,
+            "message": f"Baggage allowance set to {num_bags} checked bag(s)",
+        }
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -1437,18 +1360,16 @@ class AddMealRequestTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "passenger_id", "journey_id", "meal_type"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — add_meal_request
         try:
-            p = AddMealRequestParams.model_validate(params.arguments)
+            p = AddMealRequestParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, AddMealRequestParams))
-            return
+            return validation_error_response(exc, AddMealRequestParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         passenger_id = p.passenger_id
@@ -1458,19 +1379,16 @@ class AddMealRequestTool(WriteAirlineTool):
 
         reservation = _lookup_reservation(db, confirmation_number)
         if not reservation:
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         booking = _find_booking_journey(reservation, journey_id)
         if not booking:
-            await params.result_callback(_journey_not_found(journey_id))
-            return
+            return _journey_not_found(journey_id)
 
         if flight_number:
             targets, error = _find_booking_segment(booking, journey_id, flight_number)
             if error:
-                await params.result_callback(error)
-                return
+                return error
         else:
             targets = booking.get("segments", [])
 
@@ -1488,16 +1406,14 @@ class AddMealRequestTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "confirmation_number": confirmation_number,
-                "passenger_id": passenger_id,
-                "journey_id": journey_id,
-                "meal_type": meal_type,
-                "message": f"{meal_type} meal request added",
-            }
-        )
+        return {
+            "status": "success",
+            "confirmation_number": confirmation_number,
+            "passenger_id": passenger_id,
+            "journey_id": journey_id,
+            "meal_type": meal_type,
+            "message": f"{meal_type} meal request added",
+        }
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -1532,18 +1448,16 @@ class AddToStandbyTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "journey_id", "passenger_ids"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — add_to_standby
         try:
-            p = AddToStandbyParams.model_validate(params.arguments)
+            p = AddToStandbyParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, AddToStandbyParams))
-            return
+            return validation_error_response(exc, AddToStandbyParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         journey_id = p.journey_id
@@ -1553,38 +1467,29 @@ class AddToStandbyTool(WriteAirlineTool):
         flight = journeys.get(journey_id)
 
         if not flight:
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "flight_not_found",
-                    "message": f"Flight {journey_id} not found",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "flight_not_found",
+                "message": f"Flight {journey_id} not found",
+            }
 
         if flight.get("status") == "cancelled":
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "flight_cancelled",
-                    "message": "Cannot add to standby for cancelled flight",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "flight_cancelled",
+                "message": "Cannot add to standby for cancelled flight",
+            }
 
         reservation = _lookup_reservation(db, confirmation_number)
         if reservation and passenger_ids:
             valid_passenger_ids = {p2.get("passenger_id") for p2 in reservation.get("passengers", [])}
             invalid_ids = [pid for pid in passenger_ids if pid not in valid_passenger_ids]
             if invalid_ids:
-                await params.result_callback(
-                    {
-                        "status": "error",
-                        "error_type": "invalid_passengers",
-                        "message": f"Unknown passenger ID(s): {', '.join(invalid_ids)}",
-                    }
-                )
-                return
+                return {
+                    "status": "error",
+                    "error_type": "invalid_passengers",
+                    "message": f"Unknown passenger ID(s): {', '.join(invalid_ids)}",
+                }
 
         if "standby_list" not in flight:
             flight["standby_list"] = []
@@ -1620,15 +1525,13 @@ class AddToStandbyTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "confirmation_number": confirmation_number,
-                "journey_id": journey_id,
-                "standby_list_position": standby_position,
-                "message": f"Added {len(passenger_ids)} passenger(s) to standby list",
-            }
-        )
+        return {
+            "status": "success",
+            "confirmation_number": confirmation_number,
+            "journey_id": journey_id,
+            "standby_list_position": standby_position,
+            "message": f"Added {len(passenger_ids)} passenger(s) to standby list",
+        }
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -1669,18 +1572,16 @@ class IssueTravelCreditTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "passenger_id", "amount", "credit_reason"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — issue_travel_credit
         try:
-            p = IssueTravelCreditParams.model_validate(params.arguments)
+            p = IssueTravelCreditParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, IssueTravelCreditParams))
-            return
+            return validation_error_response(exc, IssueTravelCreditParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         passenger_id = p.passenger_id
@@ -1688,8 +1589,7 @@ class IssueTravelCreditTool(WriteAirlineTool):
         credit_reason = p.credit_reason
 
         if not _lookup_reservation(db, confirmation_number):
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         passenger_prefix = passenger_id[:3].upper() if passenger_id else ""
         credit_code = f"TC{confirmation_number}{passenger_prefix}"
@@ -1716,17 +1616,15 @@ class IssueTravelCreditTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "confirmation_number": confirmation_number,
-                "passenger_id": passenger_id,
-                "credit_code": credit_code,
-                "amount": amount,
-                "valid_months": 12,
-                "message": f"${amount} travel credit issued with code {credit_code}",
-            }
-        )
+        return {
+            "status": "success",
+            "confirmation_number": confirmation_number,
+            "passenger_id": passenger_id,
+            "credit_code": credit_code,
+            "amount": amount,
+            "valid_months": 12,
+            "message": f"${amount} travel credit issued with code {credit_code}",
+        }
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -1760,36 +1658,30 @@ class IssueHotelVoucherTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "passenger_id", "num_nights"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — issue_hotel_voucher
         try:
-            p = IssueHotelVoucherParams.model_validate(params.arguments)
+            p = IssueHotelVoucherParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, IssueHotelVoucherParams))
-            return
+            return validation_error_response(exc, IssueHotelVoucherParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         passenger_id = p.passenger_id
         num_nights = p.num_nights
 
         if not _lookup_reservation(db, confirmation_number):
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         if num_nights > 3:
-            await params.result_callback(
-                {
-                    "status": "error",
-                    "error_type": "exceeds_authority",
-                    "message": "Hotel vouchers can be issued for maximum of 3 nights",
-                }
-            )
-            return
+            return {
+                "status": "error",
+                "error_type": "exceeds_authority",
+                "message": "Hotel vouchers can be issued for maximum of 3 nights",
+            }
 
         voucher_code = f"HOTEL-{confirmation_number}"
         hotel_vouchers = db.setdefault("hotel_vouchers", {})
@@ -1811,17 +1703,15 @@ class IssueHotelVoucherTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "confirmation_number": confirmation_number,
-                "passenger_id": passenger_id,
-                "voucher_code": voucher_code,
-                "number_of_nights": num_nights,
-                "valid_at": "Any hotels in airport area",
-                "message": f"Hotel voucher issued with code {voucher_code} for {num_nights} nights",
-            }
-        )
+        return {
+            "status": "success",
+            "confirmation_number": confirmation_number,
+            "passenger_id": passenger_id,
+            "voucher_code": voucher_code,
+            "number_of_nights": num_nights,
+            "valid_at": "Any hotels in airport area",
+            "message": f"Hotel voucher issued with code {voucher_code} for {num_nights} nights",
+        }
 
 
 @register_schema_tool_for_eval(domain="eva_airline")
@@ -1861,26 +1751,23 @@ class IssueMealVoucherTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "passenger_id", "voucher_reason"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — issue_meal_voucher
         try:
-            p = IssueMealVoucherParams.model_validate(params.arguments)
+            p = IssueMealVoucherParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, IssueMealVoucherParams))
-            return
+            return validation_error_response(exc, IssueMealVoucherParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         passenger_id = p.passenger_id
         voucher_reason = p.voucher_reason
 
         if not _lookup_reservation(db, confirmation_number):
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         amount_map = {
             "delay_over_2_hours": 12,
@@ -1914,17 +1801,15 @@ class IssueMealVoucherTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "confirmation_number": confirmation_number,
-                "passenger_id": passenger_id,
-                "voucher_code": voucher_code,
-                "amount": amount,
-                "valid_at": "Airport terminal restaurants",
-                "message": f"${amount} meal voucher issued with code {voucher_code}",
-            }
-        )
+        return {
+            "status": "success",
+            "confirmation_number": confirmation_number,
+            "passenger_id": passenger_id,
+            "voucher_code": voucher_code,
+            "amount": amount,
+            "valid_at": "Airport terminal restaurants",
+            "message": f"${amount} meal voucher issued with code {voucher_code}",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -1946,6 +1831,10 @@ class TransferToAgentTool(WriteAirlineTool):
     def __init__(self, *, shared_state: Optional[dict] = None, description: Optional[str] = None):
         super().__init__(description=description or self.DESCRIPTION)
         self.state = shared_state if shared_state is not None else {}
+        # Set by ``_execute`` on the success path only; consumed by
+        # ``_after_result``. Error branches (validation failure, missing db,
+        # unknown reservation) must NOT tear the scenario down.
+        self._exit_pending = False
 
     @property
     def properties(self) -> Dict[str, Any]:
@@ -1971,26 +1860,24 @@ class TransferToAgentTool(WriteAirlineTool):
     def required_properties(self) -> List[str]:
         return ["confirmation_number", "transfer_reason", "issue_summary"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
         # Adapted from https://github.com/ServiceNow/eva/tree/0.1.3 — transfer_to_agent
+        self._exit_pending = False
         try:
-            p = TransferToAgentParams.model_validate(params.arguments)
+            p = TransferToAgentParams.model_validate(kwargs)
         except ValidationError as exc:
-            await params.result_callback(validation_error_response(exc, TransferToAgentParams))
-            return
+            return validation_error_response(exc, TransferToAgentParams)
 
         db = self.state.get("db")
         if not db:
-            await params.result_callback(_db_not_initialized())
-            return
+            return _db_not_initialized()
 
         confirmation_number = p.confirmation_number.upper()
         transfer_reason = p.transfer_reason
         issue_summary = p.issue_summary
 
         if confirmation_number and not _lookup_reservation(db, confirmation_number):
-            await params.result_callback(_reservation_not_found(confirmation_number))
-            return
+            return _reservation_not_found(confirmation_number)
 
         call_index = self._next_call_index("transfer_to_agent")
         transfer_id = f"TRF-{confirmation_number}-{str(call_index).zfill(3)}"
@@ -2004,17 +1891,28 @@ class TransferToAgentTool(WriteAirlineTool):
             }
         )
 
-        await params.result_callback(
-            {
-                "status": "success",
-                "transfer_id": transfer_id,
-                "confirmation_number": confirmation_number,
-                "transfer_reason": transfer_reason,
-                "issue_summary": issue_summary,
-                "estimated_wait": "2-3 minutes",
-                "message": "Transferring to live agent",
-            }
-        )
+        self._exit_pending = True
+        return {
+            "status": "success",
+            "transfer_id": transfer_id,
+            "confirmation_number": confirmation_number,
+            "transfer_reason": transfer_reason,
+            "issue_summary": issue_summary,
+            "estimated_wait": "2-3 minutes",
+            "message": "Transferring to live agent",
+        }
+
+    async def _after_result(self, params: FunctionCallParams) -> None:
+        """Emit ``<exit>`` once the successful transfer result has been delivered.
+
+        Ordering matters: pipecat must commit the tool-call record before the
+        bridge tears the session down, which is exactly what this post-delivery
+        hook guarantees. Only fires when ``_execute`` reached its success path —
+        an error response leaves the conversation running.
+        """
+        if not self._exit_pending:
+            return
+        self._exit_pending = False
         await self._send_exit_message()
 
 

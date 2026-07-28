@@ -17,6 +17,7 @@
 
 import asyncio
 import json
+import re
 
 import pytest
 
@@ -59,7 +60,7 @@ def test_get_city_weather_tool_returns_deterministic_fixture_weather():
     tool = GetCityWeatherTool()
     params = _Params({"city_name": "Paris"})
 
-    asyncio.run(tool._execute(params))
+    asyncio.run(tool(params))
 
     assert params.results == [
         {
@@ -79,10 +80,11 @@ def test_read_file_tool_returns_content_and_error_payload(tmp_path):
     ok_params = _Params({"file_path": str(file_path)})
     missing_params = _Params({"file_path": str(tmp_path / "missing.txt")})
 
-    asyncio.run(tool._execute(ok_params))
-    asyncio.run(tool._execute(missing_params))
+    asyncio.run(tool(ok_params))
+    asyncio.run(tool(missing_params))
 
     assert ok_params.results == [{"file_path": str(file_path), "content": "hello"}]
+    assert len(missing_params.results) == 1
     assert "error" in missing_params.results[0]
 
 
@@ -99,8 +101,9 @@ def test_place_order_tool_validates_items_and_emits_summary_message():
         }
     )
 
-    asyncio.run(tool._execute(params))
+    asyncio.run(tool(params))
 
+    assert len(params.results) == 1
     assert params.results[0]["success"] is True
     assert json.loads(params.results[0]["order_details"])["customer_name"] == "Ada"
     assert rtvi.messages[0].data.text.startswith("<final_response>")
@@ -118,12 +121,24 @@ def test_place_order_tool_validates_items_and_emits_summary_message():
     ],
 )
 def test_place_order_tool_rejects_invalid_orders(item, total_price, match):
-    """Invalid order fields raise clear ValueError messages before callback emission."""
-    tool = PlaceOrderTool(rtvi=_CapturingRTVI(), auto_validate=True, valid_item_names=["pizza"])
+    """Invalid order fields raise clear ValueError messages, surfaced as one error result."""
+    rtvi = _CapturingRTVI()
+    tool = PlaceOrderTool(rtvi=rtvi, auto_validate=True, valid_item_names=["pizza"])
     params = _Params({"items": [item], "customer_name": "Ada", "total_price": total_price})
 
+    # The pure tool body still raises, so non-pipecat callers (gold replay, shadow-DB
+    # sync) see the failure rather than a silently-swallowed error dict.
     with pytest.raises(ValueError, match=match):
-        asyncio.run(tool._execute(params))
+        asyncio.run(tool._execute(**params.arguments))
+
+    # The pipecat entry point converts that raise into exactly one structured result.
+    asyncio.run(tool(params))
+
+    assert len(params.results) == 1
+    assert list(params.results[0]) == ["error"]
+    assert re.search(match, params.results[0]["error"])
+    # No summary is emitted for a rejected order.
+    assert rtvi.messages == []
 
 
 def test_save_question_answer_tool_sends_json_summary():
@@ -132,7 +147,7 @@ def test_save_question_answer_tool_sends_json_summary():
     tool = SaveQuestionAnswerTool(rtvi=rtvi)
     params = _Params({"question": "Q?", "answer": "A."})
 
-    asyncio.run(tool._execute(params))
+    asyncio.run(tool(params))
 
     assert params.results == [{"success": True, "message": "Question and answer logged."}]
     text = rtvi.messages[0].data.text

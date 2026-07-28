@@ -42,7 +42,7 @@ from typing import Any, ClassVar, Dict, List, Optional, Type
 from pipecat.services.llm_service import FunctionCallParams
 from pydantic import BaseModel, ValidationError
 
-from nemo_voice_agent.evaluation.tools import normalize_tool_result, register_schema_tool_for_eval
+from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools._write_tool_base import WriteScenarioTool
 from nemo_voice_agent.evaluation.tools.tau2_telecom_params import (
     BillStatus,
@@ -179,7 +179,7 @@ def _customer_to_user_view(customer: dict) -> dict:
 
 
 class _Tau2InvokeMixin:
-    """Provides sync ``invoke(**kwargs)`` + async ``_execute(params)`` routing.
+    """Provides sync ``invoke(**kwargs)`` + async ``_execute(**kwargs)`` routing.
 
     Same shape as ``_Tau2InvokeMixin`` in airline / retail / user-side
     telecom files. Subclasses implement ``_do_work(p)``.
@@ -200,11 +200,14 @@ class _Tau2InvokeMixin:
             # usable signal instead of a 500-shaped exception.
             return {"status": "error", "error_type": "tool_error", "message": str(exc)}
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        result = self.invoke(**(params.arguments or {}))
-        # Guard against pipecat masking a falsy result (e.g. an empty match
-        # list) as the literal "COMPLETED"; the LLM would read that as success.
-        await params.result_callback(normalize_tool_result(result))
+    async def _execute(self, **kwargs) -> Any:
+        """Run the tool and return its result (pure — never delivers).
+
+        ``StandardSchemaTool.__call__`` owns delivery and applies the
+        empty-result normalization centrally, so a falsy result (e.g. an
+        empty match list) can't be masked as the literal "COMPLETED".
+        """
+        return self.invoke(**kwargs)
 
     def _do_work(self, p) -> Any:  # pragma: no cover - abstract
         raise NotImplementedError(f"{type(self).__name__} must implement _do_work(p)")
@@ -859,8 +862,11 @@ class TransferToHumanAgentsTool(_Tau2TelecomAgentWriteTool):
         )
         return "Transfer successful"
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        await super()._execute(params)
+    async def _execute(self, **kwargs) -> Any:
+        return await super()._execute(**kwargs)
+
+    async def _after_result(self, params: FunctionCallParams) -> None:
+        """Emit ``<exit>`` only after the transfer result has been delivered."""
         await self._send_exit_message()
 
 

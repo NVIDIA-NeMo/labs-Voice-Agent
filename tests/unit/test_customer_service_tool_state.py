@@ -92,8 +92,8 @@ def test_lookup_account_tool_returns_account_or_not_found_error():
     ok_params = _Params({"account_id": "acct-1"})
     missing_params = _Params({"account_id": "missing"})
 
-    asyncio.run(tool._execute(ok_params))
-    asyncio.run(tool._execute(missing_params))
+    asyncio.run(tool(ok_params))
+    asyncio.run(tool(missing_params))
 
     assert ok_params.results == [state["accounts"]["acct-1"]]
     assert missing_params.results == [{"error": "Account 'missing' not found."}]
@@ -107,9 +107,9 @@ def test_check_order_status_tool_handles_account_order_and_missing_paths():
     missing_order_params = _Params({"account_id": "acct-1", "order_id": "missing"})
     missing_account_params = _Params({"account_id": "missing", "order_id": "order-1"})
 
-    asyncio.run(tool._execute(ok_params))
-    asyncio.run(tool._execute(missing_order_params))
-    asyncio.run(tool._execute(missing_account_params))
+    asyncio.run(tool(ok_params))
+    asyncio.run(tool(missing_order_params))
+    asyncio.run(tool(missing_account_params))
 
     assert ok_params.results == [{"status": "Shipped", "items": ["router"]}]
     assert missing_order_params.results == [{"error": "Order 'missing' not found for account 'acct-1'."}]
@@ -129,7 +129,7 @@ def test_process_refund_tool_appends_charge_and_updates_balance():
         }
     )
 
-    asyncio.run(tool._execute(params))
+    asyncio.run(tool(params))
 
     account = state["accounts"]["acct-1"]
     assert account["balance"] == "$74.50"
@@ -138,6 +138,7 @@ def test_process_refund_tool_appends_charge_and_updates_balance():
         "amount": "-$25.50",
         "date": "2026-07-08",
     }
+    assert len(params.results) == 1  # __call__ delivers exactly once (no trailing None)
     assert params.results[0]["new_balance"] == "$74.50"
 
 
@@ -149,12 +150,13 @@ def test_start_item_return_tool_updates_order_or_reports_missing_paths():
     missing_account_params = _Params({"account_id": "missing", "order_id": "order-1", "reason": "defective"})
     missing_order_params = _Params({"account_id": "acct-1", "order_id": "missing", "reason": "defective"})
 
-    asyncio.run(tool._execute(ok_params))
-    asyncio.run(tool._execute(missing_account_params))
-    asyncio.run(tool._execute(missing_order_params))
+    asyncio.run(tool(ok_params))
+    asyncio.run(tool(missing_account_params))
+    asyncio.run(tool(missing_order_params))
 
     assert state["accounts"]["acct-1"]["orders"]["order-1"]["status"] == "Return Started"
     assert state["accounts"]["acct-1"]["orders"]["order-1"]["return_reason"] == "defective"
+    assert len(ok_params.results) == 1  # __call__ delivers exactly once (no trailing None)
     assert ok_params.results[0]["success"] is True
     assert missing_account_params.results == [{"error": "Account 'missing' not found."}]
     assert missing_order_params.results == [{"error": "Order 'missing' not found for account 'acct-1'."}]
@@ -167,11 +169,12 @@ def test_change_plan_tool_updates_plan_and_reports_unavailable_plan():
     ok_params = _Params({"account_id": "acct-1", "new_plan": "Premium"})
     bad_plan_params = _Params({"account_id": "acct-1", "new_plan": "Enterprise"})
 
-    asyncio.run(tool._execute(ok_params))
-    asyncio.run(tool._execute(bad_plan_params))
+    asyncio.run(tool(ok_params))
+    asyncio.run(tool(bad_plan_params))
 
     assert state["accounts"]["acct-1"]["plan"] == "Premium"
     assert state["accounts"]["acct-1"]["monthly_rate"] == "$30.00"
+    assert len(ok_params.results) == 1  # __call__ delivers exactly once (no trailing None)
     assert ok_params.results[0]["new_monthly_rate"] == "$30.00"
     assert bad_plan_params.results == [{"error": "Plan 'Enterprise' is not available. Available plans: ['Premium']."}]
 
@@ -182,14 +185,17 @@ def test_unlock_and_cancel_subscription_tools_mutate_account_status():
     unlock_params = _Params({"account_id": "acct-1"})
     cancel_params = _Params({"account_id": "acct-1"})
 
-    asyncio.run(UnlockAccountTool(shared_state=state)._execute(unlock_params))
-    asyncio.run(CancelSubscriptionTool(shared_state=state)._execute(cancel_params))
+    asyncio.run(UnlockAccountTool(shared_state=state)(unlock_params))
+    asyncio.run(CancelSubscriptionTool(shared_state=state)(cancel_params))
 
     account = state["accounts"]["acct-1"]
     assert account["account_status"] == "Active"
     assert account["failed_login_attempts"] == "0"
     assert account["plan"] == "Canceled"
     assert account["monthly_rate"] == "$0.00"
+    # __call__ delivers exactly once per tool call (no trailing None)
+    assert len(unlock_params.results) == 1
+    assert len(cancel_params.results) == 1
     assert unlock_params.results[0]["success"] is True
     assert cancel_params.results[0]["success"] is True
 
@@ -208,7 +214,7 @@ def test_resolve_ticket_tool_sends_summary_with_account_snapshot():
         }
     )
 
-    asyncio.run(tool._execute(params))
+    asyncio.run(tool(params))
 
     message = rtvi.messages[0][0].data.text
     summary = json.loads(message.removeprefix("<final_response>").removesuffix("</final_response>"))

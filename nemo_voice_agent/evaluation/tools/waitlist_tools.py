@@ -22,7 +22,6 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
-from pipecat.services.llm_service import FunctionCallParams
 
 from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools.rtvi_control import SendScenarioSummaryTool
@@ -73,10 +72,17 @@ class JoinWaitListTool(SendScenarioSummaryTool):
     def required_properties(self) -> List[str]:
         return ["name", "phone", "party_size"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        name = params.arguments.get("name")
-        phone = params.arguments.get("phone")
-        party_size = params.arguments.get("party_size")
+    async def _execute(
+        self,
+        name: Optional[str] = None,
+        phone: Optional[str] = None,
+        party_size: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Append the customer to the shared waitlist and return their position.
+
+        Also emits the updated waitlist to the evaluator via ``<final_response>``
+        tags before returning.
+        """
         entry = {"name": name, "phone": phone, "party_size": party_size}
         self.state["waitlist"].append(entry)
         position = len(self.state["waitlist"])
@@ -86,14 +92,12 @@ class JoinWaitListTool(SendScenarioSummaryTool):
         summary = json.dumps({"waitlist": self.state["waitlist"], "action": "join", "customer": entry})
         await self.send_scenario_summary(summary)
 
-        await params.result_callback(
-            {
-                "success": True,
-                "message": f"{name} has been added to the waitlist.",
-                "position": position,
-                "total_in_waitlist": position,
-            }
-        )
+        return {
+            "success": True,
+            "message": f"{name} has been added to the waitlist.",
+            "position": position,
+            "total_in_waitlist": position,
+        }
 
 
 @register_schema_tool_for_eval
@@ -131,8 +135,12 @@ class DropWaitListTool(SendScenarioSummaryTool):
     def required_properties(self) -> List[str]:
         return ["name"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        name = params.arguments.get("name")
+    async def _execute(self, name: Optional[str] = None) -> Dict[str, Any]:
+        """Remove the named customer from the shared waitlist and return the outcome.
+
+        Also emits the updated waitlist to the evaluator via ``<final_response>``
+        tags before returning.
+        """
         waitlist = self.state["waitlist"]
         original_len = len(waitlist)
         self.state["waitlist"] = [entry for entry in waitlist if entry.get("name") != name]
@@ -151,21 +159,16 @@ class DropWaitListTool(SendScenarioSummaryTool):
         await self.send_scenario_summary(summary)
 
         if removed:
-            await params.result_callback(
-                {
-                    "success": True,
-                    "message": f"{name} has been removed from the waitlist.",
-                    "remaining_in_waitlist": len(self.state["waitlist"]),
-                }
-            )
-        else:
-            await params.result_callback(
-                {
-                    "success": False,
-                    "message": f"{name} was not found on the waitlist.",
-                    "remaining_in_waitlist": len(self.state["waitlist"]),
-                }
-            )
+            return {
+                "success": True,
+                "message": f"{name} has been removed from the waitlist.",
+                "remaining_in_waitlist": len(self.state["waitlist"]),
+            }
+        return {
+            "success": False,
+            "message": f"{name} was not found on the waitlist.",
+            "remaining_in_waitlist": len(self.state["waitlist"]),
+        }
 
 
 @register_schema_tool_for_eval
@@ -188,12 +191,11 @@ class GetWaitlistTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return []
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
+        """Return the current waitlist from shared state. Takes no call arguments."""
         waitlist = self.state.get("waitlist", [])
         logger.debug(f"GetWaitlistTool: returning {len(waitlist)} entries")
-        await params.result_callback(
-            {
-                "waitlist": waitlist,
-                "total_in_waitlist": len(waitlist),
-            }
-        )
+        return {
+            "waitlist": waitlist,
+            "total_in_waitlist": len(waitlist),
+        }

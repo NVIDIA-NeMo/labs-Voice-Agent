@@ -75,9 +75,14 @@ class _FakeFunctionCallParams:
     def __init__(self, arguments: dict):
         self.arguments = arguments
         self.result = None
+        # Every delivery, in order. Under the current contract
+        # ``StandardSchemaTool.__call__`` is the single delivery point, so this
+        # must always end up with exactly one entry — see ``_run``.
+        self.results = []
 
     async def result_callback(self, value):
         self.result = value
+        self.results.append(value)
 
 
 def _load_fixture_state(eva_id: str) -> dict:
@@ -88,8 +93,21 @@ def _load_fixture_state(eva_id: str) -> dict:
 
 
 def _run(tool, arguments):
+    """Drive the tool through its PUBLIC pipecat entry point.
+
+    ``StandardSchemaTool.__call__`` is the single delivery point: it unpacks
+    ``params.arguments`` into ``_execute(**kwargs)``, normalizes a falsy result,
+    delivers exactly once via ``result_callback``, then runs ``_after_result``.
+    Driving ``__call__`` (rather than ``_execute``) keeps these tests covering
+    real delivery semantics.
+    """
     p = _FakeFunctionCallParams(arguments)
-    asyncio.run(tool._execute(p))
+    asyncio.run(tool(p))
+    # Exactly one delivery per call, on success AND on the error branches.
+    # A second delivery for the same tool_call_id makes pipecat 1.x reject it
+    # ("tool_call_id ... is not running"), stranding the aggregator's deferred
+    # context push. Asserted on every call site in this module.
+    assert len(p.results) == 1, f"{type(tool).__name__} delivered {len(p.results)} results, expected exactly 1"
     return p.result
 
 

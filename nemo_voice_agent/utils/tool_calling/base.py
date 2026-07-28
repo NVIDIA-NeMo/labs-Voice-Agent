@@ -23,6 +23,40 @@ from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.openai.llm import OpenAILLMService
 
 
+def _normalize_empty_result(result: Any) -> Any:
+    """Guard a tool result against pipecat's empty-result masking.
+
+    Pipecat's function-call handlers substitute the literal string
+    ``"COMPLETED"`` whenever a result is falsy — the check is ``if
+    frame.result:`` (e.g. ``pipecat/services/openai/llm.py``
+    ``handle_function_call_result``). An empty ``list``/``dict`` is a
+    *meaningful* result for a read tool ("no records / no match found"), so
+    returning a bare ``[]`` or ``{}`` gets silently rewritten to
+    ``"COMPLETED"`` — which the LLM reads as *success*. That is the failure
+    behind an agent believing a name+DOB customer lookup that matched nobody
+    had "completed" successfully (observed in tau2_telecom).
+
+    Wrap any falsy result in an explicit, non-falsy envelope so pipecat
+    serializes it verbatim and the model gets an honest "empty" signal.
+    Truthy results pass through unchanged.
+
+    Applied by ``StandardSchemaTool.__call__`` at the single pipecat-facing
+    boundary, so no tool can forget it. It must NOT be applied inside
+    ``_execute``/``_do_work``/``invoke``: the sync ``invoke`` path feeds gold
+    replay and shadow-DB cross-side sync, which expect the raw return shape
+    (e.g. a bare list of matches); rewrapping there would corrupt DB-hash
+    comparison and ``sync_state``.
+    """
+    if result:  # non-empty / truthy — leave untouched
+        return result
+    if isinstance(result, list):
+        return {"status": "success", "results": [], "count": 0, "message": "No matching records found."}
+    if isinstance(result, dict):  # empty dict
+        return {"status": "success", "results": {}, "message": "No matching records found."}
+    # None / "" / 0 / False — preserve the value, just make the envelope non-falsy.
+    return {"status": "success", "result": result, "message": "Completed with no data returned."}
+
+
 class StandardSchemaTool:
     """
     Base class for all standard tools with FunctionSchema.
@@ -89,16 +123,47 @@ class StandardSchemaTool:
         )
 
     async def __call__(self, params: FunctionCallParams) -> None:
-        """
-        The actual tool calling logic, push back the results to the LLM.
+        """Pipecat entry point. Owns everything framework-facing.
+
+        This is the *only* place a tool result is delivered. Subclasses
+        implement :meth:`_execute`, which takes the call arguments as plain
+        keyword arguments and returns a plain result — it never touches
+        ``params`` and never delivers.
+
+        Keeping delivery here makes double-delivery structurally impossible.
+        Previously ``_execute`` received ``params`` and each implementation
+        called ``params.result_callback`` itself, while this method *also*
+        delivered ``_execute``'s return value — so every call sent its real
+        result and then a second, spurious ``None`` for the same
+        ``tool_call_id``. Pipecat <1.0 ignored the duplicate; 1.x tracks
+        in-flight tool calls and rejects it with "tool_call_id ... is not
+        running", which strands the aggregator's deferred context push and
+        stops the LLM being re-invoked with the tool output.
         """
         try:
-            results = await self._execute(params)
+            result = await self._execute(**(params.arguments or {}))
         except Exception as e:
-            logger.error(f"Error in tool calling: {e}")
+            # `logger.opt(exception=True)`, not `exc_info=True`: loguru treats
+            # any extra kwarg as a `str.format()` argument, so a message
+            # containing braces (e.g. "the item is: {}.") would raise
+            # IndexError from inside the error handler and mask the real error.
+            logger.opt(exception=True).error(f"Error in tool `{self.name}`: {e}")
             await params.result_callback({"error": str(e)})
             return
-        await params.result_callback(results)
+        # normalize_tool_result equivalent: an empty list/dict is a meaningful
+        # answer ("no matches"), but pipecat's `if frame.result:` check would
+        # rewrite it to the literal "COMPLETED", which the LLM reads as
+        # success. Applied here so no tool can forget it.
+        await params.result_callback(_normalize_empty_result(result))
+        await self._after_result(params)
+
+    async def _after_result(self, params: FunctionCallParams) -> None:
+        """Hook for side effects that must run *after* the result is delivered.
+
+        Default is a no-op. Used by the end-conversation tools, which emit an
+        exit message once the LLM has been given the tool result.
+        """
+        return None
 
     @property
     def properties(self) -> Dict[str, Any]:
@@ -136,16 +201,22 @@ class StandardSchemaTool:
             "Subclasses must implement this method to return the required properties for the tool."
         )
 
-    async def _execute(self, params: FunctionCallParams) -> Dict[str, Any]:
-        """
-        The actual tool execution logic.
+    async def _execute(self, **kwargs: Any) -> Any:
+        """Run the tool and RETURN its result. Pure logic, no framework types.
 
-        An example of get_current_weather tool where it returns the weather information as a dictionary:
+        Receives the LLM-supplied call arguments as keyword arguments and
+        returns the result to send back. Do **not** import or touch
+        ``FunctionCallParams``, and do **not** deliver the result yourself —
+        :meth:`__call__` owns delivery and calls it exactly once.
+
+        Raising is fine: ``__call__`` converts an exception into a structured
+        ``{"error": ...}`` result so the LLM gets a usable signal and the
+        aggregator is never left waiting.
+
+        An example of a get_current_weather tool:
         ```
-        results = {
-            "location": "San Francisco, CA",
-            "format": "celsius",
-        }
+        async def _execute(self, location: str, format: str = "celsius") -> dict:
+            return {"location": location, "format": format}
         ```
         """
         raise NotImplementedError("Subclasses must implement this method to implement the tool logic.")
