@@ -151,7 +151,14 @@ Per-scenario filesystem state determines what happens to each scenario:
 | `--judge-url <url>` | LLM judge endpoint (OpenAI-compatible chat completions) |
 | `--judge-model <model>` | Judge model name |
 | `--judge-api-key <key>` | Judge API key (defaults to env var if set) |
-| `--judge-threshold <threshold>` | Threshold for the LLM judge score if binary result is desired (default: 0.95) |
+| `--judge-threshold <threshold>` | Threshold for the LLM judge score if binary result is desired (default: 0.9) |
+| `--judge-timeout <seconds>` | LLM judge request timeout (default: 120) |
+| `--judge-thinking-token-budget <tokens>` | Optional provider-specific thinking token budget. Omitted by default for OpenAI-compatible endpoint portability. |
+| `--judge-include-conversation` | Include bridge transcript turns in the judge input. Disabled by default because interrupted/cross-talk segments can make these turns noisy. |
+| `--judge-compact-context` | Compact agent/user context histories before sending them to the judge. Disabled by default. |
+| `--judge-context-message-limit <count>` | Maximum context messages to send when `--judge-compact-context` is enabled. |
+| `--judge-context-system-string-limit <chars>` | Maximum system-message content length when `--judge-compact-context` is enabled. |
+| `--judge-context-string-limit <chars>` | Maximum non-system string length when `--judge-compact-context` is enabled. |
 
 If neither `--scenarios` nor `--domain` is given, all registered scenarios run.
 
@@ -272,19 +279,30 @@ Saved as `metrics.json["nl_assertion_pass_rate"]` (float in [0, 1]) plus the per
 
 When `--judge-url` and `--judge-model` are provided, `LLMJudge.judge_scenario` scores each scenario on a 0–1 scale. The judge receives:
 
-- `<reference>` — the gold action list / DB outcome.
-- `<prediction>` — the agent's recorded actions.
+- `<reference>` — the gold action list / DB outcome, when available.
+- `<prediction>` — the agent's recorded actions, when available.
+- `<conversation>` — the transcribed user/agent turns when `--judge-include-conversation` is set.
 - `<agent_context_history>` — the agent bot's LLM context (system prompt + every turn + every tool call).
 - `<user_context_history>` — the user-sim bot's LLM context (essential for dual-side domains where reference actions are performed by the user-sim, not the agent).
 - `<nl_assertions>` — numbered list when the scenario declares them.
 
-The judge prompt is **side-aware**: it knows about `side="user"` vs `side="agent"` reference actions and scores accordingly (user-side actions are scored on the agent's guidance quality, not on whether the agent invoked the tool itself — since user-side tools aren't in the agent's surface). The full prompt + user content is preserved in `judge_result.json["judge_input"]` for triage.
+The judge prompt is **side-aware**: it knows about `side="user"` vs `side="agent"` reference actions and scores accordingly (user-side actions are scored on the agent's guidance quality, not on whether the agent invoked the tool itself — since user-side tools aren't in the agent's surface). The runner no longer requires both `reference_answer.json` and `final_agent_response.json` before invoking the judge; if context history, natural-language assertions, or opted-in transcript turns are available, the judge scores that evidence. The full prompt + user content is preserved in `judge_result.json["judge_input"]` for triage.
+
+Provider-specific judge parameters are opt-in. In particular, `thinking_token_budget` is only sent when `--judge-thinking-token-budget` is provided, because some hosted OpenAI-compatible endpoints reject unknown fields.
+
+Context compaction is also opt-in. By default the judge receives full `llm_context.json` histories. Pass `--judge-compact-context` to enable truncation, and override the fallback limits with the `--judge-context-*` flags when needed.
 
 Saved per scenario as:
 - `metrics.json["judge_score"]` — raw 0–1 float (always set when judge ran).
 - `metrics.json["judge_passed"]` — bool (`score >= --judge-threshold`). Only set when both `--judge-url` and `--judge-threshold` are provided.
 
 The judge catches presentation issues and fabrications that deterministic comparators miss — but it's noisy enough that running it alongside deterministic signals (rather than instead of) gives the most reliable verdict.
+
+### External agent compatibility
+
+External agents can be evaluated as long as they speak the pipecat WebSocket transport protocol and register the evaluator-compatible RTVI actions used by the bridge. See [`EXTENDING_PIPELINE.md`](EXTENDING_PIPELINE.md) for the canonical pipeline contract, including scenario initialization, context retrieval, scenario summary, sync, and reset actions.
+
+Agents may also write optional architecture-specific diagnostics to either `trace_metrics.json` or `bot_logs_agent/trace_metrics.json` inside the scenario directory. The runner copies this into `metrics.json["trace_metrics"]` without interpreting it. This keeps cascaded-agent diagnostics, such as internal handoff quality, available without hard-coding architecture-specific metrics into the evaluator.
 
 ### Composite `is_successful` (per-scenario whitelist)
 

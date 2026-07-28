@@ -82,17 +82,30 @@ class _GoodTool(StandardSchemaTool):
         """Return the required synthetic schema property."""
         return ["value"]
 
-    async def _execute(self, params):
+    async def _execute(self, **kwargs):
         """Echo the provided arguments."""
-        return {"arguments": params.arguments}
+        return {"arguments": kwargs}
 
 
 class _FailingTool(_GoodTool):
     """Tool implementation whose execution raises."""
 
-    async def _execute(self, params):
+    async def _execute(self, **kwargs):
         """Raise an error to exercise StandardSchemaTool.__call__ error handling."""
         raise RuntimeError("boom")
+
+
+class _EmptyResultTool(_GoodTool):
+    """Tool implementation returning a falsy result that must be normalized."""
+
+    def __init__(self, empty_value, **kwargs):
+        """Store the falsy value that _execute should return."""
+        super().__init__(**kwargs)
+        self._empty_value = empty_value
+
+    async def _execute(self, **kwargs):
+        """Return the configured falsy value without delivering it."""
+        return self._empty_value
 
 
 def test_standard_schema_tool_uses_class_name_and_builds_schema():
@@ -126,6 +139,25 @@ def test_standard_schema_tool_call_wraps_execution_errors():
     asyncio.run(tool(params))
 
     assert params.results == [{"error": "boom"}]
+
+
+@pytest.mark.parametrize(
+    "empty_value, expected",
+    [
+        ([], {"status": "success", "results": [], "count": 0, "message": "No matching records found."}),
+        ({}, {"status": "success", "results": {}, "message": "No matching records found."}),
+        (None, {"status": "success", "result": None, "message": "Completed with no data returned."}),
+        ("", {"status": "success", "result": "", "message": "Completed with no data returned."}),
+    ],
+)
+def test_standard_schema_tool_call_normalizes_empty_results(empty_value, expected):
+    """Falsy _execute results are wrapped in a non-falsy envelope so pipecat cannot mask them."""
+    tool = _EmptyResultTool(empty_value)
+    params = _Params(arguments={"value": "abc"})
+
+    asyncio.run(tool(params))
+
+    assert params.results == [expected]
 
 
 def test_register_schema_tools_to_llm_sets_context_and_unknown_handler_once():
@@ -305,8 +337,9 @@ def test_send_rtvi_message_tool_sends_plain_message_and_ack():
     tool = SendRTVIMessageTool(rtvi=rtvi)
     params = _Params(arguments={"message": "hello"})
 
-    asyncio.run(tool._execute(params))
+    asyncio.run(tool(params))
 
+    assert len(rtvi.messages) == 1
     assert rtvi.messages[0][0].data.text == "hello"
     assert rtvi.messages[0][1] is True
     assert params.results == [{"success": True, "message": "message sent to the RTVIclient."}]
@@ -318,8 +351,9 @@ def test_send_scenario_summary_tool_wraps_final_response_tags():
     tool = SendScenarioSummaryTool(rtvi=rtvi)
     params = _Params(arguments={"message": '{"ok": true}'})
 
-    asyncio.run(tool._execute(params))
+    asyncio.run(tool(params))
 
+    assert len(rtvi.messages) == 1
     text = rtvi.messages[0][0].data.text
     assert text == f'{FINAL_RESPONSE_START_TAG}{{"ok": true}}{FINAL_RESPONSE_END_TAG}'
     assert params.results == [{"success": True, "message": "Scenario summary message sent."}]
@@ -330,10 +364,22 @@ def test_send_exit_message_tool_acknowledges_before_sending_exit():
     rtvi = _CapturingRTVI()
     tool = SendExitMessageTool(rtvi=rtvi)
     params = _Params()
+    messages_at_result_time = []
+    deliver = params.result_callback
 
-    asyncio.run(tool._execute(params))
+    async def _ordering_callback(result):
+        """Snapshot how many transport messages existed when the result was delivered."""
+        messages_at_result_time.append(len(rtvi.messages))
+        await deliver(result)
+
+    params.result_callback = _ordering_callback
+
+    asyncio.run(tool(params))
 
     assert params.results == [{"success": True, "message": "Exit message sent."}]
+    # The exit message is emitted from _after_result, i.e. strictly after delivery.
+    assert messages_at_result_time == [0]
+    assert len(rtvi.messages) == 1
     assert rtvi.messages[0][0].data.text == f"{EXIT_MESSAGE_START_TAG}The task is finished.{EXIT_MESSAGE_END_TAG}"
 
 
@@ -357,7 +403,7 @@ class _RecordingWriteTool(WriteScenarioTool):
         """Return no required properties."""
         return []
 
-    async def _execute(self, params):
+    async def _execute(self, **kwargs):
         """No-op execute path; tests call base helpers directly."""
         return {}
 

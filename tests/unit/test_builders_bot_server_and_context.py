@@ -309,9 +309,14 @@ class _Params:
     def __init__(self, arguments):
         self.arguments = arguments
         self.result = None
+        # Every delivery is recorded so tests can assert that
+        # ``StandardSchemaTool.__call__`` hands pipecat exactly one result per
+        # call — the double-delivery it used to emit wedges pipecat 1.x.
+        self.results = []
 
     async def result_callback(self, result):
         self.result = result
+        self.results.append(result)
 
 
 def test_waitlist_tools_cover_join_drop_get_and_not_found():
@@ -325,7 +330,8 @@ def test_waitlist_tools_cover_join_drop_get_and_not_found():
     join = JoinWaitListTool(shared_state=state)
     join.send_scenario_summary = summary
     params = _Params({"name": "Grace", "phone": "2", "party_size": 3})
-    asyncio.run(join._execute(params))
+    asyncio.run(join(params))
+    assert len(params.results) == 1
     assert params.result["position"] == 2
     assert join.required_properties == ["name", "phone", "party_size"]
     assert set(join.properties) == {"name", "phone", "party_size"}
@@ -333,16 +339,19 @@ def test_waitlist_tools_cover_join_drop_get_and_not_found():
     drop = DropWaitListTool(shared_state=state)
     drop.send_scenario_summary = summary
     params = _Params({"name": "Ada"})
-    asyncio.run(drop._execute(params))
+    asyncio.run(drop(params))
+    assert len(params.results) == 1
     assert params.result["success"] is True
     params = _Params({"name": "missing"})
-    asyncio.run(drop._execute(params))
+    asyncio.run(drop(params))
+    assert len(params.results) == 1
     assert params.result["success"] is False
     assert drop.required_properties == ["name"]
 
     getter = GetWaitlistTool(shared_state=state)
     params = _Params({})
-    asyncio.run(getter._execute(params))
+    asyncio.run(getter(params))
+    assert len(params.results) == 1
     assert params.result["total_in_waitlist"] == 1
     assert getter.properties == {}
 

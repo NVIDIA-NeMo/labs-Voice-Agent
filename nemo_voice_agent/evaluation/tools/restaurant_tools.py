@@ -16,7 +16,6 @@
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
-from pipecat.services.llm_service import FunctionCallParams
 
 from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
@@ -38,6 +37,7 @@ class GetMenuTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return []
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Dict[str, Any]:
+        """Return the scenario-configured menu. Takes no call arguments."""
         logger.debug(f"GetMenuTool returning menu ({len(self.menu)} chars)")
-        await params.result_callback({"menu": self.menu})
+        return {"menu": self.menu}

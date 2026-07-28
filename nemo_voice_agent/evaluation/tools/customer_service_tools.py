@@ -18,7 +18,6 @@ from typing import Any, Dict, List, Optional
 
 from loguru import logger
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
-from pipecat.services.llm_service import FunctionCallParams
 
 from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools.rtvi_control import SendScenarioSummaryTool
@@ -79,14 +78,13 @@ class LookupAccountTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["account_id"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        account_id = params.arguments.get("account_id")
+    async def _execute(self, account_id: Optional[str] = None, **kwargs: Any) -> Any:
+        """Return the account record for ``account_id``, or an error dict if unknown."""
         accounts = self.state.get("accounts", {})
         logger.debug(f"LookupAccountTool looking up account: {account_id}")
         if account_id in accounts:
-            await params.result_callback(accounts[account_id])
-        else:
-            await params.result_callback({"error": f"Account '{account_id}' not found."})
+            return accounts[account_id]
+        return {"error": f"Account '{account_id}' not found."}
 
 
 @register_schema_tool_for_eval
@@ -115,19 +113,16 @@ class CheckOrderStatusTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["account_id", "order_id"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        account_id = params.arguments.get("account_id")
-        order_id = params.arguments.get("order_id")
+    async def _execute(self, account_id: Optional[str] = None, order_id: Optional[str] = None, **kwargs: Any) -> Any:
+        """Return the order record for ``account_id``/``order_id``, or an error dict if unknown."""
         accounts = self.state.get("accounts", {})
         logger.debug(f"CheckOrderStatusTool looking up {account_id}/{order_id}")
         if account_id not in accounts:
-            await params.result_callback({"error": f"Account '{account_id}' not found."})
-            return
+            return {"error": f"Account '{account_id}' not found."}
         orders = accounts[account_id].get("orders", {})
         if order_id in orders:
-            await params.result_callback(orders[order_id])
-        else:
-            await params.result_callback({"error": f"Order '{order_id}' not found for account '{account_id}'."})
+            return orders[order_id]
+        return {"error": f"Order '{order_id}' not found for account '{account_id}'."}
 
 
 @register_schema_tool_for_eval
@@ -170,15 +165,20 @@ class ProcessRefundTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["account_id", "amount", "description", "date"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        account_id = params.arguments.get("account_id")
-        amount = float(params.arguments.get("amount"))
-        desc = params.arguments.get("description")
-        date = params.arguments.get("date")
+    async def _execute(
+        self,
+        account_id: Optional[str] = None,
+        amount: Any = None,
+        description: Optional[str] = None,
+        date: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Append a negative charge entry, decrement the balance, and return the refund record."""
+        amount = float(amount)
+        desc = description
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback({"error": f"Account '{account_id}' not found."})
-            return
+            return {"error": f"Account '{account_id}' not found."}
 
         account = accounts[account_id]
         charges = account.setdefault("recent_charges", [])
@@ -193,15 +193,13 @@ class ProcessRefundTool(StandardSchemaTool):
         account["balance"] = _format_money(current_balance - amount)
 
         logger.debug(f"ProcessRefundTool: refunded ${amount:.2f} to {account_id}")
-        await params.result_callback(
-            {
-                "success": True,
-                "account_id": account_id,
-                "refund_entry": refund_entry,
-                "new_balance": account["balance"],
-                "account": account,
-            }
-        )
+        return {
+            "success": True,
+            "account_id": account_id,
+            "refund_entry": refund_entry,
+            "new_balance": account["balance"],
+            "account": account,
+        }
 
 
 @register_schema_tool_for_eval
@@ -240,29 +238,29 @@ class StartItemReturnTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["account_id", "order_id", "reason"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        account_id = params.arguments.get("account_id")
-        order_id = params.arguments.get("order_id")
-        reason = params.arguments.get("reason")
+    async def _execute(
+        self,
+        account_id: Optional[str] = None,
+        order_id: Optional[str] = None,
+        reason: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Set the order status to 'Return Started', record the reason, and return the order."""
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback({"error": f"Account '{account_id}' not found."})
-            return
+            return {"error": f"Account '{account_id}' not found."}
         orders = accounts[account_id].get("orders", {})
         if order_id not in orders:
-            await params.result_callback({"error": f"Order '{order_id}' not found for account '{account_id}'."})
-            return
+            return {"error": f"Order '{order_id}' not found for account '{account_id}'."}
         orders[order_id]["status"] = "Return Started"
         orders[order_id]["return_reason"] = reason
         logger.debug(f"StartItemReturnTool: return started for {account_id}/{order_id}")
-        await params.result_callback(
-            {
-                "success": True,
-                "account_id": account_id,
-                "order_id": order_id,
-                "order": orders[order_id],
-            }
-        )
+        return {
+            "success": True,
+            "account_id": account_id,
+            "order_id": order_id,
+            "order": orders[order_id],
+        }
 
 
 @register_schema_tool_for_eval
@@ -307,31 +305,24 @@ class ChangePlanTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["account_id", "new_plan"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        account_id = params.arguments.get("account_id")
-        new_plan = params.arguments.get("new_plan")
+    async def _execute(self, account_id: Optional[str] = None, new_plan: Optional[str] = None, **kwargs: Any) -> Any:
+        """Update the account's plan name and monthly rate, and return the updated account."""
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback({"error": f"Account '{account_id}' not found."})
-            return
+            return {"error": f"Account '{account_id}' not found."}
         if new_plan not in self.plans:
-            await params.result_callback(
-                {"error": f"Plan '{new_plan}' is not available. Available plans: {list(self.plans.keys())}."}
-            )
-            return
+            return {"error": f"Plan '{new_plan}' is not available. Available plans: {list(self.plans.keys())}."}
         account = accounts[account_id]
         account["plan"] = new_plan
         account["monthly_rate"] = self.plans[new_plan]
         logger.debug(f"ChangePlanTool: {account_id} -> {new_plan} @ {self.plans[new_plan]}")
-        await params.result_callback(
-            {
-                "success": True,
-                "account_id": account_id,
-                "new_plan": new_plan,
-                "new_monthly_rate": self.plans[new_plan],
-                "account": account,
-            }
-        )
+        return {
+            "success": True,
+            "account_id": account_id,
+            "new_plan": new_plan,
+            "new_monthly_rate": self.plans[new_plan],
+            "account": account,
+        }
 
 
 @register_schema_tool_for_eval
@@ -362,23 +353,20 @@ class UnlockAccountTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["account_id"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        account_id = params.arguments.get("account_id")
+    async def _execute(self, account_id: Optional[str] = None, **kwargs: Any) -> Any:
+        """Reset the account to 'Active' with zero failed logins, and return the updated account."""
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback({"error": f"Account '{account_id}' not found."})
-            return
+            return {"error": f"Account '{account_id}' not found."}
         account = accounts[account_id]
         account["account_status"] = "Active"
         account["failed_login_attempts"] = "0"
         logger.debug(f"UnlockAccountTool: unlocked {account_id}")
-        await params.result_callback(
-            {
-                "success": True,
-                "account_id": account_id,
-                "account": account,
-            }
-        )
+        return {
+            "success": True,
+            "account_id": account_id,
+            "account": account,
+        }
 
 
 @register_schema_tool_for_eval
@@ -409,23 +397,20 @@ class CancelSubscriptionTool(StandardSchemaTool):
     def required_properties(self) -> List[str]:
         return ["account_id"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        account_id = params.arguments.get("account_id")
+    async def _execute(self, account_id: Optional[str] = None, **kwargs: Any) -> Any:
+        """Set the plan to 'Canceled' with a $0.00 monthly rate, and return the updated account."""
         accounts = self.state.get("accounts", {})
         if account_id not in accounts:
-            await params.result_callback({"error": f"Account '{account_id}' not found."})
-            return
+            return {"error": f"Account '{account_id}' not found."}
         account = accounts[account_id]
         account["plan"] = "Canceled"
         account["monthly_rate"] = "$0.00"
         logger.debug(f"CancelSubscriptionTool: canceled {account_id}")
-        await params.result_callback(
-            {
-                "success": True,
-                "account_id": account_id,
-                "account": account,
-            }
-        )
+        return {
+            "success": True,
+            "account_id": account_id,
+            "account": account,
+        }
 
 
 @register_schema_tool_for_eval
@@ -478,18 +463,31 @@ class ResolveTicketTool(SendScenarioSummaryTool):
     def required_properties(self) -> List[str]:
         return ["account_id", "issue_summary", "resolution_type", "resolution_details"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        account_id = params.arguments.get("account_id")
+    async def _execute(
+        self,
+        account_id: Optional[str] = None,
+        issue_summary: Optional[str] = None,
+        resolution_type: Optional[str] = None,
+        resolution_details: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Emit the resolution + account snapshot as a scenario summary, then return the ack.
+
+        The RTVI summary is pushed from here rather than from ``_after_result``
+        because it has always been emitted *before* the tool result is
+        delivered; ``_after_result`` would flip that ordering. (Contrast
+        ``SendExitMessageTool``, whose ``<exit>`` must trail result delivery.)
+        """
         accounts = self.state.get("accounts", {})
         account_snapshot = accounts.get(account_id, {})
 
         resolution = {
-            "issue_summary": params.arguments.get("issue_summary"),
-            "resolution_type": params.arguments.get("resolution_type"),
-            "resolution_details": params.arguments.get("resolution_details"),
+            "issue_summary": issue_summary,
+            "resolution_type": resolution_type,
+            "resolution_details": resolution_details,
             "account_id": account_id,
             "account": account_snapshot,
         }
         logger.debug(f"ResolveTicketTool resolving: {resolution}")
         await self.send_scenario_summary(json.dumps(resolution))
-        await params.result_callback({"success": True, "message": "Ticket resolved successfully."})
+        return {"success": True, "message": "Ticket resolved successfully."}

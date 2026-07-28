@@ -36,7 +36,7 @@ from datetime import datetime
 
 from nemo_voice_agent.evaluation.runner import run_dynamic_evaluation
 from nemo_voice_agent.evaluation.scenarios import get_eval_scenario, list_eval_scenarios
-from nemo_voice_agent.evaluation.utils import LLMJudge
+from nemo_voice_agent.evaluation.utils import LLMJudge, validate_judge_numeric_options
 from nemo_voice_agent.utils import FileLogger
 
 
@@ -52,6 +52,21 @@ _CONSISTENCY_CHECK_FIELDS = (
     "judge_threshold",
     "strict_match",
 )
+
+
+def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Validate numeric scoring options after argparse has parsed their types."""
+    try:
+        validate_judge_numeric_options(
+            judge_threshold=args.judge_threshold,
+            judge_timeout=args.judge_timeout,
+            judge_thinking_token_budget=args.judge_thinking_token_budget,
+            judge_context_message_limit=args.judge_context_message_limit,
+            judge_context_system_string_limit=args.judge_context_system_string_limit,
+            judge_context_string_limit=args.judge_context_string_limit,
+        )
+    except ValueError as e:
+        parser.error(str(e))
 
 
 def _build_invocation_record(args: argparse.Namespace, scenarios: list) -> dict:
@@ -227,6 +242,46 @@ Examples:
         help="Threshold for the LLM judge if binary result is desired",
     )
     parser.add_argument(
+        "--judge-timeout",
+        type=float,
+        default=120.0,
+        help="LLM judge request timeout in seconds",
+    )
+    parser.add_argument(
+        "--judge-thinking-token-budget",
+        type=int,
+        default=None,
+        help="Optional provider-specific thinking token budget for the judge request",
+    )
+    parser.add_argument(
+        "--judge-include-conversation",
+        action="store_true",
+        help="Include bridge transcript turns in the LLM judge input. Disabled by default.",
+    )
+    parser.add_argument(
+        "--judge-compact-context",
+        action="store_true",
+        help="Compact LLM context histories before sending them to the judge. Disabled by default.",
+    )
+    parser.add_argument(
+        "--judge-context-message-limit",
+        type=int,
+        default=None,
+        help="Maximum context messages to send when --judge-compact-context is enabled.",
+    )
+    parser.add_argument(
+        "--judge-context-system-string-limit",
+        type=int,
+        default=None,
+        help="Maximum system-message content length when --judge-compact-context is enabled.",
+    )
+    parser.add_argument(
+        "--judge-context-string-limit",
+        type=int,
+        default=None,
+        help="Maximum non-system string length when --judge-compact-context is enabled.",
+    )
+    parser.add_argument(
         "--strict-match",
         action="store_true",
         help=(
@@ -262,6 +317,7 @@ Examples:
     )
 
     args = parser.parse_args()
+    _validate_args(parser, args)
 
     # List domains mode
     if args.list_domains:
@@ -365,16 +421,25 @@ Examples:
 
     if args.judge_url and args.judge_model:
         logger.info(f"Using LLM judge: {args.judge_url} with model: {args.judge_model}")
+        judge_kwargs = {
+            "max_tokens": 8192,
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "seed": 42,
+            "chat_template_kwargs": {"enable_thinking": True},
+        }
+        if args.judge_thinking_token_budget is not None:
+            judge_kwargs["thinking_token_budget"] = args.judge_thinking_token_budget
         judge = LLMJudge(
             url=args.judge_url,
             model=args.judge_model,
             api_key=args.judge_api_key,
-            max_tokens=8192,
-            temperature=1.0,
-            top_p=0.95,
-            seed=42,
-            chat_template_kwargs={"enable_thinking": True},
-            thinking_token_budget=4096,
+            timeout=args.judge_timeout,
+            compact_context=args.judge_compact_context,
+            context_message_limit=args.judge_context_message_limit,
+            context_system_string_limit=args.judge_context_system_string_limit,
+            context_string_limit=args.judge_context_string_limit,
+            **judge_kwargs,
         )
     else:
         judge = None
@@ -395,6 +460,7 @@ Examples:
                 logger=logger,
                 judge=judge,
                 judge_threshold=args.judge_threshold,
+                judge_include_conversation=args.judge_include_conversation,
                 strict_match=args.strict_match,
                 min_agent_turns=args.min_agent_turns,
             )

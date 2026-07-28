@@ -20,7 +20,6 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from loguru import logger
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
-from pipecat.services.llm_service import FunctionCallParams
 
 from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools.rtvi_control import (
@@ -64,19 +63,17 @@ class GetCityWeatherTool(StandardSchemaTool):
         """
         return ["city_name"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, city_name: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get the weather of a city.
+        Get the weather of a city and return it.
         """
-        city_name = params.arguments.get("city_name")
         logger.debug(f"Getting weather of {city_name}")
-        results = {
+        return {
             "city": city_name,
             "weather": "sunny",
             "temperature": "20 degrees Celsius",
             "uv_index": "low",
         }
-        await params.result_callback(results)
 
 
 @register_schema_tool_for_eval
@@ -111,26 +108,23 @@ class ReadFileTool(StandardSchemaTool):
         """
         return ["file_path"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, file_path: Optional[str] = None) -> Dict[str, Any]:
         """
-        Read a file from the file system.
+        Read a file from the file system and return its content.
         """
-        file_path = params.arguments.get("file_path")
         logger.debug(f"Reading file from {file_path}")
         try:
             with Path(file_path).open("r") as f:
                 content = f.read()
         except Exception as e:
             logger.error(f"Error reading file {file_path}: {e}")
-            await params.result_callback({"error": str(e)})
-            return
+            return {"error": str(e)}
 
         logger.debug(f"Loaded file {file_path} with content: `{content}`")
-        results = {
+        return {
             "file_path": file_path,
             "content": content,
         }
-        await params.result_callback(results)
 
 
 @register_schema_tool_for_eval
@@ -213,12 +207,16 @@ class PlaceOrderTool(SendScenarioSummaryTool):
                 f"The quantity of the item {item['name']} is negative. The quantity must be non-negative."
             )
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        items = params.arguments.get("items")
-        customer_name = params.arguments.get("customer_name")
-        customer_phone = params.arguments.get("customer_phone", None)
-        total_price = params.arguments.get("total_price")
-
+    async def _execute(
+        self,
+        items: Optional[List[Dict[str, Any]]] = None,
+        customer_name: Optional[str] = None,
+        customer_phone: Optional[str] = None,
+        total_price: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        Validate the order, emit the scenario summary, and return the placed-order result.
+        """
         if customer_name is None:
             raise ValueError("The `customer_name` parameter is required.")
         if total_price is None:
@@ -247,7 +245,7 @@ class PlaceOrderTool(SendScenarioSummaryTool):
         order_details = json.dumps(order_details)
         # send the scenario summary message to the RTVI client
         await self.send_scenario_summary(order_details)
-        results = {
+        return {
             "success": True,
             "message": (
                 f"The order has been placed successfully for the customer "
@@ -255,7 +253,6 @@ class PlaceOrderTool(SendScenarioSummaryTool):
             ),
             "order_details": order_details,
         }
-        await params.result_callback(results)
 
 
 @register_schema_tool_for_eval
@@ -286,19 +283,17 @@ class SaveQuestionAnswerTool(SendScenarioSummaryTool):
     def required_properties(self) -> List[str]:
         return ["question", "answer"]
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, question: Optional[str] = None, answer: Optional[str] = None) -> Dict[str, Any]:
         """
-        Send an answer to the user.
+        Send the question/answer pair as a scenario summary and return the ack.
         """
-        question = params.arguments.get("question")
-        answer = params.arguments.get("answer")
         message = {
             "question": question,
             "answer": answer,
         }
         message = json.dumps(message)
         await self.send_scenario_summary(message)
-        await params.result_callback({"success": True, "message": "Question and answer logged."})
+        return {"success": True, "message": "Question and answer logged."}
 
 
 @register_schema_tool_for_eval
