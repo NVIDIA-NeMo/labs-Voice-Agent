@@ -190,11 +190,10 @@ node_modules/
 bot_server.log
 bot_server.*.log
 eval_results/
+evaluation/eval_results*/
 audio_logs/
 audio_logs_user/
 audio_logs_agent/
-audio_logs/
-eval_results/
 
 # agents
 .claude/settings.local.json

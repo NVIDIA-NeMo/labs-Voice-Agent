@@ -30,7 +30,9 @@ parser/normalizer without an API key. Covers:
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from nemo_voice_agent.evaluation.utils import LLMJudge
+import pytest
+
+from nemo_voice_agent.evaluation.utils import LLMJudge, match_str_and_float, validate_judge_numeric_options
 
 
 def _fake_response(content: str):
@@ -49,6 +51,11 @@ def _bare_judge() -> LLMJudge:
     j.api_key = "fake"
     j.headers = {}
     j.default_prompt = LLMJudge.DEFAULT_PROMPT
+    j.timeout = 120.0
+    j.compact_context = False
+    j.context_message_limit = 40
+    j.context_system_string_limit = 2500
+    j.context_string_limit = 6000
     j.kwargs = {}
     return j
 
@@ -65,6 +72,185 @@ def test_no_nl_assertions_preserves_original_shape():
     assert result["reason"] == "Mostly correct"
     assert "nl_assertion_verdicts" not in result
     assert "nl_assertion_pass_rate" not in result
+
+
+def test_string_matching_uses_local_deterministic_normalization():
+    """Text matching should not depend on optional NeMo ASR helper imports."""
+    assert match_str_and_float(
+        "Flight SK-703!",
+        "flight sk703",
+        ignore_capitalization=True,
+        ignore_punctuation=True,
+        clean_text=True,
+    )
+
+
+def test_judge_scenario_uses_available_evidence_without_reference():
+    """External agents can be judged from transcript/context/assertions without final artifacts."""
+    j = _bare_judge()
+    j.timeout = 7
+    captured = {}
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["payload"] = json
+        captured["timeout"] = timeout
+        return _fake_response(
+            '{"score": 1.0, "reason": "passed", '
+            '"nl_assertion_verdicts": [{"index": 1, "passed": true, "reason": "matched"}]}'
+        )
+
+    with patch("nemo_voice_agent.evaluation.utils.requests.post", side_effect=fake_post):
+        result = j.judge_scenario(
+            conversation=[{"role": "user", "text": "I need to change my flight."}],
+            agent_context_history=[{"role": "assistant", "tool_calls": [{"function": {"name": "call_backend"}}]}],
+            user_context_history=[{"role": "user", "content": "I need to change my flight."}],
+            nl_assertions=["The agent routed the request to an internal task handler."],
+        )
+
+    user_content = captured["payload"]["messages"][1]["content"]
+    assert "<reference>" not in user_content
+    assert "<prediction>" not in user_content
+    assert "<conversation>" in user_content
+    assert "<agent_context_history>" in user_content
+    assert "<user_context_history>" in user_content
+    assert "<nl_assertions>" in user_content
+    assert captured["timeout"] == 7
+    assert result["score"] == 1.0
+    assert result["nl_assertion_pass_count"] == 1
+    assert result["nl_assertion_total"] == 1
+    assert result["nl_assertion_pass_rate"] == 1.0
+
+
+def test_judge_scenario_returns_zero_without_evidence():
+    """The judge endpoint is not called when only expected materials exist."""
+    j = _bare_judge()
+
+    with patch(
+        "nemo_voice_agent.evaluation.utils.requests.post",
+        side_effect=AssertionError("judge endpoint should not be called without evidence"),
+    ):
+        result = j.judge_scenario(
+            reference='{"expected": "answer"}',
+            nl_assertions=["The agent should satisfy this assertion."],
+        )
+
+    assert result["score"] == 0.0
+    assert "No observed agent evidence" in result["reason"]
+    assert result["nl_assertion_pass_count"] == 0
+    assert result["nl_assertion_total"] == 1
+    assert result["nl_assertion_pass_rate"] == 0.0
+    assert result["nl_assertion_verdicts"] == [
+        {
+            "index": 1,
+            "assertion": "The agent should satisfy this assertion.",
+            "passed": False,
+            "reason": result["reason"],
+        }
+    ]
+    assert "<reference>" in result["judge_input"]["user_content"]
+    assert "<nl_assertions>" in result["judge_input"]["user_content"]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"timeout": 0}, "timeout"),
+        ({"context_message_limit": 0}, "context_message_limit"),
+        ({"context_system_string_limit": -1}, "context_system_string_limit"),
+        ({"context_string_limit": 0}, "context_string_limit"),
+        ({"max_tokens": 0}, "max_tokens"),
+        ({"thinking_token_budget": -1}, "thinking_token_budget"),
+    ],
+)
+def test_judge_init_rejects_invalid_numeric_config(kwargs, message):
+    """Direct construction rejects nonsensical numeric judge configuration."""
+    with pytest.raises(ValueError, match=message):
+        LLMJudge(url="http://fake", model="fake-model", api_key="fake", **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"judge_threshold": -0.1}, "--judge-threshold"),
+        ({"judge_threshold": 1.1}, "--judge-threshold"),
+        ({"judge_threshold": float("nan")}, "--judge-threshold"),
+        ({"judge_timeout": 0}, "--judge-timeout"),
+        ({"judge_timeout": float("inf")}, "--judge-timeout"),
+        ({"judge_thinking_token_budget": 0}, "--judge-thinking-token-budget"),
+        ({"judge_context_message_limit": 0}, "--judge-context-message-limit"),
+        ({"judge_context_system_string_limit": -1}, "--judge-context-system-string-limit"),
+        ({"judge_context_string_limit": 0}, "--judge-context-string-limit"),
+    ],
+)
+def test_validate_judge_numeric_options_rejects_invalid_values(kwargs, message):
+    """Shared CLI validation rejects nonsensical judge numeric options."""
+    with pytest.raises(ValueError, match=message):
+        validate_judge_numeric_options(**kwargs)
+
+
+def test_validate_judge_numeric_options_accepts_valid_values():
+    """Shared CLI validation accepts valid judge numeric options."""
+    validate_judge_numeric_options(
+        judge_threshold=0.0,
+        judge_timeout=0.1,
+        judge_thinking_token_budget=1,
+        judge_context_message_limit=1,
+        judge_context_system_string_limit=1,
+        judge_context_string_limit=1,
+    )
+
+
+def test_context_history_is_not_compacted_by_default():
+    """Full context history is sent unless compaction is explicitly enabled."""
+    j = _bare_judge()
+    captured = {}
+    long_content = "x" * 100
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["user_content"] = json["messages"][1]["content"]
+        return _fake_response('{"score": 1.0, "reason": "ok"}')
+
+    with patch("nemo_voice_agent.evaluation.utils.requests.post", side_effect=fake_post):
+        j.judge_scenario(
+            agent_context_history=[
+                {"role": "system", "content": long_content},
+                {"role": "assistant", "content": "first assistant message"},
+                {"role": "assistant", "content": "second assistant message"},
+            ]
+        )
+
+    assert long_content in captured["user_content"]
+    assert "first assistant message" in captured["user_content"]
+    assert "second assistant message" in captured["user_content"]
+    assert "truncated" not in captured["user_content"]
+
+
+def test_context_history_compaction_is_opt_in_and_configurable():
+    """When enabled, compaction uses the limits configured on the judge."""
+    j = _bare_judge()
+    j.compact_context = True
+    j.context_message_limit = 2
+    j.context_system_string_limit = 5
+    j.context_string_limit = 6
+    captured = {}
+
+    def fake_post(url, *, headers, json, timeout):
+        captured["user_content"] = json["messages"][1]["content"]
+        return _fake_response('{"score": 1.0, "reason": "ok"}')
+
+    with patch("nemo_voice_agent.evaluation.utils.requests.post", side_effect=fake_post):
+        j.judge_scenario(
+            agent_context_history=[
+                {"role": "system", "content": "system-content"},
+                {"role": "assistant", "content": "old-message"},
+                {"role": "assistant", "content": "latest-message"},
+            ]
+        )
+
+    assert "system" in captured["user_content"]
+    assert "latest" in captured["user_content"]
+    assert "old-message" not in captured["user_content"]
+    assert "truncated" in captured["user_content"]
 
 
 def test_happy_path_two_passes_one_fail():

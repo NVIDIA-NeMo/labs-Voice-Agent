@@ -16,7 +16,7 @@ This guide is for users who want to evaluate something different than the stock 
 The eval harness is a **separate process** (`evaluation/bridge.py`) from the bot. It opens a WebSocket client to your bot, shuttles audio between two bot connections (agent + user-sim), and orchestrates scenario lifecycle via RTVI control messages. As long as your bot satisfies two things, the rest of pipecat (and the model/processor choices inside) is yours:
 
 1. **Speaks pipecat's WebSocket transport protocol** on the configured port (`WEBSOCKET_PORT`).
-2. **Has an `RTVIProcessor` in its pipeline** with the five RTVI actions registered (see [Tier 3](#tier-3--build-a-whole-new-pipecat-pipeline) below).
+2. **Has an `RTVIProcessor` in its pipeline** with the six RTVI actions registered (see [Tier 3](#tier-3--build-a-whole-new-pipecat-pipeline) below).
 
 The bridge doesn't care how the audio is generated, what model produced the response, or what processors sit between STT and LLM. It cares about the wire protocol and the control plane.
 
@@ -199,7 +199,7 @@ Your custom pipeline MUST have:
 
 1. **A pipecat WebSocket transport** — `WebSocketServerTransport` (from `pipecat.transports.network.websocket_server`) bound to `WEBSOCKET_PORT` (env var, default 8765 agent / 8766 user-sim). This handles the wire protocol (protobuf-framed audio + control messages) so you don't have to.
 
-2. **An `RTVIProcessor`** somewhere in the pipeline with the **five required actions** registered:
+2. **An `RTVIProcessor`** somewhere in the pipeline with the **six required actions** registered:
 
 | Action factory | Direction | Purpose |
 |---|---|---|
@@ -208,8 +208,9 @@ Your custom pipeline MUST have:
 | `create_apply_sync_delta_action` | bridge → bot | Bridge sends for telecom-only cross-side sync. Single-side domains never receive it; registering it as a no-op is harmless. |
 | `create_get_scenario_summary_action` | bot → bridge | Bridge pulls at end of scenario: returns `{actions, db_hash, db?}` from `shared_state`. |
 | `create_get_context_history_action` | bot → bridge | Bridge pulls at end of scenario for `bot_logs_*/llm_context.json`: returns the LLM conversation history. |
+| `create_reset_context_action` | bridge → bot | Bridge sends between scenarios to clear conversation history and reset stateful services. |
 
-All five factories live in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Each takes a small set of pipeline references (a `TaskRef`, a `SharedStateRef`, etc.) and returns an `RTVIAction` that the processor calls when the matching wire message arrives.
+All six factories live in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Each takes a small set of pipeline references (a `TaskRef`, a `SharedStateRef`, etc.) and returns an `RTVIAction` that the processor calls when the matching wire message arrives.
 
 ### Minimal Tier 3 skeleton
 
@@ -229,6 +230,7 @@ from pipecat.transports.network.websocket_server import (
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     TaskRef,
     SharedStateRef,
+    create_reset_context_action,
     create_update_system_prompt_action,
     create_apply_initialization_action,
     create_apply_sync_delta_action,
@@ -259,7 +261,7 @@ async def run_custom_bot():
         params=WebsocketServerParams(vad_analyzer=vad, audio_in_enabled=True, audio_out_enabled=True),
     )
 
-    # ---- 3. RTVI processor + the 5 required actions (REQUIRED) --------
+    # ---- 3. RTVI processor + the 6 required actions (REQUIRED) --------
     rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
     task_ref = TaskRef()
     shared_state_ref = SharedStateRef()
@@ -269,6 +271,11 @@ async def run_custom_bot():
     # for the reference assembly — typically a few lines.)
     user_agg, assistant_agg, context, original_messages, resettable = build_my_context(...)
 
+    rtvi.register_action(
+        create_reset_context_action(
+            task_ref, user_agg, assistant_agg, original_messages, resettable,
+        )
+    )
     rtvi.register_action(
         create_update_system_prompt_action(
             task_ref, user_agg, assistant_agg, original_messages, resettable,
@@ -327,7 +334,7 @@ Inside the contract, everything is yours:
 ### What you're NOT free to change
 
 - The WebSocket wire protocol (use a pipecat WS transport).
-- The five RTVI action signatures (your bot reads from / writes to the same wire messages the bridge sends/expects).
+- The six RTVI action signatures (your bot reads from / writes to the same wire messages the bridge sends/expects).
 - The tool registry namespace key (`scenario.domain`) — your `register_schema_tools_to_llm` adapter must accept the same `tool_factory(name, domain=...)` interface so the bridge-sent `tool_domain` resolves to the right tool set.
 
 ### Non-pipecat bots
