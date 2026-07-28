@@ -32,8 +32,8 @@ tools mutate it in place. Write-tools call ``self._record_action({...})`` with a
 Two parallel call paths exist, both routing through ``_do_work(p)``:
 
 1. **Live agent** — pipecat invokes ``await tool(params)``, which routes through
-   ``StandardSchemaTool.__call__`` → ``_execute(params)`` → ``_do_work(p)`` →
-   ``params.result_callback(result)``.
+   ``StandardSchemaTool.__call__`` → ``_execute(**arguments)`` → ``_do_work(p)``.
+   ``_execute`` only *returns* the result; ``__call__`` owns delivery to pipecat.
 2. **Gold replay** — ``Tau2BaseScenario._gold_replay`` invokes
    ``tool.invoke(**arguments)`` → ``_do_work(p)`` synchronously, returning the
    result directly.
@@ -51,7 +51,7 @@ from typing import Any, ClassVar, Dict, List, Optional, Type
 from pipecat.services.llm_service import FunctionCallParams
 from pydantic import BaseModel, ValidationError
 
-from nemo_voice_agent.evaluation.tools import normalize_tool_result, register_schema_tool_for_eval
+from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools._write_tool_base import WriteScenarioTool
 from nemo_voice_agent.evaluation.tools.tau2_airline_params import (
     BookReservationParams,
@@ -261,7 +261,7 @@ _ALL_AIRPORTS: List[Dict[str, str]] = [
 
 
 class _Tau2InvokeMixin:
-    """Provides sync ``invoke(**kwargs)`` + async ``_execute(params)`` routing.
+    """Provides sync ``invoke(**kwargs)`` + async ``_execute(**kwargs)`` routing.
 
     Subclasses set ``PARAMS_MODEL = MyParams`` and implement ``_do_work(p)``.
     """
@@ -276,12 +276,15 @@ class _Tau2InvokeMixin:
             return validation_error_response(exc)
         return self._do_work(p)
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        """Async entry — invoked by pipecat on live LLM tool calls."""
-        result = self.invoke(**(params.arguments or {}))
-        # Guard against pipecat masking a falsy result (e.g. an empty match
-        # list) as the literal "COMPLETED"; the LLM would read that as success.
-        await params.result_callback(normalize_tool_result(result))
+    async def _execute(self, **kwargs) -> dict:
+        """Async entry — invoked by pipecat on live LLM tool calls.
+
+        Pure: returns the result. ``StandardSchemaTool.__call__`` owns delivery
+        and applies the empty-result normalization (a falsy result such as an
+        empty match list would otherwise be masked as the literal "COMPLETED",
+        which the LLM reads as success).
+        """
+        return self.invoke(**kwargs)
 
     def _do_work(self, p) -> dict:  # pragma: no cover - abstract
         raise NotImplementedError(f"{type(self).__name__} must implement _do_work(p)")
@@ -1172,8 +1175,15 @@ class TransferToHumanAgentsTool(_Tau2WriteTool):
         )
         return {"status": "success", "message": "Transfer successful"}
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        await super()._execute(params)
+    async def _execute(self, **kwargs) -> dict:
+        return await super()._execute(**kwargs)
+
+    async def _after_result(self, params: FunctionCallParams) -> None:
+        """Emit ``<exit>`` only after the tool result has been delivered.
+
+        Ordering matters: pipecat must commit the tool-call record before the
+        bridge tears the session down.
+        """
         await self._send_exit_message()
 
 

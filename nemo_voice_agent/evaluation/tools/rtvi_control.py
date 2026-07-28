@@ -84,16 +84,19 @@ class SendRTVIMessageTool(StandardSchemaTool):
         message = RTVIServerMessage(data=RTVITextMessageData(text=message))
         await self._rtvi.push_transport_message(message, exclude_none=True)
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, message: Optional[str] = None, **kwargs: Any) -> Any:
         """
         Send a message.
 
         Args:
-            params: The function call parameters.
+            message: The message to be sent.
+            kwargs: Any extra LLM-supplied arguments, ignored.
+
+        Returns:
+            The tool result delivered by ``StandardSchemaTool.__call__``.
         """
-        message = params.arguments.get("message")
         await self.send_rtvi_message(message)
-        await params.result_callback({"success": True, "message": "message sent to the RTVIclient."})
+        return {"success": True, "message": "message sent to the RTVIclient."}
 
 
 @register_schema_tool_for_eval
@@ -122,14 +125,20 @@ class SendScenarioSummaryTool(SendRTVIMessageTool):
         logger.debug(f"Sending scenario summary message: {message}")
         await self.send_rtvi_message(message)
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, message: Optional[str] = None, **kwargs: Any) -> Any:
         """
         Send a "Scnario Summary" message to the client, which
         should contain all required information for the evaluation.
+
+        Args:
+            message: The summary message to be sent.
+            kwargs: Any extra LLM-supplied arguments, ignored.
+
+        Returns:
+            The tool result delivered by ``StandardSchemaTool.__call__``.
         """
-        message = params.arguments.get("message")
         await self.send_scenario_summary(message)
-        await params.result_callback({"success": True, "message": "Scenario summary message sent."})
+        return {"success": True, "message": "Scenario summary message sent."}
 
 
 @register_schema_tool_for_eval
@@ -166,20 +175,31 @@ class SendExitMessageTool(SendRTVIMessageTool):
         logger.debug(f"Sending exit message: {message}")
         await self.send_rtvi_message(message)
 
-    async def _execute(self, params: FunctionCallParams) -> None:
+    async def _execute(self, **kwargs: Any) -> Any:
         """
-        Send an "Exit" message.
+        Acknowledge the exit request. The "Exit" message itself is emitted from
+        :meth:`_after_result`, i.e. *after* the result has been delivered.
 
         Args:
-            params: The function call parameters.
+            kwargs: Any extra LLM-supplied arguments, ignored (this tool takes none).
+
+        Returns:
+            The tool result delivered by ``StandardSchemaTool.__call__``.
+        """
+        return {"success": True, "message": "Exit message sent."}
+
+    async def _after_result(self, params: FunctionCallParams) -> None:
+        """
+        Send the "Exit" message once the function-call result is delivered.
+
+        Order matters: ack the function call FIRST so pipecat dispatches
+        ``FunctionCallResultFrame`` and the assistant aggregator commits
+        both the assistant message (with tool_calls) and the tool reply
+        before the bridge sees ``<exit>``. If ``send_exit_message`` ran
+        first, the bridge would race the commit cycle, snapshot the
+        context mid-flight, and the captured llm_context.json would be
+        missing the ``EndConversationTool`` entry. That ordering is why this
+        lives in the post-delivery hook rather than in :meth:`_execute`.
         """
         message = "The task is finished."
-        # Order matters: ack the function call FIRST so pipecat dispatches
-        # ``FunctionCallResultFrame`` and the assistant aggregator commits
-        # both the assistant message (with tool_calls) and the tool reply
-        # before the bridge sees ``<exit>``. If ``send_exit_message`` ran
-        # first, the bridge would race the commit cycle, snapshot the
-        # context mid-flight, and the captured llm_context.json would be
-        # missing the ``EndConversationTool`` entry.
-        await params.result_callback({"success": True, "message": "Exit message sent."})
         await self.send_exit_message(message)

@@ -36,7 +36,7 @@ from typing import Any, ClassVar, Dict, List, Optional, Type
 from pipecat.services.llm_service import FunctionCallParams
 from pydantic import BaseModel, ValidationError
 
-from nemo_voice_agent.evaluation.tools import normalize_tool_result, register_schema_tool_for_eval
+from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
 from nemo_voice_agent.evaluation.tools._write_tool_base import WriteScenarioTool
 from nemo_voice_agent.evaluation.tools.tau2_retail_params import (
     CalculateParams,
@@ -151,7 +151,7 @@ def _round2(value: float) -> float:
 
 
 class _Tau2InvokeMixin:
-    """Provides sync ``invoke(**kwargs)`` + async ``_execute(params)`` routing.
+    """Provides sync ``invoke(**kwargs)`` + async ``_execute(**kwargs)`` routing.
 
     Subclasses set ``PARAMS_MODEL = MyParams`` and implement ``_do_work(p)``.
     """
@@ -166,11 +166,13 @@ class _Tau2InvokeMixin:
             return validation_error_response(exc)
         return self._do_work(p)
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        result = self.invoke(**(params.arguments or {}))
-        # Guard against pipecat masking a falsy result (e.g. an empty match
-        # list) as the literal "COMPLETED"; the LLM would read that as success.
-        await params.result_callback(normalize_tool_result(result))
+    async def _execute(self, **kwargs) -> dict:
+        """Async entry — used by pipecat at live LLM call time.
+
+        Pure: returns the result; ``StandardSchemaTool.__call__`` owns delivery
+        and applies the empty-result normalization centrally.
+        """
+        return self.invoke(**kwargs)
 
     def _do_work(self, p) -> dict:  # pragma: no cover - abstract
         raise NotImplementedError(f"{type(self).__name__} must implement _do_work(p)")
@@ -1051,8 +1053,15 @@ class TransferToHumanAgentsTool(_Tau2WriteTool):
         )
         return {"status": "success", "message": "Transfer successful"}
 
-    async def _execute(self, params: FunctionCallParams) -> None:
-        await super()._execute(params)
+    async def _execute(self, **kwargs) -> dict:
+        return await super()._execute(**kwargs)
+
+    async def _after_result(self, params: FunctionCallParams) -> None:
+        """Emit ``<exit>`` only after the tool result has been delivered.
+
+        Ordering matters: pipecat must commit the tool-call record before the
+        bridge tears down the session on ``<exit>``.
+        """
         await self._send_exit_message()
 
 

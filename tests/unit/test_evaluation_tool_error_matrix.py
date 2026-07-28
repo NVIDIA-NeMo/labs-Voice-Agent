@@ -32,10 +32,14 @@ from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
 class _Params:
     def __init__(self, arguments):
         self.arguments = arguments
-        self.result = None
+        self.results = []
+
+    @property
+    def result(self):
+        return self.results[-1] if self.results else None
 
     async def result_callback(self, result):
-        self.result = result
+        self.results.append(result)
 
 
 def _classes(module):
@@ -122,11 +126,36 @@ def _arguments(tool):
     return {name: _value_for(name, properties.get(name, {})) for name in tool.required_properties}
 
 
+def _is_crash_envelope(result):
+    """True for ``StandardSchemaTool.__call__``'s uncaught-exception envelope.
+
+    ``__call__`` turns an exception raised by ``_execute`` into the structured
+    result ``{"error": str(e)}`` instead of letting it propagate, so an
+    unhandled crash no longer reaches a caller's ``except`` block. The matrix
+    tests must still flag it, otherwise a tool that blows up on a missing
+    database would silently "pass". Tools' own validation responses use the
+    richer ``{"status": "error", "error_type": ..., "message": ...}`` shape, so
+    the single-key ``error`` dict identifies the base-class envelope precisely.
+    """
+    return isinstance(result, dict) and set(result) == {"error"}
+
+
 def _invoke(tool, arguments):
     if hasattr(tool, "invoke"):
+        # Sync gold-replay / shadow-DB path: returns the raw result verbatim
+        # (deliberately NOT normalized — see ``_normalize_empty_result``).
         return tool.invoke(**arguments)
     params = _Params(arguments)
-    asyncio.run(tool._execute(params))
+    # Drive the public pipecat entry point so delivery itself is under test.
+    asyncio.run(tool(params))
+    # ``__call__`` is the single delivery point: exactly one result per call.
+    # The old contract delivered twice (the tool's own result, then a spurious
+    # ``None`` from the base class), which pipecat 1.x rejects with
+    # "tool_call_id ... is not running" and wedges the aggregator.
+    assert len(params.results) == 1, f"delivered {len(params.results)} results, expected exactly 1"
+    # ``__call__`` applies ``_normalize_empty_result``, so a falsy result is
+    # always wrapped in a non-falsy envelope before it reaches pipecat.
+    assert params.result, f"delivered falsy result {params.result!r}; normalization envelope missing"
     return params.result
 
 
@@ -142,6 +171,7 @@ def test_all_evaluation_tools_report_missing_database(module):
             tool = cls(shared_state={})
             result = _invoke(tool, _arguments(tool))
             assert result is not None
+            assert not _is_crash_envelope(result), f"unhandled exception surfaced as {result}"
         except Exception as exc:  # noqa: BLE001 - report the complete class matrix
             failures.append(f"{cls.__name__}: {type(exc).__name__}: {exc}")
     assert not failures
@@ -158,6 +188,7 @@ def test_all_evaluation_tools_return_validation_results(module):
         try:
             result = _invoke(cls(shared_state={}), {})
             assert result is not None
+            assert not _is_crash_envelope(result), f"unhandled exception surfaced as {result}"
         except Exception as exc:  # noqa: BLE001 - report the complete class matrix
             failures.append(f"{cls.__name__}: {type(exc).__name__}: {exc}")
     assert not failures
@@ -205,6 +236,12 @@ def test_telecom_tool_matrix_with_real_scenario_state(module, side):
             tool = cls(shared_state=state)
             result = _invoke(tool, _real_arguments(tool, agent_db, user_db))
             assert result is not None
+            if _is_crash_envelope(result):
+                # Same tolerance as the exception arm below: on the __call__
+                # path a rejected state transition comes back as
+                # {"error": "..."} instead of propagating, and reaching that
+                # branch with a real message is the behavior under test.
+                assert result["error"]
         except (ValueError, KeyError, TypeError) as exc:
             # A validly-routed tool can reject a state transition that this
             # particular scenario does not permit; reaching that branch is

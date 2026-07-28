@@ -137,10 +137,13 @@ class WriteScenarioTool(StandardSchemaTool):
     async def _send_exit_message(self) -> None:
         """Emit ``<exit>`` to the bridge, ending the scenario immediately.
 
-        Called by terminal tools (transfer-to-agent/human) after
-        ``result_callback`` so pipecat commits the tool-call record before
-        the bridge tears down the session. Silently no-ops when RTVI is
-        absent (unit tests, gold-replay).
+        Called by terminal tools (transfer-to-agent/human) from their
+        ``_after_result`` override, which ``StandardSchemaTool.__call__``
+        invokes only once the tool result has been delivered — so pipecat
+        commits the tool-call record before the bridge tears down the
+        session. Do **not** call this from ``_execute``: that runs before
+        delivery and would race the teardown against the result. Silently
+        no-ops when RTVI is absent (unit tests, gold-replay).
         """
         rtvi = self.state.get("__rtvi__")
         if rtvi is None:
