@@ -38,11 +38,11 @@ from pipecat.frames.frames import (
     TTSStoppedFrame,
 )
 from pipecat.services.llm_service import FunctionCallParams
-from pipecat.services.nvidia.tts import NvidiaTTSService
 from pipecat.services.settings import TTSSettings
 from pipecat.services.tts_service import TTSService
 
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
+from nemo_voice_agent.pipecat.services.nvidia.tts import ResilientNvidiaTTSService
 from nemo_voice_agent.pipecat.utils.text.simple_text_aggregator import (
     SimpleSegmentedTextAggregator,
 )
@@ -939,13 +939,20 @@ def get_tts_service_from_config(config: DictConfig, audio_logger: Optional[Audio
         function_id = config.get("function_id", "877104f7-e885-42b9-8de8-f6e4c6303969")
         voice_id = config.get("voice_id", "Magpie-Multilingual.EN-US.Aria")
         language = config.get("language", "en-US")
-        return NvidiaTTSService(
+        # ResilientNvidiaTTSService retries a synthesis stream that failed before
+        # producing any audio. Upstream treats every SynthesizeOnline exception as
+        # terminal, which drops a whole bot turn when NVCF answers the first
+        # request with DEADLINE_EXCEEDED "failed to establish link to worker".
+        # Set tts.max_retries to 0 for upstream's single-shot behavior.
+        return ResilientNvidiaTTSService(
             api_key=api_key,
             server=config.get("server", "grpc.nvcf.nvidia.com:443"),
             voice_id=voice_id,
             model_function_map={"function_id": function_id, "model_name": model_name},
             language=language,
             sample_rate=22050,
+            max_retries=config.get("max_retries", 2),
+            retry_backoff_secs=config.get("retry_backoff_secs", 0.25),
         )
     if model is None:
         raise ValueError("Model is required for NeMo TTS service")

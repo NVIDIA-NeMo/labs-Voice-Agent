@@ -57,8 +57,14 @@ def test_nemo_tts_factory_models(monkeypatch, model, expected):
 
 def test_remote_tts_factories_and_errors(monkeypatch):
     monkeypatch.setattr(tts, "SimpleSegmentedTextAggregator", _fake("aggregator"))
-    monkeypatch.setattr(tts, "NvidiaTTSService", _fake("nvidia"))
-    assert tts.get_tts_service_from_config({"type": "nvidia"})[0] == "nvidia"
+    # The nvidia branch builds our retry subclass, not pipecat's service directly.
+    monkeypatch.setattr(tts, "ResilientNvidiaTTSService", _fake("nvidia"))
+    nvidia = tts.get_tts_service_from_config({"type": "nvidia"})
+    assert nvidia[0] == "nvidia"
+    # Retry is on by default; tts.max_retries: 0 restores upstream's single-shot
+    # behavior, so the knob has to reach the constructor.
+    assert nvidia[1]["max_retries"] == 2
+    assert tts.get_tts_service_from_config({"type": "nvidia", "max_retries": 0})[1]["max_retries"] == 0
     # The "nemotron" TTS branch went away with the vendored riva_speech fork; it
     # now falls through to the local-model path and fails the model check.
     with pytest.raises(ValueError, match="Model is required"):
