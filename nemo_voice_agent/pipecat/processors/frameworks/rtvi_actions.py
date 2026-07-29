@@ -364,7 +364,14 @@ def create_update_system_prompt_action(
                     llm=llm,
                     context=context,
                     tools=new_schema_tools,
-                    cancel_on_interruption=False,
+                    # Leave cancel_on_interruption at its True default. Passing
+                    # False here opts the tool into pipecat >=1.0's *asynchronous*
+                    # protocol: the LLM is told not to wait for the result and
+                    # continues immediately, the tool message becomes a
+                    # "status: running" placeholder, and the real payload arrives
+                    # later as a developer message. Eval tools are synchronous DB
+                    # lookups whose results the agent must have in hand before it
+                    # speaks. See register_schema_tools_to_llm's docstring.
                     keep_existing_tools=False,
                 )
             else:

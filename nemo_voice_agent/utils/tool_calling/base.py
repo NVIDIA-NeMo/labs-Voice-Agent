@@ -316,7 +316,17 @@ def register_schema_tools_to_llm(
         llm: The LLM service to use.
         context: The LLM context to use.
         tools: The list of tools to register.
-        cancel_on_interruption: Whether to cancel the LLM call on interruption.
+        cancel_on_interruption: Whether to cancel an in-flight tool call when the
+            user interrupts. Keep the ``True`` default for ordinary synchronous
+            tools. In pipecat >=1.0 this flag does double duty: ``False`` also
+            marks the tool **asynchronous**, meaning the LLM does not wait for
+            the result — it continues the conversation immediately, the ``tool``
+            message it receives is a ``{"status": "running"}`` placeholder, and
+            the real payload is injected later as a ``developer`` message. Only
+            pass ``False`` for a genuinely long-running, fire-and-forget tool
+            whose result the model must not block on. (In pipecat 0.x the flag
+            meant only "survive interruption"; there is no longer a way to get
+            that behaviour without also opting into the async protocol.)
         keep_existing_tools: Whether to keep the existing tools in the context.
         register_unknown_tool_handler: When True (default), registers a catch-all
             handler under ``function_name=None`` so any hallucinated tool call
