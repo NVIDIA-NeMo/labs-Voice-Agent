@@ -56,16 +56,16 @@ dependencies = [
     "loguru",
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-exporter-otlp-proto-http",
-    # Riva client. PINNED — do not bump without reading this.
-    # nvidia-riva-client >=2.25.1 ships protobuf gencode that declares a 6.31.1
-    # runtime requirement, so it raises VersionError at *import* time against the
-    # protobuf 5.x runtime that nemo-toolkit forces (protobuf~=5.29.5). The pin
-    # would resolve cleanly in uv.lock and only fail when a Riva bot starts.
-    # 2.21.1's gencode declares 5.27.2 and exposes every symbol pipecat 1.6's
-    # pipecat/services/nvidia/{stt,tts}.py uses. Revisit once nemo-toolkit
-    # relaxes its protobuf pin; then protobuf>=6.33.5 + riva-client>=2.26.0 +
-    # pipecat-ai[nvidia] can all move together.
-    "nvidia-riva-client==2.21.1",
+    # Riva client. Must be >=2.25.1: that release changed the SynthesizeOnline
+    # RPC from unary_stream to stream_stream, and pipecat >=1.0 feeds it a
+    # request generator. Against 2.21.1's unary stub gRPC tries to serialize the
+    # generator itself and the call dies with
+    # 'StatusCode.INTERNAL: Exception serializing request!'.
+    # This is what forces protobuf 6.x below — riva's gencode from 2.25.1 on
+    # declares a 6.31.1 runtime.
+    "nvidia-riva-client>=2.26.0,<3",
+    # protobuf 6 needs a grpcio-tools that accepts it; <1.72 caps at protobuf 5.
+    "grpcio-tools>=1.75,<1.83",
     "g2p-en>=2.1.0",
 ]
 
@@ -171,11 +171,16 @@ torch-backend = "cu130"
 
 # Force patched versions for known CVEs
 override-dependencies = [
-    # protobuf 5.29.6 patches BOTH live advisories: CVE-2025-4565 (recursion DoS,
-    # fixed 5.29.5) and CVE-2026-0994 (JSON recursion depth bypass, fixed 5.29.6).
-    # Do NOT "upgrade" to >=6.31.1 — that only fixes the first; the 6.x line needs
-    # >=6.33.5. In any case nemo-toolkit pins protobuf~=5.29.5, so 6.x is blocked.
-    "protobuf==5.29.6",
+    # protobuf 6.33.5 patches BOTH live advisories: CVE-2025-4565 (recursion DoS,
+    # fixed 4.25.8/5.29.5/6.31.1) and CVE-2026-0994 (JSON recursion depth bypass,
+    # fixed 5.29.6/6.33.5). Do NOT drop to 6.31.1-6.33.4 — those reintroduce the
+    # second one. vllm excludes exactly that range too.
+    # This override deliberately ignores nemo-toolkit's protobuf~=5.29.5 pin.
+    # That pin is conservative: protobuf runtimes are backward compatible with
+    # older gencode (a 6.x runtime reads NeMo's 5.x-generated code fine); only
+    # the reverse fails. Riva >=2.25.1 is required for TTS to work at all (see
+    # nvidia-riva-client above) and its gencode mandates a 6.x runtime.
+    "protobuf==6.33.5",
     "numba==0.65.0",
     "transformers>=5.8.0",
     "setuptools>=79.0.0",
