@@ -35,10 +35,18 @@ The handlers are parameterized so the same factory works for bots with different
 pipeline shapes: pass in whichever aggregators, services, and handlers the bot
 actually has. ``None`` entries in ``resettable_services`` are silently skipped.
 
-The reset and update-prompt handlers need to queue an ``EndWorkerFrame`` onto a
-``PipelineWorker`` that is typically created *after* the RTVI processor (because
-the task needs ``rtvi`` in its observer list). ``TaskRef`` is a tiny holder the
-bot sets after constructing the task.
+``TaskRef`` is a tiny holder the bot populates after constructing the pipeline
+worker, which happens *after* the RTVI processor (the worker needs ``rtvi`` in
+its observer list). Handlers use it to reach the live worker.
+
+None of these handlers end the pipeline. Before pipecat 1.0 they queued an
+``EndTaskFrame``, but that was inert: ``queue_frames`` injects downstream while
+the frame was only handled upstream, so it drifted out of the sink and did
+nothing. Pipecat 1.6 also handles it downstream — the sink reflects it upstream
+where it becomes an ``EndFrame`` — which tears down the pipeline, and with it
+the WebSocket server that lives inside the input transport. Since ``reset`` and
+``update_system_prompt`` run at the start of every evaluation scenario, ending
+the pipeline there would kill the bot before its first turn.
 """
 
 import asyncio
@@ -49,7 +57,6 @@ from typing import Any, Callable, List, Optional
 
 import pipecat.processors.frameworks.rtvi.models as RTVI
 from loguru import logger
-from pipecat.frames.frames import EndWorkerFrame
 from pipecat.pipeline.worker import PipelineWorker
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
 from pipecat.services.ai_service import AIService
@@ -197,11 +204,6 @@ class SharedStateRef:
     state: dict = dataclasses.field(default_factory=dict)
 
 
-async def _maybe_end_task(task_ref: TaskRef) -> None:
-    if task_ref is not None and task_ref.running:
-        await task_ref.task.queue_frames([EndWorkerFrame()])
-
-
 def _reset_services(services: List[AIService]) -> None:
     for service in services:
         if service is not None and hasattr(service, "reset"):
@@ -224,7 +226,6 @@ def create_reset_context_action(
     async def handler(rtvi_processor: RTVIProcessor, arguments: dict[str, Any]) -> bool:
         logger.info("Resetting conversation context...")
         try:
-            await _maybe_end_task(task_ref)
             user_aggregator.reset()
             assistant_aggregator.reset()
             user_aggregator.set_messages(copy.deepcopy(original_messages))
@@ -283,8 +284,6 @@ def create_update_system_prompt_action(
 
     async def handler(rtvi_processor: RTVIProcessor, arguments: dict[str, Any]) -> bool:
         try:
-            await _maybe_end_task(task_ref)
-
             new_prompt = arguments.get("prompt", "")
             new_tools_json = arguments.get("tools", "{}")
             if not new_prompt:
@@ -515,7 +514,6 @@ def create_get_scenario_summary_action(
             logger.debug(
                 f"Returning scenario summary: {len(actions)} action(s), db_hash={db_hash}, include_db={include_db}"
             )
-            await _maybe_end_task(task_ref)
             response: dict[str, Any] = {
                 "actions": actions,
                 "db_hash": db_hash,

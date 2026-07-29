@@ -229,7 +229,10 @@ def test_rtvi_context_actions_reset_update_history_and_summary():
         summary_result,
     ) = asyncio.run(_run())
 
-    assert len(task.frames) >= 2
+    # The handlers must not queue pipeline-ending frames: doing so tears down
+    # the WebSocket server that lives in the input transport, and these two run
+    # at the start of every evaluation scenario.
+    assert task.frames == []
     assert user_aggregator._messages == [{"role": "system", "content": "new prompt\nsuffix"}]
     assert assistant_aggregator._messages[0]["role"] == "user"
     assert service.reset_count == 2

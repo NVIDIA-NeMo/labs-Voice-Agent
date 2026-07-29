@@ -234,3 +234,45 @@ def test_exception_in_get_messages_returns_empty_context():
     finally:
         loop.close()
     assert result == {"context": []}
+
+
+def test_rtvi_handlers_never_end_the_pipeline():
+    """No RTVI handler may end the pipeline worker.
+
+    Before pipecat 1.0 these queued an EndTaskFrame, which was inert:
+    queue_frames injects downstream while the frame was only handled upstream.
+    Pipecat 1.6 handles it downstream too, so the same call now tears down the
+    pipeline — taking the WebSocket server (owned by the input transport) with
+    it. ``reset`` and ``update_system_prompt`` run at the start of every
+    evaluation scenario, so this would kill the bot before its first turn.
+    """
+    import asyncio as _asyncio
+
+    from nemo_voice_agent.pipecat.processors.frameworks import rtvi_actions
+
+    queued = []
+
+    class _FakeTask:
+        async def queue_frames(self, frames):
+            queued.extend(frames)
+
+    task_ref = rtvi_actions.TaskRef()
+    task_ref.task = _FakeTask()
+    task_ref.running = True
+    shared_state_ref = rtvi_actions.SharedStateRef()
+    agg = _FakeAggregator(in_progress=False, messages=[])
+
+    _, reset_handler = rtvi_actions.create_reset_context_action(task_ref, agg, agg, [], [])
+    _, summary_handler = rtvi_actions.create_get_scenario_summary_action(task_ref, shared_state_ref)
+    _, history_handler = rtvi_actions.create_get_context_history_action(task_ref, agg)
+
+    async def run():
+        await reset_handler(None, {})
+        await summary_handler(None, {})
+        await history_handler(None, {})
+
+    _asyncio.run(run())
+
+    assert queued == [], f"an RTVI handler queued pipeline frames: {queued}"
+    # The helper that used to do it should be gone, not merely unused.
+    assert not hasattr(rtvi_actions, "_maybe_end_task")

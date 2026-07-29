@@ -24,7 +24,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from omegaconf import OmegaConf
-from pipecat.frames.frames import AudioRawFrame, EndWorkerFrame
+from pipecat.frames.frames import AudioRawFrame, EndFrame, EndWorkerFrame, StopFrame
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
     LLMAssistantAggregator,
@@ -193,7 +193,10 @@ class _Task:
 
 
 def test_run_bot_websocket_server_exercises_registered_lifecycle(monkeypatch):
-    """Registered handlers initialize, terminate, reset, and finalize a session."""
+    """Registered handlers initialize, reset, and finalize a session.
+
+    Notably they do *not* terminate the pipeline: see the assertion below.
+    """
     ws = _Registrar()
     rtvi = _RTVI()
     task = _Task()
@@ -235,8 +238,12 @@ def test_run_bot_websocket_server_exercises_registered_lifecycle(monkeypatch):
     assert rtvi._client_ready is False
     assert rtvi._bot_ready is False
     assert task.queued[0] == "initial"
-    assert sum(isinstance(frame, EndWorkerFrame) for frame in task.queued) == 2
-    assert reset_service.reset_calls == 1
+    # Disconnect and session-timeout must NOT end the pipeline. The WebSocket
+    # server lives inside the input transport, so ending it would stop the
+    # server and make the bot unreachable for the rest of the process. Both
+    # handlers reset services instead.
+    assert not any(isinstance(frame, (EndWorkerFrame, EndFrame, StopFrame)) for frame in task.queued)
+    assert reset_service.reset_calls == 2
     assert disconnected == [True]
     assert audio_logger.finalize_calls == 3
 
