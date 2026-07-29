@@ -29,6 +29,7 @@ from pipecat.frames.frames import (
     VADUserStoppedSpeakingFrame,
 )
 from pipecat.processors.frame_processor import FrameDirection
+from pipecat.services.settings import STTSettings
 from pipecat.services.stt_service import STTService
 from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
@@ -73,7 +74,16 @@ class NemoDiarService(STTService):
         enabled: bool = True,
         **kwargs,
     ):
-        super().__init__(audio_passthrough=audio_passthrough, **kwargs)
+        if not params:
+            raise ValueError("params is required")
+        # Populate the settings object here: pipecat >=1.0 validates at start()
+        # that every STTSettings field was initialized in __init__ and logs an
+        # error per field left as NOT_GIVEN.
+        super().__init__(
+            audio_passthrough=audio_passthrough,
+            settings=STTSettings(model=model, language=params.language),
+            **kwargs,
+        )
 
         self._enabled = enabled
         self._queue = asyncio.Queue()
@@ -88,8 +98,6 @@ class NemoDiarService(STTService):
         self._model_name = model
         self._use_vad = use_vad
         self._backend = backend
-        if not params:
-            raise ValueError("params is required")
 
         self._load_model()
 
@@ -125,6 +133,18 @@ class NemoDiarService(STTService):
         Only report initial metrics, no need to spam metrics every 80ms
         """
         return True and not self._has_generated_metrics
+
+    def service_metadata_frame(self):
+        """Broadcast nothing: this service diarizes, it does not transcribe.
+
+        ``STTService`` would otherwise publish an ``STTMetadataFrame`` carrying a
+        time-to-final-transcript figure, which is meaningless here. It would also
+        be actively harmful: ``SpeechTimeoutUserTurnStopStrategy`` keeps the last
+        value it sees, and this service sits *downstream* of the real STT in the
+        pipeline, so its placeholder would override the STT's measured latency
+        and skew end-of-turn timing.
+        """
+        return None
 
     async def start(self, frame: StartFrame):
         """Handle service start."""

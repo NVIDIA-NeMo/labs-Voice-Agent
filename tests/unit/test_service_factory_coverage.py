@@ -129,3 +129,80 @@ def test_llm_auto_detection_and_validation(monkeypatch):
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     with pytest.raises(ValueError, match="NVIDIA_API_KEY is required"):
         llm.get_llm_service_from_config(OmegaConf.create({"type": "nvidia"}))
+
+
+class TestServiceSettingsAreFullyInitialized:
+    """Pipecat >=1.0 validates settings completeness at start().
+
+    A field left as NOT_GIVEN only logs an error — the pipeline still runs — so
+    without these tests a regression here is invisible outside server logs.
+    """
+
+    @staticmethod
+    def _uninitialized(service):
+        from dataclasses import fields
+
+        from pipecat.services.settings import _NotGiven
+
+        settings = service._settings
+        return [
+            f.name for f in fields(settings) if f.name != "extra" and isinstance(getattr(settings, f.name), _NotGiven)
+        ]
+
+    @pytest.mark.unit
+    def test_stt_service_initializes_every_settings_field(self, monkeypatch):
+        from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams, NemoSTTService
+
+        monkeypatch.setattr(NemoSTTService, "_load_model", lambda self: None)
+        service = NemoSTTService.__new__(NemoSTTService)
+        NemoSTTService.__init__(service, model="nvidia/parakeet", params=NeMoSTTInputParams(), device="cpu")
+
+        assert self._uninitialized(service) == []
+        assert service._settings.model == "nvidia/parakeet"
+
+    @pytest.mark.unit
+    def test_diar_service_initializes_every_settings_field(self, monkeypatch):
+        from nemo_voice_agent.pipecat.services.nemo.diar import NeMoDiarInputParams, NemoDiarService
+
+        monkeypatch.setattr(NemoDiarService, "_load_model", lambda self: None)
+        service = NemoDiarService.__new__(NemoDiarService)
+        NemoDiarService.__init__(service, model="nvidia/sortformer", params=NeMoDiarInputParams(), device="cpu")
+
+        assert self._uninitialized(service) == []
+
+    @pytest.mark.unit
+    def test_diar_service_publishes_no_stt_metadata(self, monkeypatch):
+        """The diarizer produces no transcripts, so it must not advertise a TTFS.
+
+        SpeechTimeoutUserTurnStopStrategy keeps the last STTMetadataFrame it
+        sees, and diarization sits downstream of the real STT — publishing here
+        would override the STT's measured latency and skew end-of-turn timing.
+        """
+        from nemo_voice_agent.pipecat.services.nemo.diar import NeMoDiarInputParams, NemoDiarService
+
+        monkeypatch.setattr(NemoDiarService, "_load_model", lambda self: None)
+        service = NemoDiarService.__new__(NemoDiarService)
+        NemoDiarService.__init__(service, model="nvidia/sortformer", params=NeMoDiarInputParams(), device="cpu")
+
+        assert service.service_metadata_frame() is None
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "kwargs, expected_voice, expected_language",
+        [
+            ({"model": "fastpitch+hifigan"}, None, None),
+            ({"model": "kokoro", "voice": "af_heart", "language": "a"}, "af_heart", "a"),
+        ],
+    )
+    def test_tts_service_initializes_every_settings_field(self, kwargs, expected_voice, expected_language):
+        from nemo_voice_agent.pipecat.services.nemo.tts import BaseNemoTTSService
+
+        class _StubTTS(BaseNemoTTSService):
+            def _setup_model(self):
+                return object()
+
+        service = _StubTTS(**kwargs)
+
+        assert self._uninitialized(service) == []
+        assert service._settings.voice == expected_voice
+        assert service._settings.language == expected_language

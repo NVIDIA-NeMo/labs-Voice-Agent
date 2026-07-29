@@ -34,6 +34,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.nvidia.stt import NvidiaSTTService
+from pipecat.services.settings import STTSettings
 from pipecat.services.stt_service import STTService
 from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
@@ -85,12 +86,34 @@ class NemoSTTService(STTService):
         decoder_type: Optional[str] = "rnnt",
         audio_logger: Optional[AudioLogger] = None,
         ignore_eou_eob: Optional[bool] = False,
+        ttfs_p99_latency: Optional[float] = None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        """Initialize the NeMo STT service.
+
+        Args:
+            ttfs_p99_latency: P99 seconds from end of speech to final transcript,
+                broadcast to downstream turn-stop strategies. Leave as None to
+                take pipecat's conservative fallback; set a value measured for
+                your deployment (model, device, VAD ``stop_secs``) to tighten
+                end-of-turn timing. We ship no default because the figure is
+                hardware-dependent and guessing it low would cut users off.
+                See https://github.com/pipecat-ai/stt-benchmark
+            (other args documented on the attributes they set)
+        """
+        # Resolve params before super().__init__ so the settings object can be
+        # fully populated. Pipecat >=1.0 validates at start() that every
+        # STTSettings field was initialized here and logs an error per field
+        # left as NOT_GIVEN.
+        params = params or NeMoSTTInputParams()
+        super().__init__(
+            settings=STTSettings(model=model, language=params.language),
+            ttfs_p99_latency=ttfs_p99_latency,
+            **kwargs,
+        )
         self._queue = asyncio.Queue()
         self._sample_rate = sample_rate
-        self._params = params or NeMoSTTInputParams()
+        self._params = params
         self._model_name = model
         self._ignore_eou_eob = ignore_eou_eob
         self._input_sample_rate = None
@@ -416,11 +439,15 @@ def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[Audio
             decoder_type="rnnt",
             audio_logger=audio_logger,
             ignore_eou_eob=config.get("ignore_eou_eob", False),
+            ttfs_p99_latency=config.get("ttfs_p99_latency", None),
         )
     elif backend == "nvidia":
         api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
-        model_name = config.get("model", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer")
-        function_id = config.get("function_id", "1598d209-5e27-4d3c-8079-4751568b1081")
+        # `model` and `function_id` are a matched pair — the function id addresses one
+        # specific NVCF deployment of that model, so overriding one without the other
+        # in YAML yields a mismatched request. Keep them in sync when changing either.
+        model_name = config.get("model", "nemotron-asr-streaming")
+        function_id = config.get("function_id", "bb0837de-8c7b-481f-9ec8-ef5663e9c1fa")
         language = config.get("language", "en-US")
         # Upstream NvidiaSTTService handles transient gRPC stream drops itself
         # since pipecat 1.0 (``_handle_stream_drop`` -> ``_request_reconnect``),

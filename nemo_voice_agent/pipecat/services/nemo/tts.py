@@ -39,6 +39,7 @@ from pipecat.frames.frames import (
 )
 from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.nvidia.tts import NvidiaTTSService
+from pipecat.services.settings import TTSSettings
 from pipecat.services.tts_service import TTSService
 
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
@@ -70,9 +71,20 @@ class BaseNemoTTSService(TTSService, ToolCallingMixin):
         think_tokens: Optional[List[str]] = None,
         audio_logger: Optional[AudioLogger] = None,
         ignore_strings: Optional[List[str]] = None,
+        voice: Optional[str] = None,
+        language: Optional[str] = None,
         **kwargs,
     ):
-        super().__init__(sample_rate=sample_rate, **kwargs)
+        # ``voice``/``language`` exist so subclasses can report their identity in
+        # the settings object. Pipecat >=1.0 validates at start() that every
+        # TTSSettings field was initialized in __init__ and logs an error per
+        # field left as NOT_GIVEN; None is the correct value for a model that
+        # has no such concept (e.g. single-voice FastPitch).
+        super().__init__(
+            sample_rate=sample_rate,
+            settings=TTSSettings(model=model, voice=voice, language=language),
+            **kwargs,
+        )
         logger.info(f"Initializing TTS service with model: {model} and device: {device}")
         self._model_name = model
         self._device = device
@@ -548,7 +560,9 @@ class KokoroTTSService(BaseNemoTTSService):
             )
         else:
             self._model_maps = {}
-        super().__init__(model=model, device=device, sample_rate=sample_rate, **kwargs)
+        super().__init__(
+            model=model, device=device, sample_rate=sample_rate, voice=voice, language=lang_code, **kwargs
+        )
 
     def _setup_model(self, lang_code: Optional[str] = None, voice: Optional[str] = None):
         """Initialize the Kokoro pipeline."""
@@ -842,7 +856,7 @@ class MagpieTTSService(BaseNemoTTSService):
         self._language = language
         self._current_speaker = speaker
         self._apply_TN = apply_TN
-        super().__init__(model=model, device=device, **kwargs)
+        super().__init__(model=model, device=device, voice=speaker, language=language, **kwargs)
 
     def _setup_model(self):
         from nemo.collections.tts.models import MagpieTTSModel
