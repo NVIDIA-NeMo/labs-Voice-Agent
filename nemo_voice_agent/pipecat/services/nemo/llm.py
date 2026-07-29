@@ -263,6 +263,13 @@ class HuggingFaceLLMService(OpenAILLMService):
             context (LLMContext): The context to process, containing messages
                 and other information needed for the LLM interaction.
         """
+        # Mirror the per-call context log that BaseOpenAILLMService emits from
+        # get_chat_completions. This service drives the model directly from
+        # _process_context and never calls that method, so without this the
+        # local-HF backend is the one path with no context visibility.
+        logger.debug(
+            f"{self}: Generating chat from context {self.get_llm_adapter().get_messages_for_logging(context)}"
+        )
         await self.push_frame(LLMFullResponseStartFrame())
         cumulative_text = ""
         try:
@@ -644,7 +651,12 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         # vLLM rejects with BadRequestError; the retry-on-timeout logic below is
         # upstream's, kept inline because pipecat offers no narrower seam around
         # the ``chat.completions.create`` call.
-        params_from_context = self.get_llm_adapter().get_llm_invocation_params(
+        adapter = self.get_llm_adapter()
+        # Keep the base class's per-call context log. It lives in
+        # get_chat_completions upstream, so overriding that method silently
+        # takes it away.
+        logger.debug(f"{self}: Generating chat from context {adapter.get_messages_for_logging(context)}")
+        params_from_context = adapter.get_llm_invocation_params(
             context,
             system_instruction=assert_given(self._settings.system_instruction),
             convert_developer_to_user=not self.supports_developer_role,
