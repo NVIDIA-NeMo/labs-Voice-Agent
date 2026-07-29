@@ -23,10 +23,12 @@ vad:
 
 
 stt:
-  type: nvidia # choices in ['nemo'] currently only NeMo is supported
-  model: "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer"
+  type: nvidia
   language: "en-US"
-  function_id: "1598d209-5e27-4d3c-8079-4751568b1081"
+  # model: "parakeet-1.1b-rnnt-multilingual-asr"
+  # function_id: "71203149-d3b7-4460-8231-1be2543a1fca"
+  model: "nemotron-asr-streaming"
+  function_id: "bb0837de-8c7b-481f-9ec8-ef5663e9c1fa"
   
 
 llm:
@@ -51,8 +53,8 @@ llm:
   system_prompt_suffix: "Before responding to the user, check if the user request requires using external tools, and use the tools if they match with the user's intention. Otherwise, use your internal knowledge to answer the user's question. Do not use tools for casual conversation or when the tools don't fit the use cases. You should still try to address the user's request when it's not related to the provided tools. If you are provided with a set of tools, use them only when needed, do not limit your capabilities to the scope of the tools. If the purpose of a tool matches well with a user's request, always try to call the tool first. Conversation history should not limit your behavior on whether you can use tools. You must answer questions not related to the tools. Avoid any emoji in your response."  
   # system_prompt: "You are a helpful AI agent named Lisa."
   # system_prompt_suffix: ""
-  enable_tool_calling: false 
-  enable_reasoning: false
+  enable_tool_calling: true 
+  enable_reasoning: true
 
   ##############################
   ## Common generation config ##
@@ -61,7 +63,7 @@ llm:
   top_p: 0.95  # LLM sampling params
   # temperature: 0.2  # LLM sampling params
   min_p: 0.0  # LLM sampling params
-  max_new_tokens: 1024  # max num of output tokens from LLM
+  max_new_tokens: 5000  # max num of output tokens from LLM
   ##############################
   ######## NVIDIA config #########
   ##############################
@@ -77,7 +79,8 @@ llm:
       extra_body:
         # reasoning_budget: 256
         chat_template_kwargs:
-          enable_thinking: ${llm.enable_reasoning}  # disable thinking
+          enable_thinking: ${llm.enable_reasoning}
+        thinking_token_budget: 3000
 
 
 tts:

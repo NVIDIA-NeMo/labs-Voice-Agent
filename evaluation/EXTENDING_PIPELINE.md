@@ -45,10 +45,10 @@ There are two top-level `server_configs/` directories in the repo, one for each 
 
 The eval directory ships ready-to-use configs you can use as starting points:
 
-- `agent.yaml`, `agent_nvidia.yaml`, `agent_nvidia_omni.yaml`, `agent_think.yaml` — agent-side variants (different LLMs, with or without reasoning mode).
-- `user.yaml`, `user_nvidia.yaml`, `user_think.yaml` — user-sim variants matching the same model families.
+- `agent.yaml`, `agent_nvidia.yaml`, `agent_nvidia_omni.yaml` — agent-side variants (different LLMs).
+- `user.yaml`, `user_nvidia.yaml` — user-sim variants matching the same model families.
 
-The `*_think.yaml` variants enable reasoning mode and automatically pull in the matching `*_think` sub-config. `_nvidia*` variants target NVIDIA-hosted endpoints.
+Reasoning mode is a per-config toggle rather than a separate file: set `llm.enable_reasoning: true` and the config manager automatically swaps in the matching `llm_configs/*_think.yaml` sub-config. All the eval configs above ship with reasoning **on** and diarization **off**. `_nvidia*` variants target NVIDIA-hosted endpoints.
 
 ### Where things are wired
 
@@ -70,7 +70,7 @@ Each component's section typically has a `model_config:` field pointing at a sub
 
 To run the eval agent against a different vLLM-served model:
 
-1. **Pick a starting point.** Copy one of the existing eval configs that's closest to what you want (e.g. `evaluation/server_configs/agent_nvidia.yaml` if you're targeting a different NVIDIA-hosted endpoint, or `evaluation/server_configs/agent_think.yaml` if you want reasoning mode on).
+1. **Pick a starting point.** Copy one of the existing eval configs that's closest to what you want (e.g. `evaluation/server_configs/agent_nvidia.yaml` if you're targeting a different NVIDIA-hosted endpoint). For reasoning mode, set `llm.enable_reasoning: true` in whichever config you copied.
 2. **Drop a new model sub-YAML** at `examples/generic_voice_agent/server/server_configs/llm_configs/my_custom_model.yaml` (copy a sibling — e.g. `llama3_70b.yaml` — as a starting point). Edit the `model_id`, `vllm_server_params`, sampling params to match your target.
 3. **Edit your eval config** (`evaluation/server_configs/agent_my_custom.yaml` or whichever you copied) so the `llm.model_config:` field points at `llm_configs/my_custom_model.yaml`.
 4. **Run the bot:**

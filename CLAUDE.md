@@ -45,7 +45,7 @@ Key cross-cutting concepts:
 - **Backchannels.** `turn_taking.backchannel_phrases_path` (or an inline list) prevents short utterances like "uh-huh" from interrupting the bot. Set to `null` to make any speech interrupt.
 - **Single-connection server.** While a client is connected, new connections are rejected with close code 1013 and the existing client is kept; the server accepts a new client once the current one disconnects. LLM context is preserved across reconnects. (Pipecat 1.0 inverted this — before, a new connection kicked the incumbent.) Don't add multi-tenant logic here; this example is single-user by design.
 
-`examples/generic_voice_agent/server/server_configs/` has `default.yaml` (top-level) plus `llm_configs/`, `tts_configs/`, `stt_configs/` sub-configs and `NVIDIA_NeMo_models.yaml`. `example_prompts/*.txt` holds reusable system prompts referenceable from `llm.system_prompt` (path-or-literal).
+`examples/generic_voice_agent/server/server_configs/` has `default.yaml` (top-level) plus `llm_configs/`, `tts_configs/`, `stt_configs/` sub-configs. `example_prompts/*.txt` holds reusable system prompts referenceable from `llm.system_prompt` (path-or-literal).
 
 ## Tool calling
 

@@ -24,9 +24,9 @@ vad:
   min_volume: 0.2  # Microphone volumn threshold for VAD
 
 stt:
-  type: nemo # choices in ['nemo'] currently only NeMo is supported
-  # model: "nvidia/parakeet_realtime_eou_120m-v1"
-  model: "nvidia/nemotron-speech-streaming-en-0.6b"
+  type: nemo
+  # model: "nvidia/nemotron-speech-streaming-en-0.6b"
+  model: "nvidia/parakeet_realtime_eou_120m-v1"
   device: "cuda"
   att_context_size: [70,1] # left and right attention context sizes for streaming ASR
   frame_len_in_secs: 0.08  # default for FastConformer, do not change unless using other architechtures
@@ -49,18 +49,17 @@ turn_taking:
 llm:
   type: vllm  # choices in ['auto', 'hf', 'vllm'], if `auto`, it will try to use vllm and fall back to hf if vllm not available
   # model: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"  # model name for HF models, will be used via `AutoModelForCausalLM.from_pretrained()`
-  # model: "nvidia/NVIDIA-Nemotron-Nano-9B-v2"
   # model: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
   model: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4"
-  # model: Qwen/Qwen2.5-7B-Instruct
-  dtype: bfloat16  # torch.dtype for LLM
+  # model: "nvidia/NVIDIA-Nemotron-Nano-9B-v2"
+  dtype: auto  # torch.dtype for LLM
   device: "cuda"
-  enable_reasoning: false  # it's best to turn-off reasoning for lowest latency, setting it to True will use the same config ending with `_think.yaml` instead
   system_prompt: "You are a helpful AI agent named Lisa. Start by greeting the user with 'Hi, I'm Lisa, your helpful AI assistant. How can I help you today?'."
 
   system_role: "system"  # role for system prompt, set it to `user` for models that do not support system prompt
   system_prompt_suffix: "Keep your responses concise and conversational since they will be spoken aloud. Avoid special characters. Use only simple, plain text sentences. Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. Always spell out numbers as words. /no_think"
-  enable_tool_calling: false  # set to True since the vllm config below supports tool calling
+  enable_tool_calling: true  # set to True since the vllm config below supports tool calling
+  enable_reasoning: true  
 
   ##############################
   ## Common generation config ##
@@ -69,23 +68,7 @@ llm:
   top_k: 20  # LLM sampling params, NO effect for vllm
   top_p: 0.95  # LLM sampling params
   min_p: 0.0  # LLM sampling params
-  max_new_tokens: 256  # max num of output tokens from LLM
-  ##############################
-  ##### HuggingFace config #####
-  ##############################
-  # Please refer to the model page of each HF LLM model to set following params properly.
-  # kwargs that will be passed into tokenizer.apply_chat_template() function
-  apply_chat_template_kwargs:  
-    add_generation_prompt: true  # This is required in most cases, do not change unless you're sure of it
-    tokenize: false  # This is required, do not change
-  # kwargs that will be passed into model.generate() function of HF models
-  generation_kwargs:  
-    temperature: ${llm.temperature}  # LLM sampling params
-    top_k: ${llm.top_k}  # LLM sampling params
-    top_p: ${llm.top_p}  # LLM sampling params
-    min_p: ${llm.min_p} # LLM sampling params
-    max_new_tokens: ${llm.max_new_tokens}  # max num of output tokens from LLM
-    do_sample: true # enable sampling
+  max_new_tokens: 6000  # max num of output tokens from LLM
   ##############################
   ######## vLLM config #########
   ##############################
@@ -111,7 +94,9 @@ llm:
     extra:  # additional model specific params can be specified in dict format
       extra_body:
         chat_template_kwargs:
-          enable_thinking: False  # disable thinking
+          enable_thinking: ${llm.enable_reasoning}
+        thinking_token_budget: 5000
+
 
 tts:
   type: nemo
