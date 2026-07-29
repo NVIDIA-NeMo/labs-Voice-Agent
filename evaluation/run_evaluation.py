@@ -234,7 +234,14 @@ Examples:
         default="nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
         help="Model name for the judge API (default: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4)",
     )
-    parser.add_argument("--judge-api-key", default=None, help="API key for the LLM judge")
+    parser.add_argument(
+        "--judge-api-key", default=None, help="API key for the LLM judge if not using environment variable"
+    )
+    parser.add_argument(
+        "--judge-api-key-name",
+        default="JUDGE_API_KEY",
+        help="Environment variable name for the API key if using environment variable",
+    )
     parser.add_argument(
         "--judge-threshold",
         type=float,
@@ -434,6 +441,7 @@ Examples:
             url=args.judge_url,
             model=args.judge_model,
             api_key=args.judge_api_key,
+            api_key_name=args.judge_api_key_name,
             timeout=args.judge_timeout,
             compact_context=args.judge_compact_context,
             context_message_limit=args.judge_context_message_limit,
