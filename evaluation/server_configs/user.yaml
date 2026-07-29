@@ -59,6 +59,12 @@ llm:
   system_role: "system"  # role for system prompt, set it to `user` for models that do not support system prompt
   system_prompt_suffix: "Keep your responses concise and conversational since they will be spoken aloud. Avoid special characters. Use only simple, plain text sentences. Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. Always spell out numbers as words. /no_think"
   enable_tool_calling: true  # set to True since the vllm config below supports tool calling
+  # Max seconds to wait for a tool/function call to return before giving up.
+  # Pipecat >=1.0 defaults this to null (wait forever), so a tool that hangs
+  # would stall the conversation with no error. Raise it if you register a
+  # genuinely slow tool (e.g. one doing a network round-trip); set it to null
+  # to restore pipecat's unbounded default.
+  function_call_timeout_secs: 10.0
   enable_reasoning: true  
 
   ##############################

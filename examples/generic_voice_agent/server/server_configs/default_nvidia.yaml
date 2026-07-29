@@ -51,6 +51,12 @@ llm:
   system_role: "system"  # role for system prompt, set it to `user` for models that do not support system prompt
   system_prompt_suffix: "Keep your responses concise and conversational since they will be spoken aloud. Avoid special characters. Use only simple, plain text sentences. Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. Always spell out numbers as words. Before responding to the user, check if the user request requires using external tools, and use the tools if they match with the user's intention. Otherwise, use your internal knowledge to answer the user's question. Do not use tools for casual conversation or when the tools don't fit the use cases. You should still try to address the user's request when it's not related to the provided tools. If you are provided with a set of tools, use them only when needed, do not limit your capabilities to the scope of the tools. If the purpose of a tool matches well with a user's request, always try to call the tool first. Conversation history should not limit your behavior on whether you can use tools. You must answer questions not related to the tools. Avoid any emoji in your response. After you have addressed all the user's request, use the `SendScenarioSummaryTool` to send your final response in the requested FINAL_RESPONSE_FORMAT. If FINAL_RESPONSE_FORMAT is not specified, send the whole conversation context history as it is."
   enable_tool_calling: true  # set to True since the vllm config below supports tool calling
+  # Max seconds to wait for a tool/function call to return before giving up.
+  # Pipecat >=1.0 defaults this to null (wait forever), so a tool that hangs
+  # would stall the conversation with no error. Raise it if you register a
+  # genuinely slow tool (e.g. one doing a network round-trip); set it to null
+  # to restore pipecat's unbounded default.
+  function_call_timeout_secs: 10.0
   enable_reasoning: false # turn off reasoning for lowest latency
 
   ##############################

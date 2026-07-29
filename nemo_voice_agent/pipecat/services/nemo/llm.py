@@ -728,6 +728,15 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
             )
             backend = "hf"
 
+    # Pipecat 1.6 changed LLMService's default from 10.0 to None (run forever).
+    # A tool call that never returns would then hang the turn indefinitely —
+    # and with it a whole evaluation scenario — instead of erroring. 10.0 is the
+    # pre-1.0 default, so this keeps the upgrade behavior-neutral rather than
+    # introducing a new policy. This is the *global* timeout; pipecat supports a
+    # per-function override that falls back to it, so a genuinely slow tool
+    # doesn't require raising the value for everything.
+    function_call_timeout_secs = config.get("function_call_timeout_secs", 10.0)
+
     if backend == "hf":
         llm_model = config.model
         llm_device = config.device
@@ -748,6 +757,7 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
             generation_kwargs=llm_generation_kwargs,
             apply_chat_template_kwargs=llm_apply_chat_template_kwargs,
             reasoning_budget=llm_reasoning_budget,
+            function_call_timeout_secs=function_call_timeout_secs,
         )
     elif backend == "vllm":
         llm_model = config.get("model", "vllm_server")
@@ -787,6 +797,7 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
             settings=llm_params,
             start_vllm_on_init=config.get("start_vllm_on_init", False),
             vllm_server_params=vllm_server_params,
+            function_call_timeout_secs=function_call_timeout_secs,
         )
     elif backend == "nvidia":
         llm_model = config.get("model", "nvidia/nemotron-3-nano-30b-a3b")
@@ -829,6 +840,7 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
             base_url=llm_base_url,
             settings=llm_params,
             default_headers=llm_default_headers,
+            function_call_timeout_secs=function_call_timeout_secs,
         )
 
     else:

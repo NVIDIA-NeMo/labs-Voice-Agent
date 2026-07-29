@@ -113,6 +113,52 @@ def test_llm_hf_vllm_and_nvidia_factories(monkeypatch):
     assert nvidia[0] == "nvidia" and nvidia[1]["api_key"] == "key"
 
 
+class TestFunctionCallTimeoutIsBounded:
+    """A tool call must never be able to hang a turn forever.
+
+    Pipecat 1.6 changed ``LLMService.function_call_timeout_secs`` from ``10.0``
+    to ``None`` (run indefinitely). Nothing raises or logs when it is unset, so
+    a regression here is only observable as an evaluation scenario that stops
+    making progress.
+    """
+
+    @staticmethod
+    def _cfg(**overrides):
+        base = {"type": "vllm", "model": "m", "dtype": "float16"}
+        base.update(overrides)
+        return OmegaConf.create(base)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "cfg, fake_name",
+        [
+            ({"type": "hf", "model": "m", "device": "cpu", "dtype": "float32"}, "HuggingFaceLLMService"),
+            ({"type": "vllm", "model": "m", "dtype": "float16"}, "VLLMService"),
+            ({"type": "nvidia", "model": "m"}, "NvidiaLLMService"),
+        ],
+    )
+    def test_every_backend_receives_the_timeout(self, monkeypatch, cfg, fake_name):
+        monkeypatch.setenv("NVIDIA_API_KEY", "key")
+        monkeypatch.setattr(llm, fake_name, _fake(fake_name))
+        result = llm.get_llm_service_from_config(OmegaConf.create(cfg))
+        assert result[1]["function_call_timeout_secs"] == 10.0
+
+    @pytest.mark.unit
+    def test_timeout_is_configurable(self, monkeypatch):
+        monkeypatch.setattr(llm, "VLLMService", _fake("vllm"))
+        result = llm.get_llm_service_from_config(self._cfg(function_call_timeout_secs=45.0))
+        assert result[1]["function_call_timeout_secs"] == 45.0
+
+    @pytest.mark.unit
+    def test_timeout_actually_lands_on_a_real_llm_service(self):
+        """The fakes above swallow kwargs, so prove the arg is one pipecat accepts."""
+        from pipecat.services.llm_service import LLMService
+
+        assert LLMService(function_call_timeout_secs=10.0)._function_call_timeout_secs == 10.0
+        # Guard the premise: upstream's default really is unbounded.
+        assert LLMService()._function_call_timeout_secs is None
+
+
 def test_llm_auto_detection_and_validation(monkeypatch):
     monkeypatch.setattr(llm, "HuggingFaceLLMService", _fake("hf"))
     monkeypatch.setattr(llm, "VLLMService", _fake("vllm"))
