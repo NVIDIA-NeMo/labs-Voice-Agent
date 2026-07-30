@@ -50,6 +50,10 @@ _CONSISTENCY_CHECK_FIELDS = (
     "judge_url",
     "judge_model",
     "judge_threshold",
+    "judge_max_tokens",
+    "judge_temperature",
+    "judge_top_p",
+    "judge_seed",
     "strict_match",
 )
 
@@ -64,6 +68,8 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
             judge_context_message_limit=args.judge_context_message_limit,
             judge_context_system_string_limit=args.judge_context_system_string_limit,
             judge_context_string_limit=args.judge_context_string_limit,
+            judge_max_tokens=args.judge_max_tokens,
+            judge_top_p=args.judge_top_p,
         )
     except ValueError as e:
         parser.error(str(e))
@@ -261,6 +267,31 @@ Examples:
         help="Optional provider-specific thinking token budget for the judge request",
     )
     parser.add_argument(
+        "--judge-max-tokens",
+        type=int,
+        default=100000,
+        help="Max tokens the judge may generate. Reasoning judges spend most of this on "
+        "thinking, so lowering it can truncate the verdict (default: 100k)",
+    )
+    parser.add_argument(
+        "--judge-temperature",
+        type=float,
+        default=1.0,
+        help="Sampling temperature for the judge (default: 1.0)",
+    )
+    parser.add_argument(
+        "--judge-top-p",
+        type=float,
+        default=0.95,
+        help="Nucleus sampling top_p for the judge (default: 0.95)",
+    )
+    parser.add_argument(
+        "--judge-seed",
+        type=int,
+        default=42,
+        help="Sampling seed for the judge, for run-to-run reproducibility (default: 42)",
+    )
+    parser.add_argument(
         "--judge-include-conversation",
         action="store_true",
         help="Include bridge transcript turns in the LLM judge input. Disabled by default.",
@@ -429,10 +460,14 @@ Examples:
     if args.judge_url and args.judge_model:
         logger.info(f"Using LLM judge: {args.judge_url} with model: {args.judge_model}")
         judge_kwargs = {
-            "max_tokens": 8192,
-            "temperature": 1.0,
-            "top_p": 0.95,
-            "seed": 42,
+            "max_tokens": args.judge_max_tokens,
+            "temperature": args.judge_temperature,
+            "top_p": args.judge_top_p,
+            "seed": args.judge_seed,
+            # Not exposed as a flag on purpose. The judge prompt asks for
+            # per-assertion verdicts with quoted evidence, and scoring quality
+            # depends on the model reasoning before it answers. Turning this off
+            # would silently change what the scores mean across runs.
             "chat_template_kwargs": {"enable_thinking": True},
         }
         if args.judge_thinking_token_budget is not None:

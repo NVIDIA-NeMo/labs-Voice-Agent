@@ -74,12 +74,19 @@ def validate_judge_numeric_options(
     judge_context_message_limit: Optional[int] = None,
     judge_context_system_string_limit: Optional[int] = None,
     judge_context_string_limit: Optional[int] = None,
+    judge_max_tokens: Optional[int] = None,
+    judge_top_p: Optional[float] = None,
 ) -> None:
     """Validate judge-related numeric options shared by CLI and library tests."""
     if judge_threshold is not None:
         _validate_threshold("--judge-threshold", judge_threshold)
     if judge_timeout is not None:
         _positive_float("--judge-timeout", judge_timeout)
+    if judge_max_tokens is not None:
+        _positive_int("--judge-max-tokens", judge_max_tokens)
+    if judge_top_p is not None:
+        # top_p is a probability mass; the same 0-1 rule the threshold uses.
+        _validate_threshold("--judge-top-p", judge_top_p)
     if judge_thinking_token_budget is not None:
         _positive_int("--judge-thinking-token-budget", judge_thinking_token_budget)
     if judge_context_message_limit is not None:
