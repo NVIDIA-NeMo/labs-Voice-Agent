@@ -1,8 +1,7 @@
 # NeMo Voice Agent
 
-A fully open-source NVIDIA NeMo Voice Agent example demonstrating a simple way to combine NVIDIA NeMo STT/TTS service and HuggingFace LLM together into a conversational agent. Everything is open-source and deployed locally so you can have your own voice agent. Feel free to explore the code and see how different speech technologies can be integrated with LLMs to create a seamless conversation experience. 
+A fully open-source framework to build, deploy and evaluate voice agents with NVIDIA Nemotron and other opensource models. 
 
-As of now, we only support English input and output, but more languages will be supported in the future.
 
 ## 📋 Table of Contents
 - [✨ Key Features](#-key-features)
@@ -26,7 +25,7 @@ As of now, we only support English input and output, but more languages will be 
 ## ✨ Key Features
 
 - Open-source, local deployment, and flexible customization.
-- Allow users to talk to most LLMs from HuggingFace with configurable prompts. 
+- Talk to most LLMs from vLLM/HuggingFace with configurable prompts. 
 - Streaming speech recognition with low latency and end-of-utterance detection.
 - Low latency TTS for fast audio response generation.
 - Speaker diarization up to 4 speakers in different user turns.
@@ -38,6 +37,7 @@ As of now, we only support English input and output, but more languages will be 
 ## 💡 Upcoming Next
 - Accuracy and robustness ASR model improvements.
 - Combine ASR and speaker diarization model to handle overlapping speech.
+- More evaluation domains and scenarios.
 
 
 ## 📅 Latest Updates
