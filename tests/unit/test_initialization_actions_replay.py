@@ -200,18 +200,21 @@ def test_dispatch_empty_actions_list_is_success():
 
 
 def test_rtvi_action_metadata():
-    action = create_apply_initialization_action(SharedStateRef())
-    assert action.service == "context"
-    assert action.action == "apply_initialization"
-    # Three arguments: domain (optional string), shared_state_init
-    # (optional JSON string carrying scenario fixture data + db_path),
-    # actions (optional array of init function records — empty list
-    # is valid for scenarios that need only the DB load + state merge).
-    # No ``side`` arg — each bot owns one DB at ``shared_state["db"]``;
-    # the bridge has already filtered the upstream action list to entries
-    # belonging to this bot before calling.
-    names = {a.name for a in action.arguments}
-    assert names == {"domain", "shared_state_init", "actions"}
+    name, handler = create_apply_initialization_action(SharedStateRef())
+    # The wire name is the RTVI client-message type in pipecat 1.x.
+    assert name == "apply_initialization"
+    assert callable(handler)
+    # The handler reads three optional keys off the message payload: domain,
+    # shared_state_init (JSON string carrying scenario fixture data + db_path)
+    # and actions (init function records — an empty list is valid for
+    # scenarios needing only the DB load + state merge). There is no ``side``
+    # key: each bot owns one DB at ``shared_state["db"]``, and the bridge has
+    # already filtered the upstream action list to this bot's entries.
+    # 1.x has no argument schema, so an empty payload must be accepted.
+    ref = SharedStateRef()
+    ref.state = {"db": {}}
+    _n, h = create_apply_initialization_action(ref)
+    assert asyncio.run(h(None, {}))["success"] is True
 
 
 def test_rtvi_handler_applies_to_state_db():
@@ -221,11 +224,10 @@ def test_rtvi_handler_applies_to_state_db():
     _register_set_count()
     ref = SharedStateRef()
     ref.state = {"db": {}}
-    action = create_apply_initialization_action(ref)
+    _name, handler = create_apply_initialization_action(ref)
     result = asyncio.run(
-        action.handler(
+        handler(
             None,
-            "context",
             {
                 "domain": _TEST_DOMAIN,
                 "actions": [{"side": "user", "func_name": "set_count", "arguments": {"value": 3}}],
@@ -245,11 +247,10 @@ def test_rtvi_handler_per_action_side_field_is_informational_only():
     _register_set_status()
     ref = SharedStateRef()
     ref.state = {"db": {}}
-    action = create_apply_initialization_action(ref)
+    _name, handler = create_apply_initialization_action(ref)
     result = asyncio.run(
-        action.handler(
+        handler(
             None,
-            "context",
             {
                 "domain": _TEST_DOMAIN,
                 "actions": [
@@ -273,11 +274,10 @@ def test_rtvi_handler_missing_state_db_returns_error():
     _register_set_count()
     ref = SharedStateRef()
     ref.state = {}  # no db seeded
-    action = create_apply_initialization_action(ref)
+    _name, handler = create_apply_initialization_action(ref)
     result = asyncio.run(
-        action.handler(
+        handler(
             None,
-            "context",
             {
                 "domain": _TEST_DOMAIN,
                 "actions": [{"side": "user", "func_name": "set_count", "arguments": {"value": 1}}],
@@ -291,11 +291,10 @@ def test_rtvi_handler_missing_state_db_returns_error():
 def test_rtvi_handler_with_non_list_actions_payload_returns_error():
     ref = SharedStateRef()
     ref.state = {"db": {}}
-    action = create_apply_initialization_action(ref)
+    _name, handler = create_apply_initialization_action(ref)
     result = asyncio.run(
-        action.handler(
+        handler(
             None,
-            "context",
             {"domain": _TEST_DOMAIN, "actions": "not a list"},
         )
     )

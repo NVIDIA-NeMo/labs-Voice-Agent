@@ -2,17 +2,15 @@
 # Please set NVIDIA_API_KEY in your environment.
 
 server:
-  log_file: "bot_agent_server.log"
+  log_file: "bot_server.log"
   log_level: "DEBUG"
-  create_new_log: true
-  overwrite_existing_log: true
-  use_model_registry: false
-  talk_first: false  
+  use_model_registry: true
+  talk_first: true  
 
 transport:
-  audio_out_10ms_chunks: 10
+  audio_out_10ms_chunks: 8
   record_audio_data: false
-  audio_log_dir: "./audio_logs_agent"
+  audio_log_dir: "./audio_logs"
 
 vad:
   type: silero
@@ -29,7 +27,21 @@ stt:
   # function_id: "71203149-d3b7-4460-8231-1be2543a1fca"
   model: "nemotron-asr-streaming"
   function_id: "bb0837de-8c7b-481f-9ec8-ef5663e9c1fa"
-  
+
+diar:
+  enabled: false # set to false to disable local diarization model while NIM is not available yet
+  type: nemo
+  model: "nvidia/diar_streaming_sortformer_4spk-v2.1"
+  device: "cuda"
+  threshold: 0.5  # threshold value used to determine if a speaker exists or not, setting it to a lower value will increaset the sensitivity of the model
+  frame_len_in_secs: 0.08  # default for Sortformer, do not change unless using other architechtures
+
+turn_taking:
+  enabled: false # disable to let VAD handle the user start and stop speaking
+  backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
+  max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
+  bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
+
 
 llm:
   type: nvidia
@@ -45,7 +57,7 @@ llm:
   # genuinely slow tool (e.g. one doing a network round-trip); set it to null
   # to restore pipecat's unbounded default.
   function_call_timeout_secs: 10.0
-  enable_reasoning: true 
+  enable_reasoning: false # turn off reasoning for lowest latency
 
   ##############################
   ## Common generation config ##
@@ -79,9 +91,3 @@ tts:
   language: "en-US"
   function_id: "877104f7-e885-42b9-8de8-f6e4c6303969"
 
-
-diar:
-  enabled: false # set to false to disable
-
-turn_taking:
-  enabled: false

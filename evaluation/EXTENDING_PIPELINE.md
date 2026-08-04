@@ -16,7 +16,7 @@ This guide is for users who want to evaluate something different than the stock 
 The eval harness is a **separate process** (`evaluation/bridge.py`) from the bot. It opens a WebSocket client to your bot, shuttles audio between two bot connections (agent + user-sim), and orchestrates scenario lifecycle via RTVI control messages. As long as your bot satisfies two things, the rest of pipecat (and the model/processor choices inside) is yours:
 
 1. **Speaks pipecat's WebSocket transport protocol** on the configured port (`WEBSOCKET_PORT`).
-2. **Has an `RTVIProcessor` in its pipeline** with the six RTVI actions registered (see [Tier 3](#tier-3--build-a-whole-new-pipecat-pipeline) below).
+2. **Has an `RTVIProcessor` in its pipeline** with the six RTVI client-message handlers registered (see [Tier 3](#tier-3--build-a-whole-new-pipecat-pipeline) below).
 
 The bridge doesn't care how the audio is generated, what model produced the response, or what processors sit between STT and LLM. It cares about the wire protocol and the control plane.
 
@@ -45,10 +45,10 @@ There are two top-level `server_configs/` directories in the repo, one for each 
 
 The eval directory ships ready-to-use configs you can use as starting points:
 
-- `agent.yaml`, `agent_nvidia.yaml`, `agent_nvidia_omni.yaml`, `agent_think.yaml` — agent-side variants (different LLMs, with or without reasoning mode).
-- `user.yaml`, `user_nvidia.yaml`, `user_think.yaml` — user-sim variants matching the same model families.
+- `agent.yaml`, `agent_nvidia.yaml`, `agent_nvidia_omni.yaml` — agent-side variants (different LLMs).
+- `user.yaml`, `user_nvidia.yaml` — user-sim variants matching the same model families.
 
-The `*_think.yaml` variants enable reasoning mode and automatically pull in the matching `*_think` sub-config. `_nvidia*` variants target NVIDIA-hosted endpoints.
+Reasoning mode is a per-config toggle rather than a separate file: set `llm.enable_reasoning: true` and the config manager automatically swaps in the matching `llm_configs/*_think.yaml` sub-config. All the eval configs above ship with reasoning **on** and diarization **off**. `_nvidia*` variants target NVIDIA-hosted endpoints.
 
 ### Where things are wired
 
@@ -70,7 +70,7 @@ Each component's section typically has a `model_config:` field pointing at a sub
 
 To run the eval agent against a different vLLM-served model:
 
-1. **Pick a starting point.** Copy one of the existing eval configs that's closest to what you want (e.g. `evaluation/server_configs/agent_nvidia.yaml` if you're targeting a different NVIDIA-hosted endpoint, or `evaluation/server_configs/agent_think.yaml` if you want reasoning mode on).
+1. **Pick a starting point.** Copy one of the existing eval configs that's closest to what you want (e.g. `evaluation/server_configs/agent_nvidia.yaml` if you're targeting a different NVIDIA-hosted endpoint). For reasoning mode, set `llm.enable_reasoning: true` in whichever config you copied.
 2. **Drop a new model sub-YAML** at `examples/generic_voice_agent/server/server_configs/llm_configs/my_custom_model.yaml` (copy a sibling — e.g. `llama3_70b.yaml` — as a starting point). Edit the `model_id`, `vllm_server_params`, sampling params to match your target.
 3. **Edit your eval config** (`evaluation/server_configs/agent_my_custom.yaml` or whichever you copied) so the `llm.model_config:` field points at `llm_configs/my_custom_model.yaml`.
 4. **Run the bot:**
@@ -197,7 +197,7 @@ When Tier 2 isn't enough — you want different services, a different pipeline s
 
 Your custom pipeline MUST have:
 
-1. **A pipecat WebSocket transport** — `WebSocketServerTransport` (from `pipecat.transports.network.websocket_server`) bound to `WEBSOCKET_PORT` (env var, default 8765 agent / 8766 user-sim). This handles the wire protocol (protobuf-framed audio + control messages) so you don't have to.
+1. **A pipecat WebSocket transport** — `SingleClientWebsocketServerTransport` (from `pipecat.transports.websocket.server`) bound to `WEBSOCKET_PORT` (env var, default 8765 agent / 8766 user-sim). This handles the wire protocol (protobuf-framed audio + control messages) so you don't have to.
 
 2. **An `RTVIProcessor`** somewhere in the pipeline with the **six required actions** registered:
 
@@ -210,7 +210,7 @@ Your custom pipeline MUST have:
 | `create_get_context_history_action` | bot → bridge | Bridge pulls at end of scenario for `bot_logs_*/llm_context.json`: returns the LLM conversation history. |
 | `create_reset_context_action` | bridge → bot | Bridge sends between scenarios to clear conversation history and reset stateful services. |
 
-All six factories live in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Each takes a small set of pipeline references (a `TaskRef`, a `SharedStateRef`, etc.) and returns an `RTVIAction` that the processor calls when the matching wire message arrives.
+All six factories live in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Each takes a small set of pipeline references (a `TaskRef`, a `SharedStateRef`, etc.) and returns a `(message_type, handler)` pair. Pass them to `register_client_message_handlers(rtvi, [...])`, which installs a single `on_client_message` dispatcher; the handler's return value is sent back as the `server-response` payload.
 
 ### Minimal Tier 3 skeleton
 
@@ -220,13 +220,13 @@ from pipecat.frames.frames import EndFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.frameworks.rtvi import RTVIConfig, RTVIProcessor
-from pipecat.transports.network.websocket_server import (
+from pipecat.processors.frameworks.rtvi import RTVIProcessor
+from pipecat.transports.websocket.server import (
     WebsocketServerParams,
     WebsocketServerTransport,
 )
 
-# RTVI action factories — the only mandatory imports for eval compatibility.
+# RTVI client-message handler factories — the only mandatory imports for eval compatibility.
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     TaskRef,
     SharedStateRef,
@@ -236,6 +236,7 @@ from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     create_apply_sync_delta_action,
     create_get_scenario_summary_action,
     create_get_context_history_action,
+    register_client_message_handlers,
 )
 
 # Tool registry — used by update_system_prompt to look up per-scenario tools.
@@ -261,8 +262,8 @@ async def run_custom_bot():
         params=WebsocketServerParams(vad_analyzer=vad, audio_in_enabled=True, audio_out_enabled=True),
     )
 
-    # ---- 3. RTVI processor + the 6 required actions (REQUIRED) --------
-    rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
+    # ---- 3. RTVI processor + the 6 required handlers (REQUIRED) -------
+    rtvi = RTVIProcessor()
     task_ref = TaskRef()
     shared_state_ref = SharedStateRef()
 
@@ -271,29 +272,33 @@ async def run_custom_bot():
     # for the reference assembly — typically a few lines.)
     user_agg, assistant_agg, context, original_messages, resettable = build_my_context(...)
 
-    rtvi.register_action(
-        create_reset_context_action(
-            task_ref, user_agg, assistant_agg, original_messages, resettable,
-        )
+    # Each factory returns a (message_type, handler) pair;
+    # register_client_message_handlers installs one on_client_message dispatcher
+    # for all of them. (pipecat 1.0 removed RTVIAction / rtvi.register_action.)
+    register_client_message_handlers(
+        rtvi,
+        [
+            create_reset_context_action(
+                task_ref, user_agg, assistant_agg, original_messages, resettable,
+            ),
+            create_update_system_prompt_action(
+                task_ref, user_agg, assistant_agg, original_messages, resettable,
+                system_role="system",
+                system_prompt_suffix="",
+                enable_tool_calling=True,
+                llm=llm,
+                context=context,
+                rtvi=rtvi,
+                tool_factory=get_schema_tool_for_eval,
+                register_schema_tools=register_schema_tools_to_llm,  # your tool-registration adapter
+                shared_state_ref=shared_state_ref,
+            ),
+            create_apply_initialization_action(shared_state_ref),
+            create_apply_sync_delta_action(shared_state_ref),
+            create_get_scenario_summary_action(task_ref, shared_state_ref),
+            create_get_context_history_action(task_ref, assistant_agg),
+        ],
     )
-    rtvi.register_action(
-        create_update_system_prompt_action(
-            task_ref, user_agg, assistant_agg, original_messages, resettable,
-            system_role="system",
-            system_prompt_suffix="",
-            enable_tool_calling=True,
-            llm=llm,
-            context=context,
-            rtvi=rtvi,
-            tool_factory=get_schema_tool_for_eval,
-            register_schema_tools=register_schema_tools_to_llm,  # your tool-registration adapter
-            shared_state_ref=shared_state_ref,
-        )
-    )
-    rtvi.register_action(create_apply_initialization_action(shared_state_ref))
-    rtvi.register_action(create_apply_sync_delta_action(shared_state_ref))
-    rtvi.register_action(create_get_scenario_summary_action(task_ref, shared_state_ref))
-    rtvi.register_action(create_get_context_history_action(task_ref, assistant_agg))
 
     # ---- 4. Assemble the pipeline -------------------------------------
     # The shape is up to you. ws_transport.input() / output() and `rtvi` are
@@ -328,18 +333,18 @@ Inside the contract, everything is yours:
 - **Services.** Use any STT/LLM/TTS that emits/consumes pipecat frames. Roll your own `FrameProcessor` subclass with `process_frame` if you need to wrap a service that isn't pipecat-native.
 - **Pipeline shape.** Add intermediate processors, parallel branches, anything pipecat supports.
 - **Tool calling.** If your LLM service supports OpenAI-compatible function calling, you can reuse `register_schema_tools_to_llm` (see `nemo_voice_agent/utils/tool_calling/__init__.py`). Otherwise plug in your own tool-registration callback compatible with the `register_schema_tools` arg.
-- **Context management.** The `user_agg` / `assistant_agg` pair just needs to be pipecat `LLMUserContextAggregator` / `LLMAssistantContextAggregator` instances (or duck-typed equivalents). You can use a custom `OpenAILLMContext` subclass to alter context shape, but the aggregators need to honor the standard frame protocol.
+- **Context management.** The `user_agg` / `assistant_agg` pair just needs to be pipecat `LLMUserAggregator` / `LLMAssistantAggregator` instances (or duck-typed equivalents) — build them with `LLMContextAggregatorPair(context, ...)`. You can subclass the universal `LLMContext` to alter context shape, but the aggregators need to honor the standard frame protocol.
 - **Reasoning, thinking-token budgets, parser plugins.** Out of scope of the contract — entirely your business.
 
 ### What you're NOT free to change
 
 - The WebSocket wire protocol (use a pipecat WS transport).
-- The six RTVI action signatures (your bot reads from / writes to the same wire messages the bridge sends/expects).
+- The six RTVI client-message handler signatures (your bot reads from / writes to the same wire messages the bridge sends/expects).
 - The tool registry namespace key (`scenario.domain`) — your `register_schema_tools_to_llm` adapter must accept the same `tool_factory(name, domain=...)` interface so the bridge-sent `tool_domain` resolves to the right tool set.
 
 ### Non-pipecat bots
 
-Out of scope for this guide. If you genuinely need to evaluate a non-pipecat agent (LiveKit, Rasa, hand-rolled), you'd have to re-implement pipecat's WS transport protocol + RTVI message handling. Possible but a large undertaking — start by reading `pipecat.transports.network.websocket_server` and `pipecat.serializers.protobuf` and treat them as the wire spec.
+Out of scope for this guide. If you genuinely need to evaluate a non-pipecat agent (LiveKit, Rasa, hand-rolled), you'd have to re-implement pipecat's WS transport protocol + RTVI message handling. Possible but a large undertaking — start by reading `pipecat.transports.websocket.server` and `pipecat.serializers.protobuf` and treat them as the wire spec.
 
 ## Verifying your customization
 
@@ -361,7 +366,7 @@ Inspect the resulting `eval_results/eval_<ts>/restaurant__pizza_pepperoni/`:
 | File | Looking for |
 |---|---|
 | `metrics.json` | `is_successful` should be `True`, `False`, or `"N/A"` — never missing. If missing, your bot didn't return a usable `get_scenario_summary` payload. |
-| `bridge_log.txt` | Search for `unknown action` errors → an RTVI action you forgot to register. Search for `update_system_prompt` events → your bot is receiving prompts. Search for `[AGENT METRICS] ttfb` → your LLM service is emitting TTFB events (informational only). |
+| `bridge_log.txt` | Search for `unknown message type` errors → an RTVI client-message handler you forgot to register. Search for `update_system_prompt` events → your bot is receiving prompts. Search for `[AGENT METRICS] ttfb` → your LLM service is emitting TTFB events (informational only). |
 | `bot_logs_agent/llm_context.json` | Should contain the scenario's system prompt as the first message and the agent's tool calls as `assistant.tool_calls` entries. If the system prompt is wrong, `update_system_prompt` didn't propagate. If tool calls are missing, your tool-registration adapter didn't wire the registry into the LLM service. |
 | `final_scenario_db_hash.txt` | Should contain a `db_hash:` line. If missing, `get_scenario_summary` isn't returning the expected `{actions, db_hash}` shape. |
 

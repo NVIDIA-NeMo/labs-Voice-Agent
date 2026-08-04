@@ -23,12 +23,20 @@ from io import BytesIO
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
-from pipecat.frames.frames import AudioRawFrame, EndTaskFrame
+from omegaconf import OmegaConf
+from pipecat.frames.frames import AudioRawFrame, EndFrame, EndWorkerFrame, StopFrame
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMAssistantAggregator,
+    LLMUserAggregator,
+)
+from pipecat.processors.aggregators.llm_text_processor import LLMTextProcessor
+from pipecat.turns.user_turn_strategies import ExternalUserTurnStrategies
 
 from nemo_voice_agent.evaluation.tools.waitlist_tools import DropWaitListTool, GetWaitlistTool, JoinWaitListTool
 from nemo_voice_agent.pipecat import bot_server
-from nemo_voice_agent.pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from nemo_voice_agent.pipecat.services.nemo import builders
+from nemo_voice_agent.pipecat.utils.text.simple_text_aggregator import SimpleSegmentedTextAggregator
 
 
 def _config(**overrides):
@@ -37,7 +45,6 @@ def _config(**overrides):
         transport={
             "audio_in_sample_rate": 8000,
             "audio_out_sample_rate": 24000,
-            "can_create_user_frames": True,
         },
         diar={"enabled": True},
         turn_taking={"enabled": True},
@@ -71,8 +78,8 @@ def test_builder_factories_delegate_and_preserve_configuration(monkeypatch):
     config = _config()
     monkeypatch.setattr(builders, "SileroVADAnalyzer", lambda **kwargs: ("vad", kwargs))
     monkeypatch.setattr(builders, "ProtobufFrameSerializer", lambda: "serializer")
-    monkeypatch.setattr(builders, "WebsocketServerParams", lambda **kwargs: SimpleNamespace(**kwargs))
-    monkeypatch.setattr(builders, "WebsocketServerTransport", lambda **kwargs: ("transport", kwargs))
+    monkeypatch.setattr(builders, "SingleClientWebsocketServerParams", lambda **kwargs: SimpleNamespace(**kwargs))
+    monkeypatch.setattr(builders, "SingleClientWebsocketServerTransport", lambda **kwargs: ("transport", kwargs))
     monkeypatch.setattr(builders, "get_stt_service_from_config", lambda cfg, logger: ("stt", cfg, logger))
     monkeypatch.setattr(builders, "get_tts_service_from_config", lambda cfg, logger: ("tts", cfg, logger))
     monkeypatch.setattr(builders, "get_llm_service_from_config", lambda cfg: ("llm", cfg))
@@ -86,7 +93,6 @@ def test_builder_factories_delegate_and_preserve_configuration(monkeypatch):
     assert params.serializer == "serializer"
     assert params.audio_in_sample_rate == 8000
     assert params.audio_out_sample_rate == 24000
-    assert params.can_create_user_frames is True
     assert params.audio_out_10ms_chunks == 7
     assert builders.build_stt(config, "logger")[0] == "stt"
     assert builders.build_tts(config, "logger")[0] == "tts"
@@ -136,24 +142,17 @@ def test_context_and_logging_builders(monkeypatch):
     """Context construction preserves prompts and returns both aggregators."""
     config = _config()
 
-    class Pair:
-        def user(self):
-            return "user-aggregator"
-
-        def assistant(self):
-            return "assistant-aggregator"
-
-    class LLM:
-        def create_context_aggregator(self, context):
-            assert context.get_messages() == [
-                {"role": "system", "content": "policy"},
-                {"role": "user", "content": "Hi"},
-            ]
-            return Pair()
-
-    context, user, assistant, original = builders.build_context_and_aggregators(LLM(), config)
-    assert user == "user-aggregator"
-    assert assistant == "assistant-aggregator"
+    context, user, assistant, original = builders.build_context_and_aggregators(object(), config)
+    assert context.get_messages() == [
+        {"role": "system", "content": "policy"},
+        {"role": "user", "content": "Hi"},
+    ]
+    assert isinstance(user, LLMUserAggregator)
+    assert isinstance(assistant, LLMAssistantAggregator)
+    # turn_taking.enabled is True in _config(), so NeMoTurnTakingService owns the
+    # turn boundaries and the aggregator must defer to it rather than deriving
+    # turns from VAD itself.
+    assert isinstance(user._params.user_turn_strategies, ExternalUserTurnStrategies)
     assert original == context.get_messages()
     assert original is not context.get_messages()
     assert builders.resolve_log_file_path(config) == ("voice.log", "INFO", True)
@@ -194,7 +193,10 @@ class _Task:
 
 
 def test_run_bot_websocket_server_exercises_registered_lifecycle(monkeypatch):
-    """Registered handlers initialize, terminate, reset, and finalize a session."""
+    """Registered handlers initialize, reset, and finalize a session.
+
+    Notably they do *not* terminate the pipeline: see the assertion below.
+    """
     ws = _Registrar()
     rtvi = _RTVI()
     task = _Task()
@@ -236,8 +238,12 @@ def test_run_bot_websocket_server_exercises_registered_lifecycle(monkeypatch):
     assert rtvi._client_ready is False
     assert rtvi._bot_ready is False
     assert task.queued[0] == "initial"
-    assert sum(isinstance(frame, EndTaskFrame) for frame in task.queued) == 2
-    assert reset_service.reset_calls == 1
+    # Disconnect and session-timeout must NOT end the pipeline. The WebSocket
+    # server lives inside the input transport, so ending it would stop the
+    # server and make the bot unreachable for the rest of the process. Both
+    # handlers reset services instead.
+    assert not any(isinstance(frame, (EndWorkerFrame, EndFrame, StopFrame)) for frame in task.queued)
+    assert reset_service.reset_calls == 2
     assert disconnected == [True]
     assert audio_logger.finalize_calls == 3
 
@@ -289,25 +295,19 @@ def test_fastapi_app_and_concurrent_runner(monkeypatch):
     assert seen["served"] is seen["ws"] is True
 
 
-def test_openai_audio_context_encodes_wav_and_adds_message(tmp_path):
+def test_audio_context_encodes_wav_and_adds_message():
     """Audio context messages contain a valid WAV and optionally persist it."""
-    output = tmp_path / "nested" / "audio.wav"
     frames = [AudioRawFrame(b"\x00\x01" * 8, 16000, 1), AudioRawFrame(b"\x02\x03" * 4, 16000, 1)]
-    message = asyncio.run(
-        OpenAILLMContext.create_audio_message(
-            role="developer", audio_frames=frames, text="listen", audio_output_path=output
-        )
-    )
+    message = asyncio.run(LLMContext.create_audio_message(role="developer", audio_frames=frames, text="listen"))
     assert message["role"] == "developer"
     assert message["content"][0] == {"type": "text", "text": "listen"}
     wav_bytes = base64.b64decode(message["content"][1]["input_audio"]["data"])
-    assert output.read_bytes() == wav_bytes
     with wave.open(BytesIO(wav_bytes), "rb") as wav_file:
         assert wav_file.getframerate() == 16000
         assert wav_file.getnchannels() == 1
         assert wav_file.getnframes() == 12
 
-    context = OpenAILLMContext(messages=[])
+    context = LLMContext(messages=[])
     asyncio.run(context.add_audio_frames_message(audio_frames=frames, text="audio"))
     assert context.get_messages()[0]["content"][0]["text"] == "audio"
 
@@ -361,3 +361,71 @@ def test_waitlist_tools_cover_join_drop_get_and_not_found():
     assert len(params.results) == 1
     assert params.result["total_in_waitlist"] == 1
     assert getter.properties == {}
+
+
+def test_llm_text_processor_carries_the_custom_segmented_aggregator():
+    """The custom TTS aggregator must reach an LLMTextProcessor, not the TTS service.
+
+    Pipecat 1.0 removed ``TTSService(text_aggregator=...)`` and *silently
+    ignores* unknown constructor kwargs, so a regression here would degrade TTS
+    chunking back to plain sentence splitting without raising anything. Assert
+    the wiring explicitly.
+    """
+    config = _config()
+    config.server_config.tts = OmegaConf.create({"type": "nemo", "min_sentence_length": 9})
+
+    processor = builders.build_llm_text_processor(config)
+
+    assert isinstance(processor, LLMTextProcessor)
+    assert isinstance(processor._text_aggregator, SimpleSegmentedTextAggregator)
+    assert processor._text_aggregator._min_sentence_length == 9
+
+    config.server_config.tts = OmegaConf.create({"type": "nemo", "use_text_aggregator": False})
+    assert builders.build_llm_text_processor(config) is None
+
+
+def _turn_strategies(config, turn_taking):
+    """Return the user-turn strategies build_context_and_aggregators selects."""
+    _, user_agg, _, _ = builders.build_context_and_aggregators(object(), config, turn_taking)
+    return user_agg._params.user_turn_strategies
+
+
+def test_exactly_one_component_emits_user_speaking_frames():
+    """Whoever owns turn detection is the sole emitter of the user speaking frames.
+
+    In pipecat 1.x the LLMUserAggregator — not the transport and not VAD —
+    emits UserStartedSpeakingFrame / UserStoppedSpeakingFrame, gated on each
+    strategy's ``enable_user_speaking_frames``. So when NeMoTurnTakingService is
+    in the pipeline the aggregator must stay quiet (or both would emit), and
+    when it is absent the aggregator must emit (or nothing would).
+    """
+    config = _config()
+
+    # Turn-taking present: it pushes the frames, so the aggregator defers.
+    with_service = _turn_strategies(config, object())
+    assert isinstance(with_service, ExternalUserTurnStrategies)
+    assert not any(s._enable_user_speaking_frames for s in with_service.start)
+    assert not any(s._enable_user_speaking_frames for s in with_service.stop)
+
+    # Turn-taking absent: VAD drives the turn and the aggregator emits.
+    config.server_config.turn_taking = {"enabled": False}
+    without_service = _turn_strategies(config, None)
+    assert not isinstance(without_service, ExternalUserTurnStrategies)
+    assert all(s._enable_user_speaking_frames for s in without_service.start)
+    assert [type(s).__name__ for s in without_service.start] == ["VADUserTurnStartStrategy"]
+    # Named explicitly so we don't inherit pipecat's default stop strategy,
+    # which would pull in LocalSmartTurnAnalyzerV3.
+    assert [type(s).__name__ for s in without_service.stop] == ["SpeechTimeoutUserTurnStopStrategy"]
+
+
+def test_turn_taking_instance_overrides_the_config_flag():
+    """The passed-in service decides, not a re-derived read of turn_taking.enabled.
+
+    A bot may construct its turn-taking service inline; re-deriving the answer
+    from config would then silently pick the wrong strategy pair.
+    """
+    config = _config()
+    config.server_config.turn_taking = {"enabled": False}
+
+    assert isinstance(_turn_strategies(config, object()), ExternalUserTurnStrategies)
+    assert not isinstance(_turn_strategies(config, None), ExternalUserTurnStrategies)

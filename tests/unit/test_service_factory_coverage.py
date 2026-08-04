@@ -27,14 +27,15 @@ def _fake(name):
 
 def test_stt_factory_routes_all_backends(monkeypatch):
     monkeypatch.setattr(stt, "NemoSTTService", _fake("nemo"))
-    monkeypatch.setattr(stt, "ResilientNvidiaSTTService", _fake("nvidia"))
-    monkeypatch.setattr(stt, "NemotronASRService", _fake("nemotron"))
+    monkeypatch.setattr(stt, "NvidiaSTTService", _fake("nvidia"))
     nemo = stt.get_stt_service_from_config(OmegaConf.create({"type": "nemo", "model": "m", "device": "cpu"}), "log")
     assert nemo[0] == "nemo" and nemo[1]["audio_logger"] == "log"
     nvidia = stt.get_stt_service_from_config(OmegaConf.create({"type": "nvidia", "model": "m", "sample_rate": 8000}))
     assert nvidia[0] == "nvidia" and nvidia[1]["sample_rate"] == 8000
-    nemotron = stt.get_stt_service_from_config(OmegaConf.create({"type": "nemotron", "generate_interruptions": True}))
-    assert nemotron[0] == "nemotron" and nemotron[1]["generate_interruptions"] is True
+    # The "nemotron" backend was removed with the vendored riva_speech fork; the
+    # "nvidia" branch now uses pipecat's own NvidiaSTTService.
+    with pytest.raises(AssertionError, match="Invalid STT backend"):
+        stt.get_stt_service_from_config(OmegaConf.create({"type": "nemotron"}))
     with pytest.raises(AssertionError, match="Invalid STT backend"):
         stt.get_stt_service_from_config(OmegaConf.create({"type": "bad"}))
 
@@ -56,10 +57,18 @@ def test_nemo_tts_factory_models(monkeypatch, model, expected):
 
 def test_remote_tts_factories_and_errors(monkeypatch):
     monkeypatch.setattr(tts, "SimpleSegmentedTextAggregator", _fake("aggregator"))
-    monkeypatch.setattr(tts, "NvidiaTTSService", _fake("nvidia"))
-    monkeypatch.setattr(tts, "ResilientNemotronTTSService", _fake("nemotron"))
-    assert tts.get_tts_service_from_config({"type": "nvidia"})[0] == "nvidia"
-    assert tts.get_tts_service_from_config({"type": "nemotron", "use_text_aggregator": False})[0] == "nemotron"
+    # The nvidia branch builds our retry subclass, not pipecat's service directly.
+    monkeypatch.setattr(tts, "ResilientNvidiaTTSService", _fake("nvidia"))
+    nvidia = tts.get_tts_service_from_config({"type": "nvidia"})
+    assert nvidia[0] == "nvidia"
+    # Retry is on by default; tts.max_retries: 0 restores upstream's single-shot
+    # behavior, so the knob has to reach the constructor.
+    assert nvidia[1]["max_retries"] == 2
+    assert tts.get_tts_service_from_config({"type": "nvidia", "max_retries": 0})[1]["max_retries"] == 0
+    # The "nemotron" TTS branch went away with the vendored riva_speech fork; it
+    # now falls through to the local-model path and fails the model check.
+    with pytest.raises(ValueError, match="Model is required"):
+        tts.get_tts_service_from_config({"type": "nemotron", "use_text_aggregator": False})
     with pytest.raises(ValueError, match="Model is required"):
         tts.get_tts_service_from_config({"type": "nemo"})
     with pytest.raises(ValueError, match="Invalid model"):
@@ -104,6 +113,52 @@ def test_llm_hf_vllm_and_nvidia_factories(monkeypatch):
     assert nvidia[0] == "nvidia" and nvidia[1]["api_key"] == "key"
 
 
+class TestFunctionCallTimeoutIsBounded:
+    """A tool call must never be able to hang a turn forever.
+
+    Pipecat 1.6 changed ``LLMService.function_call_timeout_secs`` from ``10.0``
+    to ``None`` (run indefinitely). Nothing raises or logs when it is unset, so
+    a regression here is only observable as an evaluation scenario that stops
+    making progress.
+    """
+
+    @staticmethod
+    def _cfg(**overrides):
+        base = {"type": "vllm", "model": "m", "dtype": "float16"}
+        base.update(overrides)
+        return OmegaConf.create(base)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "cfg, fake_name",
+        [
+            ({"type": "hf", "model": "m", "device": "cpu", "dtype": "float32"}, "HuggingFaceLLMService"),
+            ({"type": "vllm", "model": "m", "dtype": "float16"}, "VLLMService"),
+            ({"type": "nvidia", "model": "m"}, "NvidiaLLMService"),
+        ],
+    )
+    def test_every_backend_receives_the_timeout(self, monkeypatch, cfg, fake_name):
+        monkeypatch.setenv("NVIDIA_API_KEY", "key")
+        monkeypatch.setattr(llm, fake_name, _fake(fake_name))
+        result = llm.get_llm_service_from_config(OmegaConf.create(cfg))
+        assert result[1]["function_call_timeout_secs"] == 10.0
+
+    @pytest.mark.unit
+    def test_timeout_is_configurable(self, monkeypatch):
+        monkeypatch.setattr(llm, "VLLMService", _fake("vllm"))
+        result = llm.get_llm_service_from_config(self._cfg(function_call_timeout_secs=45.0))
+        assert result[1]["function_call_timeout_secs"] == 45.0
+
+    @pytest.mark.unit
+    def test_timeout_actually_lands_on_a_real_llm_service(self):
+        """The fakes above swallow kwargs, so prove the arg is one pipecat accepts."""
+        from pipecat.services.llm_service import LLMService
+
+        assert LLMService(function_call_timeout_secs=10.0)._function_call_timeout_secs == 10.0
+        # Guard the premise: upstream's default really is unbounded.
+        assert LLMService()._function_call_timeout_secs is None
+
+
 def test_llm_auto_detection_and_validation(monkeypatch):
     monkeypatch.setattr(llm, "HuggingFaceLLMService", _fake("hf"))
     monkeypatch.setattr(llm, "VLLMService", _fake("vllm"))
@@ -126,3 +181,80 @@ def test_llm_auto_detection_and_validation(monkeypatch):
     monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
     with pytest.raises(ValueError, match="NVIDIA_API_KEY is required"):
         llm.get_llm_service_from_config(OmegaConf.create({"type": "nvidia"}))
+
+
+class TestServiceSettingsAreFullyInitialized:
+    """Pipecat >=1.0 validates settings completeness at start().
+
+    A field left as NOT_GIVEN only logs an error — the pipeline still runs — so
+    without these tests a regression here is invisible outside server logs.
+    """
+
+    @staticmethod
+    def _uninitialized(service):
+        from dataclasses import fields
+
+        from pipecat.services.settings import _NotGiven
+
+        settings = service._settings
+        return [
+            f.name for f in fields(settings) if f.name != "extra" and isinstance(getattr(settings, f.name), _NotGiven)
+        ]
+
+    @pytest.mark.unit
+    def test_stt_service_initializes_every_settings_field(self, monkeypatch):
+        from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams, NemoSTTService
+
+        monkeypatch.setattr(NemoSTTService, "_load_model", lambda self: None)
+        service = NemoSTTService.__new__(NemoSTTService)
+        NemoSTTService.__init__(service, model="nvidia/parakeet", params=NeMoSTTInputParams(), device="cpu")
+
+        assert self._uninitialized(service) == []
+        assert service._settings.model == "nvidia/parakeet"
+
+    @pytest.mark.unit
+    def test_diar_service_initializes_every_settings_field(self, monkeypatch):
+        from nemo_voice_agent.pipecat.services.nemo.diar import NeMoDiarInputParams, NemoDiarService
+
+        monkeypatch.setattr(NemoDiarService, "_load_model", lambda self: None)
+        service = NemoDiarService.__new__(NemoDiarService)
+        NemoDiarService.__init__(service, model="nvidia/sortformer", params=NeMoDiarInputParams(), device="cpu")
+
+        assert self._uninitialized(service) == []
+
+    @pytest.mark.unit
+    def test_diar_service_publishes_no_stt_metadata(self, monkeypatch):
+        """The diarizer produces no transcripts, so it must not advertise a TTFS.
+
+        SpeechTimeoutUserTurnStopStrategy keeps the last STTMetadataFrame it
+        sees, and diarization sits downstream of the real STT — publishing here
+        would override the STT's measured latency and skew end-of-turn timing.
+        """
+        from nemo_voice_agent.pipecat.services.nemo.diar import NeMoDiarInputParams, NemoDiarService
+
+        monkeypatch.setattr(NemoDiarService, "_load_model", lambda self: None)
+        service = NemoDiarService.__new__(NemoDiarService)
+        NemoDiarService.__init__(service, model="nvidia/sortformer", params=NeMoDiarInputParams(), device="cpu")
+
+        assert service.service_metadata_frame() is None
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "kwargs, expected_voice, expected_language",
+        [
+            ({"model": "fastpitch+hifigan"}, None, None),
+            ({"model": "kokoro", "voice": "af_heart", "language": "a"}, "af_heart", "a"),
+        ],
+    )
+    def test_tts_service_initializes_every_settings_field(self, kwargs, expected_voice, expected_language):
+        from nemo_voice_agent.pipecat.services.nemo.tts import BaseNemoTTSService
+
+        class _StubTTS(BaseNemoTTSService):
+            def _setup_model(self):
+                return object()
+
+        service = _StubTTS(**kwargs)
+
+        assert self._uninitialized(service) == []
+        assert service._settings.voice == expected_voice
+        assert service._settings.language == expected_language

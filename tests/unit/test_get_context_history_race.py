@@ -68,7 +68,7 @@ class _FakeAggregator:
 
 
 def _build_handler(aggregator, task_ref=None):
-    """Extract the inner async handler from the RTVIAction wrapper.
+    """Extract the inner async handler from the (name, handler) factory pair.
 
     The handler no longer calls ``_maybe_end_task`` (read-only handlers
     shouldn't end the pipeline task), but the factory function
@@ -77,8 +77,8 @@ def _build_handler(aggregator, task_ref=None):
     """
     if task_ref is None:
         task_ref = SimpleNamespace(task=None, running=False)
-    action = create_get_context_history_action(task_ref, aggregator)
-    return action.handler
+    _name, handler = create_get_context_history_action(task_ref, aggregator)
+    return handler
 
 
 def test_no_pending_calls_returns_immediately():
@@ -89,7 +89,7 @@ def test_no_pending_calls_returns_immediately():
     start = asyncio.new_event_loop().time()
 
     async def run():
-        return await handler(None, "context", {})
+        return await handler(None, {})
 
     loop = asyncio.new_event_loop()
     try:
@@ -118,7 +118,7 @@ def test_waits_for_pending_call_to_commit():
 
         handler = _build_handler(agg)
         start = asyncio.get_event_loop().time()
-        result = await handler(None, "context", {})
+        result = await handler(None, {})
         return result, asyncio.get_event_loop().time() - start
 
     loop = asyncio.new_event_loop()
@@ -141,7 +141,7 @@ def test_timeout_falls_back_to_return_with_warning():
         # Don't schedule any commit — aggregator stays stuck.
         handler = _build_handler(agg)
         start = asyncio.get_event_loop().time()
-        result = await handler(None, "context", {})
+        result = await handler(None, {})
         return result, asyncio.get_event_loop().time() - start
 
     loop = asyncio.new_event_loop()
@@ -164,7 +164,7 @@ def test_aggregator_without_property_does_not_crash():
         agg = SimpleNamespace(_context=SimpleNamespace(get_messages=lambda: [{"role": "user", "content": "ok"}]))
         # No has_function_calls_in_progress method.
         handler = _build_handler(agg)
-        return await handler(None, "context", {})
+        return await handler(None, {})
 
     loop = asyncio.new_event_loop()
     try:
@@ -176,10 +176,10 @@ def test_aggregator_without_property_does_not_crash():
 
 def test_handler_does_not_end_pipeline_task():
     """Regression test: the handler must NOT call ``_maybe_end_task`` (which would
-    enqueue ``EndTaskFrame`` and cancel the drain loop's ``await asyncio.sleep``).
+    enqueue ``EndWorkerFrame`` and cancel the drain loop's ``await asyncio.sleep``).
 
     Observed live on 2026-06-04 in bot_agent_server.log: the action arrived at the
-    bot but the handler never logged anything for 15 s because EndTaskFrame
+    bot but the handler never logged anything for 15 s because EndWorkerFrame
     interrupted the drain mid-wait. The handler is now read-only with no side
     effects on the pipeline.
     """
@@ -194,7 +194,7 @@ def test_handler_does_not_end_pipeline_task():
 
     async def run():
         handler = _build_handler(agg, task_ref=task_ref)
-        return await handler(None, "context", {})
+        return await handler(None, {})
 
     loop = asyncio.new_event_loop()
     try:
@@ -226,7 +226,7 @@ def test_exception_in_get_messages_returns_empty_context():
             _context=SimpleNamespace(get_messages=boom),
         )
         handler = _build_handler(agg)
-        return await handler(None, "context", {})
+        return await handler(None, {})
 
     loop = asyncio.new_event_loop()
     try:
@@ -234,3 +234,45 @@ def test_exception_in_get_messages_returns_empty_context():
     finally:
         loop.close()
     assert result == {"context": []}
+
+
+def test_rtvi_handlers_never_end_the_pipeline():
+    """No RTVI handler may end the pipeline worker.
+
+    Before pipecat 1.0 these queued an EndTaskFrame, which was inert:
+    queue_frames injects downstream while the frame was only handled upstream.
+    Pipecat 1.6 handles it downstream too, so the same call now tears down the
+    pipeline — taking the WebSocket server (owned by the input transport) with
+    it. ``reset`` and ``update_system_prompt`` run at the start of every
+    evaluation scenario, so this would kill the bot before its first turn.
+    """
+    import asyncio as _asyncio
+
+    from nemo_voice_agent.pipecat.processors.frameworks import rtvi_actions
+
+    queued = []
+
+    class _FakeTask:
+        async def queue_frames(self, frames):
+            queued.extend(frames)
+
+    task_ref = rtvi_actions.TaskRef()
+    task_ref.task = _FakeTask()
+    task_ref.running = True
+    shared_state_ref = rtvi_actions.SharedStateRef()
+    agg = _FakeAggregator(in_progress=False, messages=[])
+
+    _, reset_handler = rtvi_actions.create_reset_context_action(task_ref, agg, agg, [], [])
+    _, summary_handler = rtvi_actions.create_get_scenario_summary_action(task_ref, shared_state_ref)
+    _, history_handler = rtvi_actions.create_get_context_history_action(task_ref, agg)
+
+    async def run():
+        await reset_handler(None, {})
+        await summary_handler(None, {})
+        await history_handler(None, {})
+
+    _asyncio.run(run())
+
+    assert queued == [], f"an RTVI handler queued pipeline frames: {queued}"
+    # The helper that used to do it should be gone, not merely unused.
+    assert not hasattr(rtvi_actions, "_maybe_end_task")

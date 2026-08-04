@@ -26,28 +26,25 @@ from pipecat.frames.frames import (
     ErrorFrame,
     InputAudioRawFrame,
     InterimTranscriptionFrame,
+    InterruptionFrame,
     LLMRunFrame,
-    StartInterruptionFrame,
     TranscriptionFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
     VADUserStartedSpeakingFrame,
     VADUserStoppedSpeakingFrame,
 )
-from pipecat.metrics.metrics import LLMTokenUsage
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.transcriptions.language import Language
+from pipecat.transports.websocket.server import (
+    SingleClientWebsocketServerParams,
+    SingleClientWebsocketServerTransport,
+)
 
 from nemo_voice_agent.pipecat.services.common import UserAudioBuffer
 from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams, NemoSTTService
 from nemo_voice_agent.pipecat.services.nemo.tts import BaseNemoTTSService
 from nemo_voice_agent.pipecat.services.nemo.turn_taking import NeMoTurnTakingService
-from nemo_voice_agent.pipecat.services.nvidia_llm import NvidiaLLMService
-from nemo_voice_agent.pipecat.transports.base_input import BaseInputTransport
-from nemo_voice_agent.pipecat.transports.network.websocket_server import (
-    WebsocketServerParams,
-    WebsocketServerTransport,
-)
 
 
 def _drive(awaitable):
@@ -70,21 +67,6 @@ def _capture_pushes(service):
 def _transcription(text: str) -> TranscriptionFrame:
     """Build a minimal transcription frame for turn-taking tests."""
     return TranscriptionFrame(text, "", "now", Language.EN_US, result={"text": text})
-
-
-def _bare_nvidia_llm(**attrs):
-    """Construct NvidiaLLMService without creating an OpenAI client."""
-    service = NvidiaLLMService.__new__(NvidiaLLMService)
-    service._mistral_model_support = attrs.pop("_mistral_model_support", False)
-    service._is_processing = attrs.pop("_is_processing", False)
-    service._prompt_tokens = attrs.pop("_prompt_tokens", 0)
-    service._completion_tokens = attrs.pop("_completion_tokens", 0)
-    service._total_tokens = attrs.pop("_total_tokens", 0)
-    service._has_reported_prompt_tokens = attrs.pop("_has_reported_prompt_tokens", False)
-    for name, value in attrs.items():
-        setattr(service, name, value)
-    service._reset_think_filter_state()
-    return service
 
 
 def _bare_tts(**attrs):
@@ -159,33 +141,6 @@ def _audio_frame(value: int = 1) -> InputAudioRawFrame:
     return InputAudioRawFrame(audio=np.array([value], dtype=np.int16).tobytes(), sample_rate=16000, num_channels=1)
 
 
-def _bare_input_transport(*, new_vad_state, can_create_user_frames=True, turn_analyzer=None):
-    """Construct BaseInputTransport with fake VAD analysis and frame capture."""
-    transport = BaseInputTransport.__new__(BaseInputTransport)
-    transport._params = SimpleNamespace(
-        turn_analyzer=turn_analyzer,
-        can_create_user_frames=can_create_user_frames,
-        audio_in_enabled=True,
-    )
-    transport._paused = False
-    transport._audio_in_queue = asyncio.Queue()
-    transport._vad_analyze = lambda _frame: asyncio.sleep(0, result=new_vad_state)
-    transport.pushed = []
-    transport.interruptions = []
-
-    async def _push_frame(frame, direction=None):
-        """Capture pushed VAD/user frames."""
-        transport.pushed.append((frame, direction))
-
-    async def _handle_user_interruption(vad_state):
-        """Capture interruption handling calls."""
-        transport.interruptions.append(vad_state)
-
-    transport.push_frame = _push_frame
-    transport._handle_user_interruption = _handle_user_interruption
-    return transport
-
-
 def test_turn_taking_loads_backchannels_from_list_and_cleans_text():
     """Backchannel phrases are normalized and EOU/EOB markers are stripped before matching."""
     service = NeMoTurnTakingService(backchannel_phrases=["Yeah!", "Uh huh"], use_vad=True)
@@ -223,7 +178,7 @@ def test_turn_taking_vad_start_pushes_interruption_when_no_backchannels():
 
     assert isinstance(pushed[0][0], VADUserStartedSpeakingFrame)
     assert any(isinstance(frame, UserStartedSpeakingFrame) for frame, _ in pushed)
-    assert any(isinstance(frame, StartInterruptionFrame) for frame, _ in pushed)
+    assert any(isinstance(frame, InterruptionFrame) for frame, _ in pushed)
     assert service._have_sent_user_started_speaking is True
 
 
@@ -237,7 +192,7 @@ def test_turn_taking_eou_transcription_emits_completed_turn_and_stop():
 
     frames = [frame for frame, _ in pushed]
     assert any(isinstance(frame, UserStartedSpeakingFrame) for frame in frames)
-    assert any(isinstance(frame, StartInterruptionFrame) for frame in frames)
+    assert any(isinstance(frame, InterruptionFrame) for frame in frames)
     assert any(isinstance(frame, TranscriptionFrame) and frame.text == "book a table" for frame in frames)
     assert any(isinstance(frame, UserStoppedSpeakingFrame) for frame in frames)
     assert service._user_speaking_buffer == ""
@@ -308,100 +263,6 @@ def test_turn_taking_vad_stop_ignores_speaker_tag_only_buffer():
 
     assert len(pushed) == 1
     assert pushed[0][0].__class__ is SimpleNamespace
-
-
-def test_nvidia_llm_mistral_preprocessing_merges_consecutive_roles():
-    """Mistral preprocessing combines adjacent messages with the same role."""
-    service = _bare_nvidia_llm(_mistral_model_support=True)
-    messages = [
-        {"role": "system", "content": "policy"},
-        {"role": "user", "content": "hello"},
-        {"role": "user", "content": "again"},
-        {"role": "assistant", "content": "hi"},
-        {"role": "assistant", "content": "there"},
-    ]
-
-    assert service._preprocess_messages_for_mistral(messages) == [
-        {"role": "system", "content": "policy"},
-        {"role": "user", "content": "hello again"},
-        {"role": "assistant", "content": "hi there"},
-    ]
-
-
-def test_nvidia_llm_mistral_preprocessing_noops_when_disabled():
-    """Mistral preprocessing returns the original list when support is disabled."""
-    service = _bare_nvidia_llm(_mistral_model_support=False)
-    messages = [{"role": "user", "content": "hello"}]
-
-    assert service._preprocess_messages_for_mistral(messages) is messages
-
-
-def test_nvidia_llm_think_filter_handles_split_end_tag_and_then_streams_content():
-    """Think-token filtering suppresses thought text until a split closing tag completes."""
-    service = _bare_nvidia_llm()
-
-    assert service._filter_think_token("<think>hidden") == ""
-    assert service._filter_think_token("</thi") == ""
-    assert service._filter_think_token("nk>visible") == "visible"
-    assert service._filter_think_token(" next") == " next"
-
-
-def test_nvidia_llm_think_filter_resets_state():
-    """Resetting think-filter state clears buffers and end-tag tracking."""
-    service = _bare_nvidia_llm()
-    service._filter_think_token("<think>hidden")
-
-    service._reset_think_filter_state()
-
-    assert service._seen_end_tag is False
-    assert service._buffer == ""
-    assert service._thinking_aggregation == ""
-    assert service._partial_tag_buffer == ""
-
-
-@pytest.mark.parametrize(
-    "status, expected",
-    [
-        (401, "bad API key"),
-        (404, "wrong URL or model"),
-        (500, "HTTP 500"),
-    ],
-)
-def test_nvidia_llm_error_mapping_for_http_statuses(status, expected):
-    """HTTP status errors are re-raised with endpoint/model configuration hints."""
-    service = _bare_nvidia_llm()
-    request = httpx.Request("GET", "https://example.test/v1")
-    response = httpx.Response(status, request=request)
-    err = httpx.HTTPStatusError("failed", request=request, response=response)
-
-    with pytest.raises(ValueError, match=expected):
-        service._raise_llm_error(err)
-
-
-def test_nvidia_llm_error_mapping_for_connectivity_and_auth_strings():
-    """Connectivity and auth-looking plain errors are mapped to actionable ValueErrors."""
-    service = _bare_nvidia_llm()
-
-    with pytest.raises(ValueError, match="Cannot connect"):
-        service._raise_llm_error(httpx.ConnectError("connection refused"))
-    with pytest.raises(ValueError, match="bad API key"):
-        service._raise_llm_error(RuntimeError("401 unauthorized"))
-    with pytest.raises(ValueError, match="model not found"):
-        service._raise_llm_error(RuntimeError("model not found"))
-
-
-def test_nvidia_llm_usage_metrics_accumulate_only_while_processing():
-    """Incremental NVIDIA token usage is accumulated only during active processing."""
-    service = _bare_nvidia_llm(_is_processing=True)
-
-    _drive(service.start_llm_usage_metrics(LLMTokenUsage(prompt_tokens=5, completion_tokens=1, total_tokens=6)))
-    _drive(service.start_llm_usage_metrics(LLMTokenUsage(prompt_tokens=7, completion_tokens=3, total_tokens=10)))
-    service._is_processing = False
-    _drive(service.start_llm_usage_metrics(LLMTokenUsage(prompt_tokens=9, completion_tokens=8, total_tokens=17)))
-
-    assert service._prompt_tokens == 5
-    assert service._completion_tokens == 3
-    assert service._has_reported_prompt_tokens is True
 
 
 def test_base_nemo_tts_think_token_filtering_tracks_multi_chunk_thoughts():
@@ -513,8 +374,8 @@ class _FakeWebsocketOutput:
 
 
 def test_websocket_transport_reuses_input_and_output_instances():
-    """WebsocketServerTransport lazily creates and caches input/output transports."""
-    transport = WebsocketServerTransport(WebsocketServerParams(), host="127.0.0.1", port=9999)
+    """SingleClientWebsocketServerTransport lazily creates and caches input/output transports."""
+    transport = SingleClientWebsocketServerTransport(SingleClientWebsocketServerParams(), host="127.0.0.1", port=9999)
 
     assert transport.input() is transport.input()
     assert transport.output() is transport.output()
@@ -522,7 +383,7 @@ def test_websocket_transport_reuses_input_and_output_instances():
 
 def test_websocket_transport_connection_callbacks_route_to_output_and_handlers():
     """Client connect/disconnect callbacks update output transport and call registered handlers."""
-    transport = WebsocketServerTransport(WebsocketServerParams())
+    transport = SingleClientWebsocketServerTransport(SingleClientWebsocketServerParams())
     output = _FakeWebsocketOutput()
     events = []
     websocket = object()
@@ -611,52 +472,6 @@ def test_user_audio_buffer_reset_clears_audio_and_transcript_state():
     assert service._audio_frames == []
     assert service._transcript_buffer == []
     assert service._user_speaking is False
-
-
-def test_base_input_transport_vad_speaking_emits_vad_and_user_frames():
-    """BaseInputTransport emits VAD start and handles user interruption on speaking transitions."""
-    transport = _bare_input_transport(new_vad_state=VADState.SPEAKING)
-
-    state = _drive(transport._handle_vad(_audio_frame(), VADState.QUIET))
-
-    assert state is VADState.SPEAKING
-    assert any(isinstance(frame, VADUserStartedSpeakingFrame) for frame, _ in transport.pushed)
-    assert transport.interruptions == [VADState.SPEAKING]
-
-
-def test_base_input_transport_vad_quiet_respects_turn_analyzer_gate():
-    """Turn-analyzer speech-triggered state suppresses user-frame interruption handling."""
-    turn_analyzer = SimpleNamespace(speech_triggered=True)
-    transport = _bare_input_transport(new_vad_state=VADState.QUIET, turn_analyzer=turn_analyzer)
-
-    state = _drive(transport._handle_vad(_audio_frame(), VADState.SPEAKING))
-
-    assert state is VADState.QUIET
-    assert any(isinstance(frame, VADUserStoppedSpeakingFrame) for frame, _ in transport.pushed)
-    assert transport.interruptions == []
-
-
-def test_base_input_transport_push_audio_frame_sets_timestamp_and_queues_when_enabled():
-    """Audio frames are timestamped and queued only when audio input is enabled and not paused."""
-    transport = _bare_input_transport(new_vad_state=VADState.SPEAKING)
-    frame = _audio_frame()
-
-    _drive(transport.push_audio_frame(frame))
-
-    assert frame.timestamp is not None
-    assert transport._audio_in_queue.get_nowait() is frame
-
-
-def test_base_input_transport_push_audio_frame_does_not_queue_when_paused():
-    """Paused audio input still timestamps frames but does not enqueue them."""
-    transport = _bare_input_transport(new_vad_state=VADState.SPEAKING)
-    transport._paused = True
-    frame = _audio_frame()
-
-    _drive(transport.push_audio_frame(frame))
-
-    assert frame.timestamp is not None
-    assert transport._audio_in_queue.empty()
 
 
 def test_turn_taking_missing_backchannel_file_blames_the_file_not_the_type(tmp_path):

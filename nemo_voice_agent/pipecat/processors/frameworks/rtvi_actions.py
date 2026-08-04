@@ -13,16 +13,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Factory helpers for the common RTVI actions used by voice-agent bots.
+"""Factory helpers for the custom RTVI messages used by voice-agent bots.
 
-The actions are parameterized so the same factory works for bots with different
+Each factory returns a ``(name, handler)`` pair. Register them all at once with
+:func:`register_client_message_handlers`, which installs a single
+``on_client_message`` dispatcher on the RTVI processor.
+
+Pipecat 1.0 removed the ``RTVIAction`` / ``RTVIProcessor.register_action()``
+API in favor of the client-message / server-response pattern, so what used to
+be an "action" is now just a message type. The wire names are unchanged
+(``reset``, ``update_system_prompt``, ``get_context_history``,
+``get_scenario_summary``, ``apply_initialization``, ``apply_sync_delta``) so the
+evaluation bridge's vocabulary is stable across the upgrade; the argument
+encoding changed from ``arguments: [{name, value}]`` to a plain ``d`` object.
+
+Note there is no schema or defaults layer on the 1.x path — every handler here
+already reads its arguments as ``arguments.get(name, default)``, so nothing is
+lost.
+
+The handlers are parameterized so the same factory works for bots with different
 pipeline shapes: pass in whichever aggregators, services, and handlers the bot
 actually has. ``None`` entries in ``resettable_services`` are silently skipped.
 
-The reset and update-prompt actions need to queue an ``EndTaskFrame`` onto a
-``PipelineTask`` that is typically created *after* the RTVI processor (because
-the task needs ``rtvi`` in its observer list). ``TaskRef`` is a tiny holder the
-bot sets after constructing the task.
+``TaskRef`` is a tiny holder the bot populates after constructing the pipeline
+worker, which happens *after* the RTVI processor (the worker needs ``rtvi`` in
+its observer list). Handlers use it to reach the live worker.
+
+None of these handlers end the pipeline. Before pipecat 1.0 they queued an
+``EndTaskFrame``, but that was inert: ``queue_frames`` injects downstream while
+the frame was only handled upstream, so it drifted out of the sink and did
+nothing. Pipecat 1.6 also handles it downstream — the sink reflects it upstream
+where it becomes an ``EndFrame`` — which tears down the pipeline, and with it
+the WebSocket server that lives inside the input transport. Since ``reset`` and
+``update_system_prompt`` run at the start of every evaluation scenario, ending
+the pipeline there would kill the bot before its first turn.
 """
 
 import asyncio
@@ -31,11 +55,44 @@ import dataclasses
 import json
 from typing import Any, Callable, List, Optional
 
+import pipecat.processors.frameworks.rtvi.models as RTVI
 from loguru import logger
-from pipecat.frames.frames import EndTaskFrame
-from pipecat.pipeline.task import PipelineTask
-from pipecat.processors.frameworks.rtvi import RTVIAction, RTVIProcessor
+from pipecat.pipeline.worker import PipelineWorker
+from pipecat.processors.frameworks.rtvi import RTVIProcessor
 from pipecat.services.ai_service import AIService
+
+
+# What every ``create_*`` factory below returns: the wire message type paired
+# with the coroutine that handles it.
+ClientMessageHandler = tuple[str, Callable[[RTVIProcessor, dict[str, Any]], Any]]
+
+
+def register_client_message_handlers(rtvi: RTVIProcessor, handlers: List[ClientMessageHandler]) -> None:
+    """Install one ``on_client_message`` dispatcher for ``handlers``.
+
+    This is the pipecat 1.x replacement for calling
+    ``rtvi.register_action(...)`` once per action. Handler return values are
+    sent back as the ``d`` payload of a ``server-response`` keyed to the
+    request's message id; an unknown type or a raised exception produces an
+    ``error-response`` instead, so callers fail loudly rather than blocking
+    until their read timeout expires.
+    """
+    table = dict(handlers)
+
+    @rtvi.event_handler("on_client_message")
+    async def _on_client_message(rtvi_proc: RTVIProcessor, msg: RTVI.ClientMessage):
+        handler = table.get(msg.type)
+        if handler is None:
+            logger.warning(f"Unknown RTVI client message type: {msg.type!r}")
+            await rtvi_proc.send_error_response(msg, f"unknown message type: {msg.type}")
+            return
+        try:
+            result = await handler(rtvi_proc, msg.data or {})
+        except Exception as e:
+            logger.exception(f"RTVI client-message handler {msg.type!r} failed")
+            await rtvi_proc.send_error_response(msg, f"{type(e).__name__}: {e}")
+            return
+        await rtvi_proc.send_server_response(msg, result)
 
 
 # Leaf keys whose VALUE is always a raw base64-encoded blob — dropped wherever
@@ -122,14 +179,14 @@ def sanitize_context_for_transport(obj: Any, _media_key: Optional[str] = None) -
 
 @dataclasses.dataclass
 class TaskRef:
-    """Mutable handle to a PipelineTask and its running flag.
+    """Mutable handle to a PipelineWorker and its running flag.
 
     Construct early, hand to RTVI action factories, then populate once the task
     exists. ``running`` is flipped by the bot runner during shutdown so handlers
     can avoid queueing frames onto a dead task.
     """
 
-    task: Optional[PipelineTask] = None
+    task: Optional[PipelineWorker] = None
     running: bool = False
 
 
@@ -147,11 +204,6 @@ class SharedStateRef:
     state: dict = dataclasses.field(default_factory=dict)
 
 
-async def _maybe_end_task(task_ref: TaskRef) -> None:
-    if task_ref is not None and task_ref.running:
-        await task_ref.task.queue_frames([EndTaskFrame()])
-
-
 def _reset_services(services: List[AIService]) -> None:
     for service in services:
         if service is not None and hasattr(service, "reset"):
@@ -164,17 +216,16 @@ def create_reset_context_action(
     assistant_aggregator,
     original_messages: List[dict],
     resettable_services: List[AIService],
-) -> RTVIAction:
+) -> ClientMessageHandler:
     """Build the ``context.reset`` action.
 
     ``original_messages`` is captured by reference so the action always resets to
     whatever ``update_system_prompt`` last wrote.
     """
 
-    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> bool:
+    async def handler(rtvi_processor: RTVIProcessor, arguments: dict[str, Any]) -> bool:
         logger.info("Resetting conversation context...")
         try:
-            await _maybe_end_task(task_ref)
             user_aggregator.reset()
             assistant_aggregator.reset()
             user_aggregator.set_messages(copy.deepcopy(original_messages))
@@ -186,13 +237,7 @@ def create_reset_context_action(
             logger.error(f"Error resetting context: {e}")
             return False
 
-    return RTVIAction(
-        service="context",
-        action="reset",
-        result="bool",
-        arguments=[],
-        handler=handler,
-    )
+    return ("reset", handler)
 
 
 def create_update_system_prompt_action(
@@ -211,7 +256,7 @@ def create_update_system_prompt_action(
     tool_factory: Optional[Callable[..., Any]] = None,
     register_schema_tools: Optional[Callable[..., Any]] = None,
     shared_state_ref: Optional[SharedStateRef] = None,
-) -> RTVIAction:
+) -> ClientMessageHandler:
     """Build the ``context.update_system_prompt`` action.
 
     Tool registration is optional. When ``enable_tool_calling`` is True and a
@@ -237,10 +282,8 @@ def create_update_system_prompt_action(
     dict so write tools have them available at call time.
     """
 
-    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> bool:
+    async def handler(rtvi_processor: RTVIProcessor, arguments: dict[str, Any]) -> bool:
         try:
-            await _maybe_end_task(task_ref)
-
             new_prompt = arguments.get("prompt", "")
             new_tools_json = arguments.get("tools", "{}")
             if not new_prompt:
@@ -282,7 +325,7 @@ def create_update_system_prompt_action(
             # not in ``apply_initialization``.
             #
             # ``__rtvi__``: read by ``WriteScenarioTool._record_action``
-            # to push ``action-applied`` RTVIServerMessages used by the
+            # to push ``action-applied`` RTVI.ServerMessages used by the
             # bridge's cross-side sync pipeline. Sentinel name starts
             # with ``__`` so it won't appear in JSON-serialized DB
             # snapshots (``db_hash`` filters dunder keys).
@@ -321,7 +364,14 @@ def create_update_system_prompt_action(
                     llm=llm,
                     context=context,
                     tools=new_schema_tools,
-                    cancel_on_interruption=False,
+                    # Leave cancel_on_interruption at its True default. Passing
+                    # False here opts the tool into pipecat >=1.0's *asynchronous*
+                    # protocol: the LLM is told not to wait for the result and
+                    # continues immediately, the tool message becomes a
+                    # "status: running" placeholder, and the real payload arrives
+                    # later as a developer message. Eval tools are synchronous DB
+                    # lookups whose results the agent must have in hand before it
+                    # speaks. See register_schema_tools_to_llm's docstring.
                     keep_existing_tools=False,
                 )
             else:
@@ -340,24 +390,13 @@ def create_update_system_prompt_action(
             logger.error(f"Error updating system prompt: {e}")
             return False
 
-    return RTVIAction(
-        service="context",
-        action="update_system_prompt",
-        result="bool",
-        arguments=[
-            {"name": "prompt", "type": "string", "required": True},
-            {"name": "tools", "type": "string", "required": False, "default": "{}"},
-            {"name": "add_suffix", "type": "bool", "required": False, "default": True},
-            {"name": "tool_domain", "type": "string", "required": False, "default": "default"},
-        ],
-        handler=handler,
-    )
+    return ("update_system_prompt", handler)
 
 
 def create_get_context_history_action(
     task_ref: TaskRef,
     assistant_aggregator,
-) -> RTVIAction:
+) -> ClientMessageHandler:
     """Build the ``context.get_context_history`` action.
 
     Returns the assistant aggregator's full message list, stringified to match
@@ -381,7 +420,7 @@ def create_get_context_history_action(
 
     """
 
-    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
+    async def handler(rtvi_processor: RTVIProcessor, arguments: dict[str, Any]) -> dict:
         # Wait for any in-flight function calls to commit to the context before
         # snapshotting. ``has_function_calls_in_progress`` is pipecat's
         # public @property on ``LLMResponseAggregator`` (NOT a method —
@@ -415,19 +454,13 @@ def create_get_context_history_action(
             logger.error(f"Error getting context history: {e}")
             return {"context": []}
 
-    return RTVIAction(
-        service="context",
-        action="get_context_history",
-        result="object",
-        arguments=[],
-        handler=handler,
-    )
+    return ("get_context_history", handler)
 
 
 def create_get_scenario_summary_action(
     task_ref: TaskRef,
     shared_state_ref: SharedStateRef,
-) -> RTVIAction:
+) -> ClientMessageHandler:
     """Build the ``context.get_scenario_summary`` action.
 
     Returns ``{"actions": [...], "db_hash": "<sha>"}`` from the per-scenario
@@ -479,7 +512,7 @@ def create_get_scenario_summary_action(
     # the evaluation/ subpackage at module-load time.
     from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 
-    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
+    async def handler(rtvi_processor: RTVIProcessor, arguments: dict[str, Any]) -> dict:
         try:
             include_db = bool(arguments.get("include_db", False))
             actions = shared_state_ref.state.get("actions", [])
@@ -488,7 +521,6 @@ def create_get_scenario_summary_action(
             logger.debug(
                 f"Returning scenario summary: {len(actions)} action(s), db_hash={db_hash}, include_db={include_db}"
             )
-            await _maybe_end_task(task_ref)
             response: dict[str, Any] = {
                 "actions": actions,
                 "db_hash": db_hash,
@@ -506,25 +538,12 @@ def create_get_scenario_summary_action(
             logger.error(f"Error getting scenario summary: {e}")
             return {"actions": [], "db_hash": None}
 
-    return RTVIAction(
-        service="context",
-        action="get_scenario_summary",
-        result="object",
-        arguments=[
-            {
-                "name": "include_db",
-                "type": "bool",
-                "required": False,
-                "default": False,
-            },
-        ],
-        handler=handler,
-    )
+    return ("get_scenario_summary", handler)
 
 
 def create_apply_initialization_action(
     shared_state_ref: SharedStateRef,
-) -> RTVIAction:
+) -> ClientMessageHandler:
     """Build the ``context.apply_initialization`` action.
 
     Bot-side scenario-state initializer. The bridge calls this once per
@@ -586,7 +605,7 @@ def create_apply_initialization_action(
         apply_initialization_actions as _apply,
     )
 
-    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
+    async def handler(rtvi_processor: RTVIProcessor, arguments: dict[str, Any]) -> dict:
         try:
             domain = arguments.get("domain", "default")
             shared_state_init_raw = arguments.get("shared_state_init", "{}")
@@ -674,22 +693,12 @@ def create_apply_initialization_action(
             logger.error(f"Error applying initialization: {e}")
             return {"success": False, "errors": [f"{type(e).__name__}: {e}"]}
 
-    return RTVIAction(
-        service="context",
-        action="apply_initialization",
-        result="object",
-        arguments=[
-            {"name": "domain", "type": "string", "required": False, "default": "default"},
-            {"name": "shared_state_init", "type": "string", "required": False, "default": "{}"},
-            {"name": "actions", "type": "array", "required": False, "default": []},
-        ],
-        handler=handler,
-    )
+    return ("apply_initialization", handler)
 
 
 def create_apply_sync_delta_action(
     shared_state_ref: SharedStateRef,
-) -> RTVIAction:
+) -> ClientMessageHandler:
     """Build the ``context.apply_sync_delta`` action.
 
     Bot-side endpoint of the cross-side state-propagation pipeline.
@@ -729,7 +738,7 @@ def create_apply_sync_delta_action(
     # Lazy import — same rationale as create_apply_initialization_actions.
     from nemo_voice_agent.evaluation.sync_appliers import apply_sync_delta as _apply_delta
 
-    async def handler(rtvi_processor: RTVIProcessor, service: str, arguments: dict[str, Any]) -> dict:
+    async def handler(rtvi_processor: RTVIProcessor, arguments: dict[str, Any]) -> dict:
         try:
             domain = arguments.get("domain", "default")
             delta = arguments.get("delta") or {}
@@ -758,13 +767,4 @@ def create_apply_sync_delta_action(
             logger.error(f"Error applying sync delta: {e}")
             return {"success": False, "errors": [f"{type(e).__name__}: {e}"]}
 
-    return RTVIAction(
-        service="context",
-        action="apply_sync_delta",
-        result="object",
-        arguments=[
-            {"name": "domain", "type": "string", "required": False, "default": "default"},
-            {"name": "delta", "type": "object", "required": True},
-        ],
-        handler=handler,
-    )
+    return ("apply_sync_delta", handler)

@@ -18,18 +18,12 @@
 import asyncio
 import json
 import wave
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from nemo_voice_agent.pipecat.frames.action import (
-    FinishedPresenceUserActionFrame,
-    StartedPresenceUserActionFrame,
-    new_uid,
-    now_timestamp,
-)
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     SharedStateRef,
     TaskRef,
@@ -84,7 +78,7 @@ class _Service:
 
 
 class _Task:
-    """PipelineTask fake that captures queued frames."""
+    """PipelineWorker fake that captures queued frames."""
 
     def __init__(self):
         """Initialize frame capture."""
@@ -93,22 +87,6 @@ class _Task:
     async def queue_frames(self, frames):
         """Capture queued frames."""
         self.frames.extend(frames)
-
-
-def test_action_frames_create_unique_ids_and_timezone_aware_timestamps():
-    """Action frame dataclasses create unique IDs and UTC-aware lifecycle timestamps."""
-    action_id = new_uid()
-    started = StartedPresenceUserActionFrame(action_id=action_id, user_id="user-1")
-    finished = FinishedPresenceUserActionFrame(action_id=action_id, user_id="user-1", is_success=False)
-
-    assert action_id != new_uid()
-    assert now_timestamp().tzinfo is UTC
-    assert started.action_id == action_id
-    assert started.user_id == "user-1"
-    assert started.action_started_at.tzinfo is UTC
-    assert finished.action_id == action_id
-    assert finished.is_success is False
-    assert finished.action_finished_at.tzinfo is UTC
 
 
 def test_audio_logger_writes_user_agent_and_stereo_artifacts(tmp_path):
@@ -183,14 +161,14 @@ def test_rtvi_context_actions_reset_update_history_and_summary():
             """Capture schema registration inputs."""
             registered.append(kwargs)
 
-        reset = create_reset_context_action(
+        _, reset = create_reset_context_action(
             task_ref,
             user_aggregator,
             assistant_aggregator,
             original_messages,
             [service],
         )
-        update = create_update_system_prompt_action(
+        _, update = create_update_system_prompt_action(
             task_ref,
             user_aggregator,
             assistant_aggregator,
@@ -206,13 +184,12 @@ def test_rtvi_context_actions_reset_update_history_and_summary():
             register_schema_tools=_register_schema_tools,
             shared_state_ref=shared_state_ref,
         )
-        history = create_get_context_history_action(task_ref, assistant_aggregator)
-        summary = create_get_scenario_summary_action(task_ref, shared_state_ref)
+        _, history = create_get_context_history_action(task_ref, assistant_aggregator)
+        _, summary = create_get_scenario_summary_action(task_ref, shared_state_ref)
 
-        assert await reset.handler(None, "context", {}) is True
-        assert await update.handler(
+        assert await reset(None, {}) is True
+        assert await update(
             None,
-            "context",
             {
                 "prompt": "new prompt",
                 "tools": json.dumps({"ToolA": {"arg": "value"}}),
@@ -227,8 +204,8 @@ def test_rtvi_context_actions_reset_update_history_and_summary():
                 }
             ]
         )
-        history_result = await history.handler(None, "context", {})
-        summary_result = await summary.handler(None, "context", {"include_db": True})
+        history_result = await history(None, {})
+        summary_result = await summary(None, {"include_db": True})
 
         return (
             task,
@@ -252,7 +229,10 @@ def test_rtvi_context_actions_reset_update_history_and_summary():
         summary_result,
     ) = asyncio.run(_run())
 
-    assert len(task.frames) >= 2
+    # The handlers must not queue pipeline-ending frames: doing so tears down
+    # the WebSocket server that lives in the input transport, and these two run
+    # at the start of every evaluation scenario.
+    assert task.frames == []
     assert user_aggregator._messages == [{"role": "system", "content": "new prompt\nsuffix"}]
     assert assistant_aggregator._messages[0]["role"] == "user"
     assert service.reset_count == 2
@@ -269,27 +249,25 @@ def test_rtvi_initialization_and_sync_delta_actions_mutate_shared_state():
     async def _run():
         """Execute initialization and sync handlers."""
         shared_state_ref = SharedStateRef({})
-        init_action = create_apply_initialization_action(shared_state_ref)
-        sync_action = create_apply_sync_delta_action(shared_state_ref)
+        _, init_handler = create_apply_initialization_action(shared_state_ref)
+        _, sync_handler = create_apply_sync_delta_action(shared_state_ref)
 
-        init_result = await init_action.handler(
+        init_result = await init_handler(
             None,
-            "context",
             {
                 "domain": "default",
                 "shared_state_init": json.dumps({"db": {"customer": {"status": "old"}}}),
                 "actions": [],
             },
         )
-        sync_result = await sync_action.handler(
+        sync_result = await sync_handler(
             None,
-            "context",
             {
                 "domain": "default",
                 "delta": {"customer.status": "new", "customer.plan": "premium"},
             },
         )
-        bad_sync_result = await sync_action.handler(None, "context", {"domain": "default", "delta": "bad"})
+        bad_sync_result = await sync_handler(None, {"domain": "default", "delta": "bad"})
         return shared_state_ref, init_result, sync_result, bad_sync_result
 
     shared_state_ref, init_result, sync_result, bad_sync_result = asyncio.run(_run())
