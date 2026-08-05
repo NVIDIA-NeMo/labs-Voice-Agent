@@ -42,7 +42,7 @@ A fully open-source framework to build, deploy and evaluate voice agents with NV
 
 
 ## 📅 Latest Updates
-- 2026-06-13: Voice-agent evaluation harness shipped — three primary benchmark domains ported (tau2-bench airline 50 / retail 114 / telecom 114 dual-side), plus eva_airline (50) from ServiceNow/eva. Per-scenario `success_signals` scoring, resumable runs via `--resume`, retrospective `analysis_report.md` generation. See [📊 Evaluation](#-evaluation).
+- 2026-06-13: Voice-agent evaluation harness shipped — three primary benchmark domains ported (tau2-bench airline 50 / retail 114 / telecom 114 dual-side), plus eva_airline (50) from ServiceNow/eva. Per-scenario `success_signals` scoring. See [📊 Evaluation](#-evaluation).
 - 2026-05-15: Added support for [Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4). See  [🤖 Multi-modal LLMs](#-multi-modal-llms).
 - 2026-01-26: Added support for [NVIDIA-Nemotron-3-Nano-30B-A3B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16) LLM model, and support for [magpie_tts_multilingual_357m](https://huggingface.co/nvidia/magpie_tts_multilingual_357m) TTS model.
 - 2025-12-31: Added examples for [tool calling](#-tool-calling), such as changing the speaking speed, switching between male/female voices and British/American accents (with [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M)), and getting the current weather of a city (with `python_weather`). Diarization model is updated to [nvidia/diar_streaming_sortformer_4spk-v2.1](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1) with improved performance.
