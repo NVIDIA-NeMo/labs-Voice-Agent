@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""One-shot scaffold generator for tau2_airline scenarios (M2.5).
+"""One-shot scaffold generator for tau2_airline scenarios.
 
 Reads ``nemo_voice_agent/evaluation/data/tau2_airline/{tasks,tasks_voice,split_tasks}.json``,
 filters to the base-split voice-eligible ids, and emits one

@@ -26,7 +26,7 @@ normalized copy under ``nemo_voice_agent/evaluation/data/tau2_telecom/``. Three 
    ``UserSurroundings`` defaults like ``signal_strength`` per-network
    table, ``Customer.payment_methods=[]``, ``Bill.line_items=[]``), and
    re-serialized as JSON so the bot-side loader in
-   ``rtvi_actions.create_update_system_prompt_action`` can use the same
+   ``rtvi_actions.create_apply_initialization_action`` can use the same
    ``json.load`` path as airline / retail. Avoids adding a TOML branch on
    the bot side AND avoids defensive ``.get(..., default)`` calls in
    predicate / init function code.
@@ -69,9 +69,9 @@ from pathlib import Path
 from typing import Optional
 
 
-# Upstream commit we pin against. M2 / M3 used this for airline + retail; M5+
-# uses the same pin for telecom. Bump only when re-syncing to a newer tau2
-# voice-user-sim release (and update README.md accordingly).
+# Upstream commit we pin against — the same pin covers airline, retail and
+# telecom. Bump only when re-syncing to a newer tau2 voice-user-sim release
+# (and update nemo_voice_agent/evaluation/data/README.md accordingly).
 PINNED_COMMIT = "17e07b1da2bbc0cadfddeea36412686e0604127b"
 
 # Default upstream checkout location. Override via --source.

@@ -216,7 +216,8 @@ Examples:
         "--duration",
         type=int,
         default=None,
-        help="Maximum duration per scenario in seconds (default: 300), which overrides the scenario's own max_duration if set.",
+        help="Maximum duration per scenario in seconds. Overrides the scenario's own max_duration. "
+        "Unset by default, in which case each scenario's own max_duration applies.",
     )
     parser.add_argument(
         "--pause",
@@ -350,7 +351,7 @@ Examples:
             "Minimum number of completed agent turns required to count a scenario toward aggregate rates. "
             "Scenarios with fewer agent turns (e.g. due to a stalled vLLM server) are excluded from all "
             "success/action-match/db-state rates and flagged in the summary. On --resume, they are also "
-            "treated as in-flight and re-run. Default: 0 (disabled). Suggested value: 2."
+            "treated as in-flight and re-run. Default: 3. Pass 0 to disable the filter."
         ),
     )
 

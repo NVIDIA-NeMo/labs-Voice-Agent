@@ -31,8 +31,8 @@ reference_answer, user_persona / user_task / user_actions) derives from the
 upstream data files via cached properties.
 
 Hand-authored seed scenarios live at the bottom of this file. Auto-scaffolded
-scenarios land in ``group_Nx.py`` siblings via the gitignored scaffold
-generator in ``nemo_experiments/``.
+scenarios land in ``group_Nx.py`` siblings via the scaffold
+generator at ``scripts/prepare_tau2_data/generate_airline_scaffolds.py``.
 """
 
 # pylint: disable=line-too-long

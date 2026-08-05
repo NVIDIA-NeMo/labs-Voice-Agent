@@ -96,9 +96,9 @@ build = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/NVIDIA-NeMo/Voice-Agent"
-Repository = "https://github.com/NVIDIA-NeMo/Voice-Agent"
-Issues = "https://github.com/NVIDIA-NeMo/Voice-Agent/issues"
+Homepage = "https://github.com/NVIDIA-NeMo/labs-Voice-Agent"
+Repository = "https://github.com/NVIDIA-NeMo/labs-Voice-Agent"
+Issues = "https://github.com/NVIDIA-NeMo/labs-Voice-Agent/issues"
 
 [build-system]
 requires = ["setuptools>=79"]

@@ -75,11 +75,12 @@ To run the eval agent against a different vLLM-served model:
 3. **Edit your eval config** (`evaluation/server_configs/agent_my_custom.yaml` or whichever you copied) so the `llm.model_config:` field points at `llm_configs/my_custom_model.yaml`.
 4. **Run the bot:**
    ```bash
+   cd evaluation
    WEBSOCKET_PORT=8765 \
    SERVER_CONFIG_PATH=server_configs/agent_my_custom.yaml \
-   python evaluation/bot_server.py
+   python bot_server.py
    ```
-   `SERVER_CONFIG_PATH` is resolved relative to the current working directory; the convention is to `cd evaluation` first.
+   `SERVER_CONFIG_PATH` is resolved relative to the current working directory, so you must `cd evaluation` first — running from the repo root raises `FileNotFoundError`.
 
 Same pattern for `tts:` / `stt:` — sibling `tts_configs/` and `stt_configs/` directories under `examples/generic_voice_agent/server/server_configs/`.
 
@@ -351,14 +352,17 @@ Out of scope for this guide. If you genuinely need to evaluate a non-pipecat age
 Same flow regardless of tier. Use a small, fast scenario for the first iteration.
 
 ```bash
+# All three run from `evaluation/` — SERVER_CONFIG_PATH is resolved against the cwd.
+cd evaluation
+
 # Terminal 1 — your custom agent bot
 WEBSOCKET_PORT=8765 SERVER_CONFIG_PATH=server_configs/agent.yaml python your/bot_server.py
 
 # Terminal 2 — stock user-sim bot (or your custom user-sim, same contract)
-WEBSOCKET_PORT=8766 SERVER_CONFIG_PATH=server_configs/user.yaml python evaluation/bot_server.py
+WEBSOCKET_PORT=8766 SERVER_CONFIG_PATH=server_configs/user.yaml python bot_server.py
 
 # Terminal 3 — single scenario, judge optional
-python evaluation/run_evaluation.py --scenarios restaurant__pizza_pepperoni
+python run_evaluation.py --scenarios restaurant__pizza_pepperoni
 ```
 
 Inspect the resulting `eval_results/eval_<ts>/restaurant__pizza_pepperoni/`:
@@ -369,8 +373,6 @@ Inspect the resulting `eval_results/eval_<ts>/restaurant__pizza_pepperoni/`:
 | `bridge_log.txt` | Search for `unknown message type` errors → an RTVI client-message handler you forgot to register. Search for `update_system_prompt` events → your bot is receiving prompts. Search for `[AGENT METRICS] ttfb` → your LLM service is emitting TTFB events (informational only). |
 | `bot_logs_agent/llm_context.json` | Should contain the scenario's system prompt as the first message and the agent's tool calls as `assistant.tool_calls` entries. If the system prompt is wrong, `update_system_prompt` didn't propagate. If tool calls are missing, your tool-registration adapter didn't wire the registry into the LLM service. |
 | `final_scenario_db_hash.txt` | Should contain a `db_hash:` line. If missing, `get_scenario_summary` isn't returning the expected `{actions, db_hash}` shape. |
-
-The [eval-result-analyzer skill](#) works on custom-pipeline runs too — it reads the per-scenario artifacts, not pipecat internals. Run it against the result dir and check the report for "framework"-class root causes (which is how contract-compliance issues surface).
 
 ---
 

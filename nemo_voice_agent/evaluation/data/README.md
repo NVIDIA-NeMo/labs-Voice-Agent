@@ -3,8 +3,9 @@
 This directory holds scenario fixtures (databases, ground-truth metadata) consumed by
 the voice-agent evaluation system. Files here are loaded into `shared_state` on the
 bot server via `Scenario.setup_shared_state` (see
-[`evaluation/README.md`](../README.md)). The directory is resolvable via the
-`EVAL_DATA_ROOT` env var (defaults to this path).
+[`evaluation/README.md`](../../../evaluation/README.md)). This directory is the
+default fixture root — `get_eval_data_root()` returns it unless `EVAL_DATA_ROOT`
+overrides it.
 
 Per-domain data is grouped under a domain-prefixed subdirectory or filename so
 that scenarios from different upstream libraries don't collide.
@@ -24,8 +25,8 @@ that scenarios from different upstream libraries don't collide.
     `decision_tree`, `information_required`, `ground_truth.expected_scenario_db`).
     Used to translate eva scenarios into NeMo `Scenario` subclasses. Source:
     `data/airline_dataset.jsonl`.
-- **Bound code**: `nemo/agents/voice_agent/evaluation/scenarios/data/eva_airline/` (package: `base.py` holds the `EvaAirlineBaseScenario` + 5 hand-authored seed scenarios; `group_Nx.py` modules carry the auto-scaffolded scenarios for each eva sub-flow)
-  + `nemo/agents/voice_agent/evaluation/tools/eva_airline_tools.py` +
+- **Bound code**: `nemo_voice_agent/evaluation/scenarios/data/eva_airline/` (package: `base.py` holds the `EvaAirlineBaseScenario` + 5 hand-authored seed scenarios; `group_Nx.py` modules carry the auto-scaffolded scenarios for each eva sub-flow)
+  + `nemo_voice_agent/evaluation/tools/eva_airline_tools.py` +
   `eva_airline_params.py`. Each ported code file carries an inline
   `# Adapted from https://github.com/ServiceNow/eva/tree/0.1.3` attribution.
 
@@ -35,7 +36,7 @@ that scenarios from different upstream libraries don't collide.
 - **Version**: tag `voice-user-sim-v1.0` → commit `17e07b1` (the annotated tag's
   metadata anchors it as "the voice user simulator as used in the τ³-bench
   1.0.0 release"; the tag-object SHA `d1eff9e6` is the annotated-tag wrapper,
-  not a commit SHA — see `nemo_experiments/add_tau2_domains_plan.md` §1 + §7 item 8).
+  not a commit SHA — dereference it with `git rev-parse voice-user-sim-v1.0^{commit}`).
 - **License**: MIT (Sierra Research, 2025)
 - **Contents** (verbatim copy, no local modifications):
   - `tau2_airline/db/` (sharded, ~4.7 MB total) — the full shared airline DB
@@ -134,11 +135,10 @@ that scenarios from different upstream libraries don't collide.
     user surroundings). Loaded once per process by
     `Tau2TelecomBaseScenario.user_db`. Source:
     `data/tau2/domains/telecom/user_db.toml` (converted as above).
-    **Known follow-up:** the TOML default doesn't materialize all
-    Pydantic-default fields (e.g. `surroundings.signal_strength` per-network
-    technology defaults). M5a will round-trip the converted JSON through
-    the ported `TelecomUserDB` Pydantic model in the prepare script to fill
-    these defaults before downstream code reads it.
+    The raw TOML does not carry every Pydantic-default field (e.g.
+    `surroundings.signal_strength` per-network technology defaults), so
+    `prepare_telecom.py` round-trips the converted JSON through the ported
+    `TelecomUserDB` model to materialize them before downstream code reads it.
   - `tasks.json` — task definitions. **Filtered to the 114 base-split ids
     at import time** by `prepare_telecom.py` (~660 KB after filtering vs.
     ~14 MB upstream verbatim — 4.7% kept). The 2171 non-base task
@@ -159,14 +159,15 @@ that scenarios from different upstream libraries don't collide.
   - `audio_difficulty.json` — upstream-emitted audio difficulty annotations
     (verbatim). Kept for traceability; **not consumed** by the eval pipeline.
   - `main_policy.md`, `tech_support_workflow.md`, `tech_support_manual.md`
-    — agent prompt sources (verbatim). `Tau2TelecomBaseScenario.get_agent_prompt`
-    concatenates these (TBD in M5).
+    — agent prompt sources (verbatim). `Tau2TelecomBaseScenario.policy`
+    concatenates `main_policy.md` with the variant's
+    `tech_support_{manual,workflow}.md`, separated by a `---` rule.
   - `workflows/` — 10 per-issue workflow markdown files referenced by
     `tech_support_workflow.md`.
 - **Bound code**: `nemo_voice_agent/evaluation/scenarios/data/tau2_telecom/`
-  (M5e+) + `nemo_voice_agent/evaluation/tools/tau2_telecom_tools.py`,
+  + `nemo_voice_agent/evaluation/tools/tau2_telecom_tools.py`,
   `tau2_telecom_params.py`, `tau2_telecom_predicates.py`,
-  `tau2_telecom_init_functions.py` (M5a–M5e). Each ported code file
+  `tau2_telecom_init_functions.py`. Each ported code file
   carries an inline
   `# Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0`
   attribution.
