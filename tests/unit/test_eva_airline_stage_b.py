@@ -667,6 +667,84 @@ def test_every_eva_gold_keeps_the_original_checked_bag_count():
     assert checked > 0, "no rebooking golds found — dataset layout changed?"
 
 
+def test_rebook_carries_a_meal_request_onto_the_new_segment():
+    """A dietary request survives a rebook, for the same reason checked bags do.
+
+    No eva fixture sets ``meal_request`` (every initial segment is ``None`` and every
+    passenger's ``meal_preference`` is ``"none"``), so this is seeded explicitly. Carrying it
+    is a no-op against the packaged data — see the companion test below — and exists so a
+    dietary request is not silently dropped if a future fixture ever sets one.
+    """
+    state = _load_fixture_state("1.1.4")
+    original = state["db"]["reservations"]["KOLTSF"]["bookings"][1]
+    assert original["journey_id"] == "FL_SK890_20260820"
+    original["segments"][0]["meal_request"] = "vegetarian"
+
+    _run(
+        RebookFlightTool(shared_state=state),
+        {
+            "confirmation_number": "KOLTSF",
+            "journey_id": "FL_SK890_20260820",
+            "new_journey_id": "FL_SK900_20260823",
+            "rebooking_type": "voluntary",
+            "waive_change_fee": False,
+        },
+    )
+
+    new_booking = state["db"]["reservations"]["KOLTSF"]["bookings"][-1]
+    assert new_booking["journey_id"] == "FL_SK900_20260823"
+    assert new_booking["segments"][0]["meal_request"] == "vegetarian"
+    # Still a default, not a lock — AddMealRequestTool overrides it afterwards.
+    _run(
+        AddMealRequestTool(shared_state=state),
+        {
+            "confirmation_number": "KOLTSF",
+            "passenger_id": "PAX001",
+            "journey_id": "FL_SK900_20260823",
+            "meal_type": "standard",
+        },
+    )
+    assert new_booking["segments"][0]["meal_request"] == "standard"
+
+
+def test_meal_request_carry_over_is_a_no_op_on_the_packaged_fixtures():
+    """Guard that the meal carry-over cannot move any published eva score.
+
+    Every eva fixture leaves ``meal_request`` unset, so carrying it forward reproduces
+    ``None``. If a future dataset drop introduces a real dietary request this test fails,
+    which is the signal to re-check the gold's expectations against the carry-over rule
+    rather than assume it still holds.
+    """
+    root = get_eval_data_root() / "eva_airline"
+
+    def _is_set(value):
+        return value is not None and str(value).strip().lower() not in ("none", "null")
+
+    def _segments(db):
+        for res in (db.get("reservations") or {}).values():
+            for booking in res.get("bookings", []):
+                for seg in booking.get("segments", []):
+                    yield seg
+
+    offenders = []
+    for line in (root / "eva_airline_dataset.jsonl").read_text().splitlines():
+        if not line.strip():
+            continue
+        entry = json.loads(line)
+        eva_id = entry["id"]
+        initial = json.loads((root / f"{eva_id}.json").read_text())
+        for label, db in (("initial", initial), ("gold", entry["ground_truth"]["expected_scenario_db"])):
+            for seg in _segments(db):
+                if _is_set(seg.get("meal_request")):
+                    offenders.append(f"{eva_id}/{label}/{seg.get('flight_number')}={seg.get('meal_request')!r}")
+
+    assert not offenders, (
+        f"eva fixtures now carry a real meal_request: {offenders[:5]}. "
+        "RebookFlightTool carries it onto the rebooked segment — confirm that matches the "
+        "new gold before trusting db_state_match."
+    )
+
+
 def test_messy_path_db_state_diverges_from_expected():
     """Rebook → cancel → rebook-again produces extra cancelled bookings; cardinality differs.
 
