@@ -255,7 +255,7 @@ def test_initialization_actions_translated_from_upstream():
 def test_user_db_loads():
     scenario = ALL_EVAL_SCENARIOS[_FIRST_SCENARIO]()
     udb = scenario.user_db
-    # Materialized defaults from M5a's Pydantic round-trip
+    # Materialized defaults from the prepare script's Pydantic round-trip
     assert "device" in udb
     assert "surroundings" in udb
     assert "signal_strength" in udb["surroundings"]

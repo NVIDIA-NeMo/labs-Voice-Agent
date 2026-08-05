@@ -19,7 +19,7 @@ Layout:
     base.py        — ``EvaAirlineBaseScenario`` + 5 hand-authored seed scenarios.
     group_Nx.py    — auto-scaffolded scenarios for eva sub-flow ``N.*``
                      (generated from ``eva_airline_dataset.jsonl`` via
-                     ``nemo_experiments/generate_eva_airline_scaffolds.py``).
+                     ``scripts/prepare_eva_data/generate_airline_scaffolds.py``).
 
 This ``__init__`` re-exports ``EvaAirlineBaseScenario`` so the group submodules
 can keep their canonical import path (``from ...eva_airline import EvaAirlineBaseScenario``)

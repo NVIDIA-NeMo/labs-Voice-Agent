@@ -1,6 +1,6 @@
 # NeMo Voice Agent Evaluator
 
-Evaluate a voice agent by having a simulated user (another voice agent) talk to it through a live audio connection. The bridge routes audio, measures latency, captures the agent's actions, propagates cross-side DB state when needed, and scores success across up to five orthogonal signals.
+Evaluate a voice agent by having a simulated user (another voice agent) talk to it through a live audio connection. The bridge routes audio, measures latency, captures the agent's actions, propagates cross-side DB state when needed, and scores success across up to six orthogonal signals.
 
 ## Contents
 
@@ -11,10 +11,11 @@ Evaluate a voice agent by having a simulated user (another voice agent) talk to 
   - [2. Run an evaluation](#2-run-an-evaluation)
   - [3. Scoring](#3-scoring)
   - [4. Resuming a partial run](#4-resuming-a-partial-run)
+  - [Helper launch scripts](#helper-launch-scripts)
 - [CLI Reference](#cli-reference)
   - [`run_evaluation.py` flags](#run_evaluationpy-flags)
   - [Bot server environment variables](#bot-server-environment-variables)
-- [Available Scenarios](#available-scenarios)
+- [Available Domains and Scenarios](#available-domains-and-scenarios)
   - [eva_airline domain notes](#eva_airline-domain-notes)
   - [tau2 domain notes](#tau2-domain-notes)
 - [Evaluation Metrics](#evaluation-metrics)
@@ -24,7 +25,8 @@ Evaluate a voice agent by having a simulated user (another voice agent) talk to 
   - [3. DB-state assertions (deterministic, per-predicate)](#3-db-state-assertions-deterministic-per-predicate)
   - [4. NL assertions (LLM-judged, per-assertion)](#4-nl-assertions-llm-judged-per-assertion)
   - [5. LLM judge (soft overall signal)](#5-llm-judge-soft-overall-signal)
-  - [Composite `is_successful` (strict conjunction)](#composite-is_successful-strict-conjunction)
+  - [External agent compatibility](#external-agent-compatibility)
+  - [Composite `is_successful` (per-scenario whitelist)](#composite-is_successful-per-scenario-whitelist)
   - [Run-level aggregation](#run-level-aggregation)
 - [Output Structure](#output-structure)
 - [Extending the System](#extending-the-system) — pointer to [`EXTENDING_DATA.md`](EXTENDING_DATA.md) + [`EXTENDING_PIPELINE.md`](EXTENDING_PIPELINE.md)
@@ -104,7 +106,7 @@ python run_evaluation.py \
 
 ### 3. Scoring
 
-Each scenario can be scored by up to **five orthogonal signals** — action-list match, DB-state hash match, DB-state assertions, NL assertions, and LLM judge — combined into a single `is_successful` composite via strict conjunction (every applicable signal must pass). Pass `--judge-url`, `--judge-model`, and `--judge-api-key` to enable the LLM judge alongside the deterministic signals; the judge runs independently and contributes its own verdict to the conjunction (when `--judge-threshold` is set). All signals + the composite + a per-scenario `success_breakdown` land in `metrics.json`; the LLM judge's full output (score, reason, per-assertion verdicts, verbatim prompt) lives in `judge_result.json`. See [Evaluation Metrics](#evaluation-metrics) for the full signal model.
+Each scenario can be scored by up to **six orthogonal signals** — action-list match, DB-state hash match, DB-state assertions, NL assertions, LLM judge, and clean exit — combined into a single `is_successful` composite via strict conjunction (every applicable signal must pass). Pass `--judge-url`, `--judge-model`, and `--judge-api-key` to enable the LLM judge alongside the deterministic signals; the judge runs independently and contributes its own verdict to the conjunction (when `--judge-threshold` is set). All signals + the composite + a per-scenario `success_breakdown` land in `metrics.json`; the LLM judge's full output (score, reason, per-assertion verdicts, verbatim prompt) lives in `judge_result.json`. See [Evaluation Metrics](#evaluation-metrics) for the full signal model.
 
 ### 4. Resuming a partial run
 
@@ -131,6 +133,22 @@ Per-scenario filesystem state determines what happens to each scenario:
 
 **Final aggregates always regenerate.** `all_metrics.json`, `all_summary.txt`, and `all_latencies.csv` are written fresh at the end of the resume session, covering every scenario in `all_results` (both freshly-run and loaded-from-disk).
 
+**Preview a resume before running it.** `check_resume.py` reports which scenarios a `--resume` would re-run, without touching anything on disk. Note that its `--min-agent-turns` default is `0` (stall detection off), unlike `run_evaluation.py`'s `3` — pass the value you intend to resume with, or the preview will under-report:
+
+```bash
+python check_resume.py eval_results/eval_20260618_072325 --min-agent-turns 3
+```
+
+### Helper launch scripts
+
+`run_agent.sh` and `run_user.sh` wrap the two `bot_server.py` invocations from [Step 1](#1-start-the-two-bot-servers) with `SERVER_CONFIG_PATH`, `WEBSOCKET_PORT` and `FASTAPI_PORT` already exported. **Run them from `evaluation/`** — they resolve their own directory only to locate `bot_server.py`; the exported `SERVER_CONFIG_PATH` stays relative and `ConfigManager` resolves it against the current working directory, so another cwd fails with `FileNotFoundError: Server configuration file not found at server_configs/agent.yaml`.
+
+```bash
+cd evaluation
+./run_agent.sh   # agent role,    server_configs/agent.yaml, ws 8765
+./run_user.sh    # user-sim role, server_configs/user.yaml,  ws 8766
+```
+
 ## CLI Reference
 
 ### `run_evaluation.py` flags
@@ -144,7 +162,7 @@ Per-scenario filesystem state determines what happens to each scenario:
 | `--list` | List all registered scenarios and exit |
 | `--list-domains` | List available domains and exit |
 | `--audio-chunk-in-seconds <seconds>` | Audio chunk in seconds for the audio stream (default: 0.016) |
-| `--duration <seconds>` | Default max duration per scenario (default: 120). Overridden by scenario's own `max_duration` if set. |
+| `--duration <seconds>` | Max duration per scenario, in seconds. **Overrides** the scenario's own `max_duration`. Unset by default, in which case each scenario's `max_duration` applies. |
 | `--pause <seconds>` | Pause between scenarios (default: 0.5) |
 | `--output-dir <path>` | Output directory root (default: `./eval_results`) |
 | `--output-sample-rate <hz>` | Sample rate for recorded stereo WAV (default: 16000) |
@@ -159,6 +177,7 @@ Per-scenario filesystem state determines what happens to each scenario:
 | `--judge-context-message-limit <count>` | Maximum context messages to send when `--judge-compact-context` is enabled. |
 | `--judge-context-system-string-limit <chars>` | Maximum system-message content length when `--judge-compact-context` is enabled. |
 | `--judge-context-string-limit <chars>` | Maximum non-system string length when `--judge-compact-context` is enabled. |
+| `--min-agent-turns <N>` | **Default: 3.** Scenarios with fewer completed agent turns are **counted as failures** in the composite success rate and skipped in the per-signal rates; on `--resume` they are also treated as in-flight. Pass `0` to disable. See [Notes](#notes). |
 
 If neither `--scenarios` nor `--domain` is given, all registered scenarios run.
 
@@ -194,7 +213,7 @@ Run `python run_evaluation.py --list` for the full list of scenario names, or `-
 
 The `eva_airline` domain is the first port from an external scenario library and introduces a few patterns worth knowing:
 
-- **Symmetric inline DB transfer.** Each scenario's `setup_shared_state` writes the full scenario DB content (`nemo_voice_agent/evaluation/data/eva_airline/{eva_id}.json`) into `state["db"]`. The runner serializes this in the `update_system_prompt` RTVI message and the bot server uses it as-is — no filesystem coupling on the server side. At end-of-scenario the bridge pulls the (mutated) DB back via `get_scenario_summary`. Full content travels both ways. (A path-based fallback in the action handler remains for any future domain whose fixture is too large to ship inline — see [`nemo_voice_agent/evaluation/data/README.md`](../nemo_voice_agent/evaluation/data/README.md).)
+- **Symmetric inline DB transfer.** Each scenario's `setup_shared_state` writes the full scenario DB content (`nemo_voice_agent/evaluation/data/eva_airline/{eva_id}.json`) into `state["db"]`. The bridge serializes this into the `shared_state_init` payload of the `apply_initialization` RTVI message and the bot server uses it as-is — no filesystem coupling on the server side. At end-of-scenario the bridge pulls the (mutated) DB back via `get_scenario_summary`. Full content travels both ways. (A path-based fallback in the action handler remains for any future domain whose fixture is too large to ship inline — see [`nemo_voice_agent/evaluation/data/README.md`](../nemo_voice_agent/evaluation/data/README.md).)
 - **Auto-aggregated action records, bridge-pulled.** Write tools subclass `WriteAirlineTool` and call `self._record_action(...)` on success, populating `shared_state["actions"]`. There is **no LLM-callable summary tool**; the bridge pulls `{"actions": ..., "db": ...}` at end-of-scenario via the `get_scenario_summary` RTVI client message (mirrors `get_context_history`). This eliminates summary-tool failure modes (forget-to-call, double-call, mid-conversation call) and a class of hallucinations (mis-formatted numbers, dropped fields, wrong enum values). Scoring measures what tools actually did.
 - **DB-state hash matching (path-independent scoring).** Each scenario binds to an `expected_scenario_db` via a `cached_property` that reads from `eva_airline_dataset.jsonl`'s `ground_truth.expected_scenario_db` field. The bridge pulls the post-run DB; the runner SHA-256-hashes both states and compares. Path-independent: any sequence of agent actions that lands in the right end state passes. Verified empirically on `eva_airline__voluntary_date_change` — a canonical happy path produces a DB whose hash matches eva's expected state exactly. Action-list comparison still runs alongside as a separate signal — useful when you want to specifically score "did the agent perform action X" vs. "did the world end up in state Y". Scenarios that don't mutate state can opt out of DB-state scoring by setting `expected_scenario_db = None`. (Hash utility adapted from eva's `task_completion` metric.)
 - **Single-source-of-truth metadata.** Each scenario subclass declares only `eva_id`. `current_date` is a `cached_property` derived from the bound JSON's `_current_date` — no manual mirror, no drift.
@@ -206,7 +225,7 @@ The `eva_airline` domain is the first port from an external scenario library and
 
 ### tau2 domain notes
 
-The `tau2_airline`, `tau2_retail`, `tau2_telecom`, and `tau2_telecom_workflow` domains are ports of [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0) (commit `17e07b1`, MIT-licensed). They share patterns introduced by eva_airline but add several new ones — full architectural details live in `CLAUDE.md` under "Eval framework key concepts" and the per-domain layout sections; the highlights:
+The `tau2_airline`, `tau2_retail`, `tau2_telecom`, and `tau2_telecom_workflow` domains are ports of [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0) (commit `17e07b1`, MIT-licensed). They share patterns introduced by eva_airline but add several new ones; the highlights:
 
 - **Path-based DB transfer (vs. eva's inline).** Tau2 DBs are large (the agent-side `db.json` for telecom is ~7 MB — well over pipecat's 1 MB WebSocket frame cap). `Scenario.setup_shared_state` writes a relative `db_path` into `state`; the bot's `apply_initialization` RTVI handler resolves it against `EVAL_DATA_ROOT` and loads the JSON before tools instantiate. Inbound is hash-only (`get_scenario_summary` returns `{actions, db_hash}` by default). Predicate evaluation is the one exception — when `scenario.db_state_assertions` is truthy, the bridge sets `include_db=True` and the bot inlines the (smaller, telecom-only) `user_db` so the runner can call predicate functions on it.
 - **Dual-side architecture (telecom only).** `Tau2TelecomBaseScenario.has_user_state=True` activates a parallel user-side `TelecomUserDB` (mock phone state) seeded from `user_db.json`. The user-sim's LLM has 30 phone-control tools (toggle airplane mode, run speed test, check status bar, etc.). The bridge dual-pulls both sides' state at end-of-scenario; the merged action list carries `side="agent"` / `side="user"` tags.
@@ -219,7 +238,7 @@ The `tau2_airline`, `tau2_retail`, `tau2_telecom`, and `tau2_telecom_workflow` d
 
 ## Evaluation Metrics
 
-The runner emits up to **five orthogonal scoring signals** per scenario, plus a composite `is_successful` derived from them via strict conjunction. Each signal is independently opt-in at the scenario level — most domains use 2–3, telecom uses 4 plus the judge. All five (and the composite) land in `metrics.json` per scenario and roll up in `all_summary.txt` per run.
+The runner emits up to **six orthogonal scoring signals** per scenario, plus a composite `is_successful` derived from them via strict conjunction. The canonical list is the `SuccessSignal` enum in `nemo_voice_agent/evaluation/scenarios/classes.py`. Each signal is independently opt-in at the scenario level — most domains use 2–3, telecom uses 4 plus the judge — except **clean exit, which is in every domain's whitelist** (see [Composite `is_successful`](#composite-is_successful-per-scenario-whitelist)). All six (and the composite) land in `metrics.json` per scenario and roll up in `all_summary.txt` per run.
 
 ### Signal matrix
 
@@ -410,7 +429,7 @@ Two dedicated guides cover the two axes of extension. Pick the one that matches 
 
 - **Tier 1 — YAML swap** — different LLM / TTS / STT model via `server_configs/*.yaml`, no Python.
 - **Tier 2 — Custom processor** — insert a `FrameProcessor` (e.g., Markdown sanitizer between LLM and TTS).
-- **Tier 3 — Whole new pipecat pipeline** — replace `run_bot_websocket()` entirely. The eval-compatibility contract is narrow: a pipecat WebSocket transport plus an `RTVIProcessor` registering five required actions. Everything else (services, processors, pipeline shape) is your choice.
+- **Tier 3 — Whole new pipecat pipeline** — replace `run_bot_websocket()` entirely. The eval-compatibility contract is narrow: a pipecat WebSocket transport plus an `RTVIProcessor` registering six required actions. Everything else (services, processors, pipeline shape) is your choice.
 
 
 ## Notes
@@ -419,10 +438,12 @@ Two dedicated guides cover the two axes of extension. Pick the one that matches 
   client-message / server-response pattern (`on_client_message`); the pre-1.0 `RTVIAction` /
   `register_action` API no longer exists.
 
-- **Resuming after server hangs (`--min-agent-turns`).** When the agent LLM server hangs mid-scenario (e.g. LLM API server stops responding after the first agent turn), scenarios time out after only one agent turn (the greeting). These look like failures in the summary but the root cause is infrastructure, not actual agent quality. Use `--min-agent-turns N` to exclude them from aggregate rates and automatically re-run them on `--resume`:
+- **Resuming after server hangs (`--min-agent-turns`).** When the agent LLM server hangs mid-scenario (e.g. LLM API server stops responding after the first agent turn), scenarios time out after only one agent turn (the greeting). These look like failures in the summary but the root cause is infrastructure, not actual agent quality. `--min-agent-turns` scores them as failures in the composite rate, skips them in the per-signal rates, and automatically re-runs them on `--resume`.
+
+  **This is ON by default, at `--min-agent-turns 3`.** Scenarios in which the agent completed fewer than 3 turns are already being recorded as hard failures. Pass `--min-agent-turns 0` to disable the filter and score every scenario on its own merits:
 
   ```bash
-  # Mark scenarios with fewer than 2 agent turns as incomplete and re-run them
+  # Explicitly lower the threshold, or pass 0 to disable
   python run_evaluation.py \
       --user-url ws://localhost:8766 --agent-url ws://localhost:8765 \
       --domain tau2_retail \
@@ -430,4 +451,6 @@ Two dedicated guides cover the two axes of extension. Pick the one that matches 
       --min-agent-turns 2
   ```
 
-  Scenarios below the threshold are excluded from `is_successful`, action-match, DB-state, and all other aggregate rates for the current run, and flagged in `all_summary.txt`. On `--resume`, they are additionally treated as in-flight (moved aside and re-run), so a single resume command both cleans the aggregate and retries the stalled scenarios. A value of `2` (agent must have spoken at least once beyond the opening greeting) is a reasonable default for single-turn authentication flows.
+  Scenarios below the threshold are recorded as `False` in the composite `is_successful` and task-success rates (`runner.py` appends `False` to the success buckets and returns early), and are skipped in the per-signal action-match / DB-state / NL-assertion / judge rates. Token usage is still rolled up so cost accounting stays accurate. On `--resume`, they are additionally treated as in-flight (moved aside and re-run), so a single resume command both cleans the aggregate and retries the stalled scenarios.
+
+  Because the filter is on by default, **a stalled scenario silently depresses the headline success rate while shrinking the denominator of every per-signal rate.** Before comparing runs, check the `WARNING: N scenario(s) had fewer than 3 agent turn(s) ... and were counted as failures.` line in `all_summary.txt`.

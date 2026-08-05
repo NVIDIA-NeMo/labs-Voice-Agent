@@ -21,7 +21,7 @@ limitations under the License.
 
 ### Prerequisites
 
-- Python 3.10 or higher (up to 3.13)
+- Python 3.12 or 3.13 (`requires-python = ">=3.12,<3.14"`)
 - [UV](https://github.com/astral-sh/uv) for fast Python package management
 - Git for version control
 
@@ -89,20 +89,28 @@ uv run pre-commit run --all-files
 ### Running Tests
 
 ```bash
+# Run the fast unit suite (no GPU required)
+uv run pytest tests/unit -m "not gpu"
+
 # Run all tests
 uv run pytest
 
-# Run tests with coverage
-uv run pytest --cov=src --cov-report=term-missing
+# Run tests with coverage. `pytest-cov` is NOT a dependency — the repo drives
+# coverage through the `coverage` CLI (in the `test` dependency group), with
+# source/omit configured in pyproject.toml.
+uv run coverage run --source=nemo_voice_agent -m pytest tests/unit
+uv run coverage report -m
 
 # Run specific test file
-uv run pytest tests/test_specific_module.py
+uv run pytest tests/unit/test_config_manager.py
 ```
 
 ### Test Structure
 
-- Unit tests are located in the `tests/` directory
+- Tests live in `tests/unit/` and `tests/functional/` — there are no test modules directly under `tests/`
 - Test files should follow the naming pattern `test_*.py`
+- Available markers (declared in `pyproject.toml`): `unit`, `functional`, `gpu`, `slow`, `skipduringci`,
+  `pleasefixme`. Use `-m` to select or deselect them, e.g. `-m "unit and not slow"`
 - Use descriptive test names that explain what is being tested
 - Group related tests in classes when appropriate
 - Mock external dependencies and network calls
