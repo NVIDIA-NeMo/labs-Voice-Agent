@@ -172,6 +172,36 @@ def _get_journey_available_seats(journey: dict) -> dict:
     return result
 
 
+def _carry_over_bags(old_segments: List[dict], replaced_segment: Optional[dict], index: int) -> int:
+    """Return the checked-bag count a rebooked segment inherits from the original booking.
+
+    Checked bags belong to the passenger, not to a particular flight number, so a rebook
+    carries them onto the new segment — which is what eva's ``expected_scenario_db`` encodes
+    for every rebooking scenario in the packaged dataset. Writing a hard-coded ``0`` here
+    made 17 of the 50 eva scenarios unmatchable regardless of agent behavior, because
+    ``AddBaggageAllowanceTool`` is the only other writer of the field and no correct
+    transcript calls it.
+
+    Source segment, in order of preference:
+
+    1. ``replaced_segment`` — set only for a partial (single-segment) rebook, where every
+       new segment descends from that one leg.
+    2. ``old_segments[index]`` — positional match for a whole-journey rebook.
+    3. ``old_segments[0]`` — fallback when the new journey has more legs than the old one
+       (e.g. a nonstop replaced by a one-stop); bag allowance is per-booking in this dataset,
+       so all segments of a booking always carry the same value.
+    """
+    if replaced_segment is not None:
+        source = replaced_segment
+    elif index < len(old_segments):
+        source = old_segments[index]
+    elif old_segments:
+        source = old_segments[0]
+    else:
+        return 0
+    return source.get("bags_checked") or 0
+
+
 def _reservation_not_found(confirmation_number: str) -> dict:
     return {
         "status": "error",
@@ -749,8 +779,10 @@ class RebookFlightTool(WriteAirlineTool):
                     "flight_number": fs.get("flight_number"),
                     "date": new_flight.get("date"),
                     "fare_paid": seg_fare_paid,
+                    # Seat does not carry over — the new aircraft has its own map, and the gold
+                    # replay expects an explicit AssignSeatTool call to fill this in.
                     "seat": None,
-                    "bags_checked": 0,
+                    "bags_checked": _carry_over_bags(old_segments, replaced_segment, i),
                     "meal_request": None,
                 }
             )

@@ -523,6 +523,150 @@ def test_voluntary_date_change_happy_path_db_state_match():
         )
 
 
+# ---------------------------------------------------------------------------
+# Checked bags survive a rebook
+# ---------------------------------------------------------------------------
+
+
+def test_rebook_carries_checked_bags_onto_the_new_segment():
+    """Checked bags belong to the passenger, so a rebooked segment inherits them.
+
+    Regression guard: ``RebookFlightTool`` used to hard-code ``bags_checked: 0`` on every
+    new booking segment. Since ``AddBaggageAllowanceTool`` is the only other writer of that
+    field and no correct transcript calls it after a rebook, that made every eva scenario
+    whose gold carries a checked bag unmatchable regardless of agent behavior.
+    """
+    state = _load_fixture_state("1.1.4")
+    original = state["db"]["reservations"]["KOLTSF"]["bookings"][1]
+    assert original["journey_id"] == "FL_SK890_20260820"
+    assert original["segments"][0]["bags_checked"] == 1, "fixture precondition"
+
+    _run(
+        RebookFlightTool(shared_state=state),
+        {
+            "confirmation_number": "KOLTSF",
+            "journey_id": "FL_SK890_20260820",
+            "new_journey_id": "FL_SK900_20260823",
+            "rebooking_type": "voluntary",
+            "waive_change_fee": False,
+        },
+    )
+
+    new_booking = state["db"]["reservations"]["KOLTSF"]["bookings"][-1]
+    assert new_booking["journey_id"] == "FL_SK900_20260823"
+    assert new_booking["segments"][0]["bags_checked"] == 1
+    # The seat does NOT carry over — the new aircraft has its own map and the gold replay
+    # expects an explicit AssignSeatTool call.
+    assert new_booking["segments"][0]["seat"] is None
+
+
+def test_partial_rebook_carries_checked_bags_from_the_replaced_segment():
+    """A single-segment (split-booking) rebook inherits bags from the replaced leg."""
+    state = _load_fixture_state("1.1.4")
+
+    _run(
+        RebookFlightTool(shared_state=state),
+        {
+            "confirmation_number": "KOLTSF",
+            "journey_id": "FL_SK890_20260820",
+            "new_journey_id": "FL_SK900_20260823",
+            "rebooking_type": "voluntary",
+            "waive_change_fee": False,
+            "flight_number": "SK890",
+        },
+    )
+
+    new_booking = state["db"]["reservations"]["KOLTSF"]["bookings"][-1]
+    assert new_booking["journey_id"] == "FL_SK900_20260823"
+    assert all(seg["bags_checked"] == 1 for seg in new_booking["segments"])
+
+
+def test_checked_bag_rebook_db_state_match():
+    """eva 1.1.4 — a rebook scenario whose gold carries ``bags_checked: 1``.
+
+    Companion to ``test_voluntary_date_change_happy_path_db_state_match`` (1.1.2), whose gold
+    happens to carry zero bags and therefore passed even with the hard-coded ``0``. This one
+    was unmatchable by any agent before the carry-over fix.
+    """
+    state = _load_fixture_state("1.1.4")
+
+    _run(
+        GetReservationTool(shared_state=state),
+        {"confirmation_number": "KOLTSF", "last_name": "Johansson"},
+    )
+    _run(
+        RebookFlightTool(shared_state=state),
+        {
+            "confirmation_number": "KOLTSF",
+            "journey_id": "FL_SK890_20260820",
+            "new_journey_id": "FL_SK900_20260823",
+            "rebooking_type": "voluntary",
+            "waive_change_fee": False,
+        },
+    )
+    _run(
+        AssignSeatTool(shared_state=state),
+        {
+            "confirmation_number": "KOLTSF",
+            "passenger_id": "PAX001",
+            "journey_id": "FL_SK900_20260823",
+            "seat_preference": "aisle",
+        },
+    )
+
+    scenario = get_eval_scenario("eva_airline__1_1_4")
+    expected_hash = get_dict_hash(scenario.expected_scenario_db)
+    actual_hash = get_dict_hash(state["db"])
+    if expected_hash != actual_hash:
+        diff = compute_db_diff(expected_db=scenario.expected_scenario_db, actual_db=state["db"])
+        pytest.fail(
+            f"DB-state hash mismatch on canonical path. Diff: {json.dumps(diff, indent=2, default=str)[:2000]}"
+        )
+
+
+def test_every_eva_gold_keeps_the_original_checked_bag_count():
+    """Dataset invariant behind the carry-over rule.
+
+    For every eva gold that creates a new booking, the new segments carry the same
+    ``bags_checked`` as the booking they replaced. If a future dataset drop breaks this,
+    the carry-over in ``RebookFlightTool`` needs revisiting rather than silently drifting.
+    """
+    root = get_eval_data_root() / "eva_airline"
+    golds = {}
+    for line in (root / "eva_airline_dataset.jsonl").read_text().splitlines():
+        if line.strip():
+            entry = json.loads(line)
+            golds[entry["id"]] = entry["ground_truth"]["expected_scenario_db"]
+
+    def _bookings(db):
+        return {
+            (rid, b["journey_id"]): b
+            for rid, res in (db.get("reservations") or {}).items()
+            for b in res.get("bookings", [])
+        }
+
+    checked = 0
+    for eva_id, gold in golds.items():
+        initial = json.loads((root / f"{eva_id}.json").read_text())
+        before, after = _bookings(initial), _bookings(gold)
+        for (rid, jid), booking in after.items():
+            if (rid, jid) in before:
+                continue
+            original_bags = {
+                seg.get("bags_checked", 0)
+                for (r2, _), b2 in before.items()
+                if r2 == rid
+                for seg in b2.get("segments", [])
+            }
+            for seg in booking.get("segments", []):
+                assert seg.get("bags_checked", 0) in original_bags, (
+                    f"{eva_id} {rid}/{jid}: gold expects bags_checked="
+                    f"{seg.get('bags_checked')} which no original segment carries ({original_bags})"
+                )
+                checked += 1
+    assert checked > 0, "no rebooking golds found — dataset layout changed?"
+
+
 def test_messy_path_db_state_diverges_from_expected():
     """Rebook → cancel → rebook-again produces extra cancelled bookings; cardinality differs.
 
