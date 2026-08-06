@@ -399,7 +399,8 @@ Edit `default_nvidia.yaml` to point at your own NIM endpoints (`base_url`) or Ri
 (`stt.function_id`, `tts.function_id`) and voice. Tool calling is supported on this backend too
 (`llm.enable_tool_calling: true`). The underlying Pipecat services live in
 [`pipecat/services/nvidia/`](https://github.com/pipecat-ai/pipecat/tree/main/src/pipecat/services/nvidia).
-For a broader integration example, see the [NVIDIA ACE Controller example](https://github.com/NVIDIA/ace-controller/blob/main/examples/speech-to-speech/bot.py#L63).
+
+For more NIM integration examples, see the [Nemotron Voice Agent](https://github.com/NVIDIA-AI-Blueprints/nemotron-voice-agent).
 
 For details of available NVIDIA NIM services, please refer to:
 - [NVIDIA NIM LLM Service](https://docs.nvidia.com/nim/large-language-models/latest/introduction.html)
