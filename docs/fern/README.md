@@ -44,6 +44,9 @@ npm run check
 
 For a private checkout, use the local path-backed API reference generator:
 
+First, temporarily uncomment the `nemo-voice-agent-local` library block in
+`docs.yml`, then run:
+
 ```bash
 npm run generate:library:local
 ```
@@ -98,7 +101,9 @@ export FERN_TOKEN="$DOCS_FERN_TOKEN"
 npm run preview
 ```
 
-GitHub Actions also creates preview links when `PUBLISH_FERN_PREVIEWS=true` is set for the repository or organization.
+GitHub Actions creates preview links and publishes docs from `main` when
+`PUBLISH_FERN=true` is set for the repository or organization. Release events
+also publish and register versioned documentation.
 
 ## Troubleshooting
 

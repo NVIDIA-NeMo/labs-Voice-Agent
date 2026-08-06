@@ -33,12 +33,15 @@ libraries:
     output:
       path: ./product-docs/nemo-voice-agent/Full-Library-Reference
     lang: python
-  nemo-voice-agent-local:
-    input:
-      path: ../../nemo_voice_agent
-    output:
-      path: ./product-docs/nemo-voice-agent/Full-Library-Reference
-    lang: python
+  # Local development only: temporarily uncomment this block before running
+  # `npm run generate:library:local`, then comment it out again before using
+  # `fern check`, `fern docs dev`, preview, or publish commands.
+  # nemo-voice-agent-local:
+  #   input:
+  #     path: ../../nemo_voice_agent
+  #   output:
+  #     path: ./product-docs/nemo-voice-agent/Full-Library-Reference
+  #   lang: python
 
 versions:
   - display-name: Nightly

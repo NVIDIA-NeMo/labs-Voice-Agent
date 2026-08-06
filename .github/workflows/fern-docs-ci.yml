@@ -112,9 +112,6 @@ jobs:
             exit 1
           fi
 
-      - name: Generate local API reference
-        run: npm --prefix docs/fern run generate:library:local
-
       - name: Fern check
         working-directory: ./docs/fern
         run: fern check
