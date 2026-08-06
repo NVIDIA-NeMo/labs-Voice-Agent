@@ -18,7 +18,7 @@ import { dirname, join, relative, sep } from "node:path";
 
 const root =
   process.argv[2] ??
-  "product-docs/nemo-voice-agent/Full-Library-Reference";
+  "product-docs/nemo-labs-voice-agent/Full-Library-Reference";
 
 const escapeTemplate = (value) =>
   value
@@ -55,7 +55,9 @@ for (const file of files) {
   const sanitized = before
     .split("\n")
     .map((line) => {
-      const sanitizedLine = line.replace(/``([^`\n]+)``/g, "`$1`");
+      const sanitizedLine = line
+        .replace(/``([^`\n]+)``/g, "`$1`")
+        .replace(/:[A-Za-z]+:`([^`\n]+)`/g, "`$1`");
 
       if (
         !sanitizedLine.includes("<ParamField") ||

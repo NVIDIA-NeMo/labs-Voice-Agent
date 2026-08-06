@@ -63,7 +63,7 @@ from `docs.yml`:
     input:
       path: ../../nemo_voice_agent
     output:
-      path: ./product-docs/nemo-voice-agent/Full-Library-Reference
+      path: ./product-docs/nemo-labs-voice-agent/Full-Library-Reference
     lang: python
 ```
 

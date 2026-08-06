@@ -25,4 +25,4 @@ navigation:
   - section: Reference
     slug: reference
     contents:
-      - folder: ../product-docs/nemo-voice-agent/Full-Library-Reference
+      - folder: ../product-docs/nemo-labs-voice-agent/Full-Library-Reference

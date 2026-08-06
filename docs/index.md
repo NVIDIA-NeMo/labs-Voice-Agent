@@ -15,11 +15,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}
 
-# NeMo Voice Agent
+# NeMo Labs Voice Agent
 
 NeMo Voice Agent is an open-source real-time voice-agent pipeline built on
 Pipecat and NVIDIA NeMo speech models.
 
-This documentation is a placeholder for the initial Fern site. For installation,
-configuration, supported models, and evaluation details, see the repository
-README.
+## ✨ Key Features
+
+- Open-source, local deployment, and flexible customization.
+- Talk to most LLMs from vLLM/HuggingFace with configurable prompts.
+- Streaming speech recognition with low latency and end-of-utterance detection.
+- Low latency TTS for fast audio response generation.
+- Speaker diarization up to 4 speakers in different user turns.
+- WebSocket server for easy deployment.
+- Tool calling for LLMs to use external tools and adjust its own behavior.
+- Voice-agent evaluation harness with deterministic + LLM-judged scoring, and 328 scenarios across 4 primary benchmark domains (eva_airline, tau2_airline, tau2_retail, tau2_telecom).
