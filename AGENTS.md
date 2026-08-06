@@ -177,7 +177,7 @@ Telecom is the **first dual-side domain**: a separate user-side `TelecomUserDB` 
 - `tau2_telecom__X` (inherits `Tau2TelecomBaseScenario`, `policy_variant="manual"`) — uses `tech_support_manual.md` (long-form prose).
 - `tau2_telecom_workflow__X` (inherits `Tau2TelecomWorkflowBaseScenario`, `policy_variant="workflow"`) — uses `tech_support_workflow.md` (procedural step-by-step).
 
-Both share the same upstream task → identical `tau2_id`, `db`, `user_db`, `reference_answer`, `db_state_assertions`, `initialization_actions`, `nl_assertions`, agent/user tool surface, and sync_state logic. **Only the rendered policy file differs.** 
+Both share the same upstream task → identical `tau2_id`, `db`, `user_db`, `reference_answer`, `db_state_assertions`, `initialization_actions`, `nl_assertions`, agent/user tool surface, and sync_state logic. **Only the rendered policy file differs.**
 
 **Three telecom-specific agent-prompt addenda** appended after the parent's voice-realization notes (in `get_agent_prompt`), compensating for structural gaps vs upstream tau2's text-mode evaluation:
 1. `TELECOM_AGENT_TOOL_AVAILABILITY_NOTE` — explicit enumeration of the 13 agent-callable tools vs the 30 user-controlled phone tools, by snake_case name matching `policy.md` references. Prevents the LLM from hallucinating user-side tool calls (which would return `unknown_tool` errors).
@@ -246,7 +246,7 @@ uv run pytest tests/unit -m "not gpu"
 
 ## Documentation site
 
-`docs/` is a **Fern** site published to `docs.nvidia.com/nemo/voice-agent` (see `docs/fern/docs.yml`). Two CI
+`docs/` is a **Fern** site published to `docs.nvidia.com/nemo/labs-voice-agent` (see `docs/fern/docs.yml`). Two CI
 workflows have a `docs/**` path filter and fire on a docs PR: `fern-docs-ci.yml` (the validation gates) and
 `fern-docs-preview-build.yml`. `fern-docs-preview-comment.yml` chains off the latter via `workflow_run`, and
 `publish-fern-docs.yml` runs on GitHub **Release** publication / `workflow_dispatch` — never on a docs edit.

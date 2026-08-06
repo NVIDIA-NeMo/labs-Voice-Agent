@@ -14,24 +14,24 @@
 # limitations under the License.
 
 instances:
-  - url: https://nemo-voice-agent.docs.buildwithfern.com/nemo/voice-agent
-    custom-domain: docs.nvidia.com/nemo/voice-agent
+  - url: https://nemo-labs-voice-agent.docs.buildwithfern.com/nemo/labs-voice-agent
+    custom-domain: docs.nvidia.com/nemo/labs-voice-agent
     multi-source: true
 
-title: NeMo Voice Agent
+title: NeMo Labs Voice Agent
 
 global-theme: nvidia
 
 metadata:
-  canonical-host: "docs.nvidia.com/nemo/voice-agent"
+  canonical-host: "docs.nvidia.com/nemo/labs-voice-agent"
 
 libraries:
   nemo-voice-agent:
     input:
-      git: https://github.com/NVIDIA-NeMo/Voice-Agent
+      git: https://github.com/NVIDIA-NeMo/labs-Voice-Agent
       subpath: nemo_voice_agent
     output:
-      path: ./product-docs/nemo-voice-agent/Full-Library-Reference
+      path: ./product-docs/nemo-labs-voice-agent/Full-Library-Reference
     lang: python
   # Local development only: temporarily uncomment this block before running
   # `npm run generate:library:local`, then comment it out again before using
@@ -50,18 +50,18 @@ versions:
     availability: beta
 
 redirects:
-  - source: "/nemo/voice-agent/index.html"
-    destination: "/nemo/voice-agent/nightly"
-  - source: "/nemo/voice-agent/nightly/index.html"
-    destination: "/nemo/voice-agent/nightly"
+  - source: "/nemo/labs-voice-agent/index.html"
+    destination: "/nemo/labs-voice-agent/nightly"
+  - source: "/nemo/labs-voice-agent/nightly/index.html"
+    destination: "/nemo/labs-voice-agent/nightly"
 
 logo:
-  href: /nemo/voice-agent
-  right-text: NeMo Voice Agent
+  href: /nemo/labs-voice-agent
+  right-text: NeMo Labs Voice Agent
 
 navbar-links:
   - type: github
-    value: https://github.com/NVIDIA-NeMo/Voice-Agent
+    value: https://github.com/NVIDIA-NeMo/labs-Voice-Agent
 
 experimental:
   basepath-aware: true

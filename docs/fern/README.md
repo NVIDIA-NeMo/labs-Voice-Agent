@@ -8,7 +8,7 @@ The docs content lives in `../`. The nightly navigation is defined in `versions/
 
 | What | Where |
 |---|---|
-| Published site | https://docs.nvidia.com/nemo/voice-agent |
+| Published site | https://docs.nvidia.com/nemo/labs-voice-agent |
 | Fern dashboard | https://dashboard.buildwithfern.com |
 | Fern config | `docs.yml` |
 | Nightly navigation | `versions/nightly.yml` |
@@ -89,7 +89,7 @@ npm run generate:library
 ```
 
 This requires Fern's remote parser to clone
-`https://github.com/NVIDIA-NeMo/Voice-Agent`, so it fails while the repository is
+`https://github.com/NVIDIA-NeMo/labs-Voice-Agent`, so it fails while the repository is
 private unless Fern has GitHub access.
 
 ## Hosted Preview

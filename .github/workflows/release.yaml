@@ -87,7 +87,7 @@ jobs:
       skip-test-wheel: true
       skip-wheel-build: true
       publish-docs: ${{ inputs.publish-docs || true }}
-      docs-target-path: nemo/voice-agent
+      docs-target-path: nemo/labs-voice-agent
       app-id: ${{ vars.BOT_ID }}
       restrict-to-admins: true
     secrets: inherit
