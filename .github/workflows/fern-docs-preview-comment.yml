@@ -22,7 +22,7 @@
 #
 # Required configuration:
 # - Organization secret: DOCS_FERN_TOKEN (from `fern token` for the nvidia Fern org)
-# - Repository or organization variable: PUBLISH_FERN_PREVIEWS=true
+# - Repository or organization variable: PUBLISH_FERN=true
 
 name: "Preview Fern Docs: Comment"
 
@@ -35,9 +35,6 @@ permissions:
   pull-requests: write
   actions: read
 
-env:
-  PUBLISH_FERN_PREVIEWS: ${{ vars.PUBLISH_FERN_PREVIEWS || 'false' }}
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.workflow_run.head_repository.full_name || github.repository }}-${{ github.event.workflow_run.head_branch || github.event.workflow_run.id }}
   cancel-in-progress: true
@@ -49,7 +46,7 @@ jobs:
     timeout-minutes: 15
     if: |
       github.event.workflow_run.conclusion == 'success'
-      && vars.PUBLISH_FERN_PREVIEWS == 'true'
+      && vars.PUBLISH_FERN == 'true'
     steps:
       - name: Download docs sources and metadata
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
