@@ -17,7 +17,7 @@ limitations under the License.
 
 # NeMo Labs Voice Agent
 
-NeMo Voice Agent is an open-source real-time voice-agent pipeline built on
+NeMo Labs Voice Agent is an open-source real-time voice-agent pipeline built on
 Pipecat and NVIDIA NeMo speech models.
 
 ## ✨ Key Features

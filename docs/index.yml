@@ -13,8 +13,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This file is the FROZEN-RELEASE navigation. It is read only by
+# .github/workflows/publish-fern-docs.yml at release time, which rewrites it into
+# docs/fern/versions/<tag>.yml with:
+#
+#     sed "s|path: |path: ${TAG_VERSION}-content/|g"
+#
+# Keep it structurally in sync with docs/fern/versions/nightly.yml (the nightly
+# channel), which IS validated by `fern check`. This file is NOT validated —
+# a mistake here surfaces only on the first release.
+#
+# Two path conventions apply, and they differ:
+#   * `path:` values are docs/-relative and bare (no ./ or ../), with exactly ONE
+#     space after the colon — the sed matches the literal string "path: ".
+#   * `folder:` values pass through the sed UNCHANGED, so they must already be
+#     written relative to docs/fern/versions/ (where <tag>.yml lands).
 navigation:
+  - page: Home
+    path: index.md
+    slug: ""
   - section: Getting Started
     contents:
       - page: Overview
         path: index.md
+        slug: overview
+  - section: Reference
+    slug: reference
+    contents:
+      # Not rewritten by the sed — see the note above. Resolves to
+      # docs/fern/product-docs/... from docs/fern/versions/.
+      # The autodoc is regenerated per publish, so every version shares one
+      # snapshot rather than a per-tag freeze.
+      - folder: ../product-docs/nemo-labs-voice-agent/Full-Library-Reference

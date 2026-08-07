@@ -246,10 +246,15 @@ uv run pytest tests/unit -m "not gpu"
 
 ## Documentation site
 
-`docs/` is a **Fern** site published to `docs.nvidia.com/nemo/labs-voice-agent` (see `docs/fern/docs.yml`). Two CI
-workflows have a `docs/**` path filter and fire on a docs PR: `fern-docs-ci.yml` (the validation gates) and
-`fern-docs-preview-build.yml`. `fern-docs-preview-comment.yml` chains off the latter via `workflow_run`, and
-`publish-fern-docs.yml` runs on GitHub **Release** publication / `workflow_dispatch` — never on a docs edit.
+`docs/` is a **Fern** site published to `docs.nvidia.com/nemo/labs-voice-agent` (see `docs/fern/docs.yml`).
+**⚠️ Merging any `docs/**` change to `main` publishes it live within about a minute** — `publish-fern-docs.yml`
+triggers on push to `main` (as well as on Release publication and `workflow_dispatch`), gated only on the
+`PUBLISH_FERN` repo variable, which is set. There is no staging channel; review on the PR preview.
+
+Three CI workflows carry a `docs/**` path filter: `fern-docs-ci.yml` (the validation gates),
+`fern-docs-preview-build.yml`, and `publish-fern-docs.yml`. `fern-docs-preview-comment.yml` chains off the
+preview build via `workflow_run`.
+
 Four things to know before touching it:
 
 - **Navigation is declared twice.** `docs/fern/versions/nightly.yml` (paths relative to itself, so `../../…`;
@@ -260,8 +265,11 @@ Four things to know before touching it:
   over `docs/**/*.md`, which requires every relative link target to exist on disk (no `.lycheeignore` exists).
 - Author pages as `.md` (`.mdx` is the generated-only format). Fern renders `.md` through MDX, so bare `{`, `}`,
   `<` outside code fences break the build — that is why `docs/index.md` uses a `{/* … */}` comment header.
-- `docs/fern/product-docs/**` is the generated Python API reference: gitignored, regenerated per build, and
-  required on disk before `fern check` will pass locally (`cd docs/fern && npm run generate:library:local`).
+- `docs/fern/product-docs/**` is the generated Python API reference: gitignored and regenerated per build.
+  `fern check` does **not** need it on disk (CI has no generate step and still passes) — `npm run check` alone
+  is enough for a prose change. Only a locally rendered `npm run dev` needs it, via
+  `npm run generate:library:local`, which additionally requires temporarily uncommenting the
+  `nemo-voice-agent-local` block in `docs.yml` and re-commenting it afterwards.
 
 ## Gotchas
 
