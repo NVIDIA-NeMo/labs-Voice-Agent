@@ -17,7 +17,6 @@
     {
       "title": "Get Started",
       "pages": [
-        { "title": "Overview", "path": "index.md", "slug": "overview" },
         { "title": "Installation", "path": "get-started/installation.md" },
         { "title": "Quickstart", "path": "get-started/quickstart.md" },
         { "title": "How It Works", "path": "get-started/architecture.md" },

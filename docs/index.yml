@@ -27,9 +27,6 @@ navigation:
     slug: ""
   - section: Get Started
     contents:
-      - page: Overview
-        path: index.md
-        slug: overview
       - page: Installation
         path: get-started/installation.md
       - page: Quickstart
