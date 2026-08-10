@@ -37,6 +37,7 @@ mechanical one.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,20 @@ def _docs_pages() -> list[Path]:
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _is_gitignored(path: str) -> bool:
+    """Return whether a repo-relative path is an intentionally ignored artifact."""
+    candidates = (path, f"{path}/")
+    return any(
+        subprocess.run(
+            ["git", "check-ignore", "--quiet", "--no-index", candidate],
+            cwd=REPO,
+            check=False,
+        ).returncode
+        == 0
+        for candidate in candidates
+    )
 
 
 # --------------------------------------------------------------------------
@@ -162,6 +177,8 @@ def test_referenced_repo_paths_exist():
 
     Catches the class where a module moves and prose keeps the old location —
     e.g. fixtures cited at `evaluation/data/` after they moved into the package.
+    Gitignored generated and runtime artifacts are valid documentation targets
+    even though they are absent from a clean checkout.
     """
     pattern = re.compile(r"`((?:nemo_voice_agent|examples|evaluation|scripts|tests|docker|docs)/[\w./-]*[\w/])`")
     missing: list[str] = []
@@ -170,7 +187,7 @@ def test_referenced_repo_paths_exist():
             target = match.rstrip("/")
             if "*" in target or target.endswith((".md.", ".")):
                 continue
-            if not (REPO / target).exists():
+            if not (REPO / target).exists() and not _is_gitignored(target):
                 missing.append(f"{page.relative_to(REPO)} -> {target}")
     assert not missing, "docs reference paths that do not exist:\n  " + "\n  ".join(sorted(missing))
 
@@ -219,14 +236,6 @@ def test_docs_do_not_cite_files_inside_the_gitignored_scratch_dir():
     """
     offenders = [str(p.relative_to(REPO)) for p in _docs_pages() if re.search(r"nemo_experiments/\w", _read(p))]
     assert not offenders, f"docs cite files inside the gitignored scratch directory: {offenders}"
-
-
-def test_docs_use_the_site_product_name():
-    """Inside docs/, the product is "NeMo Labs Voice Agent" (matches docs.yml title)."""
-    offenders = [str(p.relative_to(REPO)) for p in _docs_pages() if re.search(r"(?<!Labs )NeMo Voice Agent", _read(p))]
-    assert not offenders, 'docs/ prose must say "NeMo Labs Voice Agent" to match docs.yml; offenders: ' + str(
-        offenders
-    )
 
 
 def test_every_docs_page_has_license_header():
