@@ -57,7 +57,9 @@ scenarios). Adapted code covers the DB-hash canonicalization module
 (`nemo_voice_agent/evaluation/db_hash.py`), the airline tool and parameter definitions
 (`eva_airline_tools.py`, `eva_airline_params.py`), and the scenario package under
 `nemo_voice_agent/evaluation/scenarios/data/eva_airline/`. The scenario databases and
-dataset index under `nemo_voice_agent/evaluation/data/eva_airline/` are copied verbatim.
+dataset index under `nemo_voice_agent/evaluation/data/eva_airline/` are copied verbatim. The upstream
+`airline_agent.yaml` is also included there with only trailing whitespace normalized; its `role` and
+`instructions` provide the eva agent policy.
 
 ### tau2-bench (MIT, Sierra Research)
 

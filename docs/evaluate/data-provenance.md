@@ -131,6 +131,7 @@ attribution at the top of the file. Data fixtures are verbatim copies except whe
 |---|---|
 | `<eva_id>.json` (50 files) | Self-contained scenario world state — `reservations`, `journeys`, `disruptions`, and a `_current_date` key. Upstream `data/airline_scenarios/`. |
 | `eva_airline_dataset.jsonl` (50 lines) | Per-scenario metadata: `user_goal`, `decision_tree`, `information_required`, `ground_truth.expected_scenario_db`. Upstream `data/airline_dataset.jsonl`. |
+| `airline_agent.yaml` | Complete upstream agent configuration from `configs/agents/airline_agent.yaml`, with only trailing whitespace normalized. `get_agent_prompt()` uses its `role` and `instructions` verbatim before appending NeMo voice/runtime notes. |
 
 Read once per process and indexed by scenario id. See [eva_airline](domains/eva-airline.md).
 

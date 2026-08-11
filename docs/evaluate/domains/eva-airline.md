@@ -88,7 +88,9 @@ nothing else. `EvaAirlineBaseScenario` derives the rest lazily through `cached_p
 | `domain` | class attribute | fixed to `"eva_airline"` — the tool-registry namespace |
 | `success_signals` | class attribute | `(SuccessSignal.DB_STATE_MATCH, SuccessSignal.CLEAN_EXIT)` |
 | `max_duration` | class attribute | `900` seconds — voice round-trips run roughly ten times slower than text |
-| `agent_persona` / `agent_task` / `agent_actions` / `agent_resources` | properties | shared SkyWay Airlines agent prompt, with `current_date` interpolated into the guidelines |
+| `policy` | `cached_property` | the complete `instructions` field from the pinned upstream `airline_agent.yaml` |
+| `agent_persona` / `agent_task` | properties | the upstream agent role and description, exposed for scenario-contract introspection |
+| `agent_actions` / `agent_resources` | properties | an empty action stub and the fixed eva tool surface, respectively |
 
 The dataset index is loaded once per process by `_load_eva_airline_dataset_index()`, cached with
 `functools.cache`. An `eva_id` with no dataset entry raises `KeyError` when `expected_scenario_db` is first
@@ -99,6 +101,26 @@ inline to `state["db"]`. eva fixtures are small enough (roughly 10–30 KB each)
 `shared_state_init` argument of the `apply_initialization` RTVI client message, so unlike the tau2 domains
 there is no `db_path` indirection. There is no user-side database.
 
+## Agent policy
+
+The live agent prompt starts with the `role` and complete `instructions` from ServiceNow/eva 0.1.3's
+`configs/agents/airline_agent.yaml`. A pinned copy lives at
+`nemo_voice_agent/evaluation/data/eva_airline/airline_agent.yaml`; only upstream trailing whitespace is
+normalized. This keeps authentication, fees, rebooking, refunds, compensation, standby, elite-status, and
+escalation rules in one auditable upstream-derived source instead of reconstructing a shorter policy in
+`base.py`.
+
+`get_agent_prompt()` preserves that policy content and then appends a clearly marked
+`## Additional Notes to Follow` section containing only NeMo voice/runtime guidance:
+
+- the scenario's current date;
+- the general voice-agent prompt and spoken alphanumeric rule;
+- the rule not to read internal journey IDs aloud;
+- clean conversation termination and execution-honesty guidance.
+
+The YAML's tool declarations are retained for provenance, but the callable surface is still defined by
+`agent_resources` and the NeMo eva tool implementations described below.
+
 ## Fixture layout
 
 Fixtures ship inside the installed library at `nemo_voice_agent/evaluation/data/eva_airline/`, resolved by
@@ -108,6 +130,7 @@ Fixtures ship inside the installed library at `nemo_voice_agent/evaluation/data/
 | --- | --- |
 | `eva_airline/<eva_id>.json` (50 files) | Per-scenario database: `_current_date`, `reservations`, `journeys`, `disruptions`, `travel_credits`, `meal_vouchers`, `refunds` |
 | `eva_airline/eva_airline_dataset.jsonl` (50 lines) | Per-scenario metadata keyed by `id`: `user_goal`, `user_config`, `expected_flow`, `scenario_context`, `ground_truth` |
+| `eva_airline/airline_agent.yaml` | Pinned upstream agent configuration; `role` and `instructions` form the policy portion of the live agent prompt |
 
 Provenance and license notes are recorded in the data directory's `README.md`; see also
 [Data provenance](../data-provenance.md).

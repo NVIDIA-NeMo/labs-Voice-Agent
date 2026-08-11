@@ -80,7 +80,9 @@ Each domain has its own page with the task shape, tool surface, and known caveat
 
 - [eva_airline](./domains/eva-airline.md) — 50 airline-support scenarios. Every scenario ships a gold
   `expected_scenario_db`, so DB-state hash equality is the primary signal and no LLM judge is required.
-  Scenarios do not define a `reference_answer`. Agent tool surface: 15 eva tools plus `EndConversationTool`.
+  Scenarios do not define a `reference_answer`. The agent prompt uses eva 0.1.3's complete
+  `airline_agent.yaml` policy plus a short NeMo voice/runtime appendix. Agent tool surface: 15 eva tools plus
+  `EndConversationTool`.
 - [tau2_airline](./domains/tau2-airline.md) — the 50 ids in tau2-bench's `base` split. The agent prompt is
   the upstream `policy.md` verbatim plus a short voice-realization appendix, which keeps scores comparable to
   the published tau2 voice numbers. Agent tool surface: 14 tools plus `EndConversationTool`.
