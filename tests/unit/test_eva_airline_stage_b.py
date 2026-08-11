@@ -26,11 +26,13 @@ Without spinning up an LLM or bot server, exercise:
 """
 
 import asyncio
+import hashlib
 import json
 import sys
 import tempfile
 
 import pytest
+from omegaconf import OmegaConf
 
 from nemo_voice_agent.evaluation import get_eval_data_root
 from nemo_voice_agent.evaluation.db_hash import compute_db_diff, get_dict_hash
@@ -590,6 +592,34 @@ def test_messy_path_db_state_diverges_from_expected():
 # ---------------------------------------------------------------------------
 # Coverage: all registered eva_airline scenarios are well-formed
 # ---------------------------------------------------------------------------
+
+
+def test_eva_airline_agent_config_matches_upstream_0_1_3():
+    """The whitespace-normalized config is locked to the pinned upstream source."""
+    path = get_eval_data_root() / "eva_airline" / "airline_agent.yaml"
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == (
+        "58631672139be47f767c367894919d64091832b0113b099443dcd645609209bd"
+    )
+
+
+def test_eva_airline_agent_prompt_uses_complete_upstream_policy():
+    """The live prompt uses YAML role + instructions, then NeMo-only addenda."""
+    path = get_eval_data_root() / "eva_airline" / "airline_agent.yaml"
+    config = OmegaConf.load(path)
+    policy = config.instructions.rstrip()
+
+    prompt = get_eval_scenario("eva_airline__voluntary_date_change").get_agent_prompt()
+
+    assert prompt.startswith(f"{config.role.rstrip()}\n\n{policy}")
+    assert prompt.count(policy) == 1
+    assert prompt.index("## Additional Notes to Follow") > prompt.index("### Escalation Policy")
+
+    # Regression for the conflicting local transcription that triggered this
+    # fix: upstream charges Basic Economy $75 for a future voluntary change and
+    # $199 for a same-day change, not the reverse.
+    assert "Voluntary changes (passenger-initiated, new flight on a future date):\n- Basic Economy: $75" in prompt
+    assert "Same-day changes (passenger-initiated, new flight departing today):\n- Basic Economy: $199" in prompt
+    assert "Voluntary change fees by original fare class: Basic Economy $199" not in prompt
 
 
 @pytest.mark.parametrize("scenario_name", _all_eva_airline_scenarios())
