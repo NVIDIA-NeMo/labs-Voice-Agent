@@ -209,14 +209,17 @@ class EvaAirlineBaseScenario(Scenario):
         return Persona(
             role="customer service agent",
             background=config["role"],
-            personality=config.get("description"),
+            personality=(
+                "You are calm, professional, and concise. You listen first, confirm critical details "
+                "before acting, and explain fees and policies clearly before making any change."
+            ),
         )
 
     @property
     def agent_task(self) -> Task:
         return Task(
-            goal="(see eva_airline/airline_agent.yaml)",
-            background="The upstream eva airline policy is rendered directly by get_agent_prompt().",
+            goal=config.get("description"),
+            background="You are handling an inbound customer service call for SkyWay Airlines.",
         )
 
     @property
