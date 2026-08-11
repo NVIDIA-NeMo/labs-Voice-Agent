@@ -217,6 +217,7 @@ class EvaAirlineBaseScenario(Scenario):
 
     @property
     def agent_task(self) -> Task:
+        config = _load_eva_airline_agent_config()
         return Task(
             goal=config.get("description"),
             background="You are handling an inbound customer service call for SkyWay Airlines.",
