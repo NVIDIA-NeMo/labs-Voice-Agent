@@ -24,6 +24,8 @@
 import json
 from functools import cache, cached_property
 
+from omegaconf import OmegaConf
+
 from nemo_voice_agent.evaluation import get_eval_data_root
 from nemo_voice_agent.evaluation.scenarios import (
     END_CONVERSATION_GUIDELINE,
@@ -38,7 +40,7 @@ from nemo_voice_agent.evaluation.scenarios.classes import (
     SuccessSignal,
     Task,
 )
-from nemo_voice_agent.utils.voice_prompts import VOICE_ALPHANUMERIC_RULE
+from nemo_voice_agent.utils.voice_prompts import GENERAL_PROMPT, VOICE_ALPHANUMERIC_RULE
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +69,25 @@ def _load_eva_airline_dataset_index() -> dict:
             entry = json.loads(line)
             index[entry["id"]] = entry
     return index
+
+
+@cache
+def _load_eva_airline_agent_config() -> dict:
+    """Load the pinned eva ``airline_agent.yaml`` once per process.
+
+    The checked-in file copies ServiceNow/eva tag ``0.1.3`` with trailing
+    whitespace normalized. Keeping the upstream config intact makes the policy
+    provenance auditable and avoids maintaining a second, hand-transcribed set
+    of airline rules here.
+    """
+    path = get_eval_data_root() / "eva_airline" / "airline_agent.yaml"
+    config = OmegaConf.to_container(OmegaConf.load(path), resolve=True)
+    if not isinstance(config, dict):
+        raise ValueError(f"Expected a mapping in eva airline agent config: {path}")
+    for field in ("role", "instructions"):
+        if not isinstance(config.get(field), str) or not config[field].strip():
+            raise ValueError(f"Missing non-empty {field!r} in eva airline agent config: {path}")
+    return config
 
 
 # ---------------------------------------------------------------------------
@@ -150,67 +171,59 @@ class EvaAirlineBaseScenario(Scenario):
 
     # -- Agent defaults (shared across all airline scenarios) ---------------
 
+    @cached_property
+    def policy(self) -> str:
+        """Upstream eva 0.1.3 airline instructions (content-verbatim)."""
+        return _load_eva_airline_agent_config()["instructions"].rstrip()
+
+    def get_agent_prompt(self) -> str:
+        """Use eva's airline policy as the prompt source of truth.
+
+        ``airline_agent.yaml`` supplies the role and complete policy. NeMo only
+        appends voice-transport and evaluation-harness guidance; policy rules
+        (fees, eligibility, compensation, escalation, and procedure) are never
+        reconstructed locally.
+        """
+        config = _load_eva_airline_agent_config()
+        return (
+            config["role"].rstrip()
+            + "\n\n"
+            + self.policy
+            + "\n\n## Additional Notes to Follow\n\n"
+            + f"Today is {self.current_date}.\n\n"
+            + GENERAL_PROMPT.strip()
+            + "\n\n"
+            + VOICE_ALPHANUMERIC_RULE
+            + "\n\n"
+            + "Do not read internal journey IDs (for example, FL_SK621_20260320) aloud. "
+            "Refer to flights by flight number and date instead."
+            + "\n\n"
+            + END_CONVERSATION_GUIDELINE
+            + "\n\n"
+            + EXECUTION_HONESTY_GUIDELINE
+        )
+
     @property
     def agent_persona(self) -> Persona:
+        config = _load_eva_airline_agent_config()
         return Persona(
             role="customer service agent",
-            name="Skye",
-            background="You are a voice agent for SkyWay Airlines handling inbound calls for flight changes, rebooking, cancellations, and refunds.",
-            personality=(
-                "You are calm, professional, and concise. You listen first, confirm critical details "
-                "before acting, and explain fees and policies clearly before making any change."
-            ),
+            background=config["role"],
+            personality=config.get("description"),
         )
 
     @property
     def agent_task(self) -> Task:
         return Task(
-            goal=(
-                "Help the caller with their flight change, rebooking, cancellation, or refund request, "
-                "applying SkyWay's policies."
-            ),
-            background="You are handling an inbound customer service call for SkyWay Airlines.",
+            goal="(see eva_airline/airline_agent.yaml)",
+            background="The upstream eva airline policy is rendered directly by get_agent_prompt().",
         )
 
     @property
     def agent_actions(self) -> Actions:
-        return Actions(
-            instructions=[
-                "Greet the caller and ask how you can help.",
-                "Authenticate by asking for their confirmation number and last name; call GetReservationTool to load the booking.",
-                "Listen to the caller's request and consult the policies in your guidelines.",
-                "Use the appropriate tools to fulfill the request — explain any fees or fare differences before confirming.",
-                "After the work is done, confirm to the caller in plain language what was changed (or refunded, or vouchered) and ask if there is anything else they need.",
-            ],
-            guidelines=[
-                f"Today is {self.current_date}.",
-                VOICE_ALPHANUMERIC_RULE,
-                "Do not read internal journey IDs (e.g., FL_SK621_20260320) aloud. Refer to flights by flight number and date instead.",
-                "Confirm critical details before executing changes.",
-                "Stay concise — this is a phone call, not an email.",
-                "Use only the tools provided; do not invent flight numbers, fares, or policies.",
-                # Cost math — the agent must translate raw fares into out-of-pocket
-                # change cost. Observed failure mode: agent quotes $300 (raw new
-                # fare) and tells caller "that's over your $120 budget" when the
-                # actual change cost is $115.
-                "When discussing rebooking cost with the caller: ALWAYS quote the total out-of-pocket change cost, NEVER the raw new-flight fare. Total change cost = change_fee + max(0, new_fare − old_fare_paid). Example: if the customer paid $260 originally and the new flight's fare is $300 with a $75 change fee, the total they owe is $115, not $300. If the new fare is lower than the old, the fare difference becomes a travel credit — they only pay the change fee.",
-                "Voluntary change fees by original fare class: Basic Economy $199 (or $75 for same-day), Main Cabin / Premium Economy $75, Business / First $0. IRROPS-driven changes waive the fee entirely.",
-                "If the caller mentions a cost budget (e.g., 'under $120'), evaluate options against the TOTAL CHANGE COST, NOT the raw new-flight fare. A flight whose new-cabin fare is $300 may still fit a $120 budget after subtracting the old fare paid and adding the change fee.",
-                # Turn-efficiency hints — voice round-trips are slow; volunteering
-                # information the caller is likely to ask next saves 1–2 turns each.
-                "When presenting flight options to the caller, ALWAYS include the total change cost for each option upfront (not just the raw fare). Don't make the caller ask a second time for the cost.",
-                "Right after a successful rebooking, proactively offer to assign a seat if the caller hasn't requested one yet — e.g., 'Would you like me to assign a seat? Any preference — window, aisle, or middle?' This saves a round of asking and avoids running out of call time.",
-                # Shared end-of-call protocol — handles the explicit-confirmation
-                # requirement and EndConversationTool firing. The SkyWay-branded
-                # farewell phrasing layers on top of the generic protocol below.
-                END_CONVERSATION_GUIDELINE,
-                "When the caller has nothing else, use a SkyWay-branded farewell — e.g., 'Thank you for flying SkyWay, have a great day' — before calling EndConversationTool.",
-                # Anti-fabrication rule for summaries / totals — prevents the
-                # "claim-without-doing" pattern (e.g. reporting a refund that
-                # was discussed but never confirmed by the user).
-                EXECUTION_HONESTY_GUIDELINE,
-            ],
-        )
+        # Scenario-contract stub only. The live agent prompt bypasses the
+        # structured renderer so airline policy cannot drift from upstream.
+        return Actions()
 
     @property
     def agent_resources(self) -> Resources:

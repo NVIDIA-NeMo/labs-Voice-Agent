@@ -113,6 +113,7 @@ nemo_voice_agent = [
     "evaluation/data/**/*.json",
     "evaluation/data/**/*.jsonl",
     "evaluation/data/**/*.md",
+    "evaluation/data/**/*.yaml",
 ]
 
 [tool.setuptools.dynamic]
