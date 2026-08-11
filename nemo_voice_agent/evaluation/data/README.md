@@ -25,6 +25,13 @@ that scenarios from different upstream libraries don't collide.
     `decision_tree`, `information_required`, `ground_truth.expected_scenario_db`).
     Used to translate eva scenarios into NeMo `Scenario` subclasses. Source:
     `data/airline_dataset.jsonl`.
+  - `eva_airline/airline_agent.yaml` — complete agent configuration (with only
+    upstream trailing whitespace normalized), including the airline policy
+    under `instructions` (SHA-256
+    `58631672139be47f767c367894919d64091832b0113b099443dcd645609209bd`).
+    `EvaAirlineBaseScenario.get_agent_prompt()` uses that upstream policy
+    verbatim, then appends only NeMo voice/runtime notes. Source:
+    `configs/agents/airline_agent.yaml`.
 - **Bound code**: `nemo_voice_agent/evaluation/scenarios/data/eva_airline/` (package: `base.py` holds the `EvaAirlineBaseScenario` + 5 hand-authored seed scenarios; `group_Nx.py` modules carry the auto-scaffolded scenarios for each eva sub-flow)
   + `nemo_voice_agent/evaluation/tools/eva_airline_tools.py` +
   `eva_airline_params.py`. Each ported code file carries an inline
