@@ -172,6 +172,61 @@ def _get_journey_available_seats(journey: dict) -> dict:
     return result
 
 
+def _carried_ancillaries(old_segments: List[dict], replaced_segment: Optional[dict], index: int) -> dict:
+    """Return the ancillaries a rebooked segment inherits from the booking it replaces.
+
+    Rule of thumb for which fields carry: **carry what the dataset gives no availability
+    model for, re-select what it does.** ``seat`` is re-selected — segments carry
+    ``available_seat_types`` and ``AssignSeatTool`` can fail with ``no_seats_available``, so a
+    seat is meaningful only against a specific aircraft. ``bags_checked`` and ``meal_request``
+    have no such model: they are passenger-level entitlements that survive a change of flight
+    number, so they carry.
+
+    ``bags_checked`` — this is what eva's ``expected_scenario_db`` encodes for all 25 rebooking
+    scenarios in the packaged dataset, including ``7.2.1`` where the rebook *downgrades*
+    main_cabin → basic_economy and the gold still keeps ``bags_checked: 1``. The agent policy
+    says nothing about baggage at all, so with the previous hard-coded ``0`` the gold for 17 of
+    the 50 scenarios was reachable only by also calling ``AddBaggageAllowanceTool`` with the
+    original count — a write nothing in those scenarios asks for, and which no model made in
+    150 recorded runs.
+
+    ``meal_request`` — every eva fixture leaves this ``None`` (and every passenger's
+    ``meal_preference`` is ``"none"``), so carrying it is a no-op against the packaged data and
+    changes no hash. It is here so that a dietary request is not silently dropped across a
+    rebook if a future fixture ever sets one — the same defect class as the baggage one, caught
+    before it can bite.
+
+    Both are defaults, not locks: ``AddBaggageAllowanceTool`` and ``AddMealRequestTool`` still
+    override afterwards, which is how a caller who actually wants a change gets one.
+
+    Deliberate divergence from upstream: ServiceNow/eva's ``rebook_flight`` hard-codes
+    ``"bags_checked": 0`` and ``"meal_request": None`` at ``0.1.3`` (the version ported here)
+    and still does at ``2.1.0``, while its gold expects the carried-over bag count. Revisit if
+    upstream fixes it.
+
+    Source segment, in order of preference:
+
+    1. ``replaced_segment`` — set only for a partial (single-segment) rebook, where every
+       new segment descends from that one leg.
+    2. ``old_segments[index]`` — positional match for a whole-journey rebook.
+    3. ``old_segments[0]`` — fallback when the new journey has more legs than the old one
+       (e.g. a nonstop replaced by a one-stop); these ancillaries are per-booking in this
+       dataset, so all segments of a booking always carry the same values.
+    """
+    if replaced_segment is not None:
+        source = replaced_segment
+    elif index < len(old_segments):
+        source = old_segments[index]
+    elif old_segments:
+        source = old_segments[0]
+    else:
+        source = {}
+    return {
+        "bags_checked": source.get("bags_checked") or 0,
+        "meal_request": source.get("meal_request"),
+    }
+
+
 def _reservation_not_found(confirmation_number: str) -> dict:
     return {
         "status": "error",
@@ -744,14 +799,17 @@ class RebookFlightTool(WriteAirlineTool):
                 seg_fare_paid = replaced_segment.get("fare_paid", 0)
             else:
                 seg_fare_paid = fs.get("fares", {}).get(target_fare_class, 0)
+            carried = _carried_ancillaries(old_segments, replaced_segment, i)
             new_booking_segments.append(
                 {
                     "flight_number": fs.get("flight_number"),
                     "date": new_flight.get("date"),
                     "fare_paid": seg_fare_paid,
+                    # Seat does not carry over — the new aircraft has its own map, and the gold
+                    # replay expects an explicit AssignSeatTool call to fill this in.
                     "seat": None,
-                    "bags_checked": 0,
-                    "meal_request": None,
+                    "bags_checked": carried["bags_checked"],
+                    "meal_request": carried["meal_request"],
                 }
             )
         new_booking = {
