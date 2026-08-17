@@ -28,6 +28,7 @@ For changes made after the most recent entry below, read the repository commit h
 
 | Date | Highlights |
 | --- | --- |
+| 2026-08-06 | Graduated to a standalone repository |
 | 2026-06-13 | Voice-agent evaluation harness with four benchmark domains |
 | 2026-05-15 | Omni (multimodal) LLM support |
 | 2026-01-26 | Nemotron-3-Nano-30B-A3B-BF16 LLM and Magpie multilingual TTS |
@@ -36,6 +37,13 @@ For changes made after the most recent entry below, read the repository commit h
 | 2025-10-10 | Kokoro-82M TTS |
 | 2025-10-03 | vLLM serving with automatic HuggingFace fallback |
 | 2025-09-05 | First release |
+
+## 2026-08-06 — Standalone repository
+
+NeMo Labs Voice Agent graduated out of
+[NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent), where it had
+lived as a sub-package, and is now developed in its own repository. The Python package name
+(`nemo_voice_agent`) and every import path are unchanged.
 
 ## 2026-06-13 — Evaluation harness
 
@@ -127,6 +135,9 @@ Learn more: [vLLM backend](../models/vllm.md) · [LLM backends](../models/llm.md
 
 First release of NeMo Labs Voice Agent: a real-time speech-to-speech pipeline built on Pipecat, with
 streaming ASR, speaker diarization, LLM, and TTS behind a WebSocket server, plus a browser client.
+Shipped at the time as a sub-package of
+[NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent); see the
+2026-08-06 entry for the move to a standalone repository.
 
 Learn more: [Architecture](../get-started/architecture.md) ·
 [Quickstart](../get-started/quickstart.md)

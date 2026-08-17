@@ -154,6 +154,21 @@ Write tools subclass `WriteAirlineTool`, which binds `ACTION_TYPES` to `AIRLINE_
 `transfer_to_agent`) and appends a record to `shared_state["actions"]` on success. Read tools record
 nothing. To add or change a tool, see [Authoring tools](../authoring-tools.md).
 
+### Ancillaries carried across a rebook
+
+`RebookFlightTool` copies `bags_checked` and `meal_request` from the booking it replaces onto the new
+segments; `seat` is deliberately not carried, because each aircraft has its own seat map and the gold
+replay expects an explicit `AssignSeatTool` call. The rule is to carry what the dataset gives no
+availability model for, and re-select what it does.
+
+This is a **deliberate divergence from upstream**. ServiceNow's `eva` hard-codes both fields to
+`0` / `None` on rebook, yet its own `expected_scenario_db` keeps the original checked-bag count for all
+25 rebooking scenarios in the packaged dataset. With the upstream behaviour, the gold state for 17 of
+the 50 scenarios was reachable only by additionally calling `AddBaggageAllowanceTool` with the original
+count — a write that nothing in those scenarios asks for. Both fields remain defaults rather than locks:
+`AddBaggageAllowanceTool` and `AddMealRequestTool` still override afterwards. Carrying `meal_request` is
+a no-op against the packaged fixtures, which leave it unset throughout.
+
 ## Scoring
 
 The domain whitelists two of the six scoring signals:
