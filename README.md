@@ -2,6 +2,8 @@
 
 A fully open-source framework to build, deploy and evaluate voice agents with NVIDIA Nemotron and other opensource models. 
 
+No API keys required to get started. Happy hacking~!
+
 
 ## 📋 Table of Contents
 - [✨ Key Features](#-key-features)
@@ -42,6 +44,7 @@ A fully open-source framework to build, deploy and evaluate voice agents with NV
 
 
 ## 📅 Latest Updates
+- 2026-08-06: NeMo Voice Agent graduates from [NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent) and published as a separate repo.
 - 2026-06-13: Voice-agent evaluation harness shipped — three primary benchmark domains ported (tau2-bench airline 50 / retail 114 / telecom 114 dual-side), plus eva_airline (50) from ServiceNow/eva. Per-scenario `success_signals` scoring. See [📊 Evaluation](#-evaluation).
 - 2026-05-15: Added support for [Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4). See  [🤖 Multi-modal LLMs](#-multi-modal-llms).
 - 2026-01-26: Added support for [NVIDIA-Nemotron-3-Nano-30B-A3B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16) LLM model, and support for [magpie_tts_multilingual_357m](https://huggingface.co/nvidia/magpie_tts_multilingual_357m) TTS model.
@@ -49,7 +52,7 @@ A fully open-source framework to build, deploy and evaluate voice agents with NV
 - 2025-11-14: Added support for joint ASR and EOU detection with [Parakeet-realtime-eou-120m](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1) model.
 - 2025-10-10: Added support for [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) TTS model.
 - 2025-10-03: Add support for serving LLM with vLLM and auto-switch between vLLM and HuggingFace, add [nvidia/NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2) as default LLM.
-- 2025-09-05: First release of NeMo Voice Agent.
+- 2025-09-05: First release of NeMo Voice Agent as sub-package in [NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent).
 
 
 
