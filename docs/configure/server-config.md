@@ -30,8 +30,10 @@ passes `server_base_path=os.path.dirname(__file__)` and reads the config path fr
 
 ```bash
 cd examples/generic_voice_agent/server
-python server.py                                                   # uses server_configs/default.yaml
-SERVER_CONFIG_PATH=./server_configs/default_nvidia.yaml python server.py
+# Uses default server_configs/default.yaml if SERVER_CONFIG_PATH not specified: 
+python server.py
+# Or use a specific server cofnig pointed by SERVER_CONFIG_PATH:                                                   
+# SERVER_CONFIG_PATH=./server_configs/default_nvidia.yaml python server.py
 ```
 
 Three rules govern the merge:

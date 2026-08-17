@@ -244,6 +244,42 @@ Suites live in `tests/unit/` and `tests/functional/` — there are no test modul
 uv run pytest tests/unit -m "not gpu"
 ```
 
+## Does your change need a docs update?
+
+**Ask this before finishing any code change.** `docs/` is user-facing documentation that describes runtime
+behaviour, so a behaviour change that skips it turns the site into a source of false statements — and merging
+to `main` publishes it live. An audit of this repo once found ~40 stale doc claims accumulated exactly this
+way, each one correct when written.
+
+Check the matching page whenever you touch:
+
+| You changed | Check |
+|---|---|
+| a config key, default, or `server_configs/**` YAML | `docs/configure/`, `docs/reference/config-schema.md` |
+| a `build_*` function or the pipeline order | `docs/get-started/architecture.md`, `docs/extend/builders.md` |
+| an STT / TTS / diarization / turn-taking service or model | the matching `docs/models/*.md` |
+| LLM backend selection, vLLM flags, reasoning, omni | `docs/models/{llm,vllm,vllm-plugins,reasoning,multimodal}.md` |
+| tool calling or `utils/tool_calling/**` | `docs/features/{tool-calling,custom-tools}.md` |
+| an RTVI action or the `/connect` handshake | `docs/extend/{rtvi-actions,client-protocol}.md`, `docs/reference/rtvi-messages.md` |
+| `run_evaluation.py` flags, defaults, or scoring | `docs/evaluate/{scoring,resume}.md`, `docs/reference/eval-cli.md` |
+| eval scenarios, tools, or fixtures for a domain | `docs/evaluate/domains/*.md`, `docs/evaluate/authoring-*.md` |
+| a metric written to `metrics.json` / `all_summary.txt` | `docs/reference/metrics.md` |
+| an env var | `docs/reference/environment.md` |
+| deps, Python version, test layout, or lint tooling | `docs/contribute/{index,testing}.md` |
+
+Rules of thumb:
+
+- **Documentation-in-code counts.** An argparse `help=` string, a config comment, or a docstring is
+  documentation; fix it in the same change. A help string that contradicts its own default is the single most
+  common defect found here.
+- **Verify, don't copy.** Never restate a claim from `README.md` or this file without checking it against
+  source — both have been wrong. Cite the file you actually opened.
+- **`uv run pytest tests/unit/test_docs_consistency.py`** catches the mechanical subset (counts vs enums, CLI
+  defaults vs argparse, referenced paths existing). It cannot catch prose that is simply wrong about
+  behaviour, so it is a backstop, not a substitute for checking.
+- If a change makes a doc page wrong and you cannot fix it in scope, say so explicitly in your summary rather
+  than leaving it silently stale.
+
 ## Documentation site
 
 `docs/` is a **Fern** site published to `docs.nvidia.com/nemo/labs-voice-agent` (see `docs/fern/docs.yml`).
@@ -257,10 +293,14 @@ preview build via `workflow_run`.
 
 Four things to know before touching it:
 
-- **Navigation is declared twice.** `docs/fern/versions/nightly.yml` (paths relative to itself, so `../../…`;
-  validated by `fern check`) and `docs/index.yml` (paths relative to `docs/`, bare, no `./` or `../`; read only
-  by `publish-fern-docs.yml` at tag time and **not** CI-validated). A page added to one and not the other
-  silently disappears from that channel.
+- **Navigation is GENERATED — never hand-edit it.** `docs/fern/versions/nightly.yml` and `docs/index.yml` are
+  both emitted from `docs/fern/nav.json` by `docs/fern/scripts/gen-nav.mjs`. To add, remove, or reorder a page,
+  edit `nav.json` and run `npm --prefix docs/fern run nav:gen`. `fern-docs-ci.yml` runs `nav:check`, which
+  fails if the generated files drift from the manifest.
+  Why it is generated: Fern needs the two files to use *different* path conventions (`nightly.yml` relative to
+  itself, so `../../…`; `index.yml` relative to `docs/`, bare), and only `nightly.yml` is validated by
+  `fern check` — `index.yml` is read solely by `publish-fern-docs.yml` at release time. Hand-maintaining both
+  is how a page silently disappears from the released channel, which had already happened once.
 - **Hard CI gates:** no non-self-closing `<img …>` anywhere under `docs/`; `fern check`; and lychee `--offline`
   over `docs/**/*.md`, which requires every relative link target to exist on disk (no `.lycheeignore` exists).
 - Author pages as `.md` (`.mdx` is the generated-only format). Fern renders `.md` through MDX, so bare `{`, `}`,
