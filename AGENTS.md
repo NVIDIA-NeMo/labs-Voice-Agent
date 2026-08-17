@@ -325,8 +325,11 @@ Four things to know before touching it:
 - The egg-info dir (`nemo_voice_agent.egg-info/`), `.venv/`, `nemo_experiments/` (personal scratch + `.env`), `eval_results/`, and `*.log` files are local artifacts — all are gitignored. Don't commit changes to them, and don't copy them around.
 - `examples/generic_voice_agent/server/parsers/*.py` and
   `nemo_voice_agent/vllm/v1/sample/logits_processor/*.py` are vLLM **plugins** — they run inside the vLLM
-  process, so logging/imports there have a different runtime than the rest of the codebase. Only
-  `nemotron_toolcall_parser_streaming.py` is live (loaded by `nemotron_nano_v2.yaml` via `--tool-parser-plugin`);
-  `nano_v3_reasoning_parser.py` is **dead code** — no shipped config loads it; the `nemotron_nano_v3*` configs
-  use vLLM's built-in `--reasoning-parser nemotron_v3` instead.
+  process, so logging/imports there have a different runtime than the rest of the codebase.
+  `nemotron_toolcall_parser_streaming.py` is **current** — Nemotron-Nano-v2 still needs it, loaded by
+  `nemotron_nano_v2.yaml` via `--tool-parser-plugin`. The other two are **deprecated**, superseded by vLLM
+  built-ins for Nemotron-3 and newer: `nano_v3_reasoning_parser.py` by `--reasoning-parser nemotron_v3`, and
+  `ReasoningBudgetLogitsProcessor` by the `thinking_token_budget` request parameter (see
+  `nemotron_nano_v3_think.yaml`). Neither is loaded by any shipped config; both are kept only for deployments
+  pinned to older vLLM releases. Don't wire them into new configs — see `docs/models/vllm-plugins.md`.
 - `bot_server.log` saves the logs from the pipecat pipeline, by default it's rotated every day. Recent failures: check the newest `bot_server.<timestamp>.log`, not just `bot_server.log` (which may be from an in-flight run).

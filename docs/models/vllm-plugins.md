@@ -22,13 +22,29 @@ process: a tool-call parser, a reasoning parser, and a logits processor. They ar
 `vllm serve` command line, so their logging, imports, and Python environment belong to vLLM — nothing in
 `nemo_voice_agent/pipecat/` can import or configure them at runtime.
 
+**Most deployments need none of them.** Current vLLM releases cover [reasoning parsing](https://docs.vllm.ai/en/latest/features/reasoning_outputs/#quickstart) and [thinking-budget
+control natively](https://docs.vllm.ai/en/latest/features/reasoning_outputs/#thinking-budget-control) for Nemotron-3 and newer, so the shipped `nemotron_nano_v3*` configs use only built-in
+functionality. The custom plugins predate that support and remain for the one model that still needs a plugin
+and for older vLLM releases.
+
 ## What ships
 
 | File | Plugin kind | Loaded by | Status |
 | --- | --- | --- | --- |
-| `examples/generic_voice_agent/server/parsers/nemotron_toolcall_parser_streaming.py` | Tool-call parser, registered as `nemotron_json` | `llm_configs/nemotron_nano_v2.yaml` via `--tool-parser-plugin` | Live |
-| `examples/generic_voice_agent/server/parsers/nano_v3_reasoning_parser.py` | Reasoning parser, registered as `nano_v3` | Nothing | **Dead code** — see below |
-| `nemo_voice_agent/vllm/v1/sample/logits_processor/reasoning_budget_logits_processor.py` | V1 logits processor, `ReasoningBudgetLogitsProcessor` | Nothing shipped; opt in with `--logits-processors` | Live, unwired |
+| `examples/generic_voice_agent/server/parsers/nemotron_toolcall_parser_streaming.py` | Tool-call parser, registered as `nemotron_json` | `llm_configs/nemotron_nano_v2.yaml` via `--tool-parser-plugin` | **Current** — required for Nemotron-Nano-v2 |
+| `examples/generic_voice_agent/server/parsers/nano_v3_reasoning_parser.py` | Reasoning parser, registered as `nano_v3` | Nothing | **Deprecated** — use `--reasoning-parser nemotron_v3` |
+| `nemo_voice_agent/vllm/v1/sample/logits_processor/reasoning_budget_logits_processor.py` | V1 logits processor, `ReasoningBudgetLogitsProcessor` | Nothing | **Deprecated** — use `thinking_token_budget` |
+
+### Which do you need?
+
+| Model | Reasoning | Thinking budget | Tool calls |
+| --- | --- | --- | --- |
+| Nemotron-3 and newer (`nemotron_nano_v3*`) | built-in `--reasoning-parser nemotron_v3` | built-in `thinking_token_budget` | built-in `--tool-call-parser qwen3_coder` |
+| Nemotron-Nano-v2 (`nemotron_nano_v2`) | not configured | not configured | **plugin required** — `nemotron_json` |
+
+The two deprecated files are kept, not deleted, so that a deployment pinned to an older vLLM — one without
+`nemotron_v3` or `thinking_token_budget` — still has a working path. Prefer the built-ins on any current vllm 
+release; the plugins receive no further work.
 
 ## Tool-call parser: `nemotron_json`
 
@@ -90,11 +106,14 @@ The shipped Nemotron-3 configs do **not** use a plugin for reasoning. Every `nem
 `evaluation/server_configs/` pass `--reasoning-parser deepseek_r1`, also built in. Configs for other models
 set no reasoning parser at all.
 
-`examples/generic_voice_agent/server/parsers/nano_v3_reasoning_parser.py` is **dead code**. It subclasses
-vLLM's DeepSeek-R1 parser and registers itself as `nano_v3`, but no config in this repo passes
-`--reasoning-parser nano_v3`, and none passes `--reasoning-parser-plugin` to import the file — so the
-registration never runs. Do not treat it as the mechanism behind the default model's reasoning support; that
-is `nemotron_v3`. If you want to load it anyway, both flags are needed:
+`examples/generic_voice_agent/server/parsers/nano_v3_reasoning_parser.py` is **deprecated**. It subclasses
+vLLM's DeepSeek-R1 parser and registers itself as `nano_v3`, and it predates vLLM shipping `nemotron_v3`
+natively. It is superseded: use `--reasoning-parser nemotron_v3` for Nemotron-3 and newer.
+
+No shipped config loads it — none passes `--reasoning-parser nano_v3`, and none passes
+`--reasoning-parser-plugin` to import the file, so its registration never runs. Do not mistake it for the
+mechanism behind the default model's reasoning support; that is the built-in `nemotron_v3`. It is retained
+only for deployments pinned to a vLLM release old enough to lack `nemotron_v3`, where both flags are needed:
 
 ```bash
 cd examples/generic_voice_agent
@@ -107,7 +126,23 @@ A reasoning parser strips the thinking span out of the OpenAI response entirely,
 it. That is a different mechanism from `tts.think_tokens`, which lets the text reach the pipeline but keeps it
 out of TTS. See [Reasoning](reasoning.md).
 
-## `ReasoningBudgetLogitsProcessor`
+## `ReasoningBudgetLogitsProcessor` (deprecated)
+
+> **Use `thinking_token_budget` instead.** Current vLLM releases cap thinking natively for Nemotron-3 and
+> newer, and that is what the shipped configs use. `llm_configs/nemotron_nano_v3_think.yaml` sets a top-level
+> `thinking_budget` and passes it through as a request parameter:
+>
+> ```yaml
+> vllm_generation_params:
+>   extra:
+>     extra_body:
+>       chat_template_kwargs:
+>         enable_thinking: True
+>       thinking_token_budget: ${llm.thinking_budget}
+> ```
+>
+> No plugin, no `--logits-processors` flag, and it works over the plain OpenAI-compatible API. The logits
+> processor below is retained only for vLLM releases that predate `thinking_token_budget`.
 
 `nemo_voice_agent/vllm/v1/sample/logits_processor/` holds a vLLM V1 `LogitsProcessor` that caps how many
 tokens a request may spend inside a thinking block. Long reasoning is the dominant latency cost in a voice
