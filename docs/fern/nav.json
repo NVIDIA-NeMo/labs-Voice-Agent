@@ -1,0 +1,116 @@
+{
+  "_comment": [
+    "Single source of truth for BOTH navigation files. Do not edit",
+    "versions/nightly.yml or ../index.yml by hand — they are generated.",
+    "Regenerate with:  npm --prefix docs/fern run nav:gen",
+    "Verify in CI with: npm --prefix docs/fern run nav:check",
+    "",
+    "Why: Fern requires the nightly nav (versions/nightly.yml, paths relative",
+    "to itself) and the frozen-release nav (../index.yml, paths relative to",
+    "docs/) to be maintained separately, with different path conventions, and",
+    "only the first is validated by `fern check`. Hand-maintaining both is how",
+    "pages silently vanish from a channel."
+  ],
+  "autodocFolder": "../product-docs/nemo-labs-voice-agent/Full-Library-Reference",
+  "root": { "title": "Home", "path": "index.md" },
+  "sections": [
+    {
+      "title": "Get Started",
+      "pages": [
+        { "title": "Installation", "path": "get-started/installation.md" },
+        { "title": "Quickstart", "path": "get-started/quickstart.md" },
+        { "title": "How It Works", "path": "get-started/architecture.md" },
+        { "title": "Troubleshooting", "path": "get-started/troubleshooting.md" }
+      ]
+    },
+    {
+      "title": "Configure",
+      "pages": [
+        { "title": "Configuration Model", "path": "configure/index.md" },
+        { "title": "Server Config", "path": "configure/server-config.md" },
+        { "title": "Model Registry", "path": "configure/model-registry.md" },
+        { "title": "System Prompts", "path": "configure/prompts.md" },
+        { "title": "Audio Capture & Logging", "path": "configure/audio-logging.md" }
+      ]
+    },
+    {
+      "title": "Models & Features",
+      "pages": [
+        { "title": "LLM Backends", "path": "models/llm.md" },
+        { "title": "Serving with vLLM", "path": "models/vllm.md" },
+        { "title": "vLLM Plugins", "path": "models/vllm-plugins.md" },
+        { "title": "Reasoning Mode", "path": "models/reasoning.md" },
+        { "title": "Multimodal / Omni", "path": "models/multimodal.md" },
+        { "title": "Speech Recognition", "path": "models/asr.md" },
+        { "title": "Speaker Diarization", "path": "models/diarization.md" },
+        { "title": "Text to Speech", "path": "models/tts.md" },
+        { "title": "Turn Taking & Backchannels", "path": "models/turn-taking.md" },
+        { "title": "NVIDIA NIM & Riva", "path": "models/nvidia-nim.md" },
+        { "title": "Tool Calling", "path": "features/tool-calling.md" },
+        { "title": "Writing Your Own Tools", "path": "features/custom-tools.md" }
+      ]
+    },
+    {
+      "title": "Extend",
+      "pages": [
+        { "title": "Extension Overview", "path": "extend/index.md" },
+        { "title": "The Builder API", "path": "extend/builders.md" },
+        { "title": "Custom Frame Processors", "path": "extend/custom-processor.md" },
+        { "title": "Building Your Own Pipeline", "path": "extend/custom-pipeline.md" },
+        { "title": "RTVI Control Plane", "path": "extend/rtvi-actions.md" },
+        { "title": "Client Protocol", "path": "extend/client-protocol.md" }
+      ]
+    },
+    {
+      "title": "Evaluate",
+      "pages": [
+        { "title": "Evaluation Overview", "path": "evaluate/index.md" },
+        { "title": "Quickstart", "path": "evaluate/quickstart.md" },
+        { "title": "Benchmarks & Domains", "path": "evaluate/benchmarks.md" },
+        { "title": "Scoring Model", "path": "evaluate/scoring.md" },
+        { "title": "Reading Results", "path": "evaluate/results.md" },
+        { "title": "Resuming & Long Runs", "path": "evaluate/resume.md" },
+        { "title": "Authoring Scenarios", "path": "evaluate/authoring-scenarios.md" },
+        { "title": "Authoring Tools", "path": "evaluate/authoring-tools.md" },
+        { "title": "Adding a Domain", "path": "evaluate/authoring-domains.md" },
+        { "title": "Evaluating an External Agent", "path": "evaluate/external-agents.md" },
+        { "title": "Fixture Data & Provenance", "path": "evaluate/data-provenance.md" }
+      ],
+      "subsections": [
+        {
+          "title": "Domain Notes",
+          "pages": [
+            { "title": "eva_airline", "path": "evaluate/domains/eva-airline.md" },
+            { "title": "tau2_airline", "path": "evaluate/domains/tau2-airline.md" },
+            { "title": "tau2_retail", "path": "evaluate/domains/tau2-retail.md" },
+            { "title": "tau2_telecom", "path": "evaluate/domains/tau2-telecom.md" }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Reference",
+      "slug": "reference",
+      "pages": [
+        { "title": "Server Config Schema", "path": "reference/config-schema.md" },
+        { "title": "Environment Variables", "path": "reference/environment.md" },
+        { "title": "Evaluation CLI", "path": "reference/eval-cli.md" },
+        { "title": "Metrics Dictionary", "path": "reference/metrics.md" },
+        { "title": "RTVI Message Reference", "path": "reference/rtvi-messages.md" },
+        { "title": "Third-Party Notices", "path": "reference/third-party-notices.md" },
+        { "title": "Changelog", "path": "reference/changelog.md" }
+      ],
+      "includeAutodoc": true
+    },
+    {
+      "title": "Contribute",
+      "pages": [
+        { "title": "Contributing", "path": "contribute/index.md" },
+        { "title": "Testing", "path": "contribute/testing.md" },
+        { "title": "Building the Docs", "path": "contribute/docs-site.md" },
+        { "title": "Regenerating Benchmark Data", "path": "contribute/data-import.md" },
+        { "title": "Security Policy", "path": "contribute/security.md" }
+      ]
+    }
+  ]
+}

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 instances:
-  - url: https://nemo-labs-voice-agent.docs.buildwithfern.com/nemo/labs-voice-agent
+  - url: nemo-labs-voice-agent.docs.buildwithfern.com/nemo/labs-voice-agent
     custom-domain: docs.nvidia.com/nemo/labs-voice-agent
     multi-source: true
 

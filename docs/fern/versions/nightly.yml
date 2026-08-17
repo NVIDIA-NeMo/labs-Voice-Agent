@@ -13,16 +13,144 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#
+# GENERATED FILE — DO NOT EDIT BY HAND.
+# Source: docs/fern/nav.json   Generator: docs/fern/scripts/gen-nav.mjs
+# Regenerate: npm --prefix docs/fern run nav:gen
+#
+# Nightly channel navigation (paths relative to docs/fern/versions/).
+#
+
 navigation:
   - page: Home
     path: ../../index.md
     slug: ""
-  - section: Getting Started
+  - section: Get Started
     contents:
-      - page: Overview
-        path: ../../index.md
-        slug: overview
+      - page: Installation
+        path: ../../get-started/installation.md
+      - page: Quickstart
+        path: ../../get-started/quickstart.md
+      - page: How It Works
+        path: ../../get-started/architecture.md
+      - page: Troubleshooting
+        path: ../../get-started/troubleshooting.md
+  - section: Configure
+    contents:
+      - page: Configuration Model
+        path: ../../configure/index.md
+      - page: Server Config
+        path: ../../configure/server-config.md
+      - page: Model Registry
+        path: ../../configure/model-registry.md
+      - page: System Prompts
+        path: ../../configure/prompts.md
+      - page: Audio Capture & Logging
+        path: ../../configure/audio-logging.md
+  - section: Models & Features
+    contents:
+      - page: LLM Backends
+        path: ../../models/llm.md
+      - page: Serving with vLLM
+        path: ../../models/vllm.md
+      - page: vLLM Plugins
+        path: ../../models/vllm-plugins.md
+      - page: Reasoning Mode
+        path: ../../models/reasoning.md
+      - page: Multimodal / Omni
+        path: ../../models/multimodal.md
+      - page: Speech Recognition
+        path: ../../models/asr.md
+      - page: Speaker Diarization
+        path: ../../models/diarization.md
+      - page: Text to Speech
+        path: ../../models/tts.md
+      - page: Turn Taking & Backchannels
+        path: ../../models/turn-taking.md
+      - page: NVIDIA NIM & Riva
+        path: ../../models/nvidia-nim.md
+      - page: Tool Calling
+        path: ../../features/tool-calling.md
+      - page: Writing Your Own Tools
+        path: ../../features/custom-tools.md
+  - section: Extend
+    contents:
+      - page: Extension Overview
+        path: ../../extend/index.md
+      - page: The Builder API
+        path: ../../extend/builders.md
+      - page: Custom Frame Processors
+        path: ../../extend/custom-processor.md
+      - page: Building Your Own Pipeline
+        path: ../../extend/custom-pipeline.md
+      - page: RTVI Control Plane
+        path: ../../extend/rtvi-actions.md
+      - page: Client Protocol
+        path: ../../extend/client-protocol.md
+  - section: Evaluate
+    contents:
+      - page: Evaluation Overview
+        path: ../../evaluate/index.md
+      - page: Quickstart
+        path: ../../evaluate/quickstart.md
+      - page: Benchmarks & Domains
+        path: ../../evaluate/benchmarks.md
+      - page: Scoring Model
+        path: ../../evaluate/scoring.md
+      - page: Reading Results
+        path: ../../evaluate/results.md
+      - page: Resuming & Long Runs
+        path: ../../evaluate/resume.md
+      - page: Authoring Scenarios
+        path: ../../evaluate/authoring-scenarios.md
+      - page: Authoring Tools
+        path: ../../evaluate/authoring-tools.md
+      - page: Adding a Domain
+        path: ../../evaluate/authoring-domains.md
+      - page: Evaluating an External Agent
+        path: ../../evaluate/external-agents.md
+      - page: Fixture Data & Provenance
+        path: ../../evaluate/data-provenance.md
+      - section: Domain Notes
+        contents:
+          - page: eva_airline
+            path: ../../evaluate/domains/eva-airline.md
+          - page: tau2_airline
+            path: ../../evaluate/domains/tau2-airline.md
+          - page: tau2_retail
+            path: ../../evaluate/domains/tau2-retail.md
+          - page: tau2_telecom
+            path: ../../evaluate/domains/tau2-telecom.md
   - section: Reference
     slug: reference
     contents:
+      - page: Server Config Schema
+        path: ../../reference/config-schema.md
+      - page: Environment Variables
+        path: ../../reference/environment.md
+      - page: Evaluation CLI
+        path: ../../reference/eval-cli.md
+      - page: Metrics Dictionary
+        path: ../../reference/metrics.md
+      - page: RTVI Message Reference
+        path: ../../reference/rtvi-messages.md
+      - page: Third-Party Notices
+        path: ../../reference/third-party-notices.md
+      - page: Changelog
+        path: ../../reference/changelog.md
+      # Generated Python API reference. Path is relative to
+      # docs/fern/versions/ in BOTH files — the release sed rewrites
+      # only "path: ", never "folder: ".
       - folder: ../product-docs/nemo-labs-voice-agent/Full-Library-Reference
+  - section: Contribute
+    contents:
+      - page: Contributing
+        path: ../../contribute/index.md
+      - page: Testing
+        path: ../../contribute/testing.md
+      - page: Building the Docs
+        path: ../../contribute/docs-site.md
+      - page: Regenerating Benchmark Data
+        path: ../../contribute/data-import.md
+      - page: Security Policy
+        path: ../../contribute/security.md

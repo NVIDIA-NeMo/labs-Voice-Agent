@@ -244,24 +244,72 @@ Suites live in `tests/unit/` and `tests/functional/` — there are no test modul
 uv run pytest tests/unit -m "not gpu"
 ```
 
+## Does your change need a docs update?
+
+**Ask this before finishing any code change.** `docs/` is user-facing documentation that describes runtime
+behaviour, so a behaviour change that skips it turns the site into a source of false statements — and merging
+to `main` publishes it live. An audit of this repo once found ~40 stale doc claims accumulated exactly this
+way, each one correct when written.
+
+Check the matching page whenever you touch:
+
+| You changed | Check |
+|---|---|
+| a config key, default, or `server_configs/**` YAML | `docs/configure/`, `docs/reference/config-schema.md` |
+| a `build_*` function or the pipeline order | `docs/get-started/architecture.md`, `docs/extend/builders.md` |
+| an STT / TTS / diarization / turn-taking service or model | the matching `docs/models/*.md` |
+| LLM backend selection, vLLM flags, reasoning, omni | `docs/models/{llm,vllm,vllm-plugins,reasoning,multimodal}.md` |
+| tool calling or `utils/tool_calling/**` | `docs/features/{tool-calling,custom-tools}.md` |
+| an RTVI action or the `/connect` handshake | `docs/extend/{rtvi-actions,client-protocol}.md`, `docs/reference/rtvi-messages.md` |
+| `run_evaluation.py` flags, defaults, or scoring | `docs/evaluate/{scoring,resume}.md`, `docs/reference/eval-cli.md` |
+| eval scenarios, tools, or fixtures for a domain | `docs/evaluate/domains/*.md`, `docs/evaluate/authoring-*.md` |
+| a metric written to `metrics.json` / `all_summary.txt` | `docs/reference/metrics.md` |
+| an env var | `docs/reference/environment.md` |
+| deps, Python version, test layout, or lint tooling | `docs/contribute/{index,testing}.md` |
+
+Rules of thumb:
+
+- **Documentation-in-code counts.** An argparse `help=` string, a config comment, or a docstring is
+  documentation; fix it in the same change. A help string that contradicts its own default is the single most
+  common defect found here.
+- **Verify, don't copy.** Never restate a claim from `README.md` or this file without checking it against
+  source — both have been wrong. Cite the file you actually opened.
+- **`uv run pytest tests/unit/test_docs_consistency.py`** catches the mechanical subset (counts vs enums, CLI
+  defaults vs argparse, referenced paths existing). It cannot catch prose that is simply wrong about
+  behaviour, so it is a backstop, not a substitute for checking.
+- If a change makes a doc page wrong and you cannot fix it in scope, say so explicitly in your summary rather
+  than leaving it silently stale.
+
 ## Documentation site
 
-`docs/` is a **Fern** site published to `docs.nvidia.com/nemo/labs-voice-agent` (see `docs/fern/docs.yml`). Two CI
-workflows have a `docs/**` path filter and fire on a docs PR: `fern-docs-ci.yml` (the validation gates) and
-`fern-docs-preview-build.yml`. `fern-docs-preview-comment.yml` chains off the latter via `workflow_run`, and
-`publish-fern-docs.yml` runs on GitHub **Release** publication / `workflow_dispatch` — never on a docs edit.
+`docs/` is a **Fern** site published to `docs.nvidia.com/nemo/labs-voice-agent` (see `docs/fern/docs.yml`).
+**⚠️ Merging any `docs/**` change to `main` publishes it live within about a minute** — `publish-fern-docs.yml`
+triggers on push to `main` (as well as on Release publication and `workflow_dispatch`), gated only on the
+`PUBLISH_FERN` repo variable, which is set. There is no staging channel; review on the PR preview.
+
+Three CI workflows carry a `docs/**` path filter: `fern-docs-ci.yml` (the validation gates),
+`fern-docs-preview-build.yml`, and `publish-fern-docs.yml`. `fern-docs-preview-comment.yml` chains off the
+preview build via `workflow_run`.
+
 Four things to know before touching it:
 
-- **Navigation is declared twice.** `docs/fern/versions/nightly.yml` (paths relative to itself, so `../../…`;
-  validated by `fern check`) and `docs/index.yml` (paths relative to `docs/`, bare, no `./` or `../`; read only
-  by `publish-fern-docs.yml` at tag time and **not** CI-validated). A page added to one and not the other
-  silently disappears from that channel.
+- **Navigation is GENERATED — never hand-edit it.** `docs/fern/versions/nightly.yml` and `docs/index.yml` are
+  both emitted from `docs/fern/nav.json` by `docs/fern/scripts/gen-nav.mjs`. To add, remove, or reorder a page,
+  edit `nav.json` and run `npm --prefix docs/fern run nav:gen`. `fern-docs-ci.yml` runs `nav:check`, which
+  fails if the generated files drift from the manifest.
+  Why it is generated: Fern needs the two files to use *different* path conventions (`nightly.yml` relative to
+  itself, so `../../…`; `index.yml` relative to `docs/`, bare), and only `nightly.yml` is validated by
+  `fern check` — `index.yml` is read solely by `publish-fern-docs.yml` at release time. Hand-maintaining both
+  is how a page silently disappears from the released channel, which had already happened once.
 - **Hard CI gates:** no non-self-closing `<img …>` anywhere under `docs/`; `fern check`; and lychee `--offline`
   over `docs/**/*.md`, which requires every relative link target to exist on disk (no `.lycheeignore` exists).
 - Author pages as `.md` (`.mdx` is the generated-only format). Fern renders `.md` through MDX, so bare `{`, `}`,
   `<` outside code fences break the build — that is why `docs/index.md` uses a `{/* … */}` comment header.
-- `docs/fern/product-docs/**` is the generated Python API reference: gitignored, regenerated per build, and
-  required on disk before `fern check` will pass locally (`cd docs/fern && npm run generate:library:local`).
+- `docs/fern/product-docs/**` is the generated Python API reference: gitignored and regenerated per build.
+  `fern check` does **not** need it on disk (CI has no generate step and still passes) — `npm run check` alone
+  is enough for a prose change. Only a locally rendered `npm run dev` needs it, via
+  `npm run generate:library:local`, which additionally requires temporarily uncommenting the
+  `nemo-voice-agent-local` block in `docs.yml` and re-commenting it afterwards.
 
 ## Gotchas
 
@@ -277,8 +325,11 @@ Four things to know before touching it:
 - The egg-info dir (`nemo_voice_agent.egg-info/`), `.venv/`, `nemo_experiments/` (personal scratch + `.env`), `eval_results/`, and `*.log` files are local artifacts — all are gitignored. Don't commit changes to them, and don't copy them around.
 - `examples/generic_voice_agent/server/parsers/*.py` and
   `nemo_voice_agent/vllm/v1/sample/logits_processor/*.py` are vLLM **plugins** — they run inside the vLLM
-  process, so logging/imports there have a different runtime than the rest of the codebase. Only
-  `nemotron_toolcall_parser_streaming.py` is live (loaded by `nemotron_nano_v2.yaml` via `--tool-parser-plugin`);
-  `nano_v3_reasoning_parser.py` is **dead code** — no shipped config loads it; the `nemotron_nano_v3*` configs
-  use vLLM's built-in `--reasoning-parser nemotron_v3` instead.
+  process, so logging/imports there have a different runtime than the rest of the codebase.
+  `nemotron_toolcall_parser_streaming.py` is **current** — Nemotron-Nano-v2 still needs it, loaded by
+  `nemotron_nano_v2.yaml` via `--tool-parser-plugin`. The other two are **deprecated**, superseded by vLLM
+  built-ins for Nemotron-3 and newer: `nano_v3_reasoning_parser.py` by `--reasoning-parser nemotron_v3`, and
+  `ReasoningBudgetLogitsProcessor` by the `thinking_token_budget` request parameter (see
+  `nemotron_nano_v3_think.yaml`). Neither is loaded by any shipped config; both are kept only for deployments
+  pinned to older vLLM releases. Don't wire them into new configs — see `docs/models/vllm-plugins.md`.
 - `bot_server.log` saves the logs from the pipecat pipeline, by default it's rotated every day. Recent failures: check the newest `bot_server.<timestamp>.log`, not just `bot_server.log` (which may be from an in-flight run).

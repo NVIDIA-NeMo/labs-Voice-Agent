@@ -348,10 +348,11 @@ Examples:
         default=3,
         metavar="N",
         help=(
-            "Minimum number of completed agent turns required to count a scenario toward aggregate rates. "
-            "Scenarios with fewer agent turns (e.g. due to a stalled vLLM server) are excluded from all "
-            "success/action-match/db-state rates and flagged in the summary. On --resume, they are also "
-            "treated as in-flight and re-run. Default: 3. Pass 0 to disable the filter."
+            "Minimum number of completed agent turns for a scenario to be scored on its own merits. "
+            "Scenarios with fewer agent turns (e.g. due to a stalled vLLM server) are counted as FAILURES "
+            "in the composite success rate, skipped in the per-signal action-match/db-state/nl-assertion "
+            "rates, and flagged in the summary. On --resume, they are also treated as in-flight and "
+            "re-run. Default: 3. Pass 0 to disable the filter."
         ),
     )
 
