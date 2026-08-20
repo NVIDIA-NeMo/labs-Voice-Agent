@@ -22,9 +22,6 @@
 #
 
 navigation:
-  - page: Home
-    path: index.md
-    slug: ""
   - section: About
     contents:
       - page: Overview

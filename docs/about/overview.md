@@ -15,30 +15,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}
 
-# Overview
+# NeMo Voice Agent
 
-NeMo Voice Agent is an open-source Python framework for building and evaluating real-time voice agents.
-It assembles streaming speech recognition, turn taking, a language model, and text-to-speech services in a
-Pipecat pipeline that you can configure or extend.
+NeMo Voice Agent is an open-source Python framework for building and evaluating real-time voice agents. It
+combines streaming speech recognition, turn taking, language models, and text-to-speech services in a Pipecat
+pipeline with a browser client and a spoken-conversation evaluation harness.
 
-## What you can do
+## Skip Ahead
 
-- Build a browser-based voice agent with local models or hosted NVIDIA endpoints.
-- Configure speech, language, and text-to-speech models through YAML.
-- Add tools, custom frame processors, or a different pipeline assembly.
-- Evaluate voice agents through spoken, two-bot scenarios with deterministic and LLM-judged signals.
+| I want to | Start here |
+| --- | --- |
+| Understand the system | [Architecture](architecture.md) |
+| Run the default voice agent | [Choose your path](../get-started/choose-your-path.md) |
+| Configure or extend an agent | [Build Voice Agents](../build-voice-agents/index.md) |
+| Measure an agent | [Evaluate Voice Agents](../evaluate/index.md) |
+| Resolve a problem | [Troubleshooting](../troubleshooting/index.md) |
 
-## Learn how the system works
+## Use Cases
 
-- [Architecture](architecture.md) follows audio and control messages through the runtime pipeline.
-- [Speech pipeline](core-concepts/speech-pipeline/overview.md) explains recognition, diarization, synthesis,
-  and turn taking.
-- [Language models](core-concepts/language-models/overview.md) explains the LLM backends, reasoning, and
-  multimodal execution path.
+- Run a local voice pipeline with configurable speech, language, and text-to-speech models.
+- Connect supported stages to hosted NVIDIA endpoints.
+- Add application tools or custom frame processors.
+- Evaluate an in-repository or external voice agent through live audio conversations.
 
-## Choose a journey
+## Core Concepts
 
-- [Choose your path](../get-started/choose-your-path.md) if this is your first visit.
-- [Build voice agents](../build-voice-agents/index.md) to configure models, add tools, or extend the pipeline.
-- [Evaluate voice agents](../evaluate/index.md) to run scenarios and interpret scores.
-- [Reference](../reference/index.md) for configuration, runtime, CLI, and metrics lookup.
+- [Speech pipeline](core-concepts/speech-pipeline/overview.md) covers recognition, diarization, turn taking,
+  and synthesis.
+- [Language models](core-concepts/language-models/overview.md) covers backends, reasoning, and multimodal
+  execution.
+- [Architecture](architecture.md) shows how the pipeline stages and control messages fit together.
+
+## Core Components
+
+| Component | Role |
+| --- | --- |
+| Browser client | Captures microphone audio, opens the WebSocket session, and plays assistant audio. |
+| Voice-agent server | Loads configuration, builds the Pipecat pipeline, and serves one client connection. |
+| Model services | Provide ASR, LLM, diarization, turn-taking, and TTS behavior. |
+| Evaluation harness | Connects a simulated user and agent, records artifacts, and scores scenario outcomes. |
+
+See [Release Notes](release-notes.md) for dated project updates.

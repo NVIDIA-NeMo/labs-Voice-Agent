@@ -305,7 +305,7 @@ Four things to know before touching it:
 - **Hard CI gates:** no non-self-closing `<img …>` anywhere under `docs/`; `fern check`; and lychee `--offline`
   over `docs/**/*.md`, which requires every relative link target to exist on disk (no `.lycheeignore` exists).
 - Author pages as `.md` (`.mdx` is the generated-only format). Fern renders `.md` through MDX, so bare `{`, `}`,
-  `<` outside code fences break the build — that is why `docs/index.md` uses a `{/* … */}` comment header.
+  `<` outside code fences break the build — that is why authored pages use a `{/* … */}` comment header.
 - `docs/fern/product-docs/**` is the generated Python API reference: gitignored and regenerated per build.
   `fern check` does **not** need it on disk (CI has no generate step and still passes) — `npm run check` alone
   is enough for a prose change. Only a locally rendered `npm run dev` needs it, via
