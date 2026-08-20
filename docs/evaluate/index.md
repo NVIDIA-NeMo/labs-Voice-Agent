@@ -74,7 +74,7 @@ variable picks the role. Each runs its own Pipecat pipeline and holds a per-scen
 - **Cross-side state sync.** For dual-side domains, each write tool emits an `action-applied` event; the
   bridge replays it onto shadow DBs, calls the scenario's `sync_state`, and pushes the resulting delta to
   the other bot via `apply_sync_delta`. Single-side domains skip this entirely. See
-  [tau2_telecom](domains/tau2-telecom.md).
+  [tau2_telecom](domain-guides/tau2-telecom.md).
 - **End-of-scenario pull.** The bridge pulls `get_context_history` and `get_scenario_summary` from each bot
   inside that bot's own WebSocket scope. `get_scenario_summary` returns `{actions, db_hash}`; the inline DB
   comes back only when the bridge opts in with `include_db` (needed for DB-state assertions).
@@ -82,8 +82,8 @@ variable picks the role. Each runs its own Pipecat pipeline and holds a per-scen
 The bridge relies on six RTVI actions being registered by both bots — `reset`,
 `update_system_prompt`, `get_context_history`, `get_scenario_summary`, `apply_initialization`, and
 `apply_sync_delta`, all defined in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Any
-agent that implements them can be evaluated; see [External agents](external-agents.md) and the
-[RTVI message reference](../reference/rtvi-messages.md).
+agent that implements them can be evaluated; see [External agents](run-evaluations/external-agents.md) and the
+[RTVI message reference](../reference/runtime/rtvi-messages.md).
 
 ## What you get out
 
@@ -101,13 +101,13 @@ the composite `is_successful` verdict; the rest are still computed and saved as 
 
 `CLEAN_EXIT` is in every domain's whitelist: an agent that does the right work but never stops talking is
 not a successful agent. Full semantics, the per-domain whitelist matrix, and the strict-conjunction rule are
-in [Scoring model](scoring.md).
+in [Scoring model](understand-scoring/scoring.md).
 
 A run writes `eval_results/eval_<TIMESTAMP>/` containing `all_metrics.json`, `all_summary.txt`,
 `all_latencies.csv`, `evaluation_log.txt`, `run_args.json`, and one subdirectory per scenario with its
 transcript, stereo WAV, bridge log, pulled actions, DB hash, `metrics.json`, judge output, a snapshot of
 the exact prompts and tools used, and both bots' full LLM context histories. See
-[Reading results](results.md) and the [metrics reference](../reference/metrics.md).
+[Reading results](run-evaluations/results.md) and the [metrics reference](../reference/evaluation/metrics.md).
 
 ## Run it
 
@@ -143,29 +143,29 @@ Two defaults to know before you compare runs:
 - `--duration` defaults to unset, in which case each scenario's own `max_duration` applies. Passing a value
   overrides every scenario.
 
-The full flag list is in the [eval CLI reference](../reference/eval-cli.md); interrupted runs are picked up
-with `--resume`, described in [Resuming a run](resume.md).
+The full flag list is in the [eval CLI reference](../reference/evaluation/eval-cli.md); interrupted runs are picked up
+with `--resume`, described in [Resuming a run](run-evaluations/resume.md).
 
 ## Benchmark domains
 
 | Domain | Scenarios | Notes |
 |---|---|---|
-| [eva_airline](domains/eva-airline.md) | 50 | Flight changes, irregular operations, refunds, vouchers |
-| [tau2_airline](domains/tau2-airline.md) | 50 | Reservation cancel / refund / rebook / upgrade |
-| [tau2_retail](domains/tau2-retail.md) | 114 | Order cancel / exchange / return, address changes |
-| [tau2_telecom](domains/tau2-telecom.md) | 114 | Dual-side tech support; a parallel `tau2_telecom_workflow` registration runs the same 114 tasks against a procedural policy variant |
+| [eva_airline](domain-guides/eva-airline.md) | 50 | Flight changes, irregular operations, refunds, vouchers |
+| [tau2_airline](domain-guides/tau2-airline.md) | 50 | Reservation cancel / refund / rebook / upgrade |
+| [tau2_retail](domain-guides/tau2-retail.md) | 114 | Order cancel / exchange / return, address changes |
+| [tau2_telecom](domain-guides/tau2-telecom.md) | 114 | Dual-side tech support; a parallel `tau2_telecom_workflow` registration runs the same 114 tasks against a procedural policy variant |
 
 Smaller in-repo domains (`restaurant`, `customer_service`, `qa`) exist as smoke sets and as worked examples
 of the authoring pattern. Fixtures for all domains are packaged inside the library at
 `nemo_voice_agent/evaluation/data/`, resolved by `get_eval_data_root()`, which honors the `EVAL_DATA_ROOT`
 environment variable as an override. Upstream sources and licenses are recorded in
-[Data provenance](data-provenance.md).
+[Data provenance](domain-guides/data-provenance.md).
 
 ## Next steps
 
-- [Quickstart](quickstart.md) — first run, end to end.
-- [Benchmarks and domains](benchmarks.md) — what each domain measures.
-- [Scoring model](scoring.md) — the six signals and how the composite verdict is formed.
-- [Authoring scenarios](authoring-scenarios.md), [tools](authoring-tools.md), and
-  [domains](authoring-domains.md) — extend the data layer.
-- [External agents](external-agents.md) — evaluate an agent that is not this pipeline.
+- [Quickstart](run-evaluations/quickstart.md) — first run, end to end.
+- [Benchmarks and domains](understand-scoring/benchmarks.md) — what each domain measures.
+- [Scoring model](understand-scoring/scoring.md) — the six signals and how the composite verdict is formed.
+- [Authoring scenarios](create-evaluations/authoring-scenarios.md), [tools](create-evaluations/authoring-tools.md), and
+  [domains](create-evaluations/authoring-domains.md) — extend the data layer.
+- [External agents](run-evaluations/external-agents.md) — evaluate an agent that is not this pipeline.

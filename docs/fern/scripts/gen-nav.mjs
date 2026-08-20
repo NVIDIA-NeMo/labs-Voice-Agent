@@ -85,31 +85,31 @@ function render(prefix, which) {
     L.push(`    slug: ""`);
   }
 
-  for (const sec of nav.sections) {
-    L.push(`  - section: ${sec.title}`);
-    if (sec.slug) L.push(`    slug: ${sec.slug}`);
-    L.push(`    contents:`);
-    for (const p of sec.pages) {
-      L.push(`      - page: ${p.title}`);
-      L.push(`        path: ${prefix}${p.path}`);
-      if (p.slug) L.push(`        slug: ${p.slug}`);
+  const renderSection = (sec, indent) => {
+    const lead = " ".repeat(indent);
+    const contentsLead = " ".repeat(indent + 2);
+    const entryLead = " ".repeat(indent + 4);
+
+    L.push(`${lead}- section: ${sec.title}`);
+    if (sec.slug) L.push(`${contentsLead}slug: ${sec.slug}`);
+    L.push(`${contentsLead}contents:`);
+
+    for (const p of sec.pages ?? []) {
+      L.push(`${entryLead}- page: ${p.title}`);
+      L.push(`${entryLead}  path: ${prefix}${p.path}`);
+      if (p.slug) L.push(`${entryLead}  slug: ${p.slug}`);
     }
-    for (const sub of sec.subsections ?? []) {
-      L.push(`      - section: ${sub.title}`);
-      L.push(`        contents:`);
-      for (const p of sub.pages) {
-        L.push(`          - page: ${p.title}`);
-        L.push(`            path: ${prefix}${p.path}`);
-        if (p.slug) L.push(`            slug: ${p.slug}`);
-      }
-    }
+    for (const sub of sec.subsections ?? []) renderSection(sub, indent + 4);
+
     if (sec.includeAutodoc) {
-      L.push(`      # Generated Python API reference. Path is relative to`);
-      L.push(`      # docs/fern/versions/ in BOTH files — the release sed rewrites`);
-      L.push(`      # only "path: ", never "folder: ".`);
-      L.push(`      - folder: ${nav.autodocFolder}`);
+      L.push(`${entryLead}# Generated Python API reference. Path is relative to`);
+      L.push(`${entryLead}# docs/fern/versions/ in BOTH files — the release sed rewrites`);
+      L.push(`${entryLead}# only "path: ", never "folder: ".`);
+      L.push(`${entryLead}- folder: ${nav.autodocFolder}`);
     }
-  }
+  };
+
+  for (const sec of nav.sections) renderSection(sec, 2);
   return L.join("\n") + "\n";
 }
 
@@ -123,10 +123,11 @@ const check = (p) => {
   if (!existsSync(join(DOCS_DIR, p))) missing.push(p);
 };
 if (nav.root) check(nav.root.path);
-for (const sec of nav.sections) {
-  sec.pages.forEach((p) => check(p.path));
-  (sec.subsections ?? []).forEach((sub) => sub.pages.forEach((p) => check(p.path)));
-}
+const checkSection = (sec) => {
+  (sec.pages ?? []).forEach((p) => check(p.path));
+  (sec.subsections ?? []).forEach(checkSection);
+};
+nav.sections.forEach(checkSection);
 
 const outputs = [
   [NIGHTLY, render("../../", "Nightly channel navigation (paths relative to docs/fern/versions/).")],

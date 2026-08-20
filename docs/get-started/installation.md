@@ -20,15 +20,8 @@ limitations under the License.
 NeMo Labs Voice Agent installs from source into a `uv`-managed virtual environment. The fastest path is
 `bash install.sh` at the repo root; the manual steps below do the same thing so you can adapt them.
 
-## Prerequisites
-
-| Requirement | Detail |
-| --- | --- |
-| OS | Linux. `install.sh` uses `apt-get`; on other package managers it prints a warning and continues, and you install the OS packages yourself. |
-| Python | 3.12 or 3.13 (`requires-python = ">=3.12,<3.14"` in `pyproject.toml`). You do **not** need to install it — `[tool.uv] python-preference = "only-managed"` makes `uv` download its own interpreter. |
-| GPU | At least one NVIDIA GPU with a driver compatible with CUDA 13.0, which is what the default wheels target. The shipped default LLM `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4` needs a GPU with FP4 support. Budget a few GB on top of the LLM for the ASR, diarization, and TTS models, which all default to `device: "cuda"` in `server_configs/default.yaml`. |
-| Node.js + npm | Required only for the browser client under `examples/generic_voice_agent/client/`. |
-| Audio | A microphone and a speaker on the machine running the browser. |
+Before installing, verify your operating system, Python, GPU, model, browser, and audio requirements on the
+[Prerequisites](prerequisites.md) page.
 
 ## Quick install
 
@@ -133,7 +126,7 @@ export HF_HUB_CACHE="/path/to/large/disk/huggingface"
 
 `examples/generic_voice_agent/server/server.py` calls `load_dotenv(override=True)`, so you can put these in a
 `.env` file next to `server.py` (or in any parent directory) instead of exporting them. See
-[Environment variables](../reference/environment.md) for the variables the server itself reads.
+[Environment variables](../reference/runtime/environment.md) for the variables the server itself reads.
 
 If HuggingFace downloads fail with I/O errors, pre-download the repo and point the config at the local path:
 
@@ -167,6 +160,6 @@ The default config points `llm.model_config` at `server_configs/llm_configs/nemo
 `start_vllm_on_init: false` — you must start vLLM yourself before launching the server. Continue with:
 
 - [Quickstart](./quickstart.md) — start vLLM, the server, and the browser client.
-- [Serving with vLLM](../models/vllm.md) — the serving flags and how the server talks to vLLM.
-- [Hosted NVIDIA NIM endpoints](../models/nvidia-nim.md) — skip local GPU serving entirely.
-- [Troubleshooting](./troubleshooting.md) — install and runtime failures.
+- [Serving with vLLM](../build-voice-agents/model-serving/vllm.md) — the serving flags and how the server talks to vLLM.
+- [Hosted NVIDIA NIM endpoints](../build-voice-agents/model-serving/nvidia-nim.md) — skip local GPU serving entirely.
+- [Troubleshooting](../troubleshooting/index.md) — install and runtime failures.

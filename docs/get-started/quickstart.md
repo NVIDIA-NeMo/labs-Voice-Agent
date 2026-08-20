@@ -41,11 +41,11 @@ vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4 \
 ```
 
 Wait until vLLM logs that it is serving before moving on. To have the agent server launch vLLM for you
-instead, set `start_vllm_on_init: true` in the model config — see [vLLM backend](../models/vllm.md).
+instead, set `start_vllm_on_init: true` in the model config — see [vLLM backend](../build-voice-agents/model-serving/vllm.md).
 
 Remember that the model sub-YAML **overrides** `default.yaml`, not the other way round. That is why
 `default.yaml`'s `llm.type: auto` ends up as `vllm` at runtime. Details in
-[Server configuration](../configure/server-config.md).
+[Server configuration](../build-voice-agents/configure/server-config.md).
 
 ## Step 2 — Start the agent server
 
@@ -73,7 +73,7 @@ directory is loaded and takes precedence over the shell environment):
 | `SERVER_CONFIG_PATH` | unset (uses `server_configs/default.yaml`) | Alternate top-level YAML config. Resolved against the current directory. |
 
 `HF_TOKEN` and `HF_HUB_CACHE` are honored by the HuggingFace libraries if you need a gated model or a custom
-cache location. The full list lives in [Environment variables](../reference/environment.md).
+cache location. The full list lives in [Environment variables](../reference/runtime/environment.md).
 
 ## How the two ports fit together
 
@@ -157,11 +157,11 @@ curl -s -X POST http://localhost:7860/connect
 ```
 
 If the second command returns `ws://127.0.0.1:8765` but you are browsing from another machine, go back to
-`SERVER_PUBLIC_HOST`. More failure modes are collected in [Troubleshooting](troubleshooting.md).
+`SERVER_PUBLIC_HOST`. More failure modes are collected in [Troubleshooting](../troubleshooting/index.md).
 
 ## Next steps
 
-- [Architecture](architecture.md) — what the pipeline does with your audio.
-- [Server configuration](../configure/server-config.md) — swap models, prompts, and VAD settings.
-- [Tool calling](../features/tool-calling.md) — let the agent call functions.
-- [Evaluation quickstart](../evaluate/quickstart.md) — score the agent on benchmark scenarios.
+- [Architecture](../about/architecture.md) — what the pipeline does with your audio.
+- [Server configuration](../build-voice-agents/configure/server-config.md) — swap models, prompts, and VAD settings.
+- [Tool calling](../build-voice-agents/tools/tool-calling.md) — let the agent call functions.
+- [Evaluation quickstart](../evaluate/run-evaluations/quickstart.md) — score the agent on benchmark scenarios.
