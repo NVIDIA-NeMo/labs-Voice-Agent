@@ -50,13 +50,15 @@ versions:
     availability: beta
 
 redirects:
+  - source: "/nemo/labs-voice-agent"
+    destination: "/nemo/labs-voice-agent/about/overview"
   - source: "/nemo/labs-voice-agent/index.html"
     destination: "/nemo/labs-voice-agent/nightly"
   - source: "/nemo/labs-voice-agent/nightly/index.html"
     destination: "/nemo/labs-voice-agent/nightly"
 
 logo:
-  href: /nemo/labs-voice-agent
+  href: /nemo/labs-voice-agent/about/overview
   right-text: NeMo Labs Voice Agent
 
 navbar-links:
