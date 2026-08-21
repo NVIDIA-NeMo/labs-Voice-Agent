@@ -17,10 +17,11 @@ limitations under the License.
 
 # tau2_telecom
 
-Telecom tech support, ported from tau2-bench. It is the first **dual-side** domain in the NeMo Labs
-Voice Agent eval harness: the simulated user owns a mock phone (`TelecomUserDB`) with its own 30
-LLM-callable tools, while the agent owns the carrier back office (`TelecomDB`) with 13 tools. Neither
-side can see the other's database, so the bridge reconciles them after every write.
+`tau2_telecom` provides telecom technical-support scenarios ported from tau2-bench. It is the first
+**dual-side** domain in the NeMo Labs Voice Agent evaluation harness. The simulated user owns a mock phone
+(`TelecomUserDB`) with 30 large language model (LLM)-callable tools. The agent owns a carrier back office
+(`TelecomDB`) with
+13 tools. Neither side can access the other's database, so the bridge reconciles them after every write.
 
 The following table summarizes the two registrations, split state model, tool surfaces, and scoring signals.
 
@@ -29,7 +30,7 @@ The following table summarizes the two registrations, split state model, tool su
 | Scenario count | 114 (`tau2_telecom__*`) plus a parallel 114 (`tau2_telecom_workflow__*`) over the same tasks |
 | Registry domain | `tau2_telecom` for both registrations |
 | Scenario base | `Tau2TelecomBaseScenario` / `Tau2TelecomWorkflowBaseScenario` in `nemo_voice_agent/evaluation/scenarios/data/tau2_telecom/base.py` |
-| Agent DB | `nemo_voice_agent/evaluation/data/tau2_telecom/db.json` (plans, lines, customers, bills, devices) |
+| Agent Database (DB) | `nemo_voice_agent/evaluation/data/tau2_telecom/db.json` (plans, lines, customers, bills, devices) |
 | User DB | `nemo_voice_agent/evaluation/data/tau2_telecom/user_db.json` (device state + `surroundings`) |
 | Agent policy | `main_policy.md` + `tech_support_manual.md` or `tech_support_workflow.md`, concatenated |
 | Gating signals | `db_state_assertion`, `clean_exit` (plus `nl_assertion` when a task declares any) |
@@ -37,10 +38,10 @@ The following table summarizes the two registrations, split state model, tool su
 Every one of the 114 tasks ships `db_state_assertions` and `initialization_actions`; none currently
 ship `nl_assertions`.
 
-## Run it
+## Run It
 
-Three terminals. `SERVER_CONFIG_PATH` resolves against the current working directory, so `cd`
-first.
+Use three terminals. `SERVER_CONFIG_PATH` resolves against the current working directory, so run `cd`
+first in each terminal.
 
 ```bash
 # Terminal 1 — simulated user bot (owns the phone; shipped user.yaml has enable_tool_calling: true)
@@ -55,14 +56,15 @@ cd evaluation && python run_evaluation.py --domain tau2_telecom
 
 `--domain` filters on the `<domain>__` prefix, so `--domain tau2_telecom` selects only the manual
 variant and `--domain tau2_telecom_workflow` only the workflow variant. Single scenarios go through
-`--scenarios <name>`; see [Eval CLI reference](../../reference/evaluation/eval-cli.md). If the user bot is
+`--scenarios <name>`. Refer to the
+[Evaluation Command-Line Interface (CLI) Reference](../../reference/evaluation/eval-cli.md). If the user bot is
 started with tool calling disabled, the simulated user cannot operate its phone and most scenarios
 stall.
 
-## Two databases, two tool surfaces
+## Two Databases, Two Tool Surfaces
 
 `Tau2TelecomBaseScenario.has_user_state = True` makes gold replay seed a user-side DB alongside the
-agent-side one and tells the bridge to pull a scenario summary from **both** WebSockets at the end of
+agent-side DB. It also tells the bridge to pull a scenario summary from **both** WebSockets at the end of
 the run. Each bot still follows the one-DB-per-bot convention: the agent bot's `shared_state["db"]`
 is the `TelecomDB`, the user bot's is the `TelecomUserDB`.
 
@@ -92,22 +94,22 @@ LLM-visible function name, the `name` field of the recorded action, and the gold
 The two surfaces have disjoint names, so `_build_tool_map` merges them into one map without
 collisions.
 
-## Policy variants
+## Policy Variants
 
-Upstream registers telecom twice, once per tech-support policy prose style. This repo mirrors that
+Upstream registers telecom twice, one time per technical-support policy prose style. This repository mirrors that
 with two scenario classes per task that differ **only** in `policy_variant`:
 
-| Class | `policy_variant` | Concatenated policy | Scenario name prefix |
+| Class | `policy_variant` | Concatenated Policy | Scenario Name Prefix |
 |---|---|---|---|
 | `Tau2TelecomBaseScenario` | `manual` | `main_policy.md` + `tech_support_manual.md` (long-form prose) | `tau2_telecom__` |
 | `Tau2TelecomWorkflowBaseScenario` | `workflow` | `main_policy.md` + `tech_support_workflow.md` (procedural steps) | `tau2_telecom_workflow__` |
 
 Both resolve the same `tau2_id`, DBs, `reference_answer`, `db_state_assertions`,
-`initialization_actions`, and tool surface, so running both is a clean A/B on policy prose. `domain`
+`initialization_actions`, and tool surface, so running both isolates the effect of the policy prose. `domain`
 stays `tau2_telecom` on the workflow class, keeping tool lookup, data paths, predicate registration,
 and sync dispatch identical.
 
-## Prompt addenda
+## Prompt Addenda
 
 Telecom appends three blocks to the agent prompt after the parent's voice-realization notes, and two
 to the user-sim's `user_actions`. All five are module constants in the telecom `base.py`.
@@ -123,10 +125,10 @@ to the user-sim's `user_actions`. All five are module constants in the telecom `
 ## Scoring
 
 Telecom overrides `success_signals` to `DB_STATE_ASSERTION` plus `CLEAN_EXIT` (adding `NL_ASSERTION`
-when a task declares assertions). `DB_STATE_MATCH` and `ACTION_MATCH` are still computed and written
-to `metrics.json`, but land in `success_breakdown.excluded` rather than gating the verdict — telecom
-has an open solution space where several valid action sequences produce different whole-DB states
-while satisfying the same outcome predicates.
+when a task declares assertions). `DB_STATE_MATCH` and `ACTION_MATCH` are still computed and written to
+`metrics.json`, but they land in `success_breakdown.excluded` rather than gating the verdict. Telecom has an
+open solution space in which several valid action sequences produce different whole-DB states while
+satisfying the same outcome predicates.
 
 Assertion records are translated at load time from upstream's `env_assertions`: the `env_type` field
 becomes `side`, and the value `"assistant"` becomes `"agent"`. The runner dispatches each record to
@@ -136,7 +138,7 @@ the agent DB or user DB based on that `side` field, then evaluates the predicate
 Registered predicates (`nemo_voice_agent/evaluation/tools/tau2_telecom_predicates.py`, all under
 domain `tau2_telecom`):
 
-| Predicate | Arguments beyond `db` |
+| Predicate | Arguments Beyond `db` |
 |---|---|
 | `assert_mobile_data_status` | `expected_status` (bool) |
 | `assert_internet_speed` | `expected_speed` (Mbps floor), optional `expected_desc` bucket label |
@@ -147,11 +149,13 @@ domain `tau2_telecom`):
 
 Because the runner needs a real DB to evaluate predicates against, the bridge sets `include_db: true`
 on `get_scenario_summary` whenever a scenario has `db_state_assertions`, and dual-pulls so both DBs
-come back. See [Scoring signals](../understand-scoring/scoring.md) and [Metrics](../../reference/evaluation/metrics.md).
+come back. Refer to [Scoring Signals](../understand-scoring/scoring.md) and
+[Metrics](../../reference/evaluation/metrics.md).
 
-## Scenario initialization
+## Scenario Initialization
 
-Each task's `initialization_actions` are dispatched by the `apply_initialization` RTVI client message
+The `apply_initialization` real-time voice interface (RTVI) client message dispatches each task's
+`initialization_actions`
 before the conversation starts, after `shared_state_init` is merged and `db_path` is resolved to a
 loaded DB. Telecom registers 20 initialization functions in
 `nemo_voice_agent/evaluation/tools/tau2_telecom_init_functions.py` — `turn_airplane_mode_on`,
@@ -159,14 +163,14 @@ loaded DB. Telecom registers 20 initialization functions in
 on. Each mutates the DB in place; the bridge filters records by `side` first, so each bot only
 applies the mutations meant for its own DB.
 
-## Cross-side state sync
+## Cross-Side State Sync
 
 Upstream tau2 runs both DBs inside one `Environment` and calls `sync_tools()` to reconcile them. In
-voice mode the DBs live in two separate bot processes, so the bridge maintains in-process **shadow
-DBs** and pushes deltas. The pipeline turns on only when a scenario overrides `Scenario.sync_state`;
-telecom's override delegates to the pure function `sync_telecom_state(agent_db, user_db)` in
-`nemo_voice_agent/evaluation/tools/tau2_telecom_sync.py`, which mutates both dicts in place and
-returns a per-side delta mapping dotted paths to values.
+voice mode, the DBs live in two separate bot processes, so the bridge maintains in-process **shadow
+DBs** and pushes deltas. The pipeline turns on only when a scenario overrides `Scenario.sync_state`.
+Telecom delegates to the pure function `sync_telecom_state(agent_db, user_db)` in
+`nemo_voice_agent/evaluation/tools/tau2_telecom_sync.py`. The function mutates both dictionaries in place and
+returns a per-side delta that maps dotted paths to values.
 
 Propagation paths:
 
@@ -181,7 +185,7 @@ Propagation paths:
 Two invocation points mirror upstream's call sites:
 
 1. **Post-initialization.** After `apply_initialization` succeeds, the bridge loads shadow DBs,
-   replays the init actions onto them, runs `sync_state` once, and dispatches the resulting deltas so
+   replays the init actions onto them, runs `sync_state` one time, and dispatches the resulting deltas so
    both bots start from coherent cross-side state.
 2. **Per action.** Every `WriteScenarioTool._record_action` pushes an `action-applied` RTVI server
    message. The bridge replays that action onto the shadow DBs using the scenario's `_build_tool_map`
@@ -189,9 +193,9 @@ Two invocation points mirror upstream's call sites:
    as an `apply_sync_delta` RTVI client message.
 
 Bot-side, `apply_sync_delta` dispatches through the per-domain applier registry in
-`nemo_voice_agent/evaluation/sync_appliers.py`. Telecom registers `apply_telecom_sync_delta`, which
-handles plain dotted paths, list-by-id paths such as `bills[B1002].status` that the generic applier
-cannot parse, and re-derives network connection state when any `surroundings` field changed. See
+`nemo_voice_agent/evaluation/sync_appliers.py`. Telecom registers `apply_telecom_sync_delta`. It handles
+plain dotted paths and list-by-ID paths such as `bills[B1002].status`, which the generic applier cannot
+parse. It also re-derives network connection state when a `surroundings` field changes. Refer to
 [RTVI messages](../../reference/runtime/rtvi-messages.md).
 
 Any new dual-side domain that overrides `sync_state` must also provide `_build_tool_map(state)`

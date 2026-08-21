@@ -17,20 +17,20 @@ limitations under the License.
 
 # Evaluating an External Agent
 
-The evaluation harness never imports your agent. It talks to two bots — the simulated user and the agent
-under test — over WebSockets, so any agent that speaks the same wire protocol can be scored on the shipped
-domains. This page is the contract: what your bot must implement, what the harness reads back, and how to
-verify a new bot before you spend GPU hours on a full run.
+The evaluation harness evaluates an external agent over WebSockets without importing it. Any agent that
+implements the real-time voice interface (RTVI) wire protocol can run against the shipped domains. This page
+defines what your bot must
+implement, what the harness reads back, and how to verify the integration before a full benchmark run.
 
 The reference implementation is `evaluation/bot_server.py`. Read it alongside this page — everything below
 is visible there in about 100 lines.
 
-## The contract
+## The Contract
 
 An external agent must satisfy two hard requirements before the harness can initialize or score it.
 
-**1. A pipecat WebSocket server transport.** The bridge connects with the `websockets` client library and
-frames everything through `ProtobufFrameSerializer`, so use a pipecat WS transport rather than
+**1. A Pipecat WebSocket server transport.** The bridge connects with the `websockets` client library and
+frames everything through `ProtobufFrameSerializer`, so use a Pipecat WS transport rather than
 reimplementing the framing. The shipped builder (`build_ws_transport` in
 `nemo_voice_agent/pipecat/services/nemo/builders.py`) constructs a
 `SingleClientWebsocketServerTransport` with `audio_in_enabled`, `audio_out_enabled`, no session timeout, and
@@ -40,22 +40,23 @@ the agent and `ws://localhost:8766` for the user sim, overridable with `--agent-
 **2. An `RTVIProcessor` with six client-message handlers registered.** These are the entire control plane
 for a scenario.
 
-| Wire name | Direction | The harness needs it for |
+| Wire Name | Direction | The Harness Needs It for |
 | --- | --- | --- |
 | `update_system_prompt` | bridge to bot | Per-scenario system prompt, tool surface, and `tool_domain`; clears prior `shared_state`. |
 | `apply_initialization` | bridge to bot | Merges `shared_state_init`, resolves `db_path` to `db`, applies init-function mutations. |
 | `apply_sync_delta` | bridge to bot | Cross-side state sync (telecom only); harmless no-op elsewhere, but must be registered. |
 | `get_scenario_summary` | bot to bridge | End-of-scenario pull of `actions` plus `db_hash`, with opt-in `include_db`. |
-| `get_context_history` | bot to bridge | End-of-scenario LLM context, saved as `bot_logs_agent/llm_context.json` and fed to the judge. |
+| `get_context_history` | bot to bridge | End-of-scenario large language model (LLM) context, saved as `bot_logs_agent/llm_context.json` and fed to the judge. |
 | `reset` | bridge to bot | Clears conversation history and resets stateful services between scenarios. |
 
 All six factories live in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Each returns a
 `(wire_name, handler)` pair; install them with one call to `register_client_message_handlers`. Per-handler
-argument and return shapes are documented in [RTVI Control Plane](../../build-voice-agents/extend/protocols/rtvi-actions.md). An unregistered
+argument and return shapes are documented in
+[RTVI Control Plane](../../build-voice-agents/extend/protocols/rtvi-actions.md). An unregistered
 type produces an `error-response`, which surfaces in `bridge_log.txt` as `unknown message type`.
 
-Reusing the shipped factories is by far the cheapest path — they are pure functions over your pipeline
-objects and carry no dependency on the NeMo services. For pipeline assembly around them, see
+Reuse the shipped factories when possible. They are pure functions over your pipeline objects and have no
+dependency on the NeMo services. For pipeline assembly around them, refer to
 [Building Your Own Pipeline](../../build-voice-agents/extend/pipelines/custom-pipeline.md).
 
 ```python
@@ -100,22 +101,22 @@ register_client_message_handlers(
 )
 ```
 
-If you supply your own `tool_factory` instead of `get_schema_tool_for_eval`, keep the signature
-`(name, domain=..., rtvi=..., shared_state=..., **tool_args)` — the bridge sends the scenario's `domain` as
-`tool_domain` and the factory must resolve names in that namespace.
+If you supply a `tool_factory` instead of `get_schema_tool_for_eval`, keep the signature
+`(name, domain=..., rtvi=..., shared_state=..., **tool_args)`. The bridge sends the scenario's `domain` as
+`tool_domain`, and the factory must resolve names in that namespace.
 
-## Runtime behaviors the harness assumes
+## Runtime Behaviors the Harness Assumes
 
 Beyond the six handlers, the bridge relies on several behaviors that the reference server gets from
 `run_bot_websocket_server` in `nemo_voice_agent/pipecat/bot_server.py` and from the `RTVIObserver` in
 `nemo_voice_agent/pipecat/processors/frameworks/rtvi.py`.
 
-| Behavior | Why it matters |
+| Behavior | Why It Matters |
 | --- | --- |
 | Answer `client-ready` with `bot-ready` (`rtvi.set_bot_ready()`) | The bridge waits up to 5 s for the handshake on every connection. |
 | Survive disconnect and reconnect without losing scenario state | `prepare_for_scenario` opens a setup connection, sends the prompt and initialization, then **closes it**; the audio phase reconnects. Prompt, tools, and `shared_state` must persist. |
 | Never end the pipeline on client disconnect | The WebSocket server lives inside the input transport — ending the pipeline kills the port and nothing can reconnect. |
-| Accept the `send-text` kickoff | The agent bot is started by an RTVI `send-text` with `run_immediately`, sent 1 s into the scenario. Pipecat's `RTVIProcessor` handles this natively. |
+| Accept the `send-text` kickoff | An RTVI `send-text` message with `run_immediately` starts the agent bot 1 s into the scenario. Pipecat's `RTVIProcessor` handles this natively. |
 | Emit `bot-started-speaking`, `bot-tts-text`, `bot-stopped-speaking` | The bridge builds `conversation_log.txt`, the segLST file, and per-turn latency from these events. |
 | Emit `metrics` messages carrying token usage | `token_usage.agent.n_calls` is the turn counter behind `--min-agent-turns` (default 3). A bot that never reports usage counts 0 turns and every scenario is scored a **failure**. Set `enable_metrics=True` and `enable_usage_metrics=True` on `PipelineParams`. |
 | Push `<exit>` as an RTVI server message when the agent ends the call | This is the `CLEAN_EXIT` signal, which is in every domain's whitelist. `EndConversationTool` in `nemo_voice_agent/evaluation/tools/basic_tools.py` does it; without it every scenario terminates on timeout and fails. |
@@ -128,11 +129,12 @@ Scoring reads two pieces of bot-owned state, both keyed off `shared_state`:
 - `shared_state["db"]` — mutated in place by write tools; hashed with `get_dict_hash` for `DB_STATE_MATCH`,
   or returned inline when the bridge asks for `include_db` so `DB_STATE_ASSERTION` predicates can run.
 
-If you reuse the tool classes under `nemo_voice_agent/evaluation/tools/`, both come for free. If you route
+If you reuse the tool classes under `nemo_voice_agent/evaluation/tools/`, they provide both values
+automatically. If you route
 tool calls through your own agent framework, mirror the same bookkeeping or those signals evaluate as not
-applicable. See [Scoring](../understand-scoring/scoring.md) for the six signals and how they combine.
+applicable. Refer to [Scoring](../understand-scoring/scoring.md) for the six signals and how they combine.
 
-## Running a scenario against your bot
+## Running a Scenario Against Your Bot
 
 `SERVER_CONFIG_PATH` is resolved against the current working directory, so run everything from `evaluation/`.
 
@@ -157,15 +159,18 @@ python run_evaluation.py --agent-url ws://10.0.0.7:9000 --scenarios restaurant__
 
 Then inspect `eval_results/eval_<timestamp>/restaurant__pizza_pepperoni/`:
 
-| Artifact | What a healthy run looks like |
+| Artifact | What a Healthy Run Looks Like |
 | --- | --- |
 | `bridge_log.txt` | No `unknown message type` lines. A `[AGENT SERVER MESSAGE]` line containing `<exit>`. |
 | `metrics.json` | `is_successful` is `true`, `false`, or `"N/A"` — never missing. `token_usage.agent.n_calls` is above `--min-agent-turns`. |
-| `conversation_log.txt` | Alternating user and agent turns. Empty means the speaking or TTS-text events are not reaching the bridge. |
+| `conversation_log.txt` | Alternating user and agent turns. Empty means the speaking or text-to-speech (TTS) text events are not reaching the bridge. |
 | `bot_logs_agent/llm_context.json` | Starts with the scenario system prompt; tool calls appear as assistant `tool_calls`. |
-| `final_scenario_db_hash.txt` | Contains a `db_hash:` line for DB-scored domains. |
+| `final_scenario_db_hash.txt` | Contains a `db_hash:` line for database (DB)-scored domains. |
 
-## Optional: `trace_metrics.json` passthrough
+## Optional: trace_metrics.json Passthrough
+
+Use `trace_metrics.json` to preserve architecture-specific diagnostics without changing the fixed metrics
+schema.
 
 Architecture-specific diagnostics — internal handoff quality in a cascaded agent, router confidence, retry
 counts — do not belong in the evaluator's fixed metric set, so the runner offers a passthrough instead. Write
@@ -181,18 +186,19 @@ validate, interpret, or aggregate the contents, and the file is optional — whe
 missing from `metrics.json`. The loader is `_load_optional_trace_metrics` in
 `nemo_voice_agent/evaluation/runner.py`.
 
-Your bot has to know where to write. The scenario directory name is the scenario name, under the run's
-`eval_<timestamp>` session directory beneath `--output-dir`; pass it into your bot out of band, or write from
-a post-run script that walks the session directory.
+Your bot must know where to write. The scenario directory uses the scenario name under the
+`eval_<timestamp>` session directory beneath `--output-dir`. Pass the directory to your bot out of band, or
+write from a post-run script that walks the session directory.
 
-## Non-pipecat agents
+## Non-Pipecat Agents
 
-Out of scope. An agent built on a different runtime would have to reimplement pipecat's WebSocket transport
-framing and the RTVI message layer before the bridge could talk to it. If you take that on, treat
+Agents built on other runtimes are outside the supported integration path. Such an agent must reimplement
+Pipecat's WebSocket transport framing and the RTVI message layer before the bridge can communicate with it.
+For an unsupported custom integration, treat
 `pipecat.transports.websocket.server` and `pipecat.serializers.protobuf` as the wire specification, and
 [RTVI Message Reference](../../reference/runtime/rtvi-messages.md) as the message-level one.
 
-## Related pages
+## Related Pages
 
 Use these pages to assemble an agent around the contract, run it, and interpret the resulting evidence.
 
@@ -200,5 +206,5 @@ Use these pages to assemble an agent around the contract, run it, and interpret 
 - [RTVI Control Plane](../../build-voice-agents/extend/protocols/rtvi-actions.md) — per-handler arguments and return shapes
 - [RTVI Message Reference](../../reference/runtime/rtvi-messages.md) — the on-the-wire envelope
 - [Scoring](../understand-scoring/scoring.md) — the six success signals
-- [Evaluation CLI](../../reference/evaluation/eval-cli.md) — every flag the runner accepts
-- [Results](results.md) — what lands in the scenario directory
+- [Evaluation Command-Line Interface (CLI)](../../reference/evaluation/eval-cli.md) — every flag the runner accepts
+- [Results](results.md) — what the runner writes to the scenario directory

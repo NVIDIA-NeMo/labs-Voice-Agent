@@ -19,19 +19,21 @@ limitations under the License.
 
 The speech pipeline turns live microphone audio into text, decides when the user has finished speaking, and
 turns the assistant response back into audio. The stages stream data rather than waiting for an entire turn.
+They include voice activity detection (VAD), automatic speech recognition (ASR), speaker diarization, turn
+taking, large language model (LLM) inference, and text-to-speech (TTS).
 
 ```text
 WebSocket audio -> VAD -> ASR -> diarization -> turn taking -> LLM -> TTS -> WebSocket audio
 ```
 
 Optional stages are omitted by the builders when their configuration disables them. For the complete
-runtime ordering and the frames exchanged between stages, see [Architecture](../../architecture.md).
+runtime ordering and the frames exchanged between stages, refer to [Architecture](../../architecture.md).
 
-## Core concepts
+## Core Concepts
 
 The following pages explain the stages that interpret incoming audio and produce spoken output.
 
-| Concept | What it explains |
+| Concept | What It Explains |
 | --- | --- |
 | [Speech recognition](asr.md) | Streaming transcription, model selection, and end-of-utterance tokens. |
 | [Speaker diarization](diarization.md) | Assigning speaker identities across user turns. |
@@ -42,5 +44,5 @@ The following pages explain the stages that interpret incoming audio and produce
 
 Use these pages to experience the pipeline, change its configuration, or understand the complete architecture.
 
-- [Quickstart](../../../get-started/quickstart.md) to experience the complete pipeline.
-- [Configure](../../../build-voice-agents/configure/index.md) to select models and tune pipeline behavior.
+- [Quickstart](../../../get-started/quickstart.md) — run the complete pipeline.
+- [Configure](../../../build-voice-agents/configure/index.md) — select models and tune pipeline behavior.

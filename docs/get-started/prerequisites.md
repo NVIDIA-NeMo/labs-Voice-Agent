@@ -21,7 +21,7 @@ Verify the requirements for the workflow you plan to run before installing NeMo 
 
 ## Hardware Requirements
 
-Verify that your machine and interactive audio setup meet these hardware requirements.
+Verify that your machine and interactive audio setup meet these hardware requirements:
 
 | Requirement | Detail |
 | --- | --- |
@@ -31,17 +31,17 @@ Verify that your machine and interactive audio setup meet these hardware require
 
 ## Software Requirements
 
-Install or make available the software required by the workflow you plan to run.
+Install or make available the software required by the workflow you plan to run:
 
 | Requirement | Detail |
 | --- | --- |
-| Operating system | Linux. `install.sh` installs system packages with `apt-get`; with another package manager, install the equivalent packages yourself. |
+| Operating system | Linux. `install.sh` installs system packages with `apt-get`. With another package manager, install the equivalent packages yourself. |
 | Python | Python 3.12 or 3.13. The project configures `uv` to download and manage a compatible interpreter. |
 | Node.js and npm | Required for the browser client. `install.sh` installs both on systems that provide `apt-get`. |
 
 ## Pre-Installation Checklist
 
-Confirm the GPU and optional browser tooling are visible:
+Run these commands to confirm that the GPU and optional browser tools are available:
 
 ```bash
 nvidia-smi
@@ -51,12 +51,12 @@ npm --version
 
 ## Troubleshoot Prerequisites
 
-Do not run the installer inside a non-`base` conda environment. Run `conda deactivate` first so conda's
-compiler and Python headers do not interfere with packages that build native extensions.
+Do not run the installer inside a non-`base` conda environment. Run `conda deactivate` first. This prevents
+the conda compiler and Python headers from interfering with packages that build native extensions.
 
 ## Next Steps
 
-After the prerequisite checks pass, install the project or review the complete first-run workflow.
+After the prerequisite checks pass, install the project or review the complete first-run workflow:
 
 - [Installation](installation.md) creates the virtual environment and installs dependencies.
 - [Quickstart](quickstart.md) starts the model server, voice-agent server, and browser client.

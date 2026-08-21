@@ -17,19 +17,21 @@ limitations under the License.
 
 # Server Config Schema
 
-Every key the NeMo Labs Voice Agent server reads out of a YAML server config, with its type, default, and
-the code that consumes it. Derived from `examples/generic_voice_agent/server/server_configs/default.yaml`,
+This reference lists every YAML server-configuration key that NeMo Labs Voice Agent reads, including its
+type, default, and consumer. The content is derived from
+`examples/generic_voice_agent/server/server_configs/default.yaml`,
 `nemo_voice_agent/utils/config_manager.py`, `nemo_voice_agent/pipecat/services/nemo/builders.py`, and the
-three service factories (`get_stt_service_from_config`, `get_llm_service_from_config`,
-`get_tts_service_from_config`).
+three service factories: `get_stt_service_from_config`, `get_llm_service_from_config`, and
+`get_tts_service_from_config`.
 
-For a task-oriented walkthrough of *how* to edit these files, see [Server Configuration](../../build-voice-agents/configure/server-config.md).
+For task-oriented editing instructions, refer to
+[Server Configuration](../../build-voice-agents/configure/server-config.md).
 
-**This table is hand-maintained.** There is no schema class to generate it from today — the configs are plain
-OmegaConf dicts read with `.get()` at each call site. Treat the named source files as authoritative and open
-an issue if you spot drift.
+**This reference is hand-maintained.** The configuration uses plain OmegaConf dictionaries that each call
+site reads with `.get()`, so no schema class is available to generate the tables. Treat the named source
+files as authoritative, and open an issue if you find drift.
 
-## How a config resolves
+## How a Config Resolves
 
 The server resolves a configuration in the following order before any service builders consume it.
 
@@ -41,12 +43,12 @@ The server resolves a configuration in the following order before any service bu
    `<server_base_path>/server_configs/{stt,llm,tts}_configs/`.
 3. **The sub-config overwrites the top-level block**, key by key. Setting a key in `default.yaml` that the
    sub-config also sets has no effect. Overrides are logged at INFO.
-4. The fully resolved config is logged once at startup (`Server config: ...`) — read that line to confirm
-   what actually took effect.
+4. The server logs the fully resolved configuration at startup as `Server config: ...`. Use that entry to
+   confirm which values took effect.
 
 "Required" below means the code reads the key without a fallback, so the server raises if it is missing.
 
-## `server`
+## server
 
 The `server` block controls model-registry lookup and evaluation-server logging and startup behavior.
 
@@ -63,7 +65,7 @@ The example server `examples/generic_voice_agent/server/server.py` calls `setup_
 and passes `talk_first=True` literally, so the five logging/`talk_first` keys above take effect only in
 `evaluation/bot_server.py` or in your own bot script that wires them through the builders.
 
-## `transport`
+## transport
 
 The `transport` block controls WebSocket audio framing, sample rates, and optional audio recording.
 
@@ -76,11 +78,12 @@ The `transport` block controls WebSocket audio framing, sample rates, and option
 | `record_audio_data` | bool | `false` | `build_audio_logger` — returns `None` when false |
 | `audio_log_dir` | string | `"./audio_logs"` | `build_audio_logger` |
 
-See [Audio Logging](../../build-voice-agents/configure/audio-logging.md) for the on-disk layout.
+Refer to [Audio Logging](../../build-voice-agents/configure/audio-logging.md) for the on-disk layout.
 
-## `vad`
+## vad
 
-All four are read without a fallback and passed to pipecat's `VADParams`. VAD is not optional:
+The code reads all four voice activity detection (VAD) keys without a fallback and passes them to Pipecat's
+`VADParams`. VAD is not optional:
 `build_vad_analyzer` always returns a `SileroVADAnalyzer`.
 
 | Key | Type | Shipped value | Meaning |
@@ -92,9 +95,9 @@ All four are read without a fallback and passed to pipecat's `VADParams`. VAD is
 
 `vad.type` appears in the shipped configs but is not read by any code — Silero is always used.
 
-## `stt`
+## stt
 
-The `stt` block selects and configures the local or hosted speech-recognition backend.
+The `stt` block selects and configures the local or hosted speech-to-text (STT) backend.
 
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
@@ -110,13 +113,13 @@ The `stt` block selects and configures the local or hosted speech-recognition ba
 | `ignore_eou_eob` | bool | `false` | `NemoSTTService` — ignore end-of-utterance/barge-in tokens |
 | `ttfs_p99_latency` | float or null | `null` | `NemoSTTService` |
 | `server` | string | `"grpc.nvcf.nvidia.com:443"` | `nvidia` backend only |
-| `function_id` | string | see `default_nvidia.yaml` | `nvidia` backend — paired with `model`; change both together |
+| `function_id` | string | value in `default_nvidia.yaml` | `nvidia` backend — paired with `model`; change both together |
 | `language` | string | `"en-US"` | `nvidia` backend |
 | `api_key` | string | `"None"`, overridden by `NVIDIA_API_KEY` | `nvidia` backend |
 
-More detail in [ASR](../../about/core-concepts/speech-pipeline/asr.md).
+For more detail, refer to [ASR](../../about/core-concepts/speech-pipeline/asr.md).
 
-## `diar`
+## diar
 
 The `diar` block enables speaker diarization and sets its model and detection parameters.
 
@@ -128,9 +131,10 @@ The `diar` block enables speaker diarization and sets its model and detection pa
 | `frame_len_in_secs` | float | required when enabled (shipped: `0.08`) | `NeMoDiarInputParams` |
 
 `diar.type` and `diar.device` are present in the shipped configs but not read: `build_diar` reuses
-`stt.device` for the diarizer. See [Diarization](../../about/core-concepts/speech-pipeline/diarization.md).
+`stt.device` for the diarizer. For more detail, refer to
+[Diarization](../../about/core-concepts/speech-pipeline/diarization.md).
 
-## `turn_taking`
+## turn_taking
 
 The `turn_taking` block controls backchannel handling and interruption timing.
 
@@ -139,14 +143,16 @@ The `turn_taking` block controls backchannel handling and interruption timing.
 | `enabled` | bool | `true` | `ConfigManager`, `build_turn_taking` — returns `None` when false |
 | `backchannel_phrases_path` | path, list, or null | required when enabled | `NeMoTurnTakingService`; a relative path is tried against the CWD then the server base dir, and a missing file raises |
 | `max_buffer_size` | int | required when enabled (shipped: `2`) | word count above which a non-backchannel utterance interrupts immediately |
-| `bot_stop_delay` | float | required when enabled (shipped: `0.5`) | seconds of server/client audio slack before bot-stop is honored |
+| `bot_stop_delay` | float | required when enabled (shipped: `0.5`) | seconds of server and client audio slack before bot-stop is honored |
 
 Disabling turn-taking also changes turn detection ownership: `build_context_and_aggregators` falls back to
-VAD-driven strategies in the user aggregator. See [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md).
+VAD-driven strategies in the user aggregator. For more detail, refer to
+[Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md).
 
-## `llm`
+## llm
 
-Backend-independent keys:
+The `llm` block selects and configures the large language model (LLM) backend. The following keys apply to
+all backends:
 
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
@@ -160,11 +166,11 @@ Backend-independent keys:
 | `system_prompt_suffix` | string | none | `ConfigManager` — appended to the prompt on a new line |
 | `enable_reasoning` | bool | `false` | `ConfigManager` — swaps to the sibling `*_think.yaml` only for registry-resolved models whose entry sets `reasoning_supported: true` |
 | `enable_tool_calling` | bool | `false` | `server.py` — gates `register_direct_tools_to_llm` |
-| `function_call_timeout_secs` | float or null | `10.0` | all backends; `null` restores pipecat's unbounded wait |
+| `function_call_timeout_secs` | float or null | `10.0` | all backends; `null` restores Pipecat's unbounded wait |
 | `inject_dummy_user_message` | bool | `false` | `build_context_and_aggregators` |
 | `dummy_user_message` | string | `"Hello."` | `build_context_and_aggregators`, only when the above is true |
 
-HuggingFace backend:
+Hugging Face backend:
 
 | Key | Type | Default |
 | --- | --- | --- |
@@ -172,7 +178,7 @@ HuggingFace backend:
 | `apply_chat_template_kwargs` | dict | none — passed to `tokenizer.apply_chat_template()`; `tokenize` is forced off |
 | `reasoning_budget` | int | `0` |
 
-vLLM backend (see [vLLM](../../build-voice-agents/model-serving/vllm.md)):
+vLLM backend, described in [vLLM](../../build-voice-agents/model-serving/vllm.md):
 
 | Key | Type | Default |
 | --- | --- | --- |
@@ -183,18 +189,19 @@ vLLM backend (see [vLLM](../../build-voice-agents/model-serving/vllm.md)):
 | `default_headers` | dict | none |
 | `start_vllm_on_init` | bool | `false` |
 | `vllm_server_params` | string | none — appended to `vllm serve <model>` |
-| `vllm_generation_params` | dict | pipecat defaults — cast to `OpenAILLMService.Settings`; put model-specific fields under its `extra` sub-key |
+| `vllm_generation_params` | dict | Pipecat defaults — cast to `OpenAILLMService.Settings`; put model-specific fields under its `extra` sub-key |
 
-NVIDIA hosted backend (see [NVIDIA NIM](../../build-voice-agents/model-serving/nvidia-nim.md)):
+NVIDIA hosted backend, described in [NVIDIA NIM](../../build-voice-agents/model-serving/nvidia-nim.md):
 
 | Key | Type | Default |
 | --- | --- | --- |
 | `base_url` | string | `"https://integrate.api.nvidia.com/v1"` |
 | `api_key` | string | `"None"`; `NVIDIA_API_KEY` wins, or `NVIDIA_INFERENCE_API_KEY` when `base_url` is `https://inference-api.nvidia.com/v1`. Both endpoints raise if the key is unset |
 | `default_headers` | dict | none |
-| `nvidia_generation_params` | dict | pipecat defaults — same `Settings` cast and `extra` sub-key as vLLM |
+| `nvidia_generation_params` | dict | Pipecat defaults — same `Settings` cast and `extra` sub-key as vLLM |
 
-Omni / multimodal keys, read by `server.py` to insert a `UserAudioBuffer` (see [Multimodal](../../about/core-concepts/language-models/multimodal.md)):
+Omni and multimodal keys, read by `server.py` to insert a `UserAudioBuffer` and described in
+[Multimodal](../../about/core-concepts/language-models/multimodal.md):
 
 | Key | Type | Default |
 | --- | --- | --- |
@@ -205,9 +212,9 @@ Omni / multimodal keys, read by `server.py` to insert a `UserAudioBuffer` (see [
 | `text_prompt_for_audio` | string | none |
 | `text_prompt_for_transcript` | string | none — used only when `use_stt_transcript` is true |
 
-## `tts`
+## tts
 
-The `tts` block selects the speech-synthesis backend and configures its model, voice, and retry behavior.
+The `tts` block selects the text-to-speech (TTS) backend and configures its model, voice, and retry behavior.
 
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
@@ -215,16 +222,16 @@ The `tts` block selects the speech-synthesis backend and configures its model, v
 | `model` | string | required | local types must be `fastpitch-hifigan`, `magpie`, or `kokoro` — the value selects the service class; for `nvidia` it is the NVCF model name |
 | `model_config` | path | none | `ConfigManager` — basename selects the file under `tts_configs/` |
 | `device` | string | `"cuda"` | local services |
-| `main_model_id` | string | per sub-config | primary checkpoint (FastPitch, Magpie, or Kokoro repo id) |
+| `main_model_id` | string | per sub-config | primary checkpoint (FastPitch, Magpie, or Kokoro repository ID) |
 | `sub_model_id` | string or null | per sub-config | HiFi-GAN checkpoint, or the Kokoro voice |
 | `speed` | float | `1.0` | Kokoro only (shipped Kokoro config: `1.25`) |
 | `language` | string | `"en"` | Magpie local; `"en-US"` for the `nvidia` service |
 | `speaker` | string | `"Sofia"` | Magpie local |
 | `apply_TN` | bool | `false` | Magpie local — text normalization |
-| `think_tokens` | list or null | `null` | skip synthesis between the tokens, e.g. the `<think>` span |
+| `think_tokens` | list or null | `null` | skip synthesis between the tokens, such as the `<think>` span |
 | `ignore_strings` | list or null | `null` | characters stripped before synthesis (shipped: `*` and `<unk>`) |
 | `server` | string | `"grpc.nvcf.nvidia.com:443"` | `nvidia` service |
-| `function_id` | string | see `default_nvidia.yaml` | `nvidia` service — paired with `model` |
+| `function_id` | string | value in `default_nvidia.yaml` | `nvidia` service — paired with `model` |
 | `voice_id` | string | `"Magpie-Multilingual.EN-US.Aria"` | `nvidia` service |
 | `api_key` | string | `"None"`, overridden by `NVIDIA_API_KEY` | `nvidia` service |
 | `max_retries` | int | `2` | `nvidia` service — retry a stream that failed before emitting audio; `0` for single-shot |

@@ -20,18 +20,18 @@ limitations under the License.
 Start with configuration when the shipped pipeline already supports the behavior you need. Add tools or
 custom pipeline code only when configuration is not enough.
 
-## Choose an area
+## Choose an Area
 
 Choose the smallest surface that supports the behavior you want to add.
 
-| Area | Use it to |
+| Area | Use It to |
 | --- | --- |
 | [Configure](configure/index.md) | Select component configs, prompts, model-registry entries, and audio logging. |
 | [Model serving](model-serving/index.md) | Run a vLLM server, configure plugins, or use hosted NVIDIA endpoints. |
 | [Tools](tools/index.md) | Enable function calling and add direct or component-owned tools. |
 | [Extend](extend/index.md) | Add processors, assemble a custom pipeline, or integrate through RTVI. |
 
-## Recommended order
+## Recommended Order
 
 Use this order to move from a working example to the smallest maintainable customization.
 
@@ -40,7 +40,7 @@ Use this order to move from a working example to the smallest maintainable custo
 3. Add a tool for a discrete action or a processor for a new pipeline transformation.
 4. Build a custom pipeline only when the shipped assembly cannot express the design.
 
-## Key concepts
+## Key Concepts
 
 The extension surface you choose determines where the change belongs and how much pipeline behavior you
 own:

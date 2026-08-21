@@ -17,7 +17,8 @@ limitations under the License.
 
 # Understand Scoring
 
-Evaluation results combine deterministic outcome checks, action records, an LLM judge, natural-language
+Evaluation results combine deterministic outcome checks, action records, a large language model (LLM) judge,
+natural-language
 assertions, and clean conversation exit. Each domain chooses which supported signals gate its composite
 success verdict.
 
@@ -28,9 +29,9 @@ the exact metrics fields written by the runner.
 
 | Guide | Scope |
 | --- | --- |
-| [Benchmarks & Domains](benchmarks.md) | Explore the scenario collections and what each domain measures. |
+| [Benchmarks and Domains](benchmarks.md) | Explore the scenario collections and what each domain measures. |
 | [Scoring Model](scoring.md) | Understand the six signals, domain whitelists, and aggregation rules. |
 | [Metrics Dictionary](../../reference/evaluation/metrics.md) | Look up the exact fields written to evaluation result files. |
 
-Read the scoring model before treating one percentage as a complete quality measure. A run can include useful
-per-signal evidence even when a short or incomplete conversation fails the composite result.
+Read the scoring model before treating one percentage as a complete quality measure. Per-signal evidence can
+remain useful even when a short or incomplete conversation fails the composite result.

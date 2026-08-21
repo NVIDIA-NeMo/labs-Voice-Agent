@@ -17,15 +17,16 @@ limitations under the License.
 
 # NeMo Voice Agent
 
-NeMo Voice Agent is an open-source Python framework for building and evaluating real-time voice agents. It
-combines streaming speech recognition, turn taking, language models, and text-to-speech services in a Pipecat
-pipeline with a browser client and a spoken-conversation evaluation harness.
+NeMo Voice Agent is an open source Python framework for building and evaluating real-time voice agents. It
+combines streaming automatic speech recognition (ASR), turn taking, large language model (LLM) inference, and
+text-to-speech (TTS) services in a Pipecat pipeline. The repository also provides a browser client and a
+spoken-conversation evaluation harness.
 
 ## Skip Ahead
 
 Use the following paths to find the information that matches your goal.
 
-| I want to | Start here |
+| I Want to | Start Here |
 | --- | --- |
 | Understand the system | [Architecture](architecture.md) |
 | Run the default voice agent | [Choose your path](../get-started/choose-your-path.md) |
@@ -63,4 +64,4 @@ The following components work together to provide the runtime and evaluation exp
 | Model services | Provide ASR, LLM, diarization, turn-taking, and TTS behavior. |
 | Evaluation harness | Connects a simulated user and agent, records artifacts, and scores scenario outcomes. |
 
-See [Release Notes](release-notes.md) for dated project updates.
+For dated project updates, refer to [Release Notes](release-notes.md).

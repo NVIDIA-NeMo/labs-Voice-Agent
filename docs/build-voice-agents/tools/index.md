@@ -17,10 +17,10 @@ limitations under the License.
 
 # Tools
 
-Tools let supported language-model backends invoke application functions during a conversation. NeMo Voice
-Agent supports direct functions registered by the server and tools owned by a pipeline component.
+Tools let supported language model backends invoke application functions during a conversation. NeMo Voice
+Agent supports server-registered functions and tools owned by a pipeline component.
 
-## Choose a guide
+## Choose a Guide
 
 Choose the overview when you need to enable the feature, or the implementation guide when you are ready to
 add an application action.

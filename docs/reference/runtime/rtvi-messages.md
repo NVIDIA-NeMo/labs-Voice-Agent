@@ -17,15 +17,17 @@ limitations under the License.
 
 # RTVI Message Reference
 
-Wire-level lookup for the custom RTVI client messages a NeMo Labs Voice Agent bot answers. Handlers live in
-`nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`; for what each one does and how to add your
-own, read [RTVI Control Plane](../../build-voice-agents/extend/protocols/rtvi-actions.md). For the audio side of the same socket, see
+Use this reference to look up the custom real-time voice interface (RTVI) client messages that a NeMo Labs
+Voice Agent bot handles. The handlers live in
+`nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. For handler behavior and extension
+instructions, refer to [RTVI Control Plane](../../build-voice-agents/extend/protocols/rtvi-actions.md). For
+the audio interface on the same socket, refer to
 [Client Protocol](../../build-voice-agents/extend/protocols/client-protocol.md).
 
 ## Envelope
 
-Control messages travel on the same WebSocket as audio, wrapped in a pipecat `MessageFrame` and encoded with
-`ProtobufFrameSerializer`. The frame body is a JSON string in pipecat's RTVI envelope:
+Control messages travel on the same WebSocket as audio. Pipecat wraps each message in a `MessageFrame`, and
+`ProtobufFrameSerializer` encodes the frame. The frame body is a JSON string in Pipecat's RTVI envelope:
 
 ```json
 {
@@ -39,7 +41,7 @@ Control messages travel on the same WebSocket as audio, wrapped in a pipecat `Me
 `t` is the message type (the wire name in the table below) and `d` is the argument object. `id` is
 caller-chosen and echoed back — match on it, because responses to concurrent requests arrive interleaved.
 
-A handler's return value comes back as the `d` field of a `server-response`:
+The `d` field of a `server-response` contains the handler return value:
 
 ```json
 {
@@ -50,8 +52,8 @@ A handler's return value comes back as the `d` field of a `server-response`:
 }
 ```
 
-An unknown `t`, or a handler that raises, produces an `error-response` instead — callers fail fast rather
-than blocking until a read timeout:
+An unknown `t` or a handler exception produces an `error-response`. This response lets callers fail fast
+instead of blocking until a read timeout:
 
 ```json
 {
@@ -62,18 +64,18 @@ than blocking until a read timeout:
 }
 ```
 
-Browser clients built on `@pipecat-ai/client-js` do not assemble this by hand — `sendClientRequest(type, args)`
-builds the envelope and resolves with the `d` payload. The evaluation bridge
-(`nemo_voice_agent/evaluation/bridge.py`) constructs it literally, which is what the examples on this page show.
+For browser clients built on `@pipecat-ai/client-js`, `sendClientRequest(type, args)` builds the envelope and
+resolves with the `d` payload. The evaluation bridge (`nemo_voice_agent/evaluation/bridge.py`) constructs the
+envelope directly, as shown in the examples on this page.
 
-## Message types
+## Message Types
 
 The following table summarizes the custom request types registered by the example and evaluation servers.
 
 | `t` | Arguments | Response `d` | Registered by |
 | --- | --- | --- | --- |
-| `reset` | none | `true` / `false` | example server + eval bot |
-| `update_system_prompt` | `prompt`, `tools`, `add_suffix`, `tool_domain` | `true` / `false` | eval bot |
+| `reset` | none | `true` or `false` | example server and eval bot |
+| `update_system_prompt` | `prompt`, `tools`, `add_suffix`, `tool_domain` | `true` or `false` | eval bot |
 | `get_context_history` | none | `context` | eval bot |
 | `get_scenario_summary` | `include_db` | `actions`, `db_hash`, optional `db` | eval bot |
 | `apply_initialization` | `domain`, `shared_state_init`, `actions` | `success`, `errors` | eval bot |
@@ -83,11 +85,11 @@ The following table summarizes the custom request types registered by the exampl
 all six. There is no schema or defaults layer on this path: every handler reads arguments with
 `arguments.get(name, default)`, so unknown keys are ignored and missing keys fall back silently.
 
-### `reset`
+### reset
 
 Send `"d": {}`. Response `d` is a bare boolean — `true` on success, `false` if the aggregator reset raised.
 
-### `update_system_prompt`
+### update_system_prompt
 
 Use the following arguments to replace the evaluation bot's system prompt and register scenario tools.
 
@@ -98,7 +100,7 @@ Use the following arguments to replace the evaluation bot's system prompt and re
 | `add_suffix` | bool | `true` | Appends the server's configured system-prompt suffix. |
 | `tool_domain` | string | `"default"` | Tool-registry namespace for the lookup. |
 
-Response `d` is a bare boolean. Note `tools` is a **JSON string**, not a nested object.
+Response `d` is a bare boolean. The `tools` value is a **JSON string**, not a nested object.
 
 ```json
 {"t": "update_system_prompt",
@@ -110,13 +112,13 @@ Response `d` is a bare boolean. Note `tools` is a **JSON string**, not a nested 
 
 Scenario fixture data does not travel here — `shared_state_init` is an argument of `apply_initialization`.
 
-### `get_context_history`
+### get_context_history
 
 Send `"d": {}`. Response `d` is `{"context": "..."}` where the value is the assistant aggregator's message
 list rendered with Python `str()`, after `sanitize_context_for_transport` has replaced inline audio, image,
 and file blobs with placeholder tags. On an internal error the handler returns `context` as an empty list.
 
-### `get_scenario_summary`
+### get_scenario_summary
 
 Use the following argument to control whether the response includes the bot's inline database.
 
@@ -132,11 +134,11 @@ Use the following argument to control whether the response includes the bot's in
 
 `db_hash` is the SHA-256 of the canonicalized DB from `nemo_voice_agent.evaluation.db_hash.get_dict_hash`, or
 `null` when the bot holds no DB. The `db` key is present only when `include_db` was true; keep it off for
-large DBs, which overflow pipecat's 1 MB WebSocket frame cap and close the connection with code 1009. Each
+large databases, which overflow Pipecat's 1 MB WebSocket frame cap and close the connection with code 1009. Each
 bot returns only its own DB — the agent-versus-user labeling is applied by the caller, based on which socket
 the response arrived on.
 
-### `apply_initialization`
+### apply_initialization
 
 Use the following arguments to seed shared state, load fixture data, and apply initialization actions.
 
@@ -159,7 +161,7 @@ a list, or when actions were supplied but no `db` could be resolved. A `db_path`
 data root (`nemo_voice_agent/evaluation/data/`, overridable with `EVAL_DATA_ROOT`) and is skipped when `db` is
 already present.
 
-### `apply_sync_delta`
+### apply_sync_delta
 
 Use the following arguments to apply a cross-side state update to the bot's database.
 
@@ -179,20 +181,21 @@ Response `d` is `{"success": bool, "errors": [string]}`. It is false when `delta
 no `db` in `shared_state`. Failures are informational for the caller — a malformed delta must not stall the
 conversation.
 
-## Server-to-client messages
+## Server-to-Client Messages
 
-The bot also pushes unsolicited messages the evaluation bridge listens for. These are pipecat
+The bot also pushes unsolicited messages that the evaluation bridge monitors. These are Pipecat
 `server-message` frames with a custom `data` payload, plus the standard RTVI lifecycle and transcript events.
 
 | `type` | `data` shape | Emitted by |
 | --- | --- | --- |
-| `bot-ready` | pipecat's ready payload | Answer to the `client-ready` handshake. |
+| `bot-ready` | Pipecat's ready payload | Answer to the `client-ready` handshake. |
 | `server-message` | `type` = `action-applied`, plus `action` and `tool_domain` | `WriteScenarioTool._record_action` in `nemo_voice_agent/evaluation/tools/_write_tool_base.py` |
 | `server-message` | `text` containing `<exit>` or `<final_response>` markers | The RTVI control tools in `nemo_voice_agent/evaluation/tools/rtvi_control.py` |
 
-The bridge also uses two pipecat built-ins on the outbound path: `client-ready` (handshake, awaits
-`bot-ready`) and `send-text` (inject a text turn into the bot's LLM, with `run_immediately` and
-`audio_response` options). Both are pipecat protocol messages, not handlers defined in this repo.
+The bridge also uses two Pipecat built-ins on the outbound path. The `client-ready` handshake awaits
+`bot-ready`. The `send-text` message injects a text turn into the bot's large language model (LLM) with the
+`run_immediately` and `audio_response` options. Both are Pipecat protocol messages, not handlers defined in
+this repository.
 
-Wire traffic for a run is captured in `bridge_log.txt` inside each scenario's result directory — see
-[Evaluation](../../evaluate/index.md).
+The evaluation harness captures wire traffic in `bridge_log.txt` inside each scenario result directory. For
+the result workflow, refer to [Evaluation](../../evaluate/index.md).

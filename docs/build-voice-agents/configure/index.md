@@ -18,11 +18,11 @@ limitations under the License.
 # Configuration Model
 
 NeMo Labs Voice Agent is configured by YAML. One top-level server config selects the models and pipeline
-behaviour; each of the STT, LLM, and TTS components may additionally pull in a per-model sub-config. All
-merging happens in `ConfigManager` (`nemo_voice_agent/utils/config_manager.py`), which the example server
-constructs before it builds any pipeline stage.
+behavior. The speech-to-text (STT), large language model (LLM), and text-to-speech (TTS) components can also
+load a per-model sub-config. `ConfigManager` (`nemo_voice_agent/utils/config_manager.py`) merges these files
+before the example server builds any pipeline stage.
 
-## Where the files live
+## Where the Files Live
 
 The demo server and evaluation harness keep their top-level configuration in separate directories.
 
@@ -48,11 +48,11 @@ cd examples/generic_voice_agent/server
 SERVER_CONFIG_PATH=server_configs/default_nvidia.yaml python server.py
 ```
 
-## The three layers
+## The Three Layers
 
-`ConfigManager` combines three configuration layers before a builder reads its component block.
+`ConfigManager` combines three configuration layers before a builder reads its component block:
 
-| Layer | What it sets | How it is selected |
+| Layer | What It Sets | How It Is Selected |
 | --- | --- | --- |
 | 1. Top-level config | Every block: `server`, `transport`, `vad`, `stt`, `diar`, `turn_taking`, `llm`, `tts` | `SERVER_CONFIG_PATH`, else `server_configs/default.yaml` |
 | 2. Component sub-config | Keys inside one of `stt` / `llm` / `tts` only | That block's `model_config:` field |
@@ -60,11 +60,10 @@ SERVER_CONFIG_PATH=server_configs/default_nvidia.yaml python server.py
 
 Layers 2 and 3 are alternatives, not additions: `model_config:` short-circuits the registry lookup entirely.
 
-### The sub-config wins
+### The Sub-Config Wins
 
-This is the single most surprising rule. For each of STT, LLM, and TTS, the merge loop copies **every** key of
-the sub-config over the corresponding key in the top-level block. The top-level file does not override the
-sub-config — it is the other way round.
+For STT, LLM, and TTS, the merge loop copies **every** sub-config key over the corresponding key in the
+top-level block. The sub-config overrides the top-level file.
 
 The shipped default demonstrates it. `default.yaml` declares `llm.type: auto`, but
 `llm_configs/nemotron_nano_v3.yaml` (selected by `llm.model_config:`) declares `type: vllm`, so the effective
@@ -83,28 +82,28 @@ the sub-config, or point `model_config:` at a copy you own. Keys the sub-config 
 The merge is a shallow, per-key replacement within the block. If a sub-config defines a nested mapping such as
 `vllm_generation_params`, the whole mapping replaces the top-level one rather than merging into it.
 
-### Only the filename of `model_config:` matters
+### Only the Filename of model_config: Matters
 
 `ConfigManager` takes `os.path.basename()` of `model_config:` and looks the file up in
 `<base>/server_configs/<component>_configs/`. The directory portion of the shipped values
 (`./server_configs/llm_configs/nemotron_nano_v3.yaml`) is decorative — a sub-config must physically live in the
 component's own directory next to the top-level file. A missing file raises `FileNotFoundError` at startup.
 
-### Registry auto-resolution
+### Registry Auto-Resolution
 
 When a block has no `model_config:` and `server.use_model_registry` is true, `ConfigManager` looks `model:` up in
-`model_registry.yaml` and uses the entry's `yaml_id` as the sub-config filename. See
-[Model Registry](model-registry.md) for the file's structure. Two follow-on behaviours:
+`model_registry.yaml` and uses the entry's `yaml_id` as the sub-config filename. Refer to
+[Model Registry](model-registry.md) for the file's structure. Two follow-on behaviors apply:
 
 - **Reasoning swap.** If the model was resolved *through the registry*, its entry sets
   `reasoning_supported: true`, and `llm.enable_reasoning: true`, the loader substitutes the sibling file whose
   name ends in `_think.yaml`. Because an explicit `model_config:` bypasses the registry, the swap does not fire
-  for the shipped default — point `model_config:` at the `_think.yaml` by hand. See
+  for the shipped default — point `model_config:` at the `_think.yaml` by hand. Refer to
   [Reasoning](../../about/core-concepts/language-models/reasoning.md).
 - **No match.** If the model is in neither `model_config:` nor the registry, no sub-config is loaded and a
   warning is logged; the top-level block must then be complete on its own. Nothing is silently substituted.
 
-## OmegaConf interpolation
+## OmegaConf Interpolation
 
 Configs use OmegaConf, so a value may reference another key. Resolution happens in two distinct phases, and the
 difference matters:
@@ -126,7 +125,7 @@ vllm_generation_params:
 
 Paths in interpolations are absolute from the config root (`llm.temperature`), not relative to the sub-config.
 
-## System prompt
+## System Prompt
 
 `llm.system_prompt` is **path-or-literal**: `ConfigManager` runs `os.path.isfile()` on the value and reads the
 file when it exists, otherwise treats the string as the prompt itself. Relative paths resolve against the
@@ -137,14 +136,14 @@ current working directory, not the server base path. Reusable prompts ship in
 default combines a literal prompt from `default.yaml` with a tool-usage suffix from the LLM sub-config. Omit
 `system_prompt` entirely and a short built-in default is used. Details in [Prompts](prompts.md).
 
-## Which block feeds which component
+## Which Block Feeds Which Component
 
-Every stage is constructed by a builder in `nemo_voice_agent/pipecat/services/nemo/builders.py`, each reading one
-block of the merged config.
+Every stage is constructed by a builder in `nemo_voice_agent/pipecat/services/nemo/builders.py`. Each builder
+reads one block of the merged config:
 
-| Block | Sub-config directory | Read by |
+| Block | Sub-Config Directory | Read by |
 | --- | --- | --- |
-| `server` | — | log file/level and talk-first behaviour (see note below) |
+| `server` | — | Log file/level and talk-first behavior (refer to the note below). |
 | `transport` | — | `build_ws_transport`, `build_audio_logger` |
 | `vad` | — | `build_vad_analyzer` (Silero `VADParams`) |
 | `stt` | `stt_configs/` | `build_stt` |
@@ -154,14 +153,15 @@ block of the merged config.
 | `tts` | `tts_configs/` | `build_tts` and `build_llm_text_processor` |
 
 Note on the `server` block: `server.log_file`, `server.log_level`, `server.create_new_log`,
-`server.overwrite_existing_log`, and `server.talk_first` are honoured by the evaluation bot server
+`server.overwrite_existing_log`, and `server.talk_first` are honored by the evaluation bot server
 (`evaluation/bot_server.py`). The example server in `examples/generic_voice_agent/server/server.py` hardcodes
 talk-first and calls logging setup with its defaults, writing `bot_server.log` at `DEBUG`.
 
 `llm.type: auto` is resolved at service-construction time, not by `ConfigManager`: the LLM factory probes whether
-vLLM can load the model and falls back to the HuggingFace backend if not. See [LLM Backends](../../about/core-concepts/language-models/llm.md).
+vLLM can load the model and falls back to the Hugging Face backend if not. Refer to
+[LLM Backends](../../about/core-concepts/language-models/llm.md).
 
-## Inspecting the merged result
+## Inspecting the Merged Result
 
 The startup log is the source of truth. `ConfigManager` emits `Final STT config:`, `Final LLM config:`, and
 `Final TTS config:` lines after each merge, plus one `... is overridden from ... by ...` line per replaced key;
@@ -173,7 +173,8 @@ setting appears to be ignored — the override log names the file that won.
 Keep these merge and path behaviors in mind when a configuration edit does not take effect:
 
 - The shipped `llm_configs/nemotron_nano_v3.yaml` sets `start_vllm_on_init: false`, so `python server.py` alone
-  will not work: start vLLM yourself first, or flip that key. See [vLLM Backend](../model-serving/vllm.md).
+  does not work by itself. Start vLLM first, or change that key. Refer to
+  [vLLM Backend](../model-serving/vllm.md).
 - `turn_taking.backchannel_phrases_path` is tried against the working directory first, then against the server
   base path, and raises `FileNotFoundError` naming both if neither exists. An inline list or `null` is also
   accepted — `null` lets any speech interrupt the bot.

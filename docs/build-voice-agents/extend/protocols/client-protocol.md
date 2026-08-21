@@ -17,14 +17,14 @@ limitations under the License.
 
 # Client Protocol
 
-Talking to NeMo Labs Voice Agent is a two-step handshake. A client first calls `POST /connect` on the
-FastAPI port to learn where the media socket lives, then opens that WebSocket and exchanges
-Protobuf-encoded frames — raw PCM audio in both directions plus JSON control messages in the RTVI
-envelope.
+Connecting to NeMo Labs Voice Agent requires a two-step handshake. A client first calls `POST /connect` on
+the FastAPI port to discover the media socket. It then opens that WebSocket and exchanges Protobuf-encoded
+frames. The frames carry raw PCM audio in both directions and JSON control messages in the real-time voice
+inference (RTVI) envelope.
 
 The two servers are started together by `run_bot_with_fastapi` in `nemo_voice_agent/pipecat/bot_server.py`.
 
-| Server | Default port | Env var | Carries |
+| Server | Default Port | Environment Variable | Carries |
 | --- | --- | --- | --- |
 | FastAPI | 7860 | `FASTAPI_PORT` | `POST /connect` discovery only |
 | WebSocket | 8765 | `WEBSOCKET_PORT` | Audio frames and RTVI messages |
@@ -36,7 +36,7 @@ Before you connect a custom client, complete the following preparation:
 1. Start the voice-agent server by following the [Quickstart](../../../get-started/quickstart.md).
 2. Choose whether the client will use the `/connect` discovery endpoint or connect directly to the
    WebSocket port.
-3. Use a client that can serialize and deserialize pipecat Protobuf frames.
+3. Use a client that can serialize and deserialize Pipecat Protobuf frames.
 
 ## Step 1: POST /connect
 
@@ -50,7 +50,7 @@ curl -s -X POST http://127.0.0.1:7860/connect
 The URL is assembled by `build_websocket_url` in `nemo_voice_agent/utils/websocket_url.py` from three
 server-side values — it never echoes anything the client sent:
 
-| Env var | Default | Notes |
+| Environment Variable | Default | Notes |
 | --- | --- | --- |
 | `WEBSOCKET_SCHEME` | `ws` | Must be `ws` or `wss`; anything else raises `ValueError` at request time. |
 | `SERVER_PUBLIC_HOST` | `127.0.0.1` | Must be reachable **from the client machine**. If you pass a full URL, only the host part is kept; IPv6 literals are bracketed. |
@@ -60,13 +60,13 @@ The app is created with permissive CORS (`allow_origins=["*"]`), so a browser on
 it directly. The `/ws` route on the FastAPI app is an unimplemented stub — ignore it. Full variable list
 is in [Environment variables](../../../reference/runtime/environment.md).
 
-## Step 2: the WebSocket
+## Step 2: The WebSocket
 
-The transport is pipecat's `SingleClientWebsocketServerTransport`, built by `build_ws_transport` in
+The transport is Pipecat's `SingleClientWebsocketServerTransport`, built by `build_ws_transport` in
 `nemo_voice_agent/pipecat/services/nemo/builders.py` with a `ProtobufFrameSerializer`. Every WebSocket
 message — in both directions — is a binary Protobuf `Frame` with a oneof:
 
-| Oneof field | Direction | Meaning |
+| Oneof Field | Direction | Meaning |
 | --- | --- | --- |
 | `audio` | both | `AudioRawFrame`: `audio` bytes, `sample_rate`, `num_channels`, `pts`. |
 | `message` | both | `MessageFrame`: `data` is a JSON **string** holding an RTVI message. |
@@ -78,28 +78,28 @@ Audio is 16-bit signed little-endian PCM, mono. Inbound audio is expected at
 `transport.audio_in_sample_rate` (default 16000). Outbound audio follows the TTS service's rate unless
 you set `transport.audio_out_sample_rate`; the JavaScript transport plays back at 24 kHz by default.
 
-### RTVI messages
+### RTVI Messages
 
 Control traffic rides inside `MessageFrame.data` as a JSON object with `label`, `type`, `id`, and `data`
 keys. Two exchanges matter to every client:
 
 1. **`client-ready`** — the client must send it after connecting. The server replies with `bot-ready`,
    and, because the example server passes `talk_first=True`, queues an `LLMRunFrame` so the bot speaks
-   first. A client that never sends `client-ready` will sit in silence.
+   first. A client that never sends `client-ready` remains silent.
 2. **`client-message`** — a request/response call whose `data` is `{"t": "<type>", "d": {...}}`. The
    server answers with `server-response` (payload under `d`) or `error-response` on an unknown type or
    a raised exception. Dispatch is installed by `register_client_message_handlers` in
    `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`.
 
 The example server registers exactly one custom type, `reset`, which clears the conversation context
-back to the original system prompt. The evaluation bots register five more; see
+back to the original system prompt. The evaluation bots register five more; refer to
 [RTVI control plane](rtvi-actions.md) and [RTVI message reference](../../../reference/runtime/rtvi-messages.md).
 
 Server-to-client event messages (`user-transcription`, `bot-transcription`, `bot-llm-text`,
 `bot-tts-text`, `bot-started-speaking`, `bot-stopped-speaking`, `metrics`, `server-message`, …) are
 emitted by the `RTVIObserver` attached to the pipeline worker.
 
-## Browser client
+## Browser Client
 
 `examples/generic_voice_agent/client/` is a vanilla-TypeScript Vite app built on
 `@pipecat-ai/client-js` and `@pipecat-ai/websocket-transport`. The whole connection is three calls in
@@ -112,8 +112,8 @@ await client.initDevices();
 await client.connect({ endpoint: "http://<host>:7860/connect" });
 ```
 
-`connect()` issues the `POST`, reads `ws_url` out of the JSON response, and hands it to the transport —
-you never dial the socket yourself. The `reset` message goes through
+`connect()` issues the `POST`, reads `ws_url` out of the JSON response, and gives it to the transport. You do
+not connect to the socket directly. The `reset` message goes through
 `client.sendClientRequest("reset", {})`, which resolves with the handler's return value.
 
 Run it with `npm install && npm run dev`. The dev server listens on port 5173 on all interfaces and
@@ -121,11 +121,10 @@ proxies `/connect` to `http://0.0.0.0:7860`. The demo page has a **Server** drop
 "WebSocket Server", which points at port 7860. Startup details are in the
 [Quickstart](../../../get-started/quickstart.md).
 
-## Non-browser client
+## Non-Browser Client
 
-Anything that speaks WebSocket works. `nemo_voice_agent/evaluation/bridge.py` is a complete
-Python implementation — it drives both bots in the eval harness — and is the best reference. A minimal
-client must:
+Any WebSocket client works. `nemo_voice_agent/evaluation/bridge.py` is a complete Python implementation that
+drives both bots in the eval harness. Use it as the implementation reference. A minimal client must:
 
 1. `POST /connect` and read `ws_url` (or skip discovery and dial `ws://host:8765` directly).
 2. Send a `client-ready` RTVI message and wait for `bot-ready`.
@@ -173,7 +172,7 @@ asyncio.run(main())
 Send `OutputAudioRawFrame` even though the server sees it as input — that is the direction the
 serializer's tables expect.
 
-## Connection rules
+## Connection Rules
 
 Clients must follow these lifecycle rules to connect without replacing or corrupting the active session:
 

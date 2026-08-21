@@ -17,8 +17,8 @@ limitations under the License.
 
 # Create Evaluations
 
-Extend the harness by defining scenarios, exposing tools, or adding a complete domain. Keep scenario fixture
-state, live tool behavior, and gold replay behavior aligned so deterministic scoring remains meaningful.
+Extend the harness by defining scenarios, exposing tools, or adding a complete domain. Align scenario fixture
+state, live tool behavior, and gold replay behavior to preserve deterministic scoring.
 
 ## Authoring Guides
 

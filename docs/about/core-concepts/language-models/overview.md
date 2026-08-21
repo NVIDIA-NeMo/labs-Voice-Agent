@@ -17,15 +17,15 @@ limitations under the License.
 
 # Language Models
 
-The language-model stage receives the aggregated conversation context and streams the assistant response to
-text-to-speech. NeMo Voice Agent can run a HuggingFace model in process, call a vLLM server, or use a hosted
-NVIDIA endpoint.
+The large language model (LLM) stage receives the aggregated conversation context and streams the assistant
+response to text-to-speech. NeMo Voice Agent can run a Hugging Face model in the server process, call a vLLM
+server, or use a hosted NVIDIA endpoint.
 
-## Core concepts
+## Core Concepts
 
 The following pages explain how language models generate, reason about, and consume voice-agent context.
 
-| Concept | What it explains |
+| Concept | What It Explains |
 | --- | --- |
 | [LLM backends](llm.md) | Backend selection, configuration layers, and supported tool-calling paths. |
 | [Reasoning mode](reasoning.md) | Thinking configurations and how reasoning text is kept out of speech. |
@@ -38,5 +38,5 @@ Model concepts describe runtime behavior. For deployment and endpoint setup, con
 
 Use these pages to configure model behavior, serve a backend, or connect models to application tools.
 
-- [System prompts](../../../build-voice-agents/configure/prompts.md) to control assistant behavior.
-- [Tools](../../../build-voice-agents/tools/index.md) to let supported backends call functions.
+- [System prompts](../../../build-voice-agents/configure/prompts.md) — control assistant behavior.
+- [Tools](../../../build-voice-agents/tools/index.md) — let supported backends call functions.

@@ -17,10 +17,10 @@ limitations under the License.
 
 # Reference
 
-Use the reference section to look up accepted configuration keys, environment variables, protocol messages,
+Use this section to look up accepted configuration keys, environment variables, protocol messages,
 evaluation command-line options, metrics, and Python APIs.
 
-| Reference area | Contents |
+| Reference Area | Contents |
 | --- | --- |
 | [Runtime](runtime/index.md) | Server configuration schema, environment variables, and RTVI messages. |
 | [Evaluation](evaluation/index.md) | Evaluation runner options and result metrics. |

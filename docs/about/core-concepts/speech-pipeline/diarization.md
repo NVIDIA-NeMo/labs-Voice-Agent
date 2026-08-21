@@ -18,7 +18,8 @@ limitations under the License.
 # Speaker Diarization
 
 NeMo Labs Voice Agent uses streaming Sortformer to identify which speaker is talking during each user
-turn, so a multi-person conversation reaches the LLM with the speaker attached to every utterance.
+turn. In a multi-person conversation, the large language model (LLM) receives a speaker identity with
+every utterance.
 Diarization is on by default in `server_configs/default.yaml`.
 
 ## How Speaker Diarization Works
@@ -28,7 +29,7 @@ the pipeline and before turn-taking. It is a pass-through stage: it never produc
 speaker labels.
 
 1. While VAD reports the user is speaking, the service buffers incoming audio frames. Raw frames arrive
-   at 16 ms; the service groups them into `frame_len_in_secs` chunks (80 ms by default, i.e. 5 raw
+   at 16 ms. The service groups them into `frame_len_in_secs` chunks (80 ms by default, or five raw
    frames) before invoking the model.
 2. Inference runs in a background thread (`asyncio.to_thread`), so the audio pipeline is not blocked.
    `NeMoStreamingDiarService` in `streaming_diar.py` keeps a persistent Sortformer streaming state plus a
@@ -41,9 +42,9 @@ speaker labels.
 5. On `VADUserStoppedSpeakingFrame`, the current speaker and the audio buffer are cleared, so each user
    turn starts a fresh attribution.
 
-The stock system prompt in `default.yaml` already tells the LLM how to interpret speaker tags (use them
-to identify the speaker, never echo them back). If you replace the system prompt, carry that instruction
-over — see [Prompts](../../../build-voice-agents/configure/prompts.md).
+The stock system prompt in `default.yaml` tells the LLM to use speaker tags for speaker identification
+without echoing them. If you replace the system prompt, retain that instruction. For prompt configuration,
+refer to [Prompts](../../../build-voice-agents/configure/prompts.md).
 
 ## Supported Models
 
@@ -51,10 +52,10 @@ The following models are available for local and hosted speaker diarization.
 
 | Model | Notes |
 | --- | --- |
-| `nvidia/diar_streaming_sortformer_4spk-v2.1` | Shipped default; improved accuracy over v2. |
+| `nvidia/diar_streaming_sortformer_4spk-v2.1` | Shipped default with improved accuracy over v2. |
 | `nvidia/diar_streaming_sortformer_4spk-v2` | Previous release. |
 
-Both are 4-speaker streaming Sortformer checkpoints pulled from Hugging Face on first start. A local
+Both are four-speaker streaming Sortformer checkpoints pulled from Hugging Face on first start. A local
 `.nemo` file path also works — `build_diarizer` calls `SortformerEncLabelModel.restore_from` when the
 configured `model` ends in `.nemo`, and `from_pretrained` otherwise.
 
@@ -73,24 +74,26 @@ diar:
   frame_len_in_secs: 0.08
 ```
 
+The following keys control the local diarization service:
+
 | Key | Default | Effect |
 | --- | --- | --- |
 | `enabled` | `true` | When `false`, `build_diar` returns `None` and the stage is left out of the pipeline entirely. |
 | `type` | `nemo` | Only the NeMo Sortformer backend is implemented today. |
-| `model` | `nvidia/diar_streaming_sortformer_4spk-v2.1` | Hugging Face model id or path to a local `.nemo` file. |
+| `model` | `nvidia/diar_streaming_sortformer_4spk-v2.1` | Hugging Face model ID or path to a local `.nemo` file. |
 | `threshold` | `0.5` | Probability above which a speaker counts as present in a frame. Lower values increase sensitivity. |
-| `frame_len_in_secs` | `0.08` | Sortformer frame length. Leave alone unless you swap in a different architecture. |
+| `frame_len_in_secs` | `0.08` | Sortformer frame length. Change this value only when you use a different architecture. |
 
 Two things to know about `device`:
 
 - The builder passes `config_manager.STT_DEVICE` to the diarization service, so the diarizer follows
-  `stt.device`, not `diar.device`. Change `stt.device` if you need to move both off `cuda`.
+  `stt.device`, not `diar.device`. Change `stt.device` to move both services to another device.
 - The underlying `DiarizationConfig` device is set from that same value, so ASR and diarization always
-  share a device.
+  share a device. The shipped value is `cuda`.
 
-Remember the config precedence rule described in [Server configuration](../../../build-voice-agents/configure/server-config.md):
-a model sub-YAML referenced by `model_config:` overrides the matching keys in `default.yaml`, not the
-other way round.
+Remember the configuration precedence rule described in
+[Server configuration](../../../build-voice-agents/configure/server-config.md): a model sub-YAML
+referenced by `model_config:` takes precedence over matching keys in `default.yaml`.
 
 ## Limits
 
@@ -98,47 +101,46 @@ The following limits come from the service implementation and the shipped diariz
 
 | Limit | Value | Why |
 | --- | --- | --- |
-| Speakers per user turn | 1 | Only the dominant speaker of a turn is reported; overlapping speech within one turn collapses to a single tag. |
-| Speakers per conversation | 4 | `DiarizationConfig.max_num_speakers` is 4, matching the `4spk` checkpoints. |
-| Turn boundary | VAD | Speaker state is cleared on `VADUserStoppedSpeakingFrame`, so attribution is per VAD-delimited turn. |
+| Speakers per User Turn | 1 | Only the dominant speaker of a turn is reported. Overlapping speech within one turn collapses to a single tag. |
+| Speakers per Conversation | 4 | `DiarizationConfig.max_num_speakers` is 4, matching the `4spk` checkpoints. |
+| Turn Boundary | VAD | Speaker state is cleared on `VADUserStoppedSpeakingFrame`, so attribution is per VAD-delimited turn. |
 
-Different turns can come from different speakers; that is the supported multi-speaker mode. Splitting a
+Different turns can come from different speakers. This is the supported multi-speaker mode. Splitting a
 single turn between two people is not supported.
 
 ## Accuracy Considerations
 
 Account for the following behavior when you decide whether diarization fits your conversation environment.
 
-- The diarization model is not noise-robust. In a noisy room it can drop or confuse speakers; use a
+- The diarization model is not robust to noise. In a noisy room, it can drop or confuse speakers. Use a
   noise-cancelling microphone or a quiet environment.
-- It works best when the voices are clearly distinct. Similar-sounding speakers, and some accents that
-  are thinly represented in the training data, are more likely to be merged or swapped.
-- Speaker identity is not stable across a reset. Resetting the conversation (the client's **Reset**
-  button, which sends the RTVI `reset` client message) calls `reset()` on the diarization service, which
-  clears the Sortformer streaming state and speaker cache. Speaker numbering restarts from scratch.
+- It works best when the voices are clearly distinct. The model is more likely to merge or swap
+  similar-sounding speakers and accents with limited representation in the training data.
+- Speaker identity is not stable across a reset. The client's **Reset** button sends the RTVI `reset`
+  client message and calls `reset()` on the diarization service. This action clears the Sortformer
+  streaming state and speaker cache, so speaker numbering restarts.
 
 ## Disable Diarization
 
-Turn it off when you have a single known user, when you are latency- or VRAM-constrained, or when the
-model is mislabeling speakers:
+Disable diarization when you have a single known user, limited latency or VRAM capacity, or mislabeled speakers:
 
 ```yaml
 diar:
   enabled: false
 ```
 
-With `enabled: false`:
+With `enabled: false`, the runtime changes as follows:
 
 - `build_diar` returns `None`, and `server.py` omits the stage from the pipeline — no model is loaded and
   no GPU memory is used.
 - `config_manager.USE_DIAR` becomes `False`, which is forwarded to the turn-taking service as
   `use_diar=False`, so no speaker tags are added to transcripts.
 
-Several shipped configs already ship with it off:
+Several shipped configurations disable diarization:
 
-| Config | Reason |
+| Configuration | Reason |
 | --- | --- |
-| `server_configs/default_nvidia.yaml` | Hosted NIM path — see [NVIDIA NIM](../../../build-voice-agents/model-serving/nvidia-nim.md); there is no diarization NIM yet, so the local model is disabled. |
+| `server_configs/default_nvidia.yaml` | Hosted NIM path. There is no diarization NIM yet, so the local model is disabled. For endpoint details, refer to [NVIDIA NIM](../../../build-voice-agents/model-serving/nvidia-nim.md). |
 | `evaluation/server_configs/agent.yaml`, `evaluation/server_configs/user.yaml` | The evaluation harness is a two-bot, single-voice-per-side setup, so speaker tags add nothing. |
 
 ## Related Topics
@@ -147,5 +149,5 @@ Use these pages to understand the adjacent recognition and turn-taking stages or
 
 - [Speech Recognition](asr.md) — the STT stage that feeds diarization.
 - [Turn Taking](turn-taking.md) — consumes `DiarResultFrame` and writes the speaker tag into the transcript.
-- [Server configuration](../../../build-voice-agents/configure/server-config.md) — full config layout and merge rules.
+- [Server configuration](../../../build-voice-agents/configure/server-config.md) — full configuration layout and merge rules.
 - [Troubleshooting](../../../troubleshooting/index.md) — what to check when speakers are mislabeled.

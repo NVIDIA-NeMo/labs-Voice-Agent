@@ -17,35 +17,36 @@ limitations under the License.
 
 # Adding a Domain
 
-A *domain* in the NeMo Labs Voice Agent evaluation harness is a namespace binding a fixture set, a tool
-registry bucket, a base scenario class, and a scoring configuration. See
+A *domain* in the NeMo Labs Voice Agent evaluation harness is a namespace that binds fixtures, a tool
+registry bucket, a base scenario class, and a scoring configuration. Refer to
 [Authoring Scenarios](authoring-scenarios.md) for individual scenario classes and
 [Authoring Tools](authoring-tools.md) for tool internals.
 
-## Pieces of a domain
+## Pieces of a Domain
 
 A complete domain can include the following fixture, runtime, and scoring components.
 
 | Piece | Location | Required |
 | --- | --- | --- |
-| Fixtures (DB, policy, task index) | `nemo_voice_agent/evaluation/data/<domain>/` | Only if the domain has state |
+| Fixtures (database (DB), policy, task index) | `nemo_voice_agent/evaluation/data/<domain>/` | Only if the domain has state |
 | Tool module | `nemo_voice_agent/evaluation/tools/<domain>_tools.py` | Yes, if the agent calls tools |
 | Base scenario + scaffolds | `nemo_voice_agent/evaluation/scenarios/data/<domain>/` | Yes |
 | DB-state predicates | `nemo_voice_agent/evaluation/db_state_predicates.py` registry | Optional |
 | Initialization functions | `nemo_voice_agent/evaluation/initialization_functions.py` registry | Optional |
 | Sync applier | `nemo_voice_agent/evaluation/sync_appliers.py` registry | Dual-side domains only |
 
-Two different "domain" strings exist and they are not the same thing:
+The harness uses two distinct domain strings:
 
 - `Scenario.domain` — the **registry namespace**. Tools, predicates, init functions, and sync appliers
   are all keyed by it. The bridge ships it to both bots as the `tool_domain` argument of
   `update_system_prompt`.
-- The `--domain` CLI filter — a **scenario-name prefix** match on `<domain>__`. `run_evaluation.py`
+- The `--domain` command-line interface (CLI) filter — a **scenario-name prefix** match on `<domain>__`.
+  `run_evaluation.py`
   computes the available list from scenario names, not from `Scenario.domain`. Keep them identical to
   avoid confusion (`tau2_telecom` is the one deliberate exception: `tau2_telecom_workflow__*`
   scenarios carry `domain = "tau2_telecom"` so they share one tool bucket).
 
-## 1. Add fixtures
+## 1. Add Fixtures
 
 Fixtures live inside the installed package, under `nemo_voice_agent/evaluation/data/<domain>/`.
 `get_eval_data_root()` (in `nemo_voice_agent/evaluation/__init__.py`) resolves that directory, with the
@@ -54,16 +55,16 @@ different processes with different roots, every fixture reference stored in shar
 **relative** path.
 
 `load_db_artifact()` accepts either `<name>.json` or a `<name>/` directory of per-table shards and
-returns the same in-memory dict, so DB hashes match across layouts. Shard when a single file would blow
-a hosting size cap — `tau2_airline` ships its DB as one file per table for exactly that reason.
+returns the same in-memory dictionary, so DB hashes match across layouts. Shard when a single file exceeds a
+hosting size cap. `tau2_airline` therefore ships its DB as one file per table.
 
-Record upstream source, version, and license in `nemo_voice_agent/evaluation/data/README.md` under
-`## Sources & Licenses`; see [Data Provenance](../domain-guides/data-provenance.md).
+Record the upstream source, version, and license in `nemo_voice_agent/evaluation/data/README.md` under
+`## Sources & Licenses`. Refer to [Data Provenance](../domain-guides/data-provenance.md).
 
-## 2. Register tools in the domain bucket
+## 2. Register Tools in the Domain Bucket
 
-The registry is `domain → tool name → class`. Same short class name in two domains is fine; a duplicate
-inside one domain raises at import time.
+The registry maps `domain → tool name → class`. The same short class name can exist in two domains,
+but a duplicate inside one domain raises an error at import time.
 
 ```python
 from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
@@ -84,12 +85,13 @@ class BookThingTool(WriteScenarioTool):
 
 Read-only tools subclass `StandardSchemaTool` directly and record nothing. `_record_action` appends to
 `shared_state["actions"]` (the bridge pulls that list at end of scenario) and pushes an `action-applied`
-RTVI server message that drives cross-side sync. Set a class-level `name` attribute if you want
-snake_case LLM-visible function names instead of the class name. Lookup falls back to the `"default"`
-bucket for shared harness tools such as `EndConversationTool`, so your scenarios get those for free —
-list them under their registered PascalCase key.
+real-time voice interface (RTVI) server message that drives cross-side sync. Set a class-level `name`
+attribute if you want snake_case large language model (LLM)-visible function names instead of the class name.
+Lookup falls back to the `"default"`
+bucket for shared harness tools such as `EndConversationTool`, so your scenarios receive them automatically.
+List them under their registered PascalCase key.
 
-## 3. Write the base scenario
+## 3. Write the Base Scenario
 
 Define a base scenario that binds the registry namespace and derives shared behavior for the domain.
 
@@ -112,33 +114,33 @@ class MyDomainBaseScenario(Scenario):
 ```
 
 `success_signals` is validated at class-definition time: any concrete scenario (one that declares
-`name`) must resolve a non-empty tuple of `SuccessSignal` members from itself or an ancestor. Declare it
-on the base class, or as a `cached_property` when it depends on per-task opt-ins — `tau2_retail` and
-`tau2_telecom` both do this to add `NL_ASSERTION` only when the task carries assertions. See
+`name`) must resolve a non-empty tuple of `SuccessSignal` members from itself or an ancestor. Declare it on
+the base class. When it depends on per-task opt-ins, use a `cached_property`. `tau2_retail` and
+`tau2_telecom` use this pattern to add `NL_ASSERTION` only when the task carries assertions. Refer to
 [Scoring](../understand-scoring/scoring.md) for what each signal means.
 
-`setup_shared_state(state, side)` is called once per side. Two seeding styles:
+`setup_shared_state(state, side)` is called one time per side. Use one of these seeding styles:
 
-| Style | Use when | Example |
+| Style | Use When | Example |
 | --- | --- | --- |
 | `state["db"] = <dict>` (inline) | Per-scenario fixture, small | `eva_airline` |
 | `state["db_path"] = "<domain>/db.json"` | Shared fixture, large | `tau2_airline`, `tau2_telecom` |
 
-Path seeding is mandatory above roughly 1 MB — pipecat's WebSocket frame cap closes the connection with
+Path seeding is mandatory above roughly 1 MB — Pipecat's WebSocket frame cap closes the connection with
 code 1009 when a bigger payload is inlined.
 
-## 4. Wire the imports
+## 4. Wire the Imports
 
-Decorators only fire if the modules are imported. Add your tool module to the import block at the bottom
+Decorators run only if the modules are imported. Add your tool module to the import block at the bottom
 of `nemo_voice_agent/evaluation/tools/__init__.py`, and your scenario package to
 `nemo_voice_agent/evaluation/scenarios/data/__init__.py`. A domain package's own `__init__.py` should
 side-import each `group_Nx.py` shard so every scaffolded scenario registers.
 
-## 5. Understand the runtime state flow
+## 5. Understand the Runtime State Flow
 
 The runtime initializes domain state and tools in the following order.
 
-| Step | RTVI client message | Carries |
+| Step | RTVI Client Message | Carries |
 | --- | --- | --- |
 | Prompt + tool surface | `update_system_prompt` | `prompt`, `tools`, `add_suffix`, `tool_domain` |
 | Scenario state seeding | `apply_initialization` | `domain`, `shared_state_init` (JSON string), `actions` |
@@ -154,14 +156,14 @@ scenario rather than running it half-seeded. `update_system_prompt` does no DB l
 Each bot owns exactly one DB at `shared_state["db"]` and is side-agnostic. The bridge labels the pulls:
 the agent bot's response becomes `db_hash` / `db`, the user bot's becomes `user_db_hash` / `user_db`.
 `db_hash` is computed with `nemo_voice_agent/evaluation/db_hash.py`, which both the bot and the runner
-import, so canonicalization is identical on both ends. See
+import, so canonicalization is identical on both ends. Refer to
 [RTVI Messages](../../reference/runtime/rtvi-messages.md) for full payload shapes.
 
-## 6. Optional: DB-state assertion predicates
+## 6. Optional: DB-State Assertion Predicates
 
 Use these when the domain has an open solution space and several valid action sequences produce
 different whole-DB states that all satisfy the same outcome. Predicates are pure, side-agnostic, and
-dispatched **runner-side** via `evaluate_db_state_assertion(domain, assertion, db, user_db)`.
+dispatched **runner-side** through `evaluate_db_state_assertion(domain, assertion, db, user_db)`.
 
 ```python
 from nemo_voice_agent.evaluation.db_state_predicates import register_db_state_predicate
@@ -177,11 +179,11 @@ Each entry in `Scenario.db_state_assertions` has the shape
 `include_db=True` on the summary pull whenever `db_state_assertions` is truthy, so the actual dicts
 come back for the predicates to read.
 
-## 7. Optional: initialization functions
+## 7. Optional: Initialization Functions
 
-These mutate the live DB before the conversation starts. Signature is `(db: dict, **arguments) -> None`,
-mutating in place, dispatched **bot-side** (the opposite of predicates, because the mutation has to land
-in the same dict instance the live tools will see).
+These functions mutate the live DB before the conversation starts. The signature is
+`(db: dict, **arguments) -> None`, and dispatch occurs **bot-side**. The mutation must affect the same
+dictionary instance that the live tools use.
 
 ```python
 from nemo_voice_agent.evaluation.initialization_functions import register_initialization_function
@@ -196,10 +198,10 @@ Populate `Scenario.initialization_actions` with `side`, `func_name`, `arguments`
 filters by `side` before sending, and rejects any record whose `side` is neither `"user"` nor
 `"agent"`.
 
-## 8. Optional: dual-side domains
+## 8. Optional: Dual-Side Domains
 
-A dual-side domain gives the user simulator its own tools and its own DB. `tau2_telecom` is the only
-one today — see [tau2-telecom](../domain-guides/tau2-telecom.md). Requirements:
+A dual-side domain gives the user simulator its own tools and DB. `tau2_telecom` is the only current
+example. Refer to [tau2-telecom](../domain-guides/tau2-telecom.md). Complete these requirements:
 
 1. Set `has_user_state = True` on the base scenario so gold replay seeds the user side and the bridge
    dual-pulls at end of scenario.
@@ -225,8 +227,8 @@ def apply_mydomain_sync_delta(db: dict, delta: dict) -> None:
 The default applier handles dotted-path assignment such as `surroundings.roaming_allowed`. Anything
 richer — list-by-id lookups, post-apply re-derivation — needs your own applier.
 
-Sync runs at two points: once after `apply_initialization` (so the conversation starts from coherent
-cross-side state), and again after every `action-applied` event from either bot. Both bots need
+Sync runs at two points: after `apply_initialization` (so the conversation starts from coherent
+cross-side state) and after every `action-applied` event from either bot. Both bots need
 `llm.enable_tool_calling: true` in their server config for a dual-side domain.
 
 ## 9. Verify
@@ -240,5 +242,5 @@ python run_evaluation.py --scenarios mydomain__1   # smoke-run one scenario
 ```
 
 Both bot servers must be running first, and `SERVER_CONFIG_PATH` resolves against the current working
-directory — see the [Evaluation Quickstart](../run-evaluations/quickstart.md) and the
+directory. Refer to the [Evaluation Quickstart](../run-evaluations/quickstart.md) and the
 [Evaluation CLI reference](../../reference/evaluation/eval-cli.md).

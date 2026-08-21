@@ -15,13 +15,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}
 
-# Audio Capture & Logging
+# Audio Capture and Logging
 
-NeMo Labs Voice Agent writes two independent kinds of artifact: per-session **audio + transcript
-capture** (off by default) and the **rotating text log** the pipeline emits at runtime. This page
-covers how to turn on the first and how to read the second.
+NeMo Labs Voice Agent writes two independent outputs. Per-session **audio and transcript capture** is off by
+default. The pipeline also emits a **rotating text log** at runtime. This page explains how to enable audio
+capture and interpret both outputs.
 
-## Enable audio capture
+## Enable Audio Capture
 
 Audio capture is controlled by two keys in the `transport:` block of the top-level server config
 (`examples/generic_voice_agent/server/server_configs/default.yaml`, and the same block in
@@ -36,21 +36,22 @@ transport:
 
 | Key | Default | Effect |
 | --- | --- | --- |
-| `transport.record_audio_data` | `false` | Master switch. When false, no capture code runs at all. |
+| `transport.record_audio_data` | `false` | Enables capture. When false, no capture code runs. |
 | `transport.audio_log_dir` | `"./audio_logs"` | Base directory, resolved relative to the server's working directory. |
 
 `build_audio_logger` in `nemo_voice_agent/pipecat/services/nemo/builders.py` reads those two keys.
-When `record_audio_data` is false it returns `None`, and every downstream service (STT, TTS,
-turn-taking, diarization) is constructed with `audio_logger=None`, so capture costs nothing.
+When `record_audio_data` is false it returns `None`. Every downstream service—speech-to-text (STT),
+text-to-speech (TTS), turn-taking, and diarization—is then constructed with `audio_logger=None`, so capture
+adds no runtime work.
 
-The session ID is generated once at **server start**, not per client connection:
-`session_YYYYMMDD_HHMMSS`. Because the server keeps one pipeline alive across reconnects (see
-[Server Config](server-config.md)), a client that disconnects and reconnects keeps appending to the
+The session ID is generated at **server start**, not per client connection:
+`session_YYYYMMDD_HHMMSS`. Because the server keeps one pipeline alive across reconnects, as described in
+[Server Config](server-config.md), a client that disconnects and reconnects keeps appending to the
 same session directory.
 
 `audio_logs/`, `audio_logs_user/`, and `audio_logs_agent/` are gitignored.
 
-## What lands on disk
+## What Lands on Disk
 
 Each capture session produces per-speaker audio and metadata plus a whole-session stereo mixdown.
 
@@ -72,17 +73,17 @@ audio_logs/
 | Artifact | Contents |
 | --- | --- |
 | `user/NNNNN_HHMMSS.wav` | One user turn, mono 16-bit at 16 kHz, sliced out of the continuous input buffer by the turn's start/end times. |
-| `user/NNNNN_HHMMSS.json` | Metadata + the final transcription for that turn. |
+| `user/NNNNN_HHMMSS.json` | Metadata and the final transcription for that turn. |
 | `agent/NNNNN_HHMMSS.wav` | One synthesized TTS segment (mono 16-bit) at the TTS service's output sample rate. A single agent turn is usually several segments. |
-| `agent/NNNNN_HHMMSS.json` | Metadata + the text that was synthesized. |
+| `agent/NNNNN_HHMMSS.json` | Metadata and the text that was synthesized. |
 | `session_metadata.json` | Rolling index of every entry; rewritten after each save and again at finalize. |
 | `conversation_stereo.wav` | Whole-session mixdown, left channel = agent, right channel = user, 16 kHz. Written only at finalize. |
 
 The `NNNNN` prefix is a per-speaker counter (users and agents count separately), and `HHMMSS` is
-wall-clock time at save. User turns get an 0.8 s pre-roll prepended, clamped so a turn never
+wall-clock time at save. User turns get a 0.8-second pre-roll prepended, clamped so a turn never
 overlaps the previous entry's end time.
 
-### Metadata fields
+### Metadata Fields
 
 Both sides share `base_name`, `counter`, `turn_index`, `speaker`, `timestamp` (ISO 8601),
 `start_time` / `end_time` (float seconds from the first audio frame of the session),
@@ -90,8 +91,8 @@ Both sides share `base_name`, `counter`, `turn_index`, `speaker`, `timestamp` (I
 
 | Field | Side | Meaning |
 | --- | --- | --- |
-| `transcription` | user | Final ASR text for the turn. |
-| `is_backchannel` | user | True when turn-taking classified the utterance as a backchannel, so it did not interrupt the bot. See [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md). |
+| `transcription` | user | Final automatic speech recognition (ASR) text for the turn. |
+| `is_backchannel` | user | True when turn-taking classified the utterance as a backchannel, so it did not interrupt the bot. Refer to [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md). |
 | `num_audio_chunks`, `num_transcription_chunks` | user | How many streaming chunks were merged into this turn. |
 | `model`, `backend` | user | ASR model name and backend that produced the transcription. |
 | `text` | agent | The text handed to TTS for this segment. |
@@ -103,16 +104,16 @@ list, and an `agent_entries` list where each element is itself the list of segme
 turn. `finalize_session` adds `end_time`, `total_user_entries`, `total_agent_segments`, and
 `total_agent_turns`.
 
-## How capture is wired
+## How Capture Is Wired
 
 `AudioLogger` (`nemo_voice_agent/pipecat/services/nemo/audio_logger.py`) is a plain object passed
 into the services by the builders; each service pushes data into it at the right moment.
 
-| Source | What it contributes |
+| Source | What It Contributes |
 | --- | --- |
-| STT service | Stamps the session's first-audio timestamp, appends **every** input chunk to the continuous user buffer (not VAD-gated, so the user channel includes silence), and stages the turn's audio + transcription. |
-| Turn-taking service | Marks backchannel turns, records when the bot actually starts speaking, sets `cutoff_time` on interruption, and advances the turn index for user turns. |
-| TTS service | Calls `log_agent_audio` once per synthesized segment and advances the turn index for agent turns. |
+| STT service | Stamps the session's first-audio timestamp and appends **every** input chunk to the continuous user buffer without voice activity detection (VAD) gating. It also stages the turn's audio and transcription. The user channel therefore includes silence. |
+| Turn-taking service | Marks backchannel turns, records when the bot begins speaking, sets `cutoff_time` on interruption, and advances the turn index for user turns. |
+| TTS service | Calls `log_agent_audio` one time per synthesized segment and advances the turn index for agent turns. |
 | `RTVIAudioLoggerObserver` | A pipeline observer that flushes the staged user turn to disk when a `TranscriptionFrame` is pushed. It is added to the task's observer list unconditionally and no-ops when the logger is `None`. |
 | `run_bot_websocket_server` | Calls `finalize_session` on client disconnect, on session timeout, and on pipeline shutdown — this is what writes `conversation_stereo.wav`. |
 
@@ -121,7 +122,7 @@ Two limitations worth knowing:
 - `build_audio_logger` passes only the directory, session ID, and enabled flag. `AudioLogger`'s
   other constructor arguments (user sample rate, pre-roll seconds, rounding precision) are **not**
   exposed through YAML, so their defaults always apply. Change them by constructing `AudioLogger`
-  yourself — see [Builders](../extend/pipelines/builders.md).
+  yourself. Refer to [Builders](../extend/pipelines/builders.md).
 - The `AudioLogger` docstring records a known issue with `conversation_stereo.wav`: the two channels
   need roughly a -0.8 s offset applied to sound in sync. The per-turn WAV files are unaffected.
 
@@ -132,10 +133,10 @@ ls audio_logs/session_*/
 python -m json.tool audio_logs/session_*/session_metadata.json | head -40
 ```
 
-## Server log file
+## Server Log File
 
 Logging is configured by `setup_logging` in `nemo_voice_agent/utils/misc.py`, which installs a
-colorized stderr sink plus a file sink with `rotation="1 day"` at `DEBUG` level. Once a day loguru
+colorized stderr sink plus a file sink with `rotation="1 day"` at `DEBUG` level. Each day, loguru
 rolls the active file aside into a timestamped sibling, so when debugging a failure check the
 **newest** `bot_server.*.log` and not only `bot_server.log`.
 
@@ -156,15 +157,16 @@ evaluation bot servers, which resolve them through `resolve_log_file_path` and `
 The call is repeated after service construction because model libraries reconfigure loguru during
 import.
 
-## Evaluation runs
+## Evaluation Runs
 
 The evaluation role configs (`evaluation/server_configs/agent.yaml` and `user.yaml`) also ship with
 `record_audio_data: false`, and give each role its own `audio_log_dir` (`./audio_logs_agent`,
 `./audio_logs_user`) so the two bots do not collide. Independently of this, the bridge writes
 `conversation_log.wav` (stereo), `conversation_log.txt`, and `conversation_log.seglst.json` into each
-scenario's output directory — see [Evaluation Results](../../evaluate/run-evaluations/results.md).
+scenario's output directory. For output details, refer to
+[Evaluation Results](../../evaluate/run-evaluations/results.md).
 
-## Related pages
+## Related Pages
 
 Use these pages to continue configuring or inspecting the runtime:
 

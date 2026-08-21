@@ -17,20 +17,20 @@ limitations under the License.
 
 # Model Serving
 
-Choose how the voice-agent server reaches its language and speech models. The shipped default expects a
-separate local vLLM server, while the NVIDIA configuration uses hosted endpoints.
+Choose how the voice-agent server reaches its language and speech models. Use a separate local vLLM server
+with the shipped default, or use the NVIDIA configuration for hosted endpoints.
 
-## Choose a serving path
+## Choose a Serving Path
 
 Select the guide that matches where inference runs and whether your deployment needs vLLM plugins.
 
-| Guide | Use it to |
+| Guide | Use It to |
 | --- | --- |
 | [Serve with vLLM](vllm.md) | Start and connect to an OpenAI-compatible local model server. |
 | [vLLM plugins](vllm-plugins.md) | Configure tool-call, reasoning, and logits-processor plugins. |
 | [NVIDIA NIM and Riva](nvidia-nim.md) | Connect speech and language stages to hosted NVIDIA services. |
 
-## Related concept
+## Related Concept
 
 Model serving describes deployment and connection choices. For backend behavior rather than deployment,
-see [Language models](../../about/core-concepts/language-models/overview.md).
+refer to [Language models](../../about/core-concepts/language-models/overview.md).

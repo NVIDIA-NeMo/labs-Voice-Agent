@@ -17,13 +17,12 @@ limitations under the License.
 
 # Model Registry
 
-The model registry maps a model identifier to the sub-config YAML that configures it, so you can
-switch models by editing one line (`llm.model`) instead of also updating `llm.model_config`. It is a
-convenience layer on top of the normal sub-config merge described in
-[Server Config](server-config.md) — nothing depends on it, and the config shipped with NeMo Labs
-Voice Agent does not actually use it for any component.
+The model registry maps a model identifier to its sub-config YAML. You can switch models by editing
+`llm.model` instead of also updating `llm.model_config`. The registry is an optional convenience layer over
+the sub-config merge described in [Server Config](server-config.md). The shipped NeMo Labs Voice Agent config
+does not use it for any component.
 
-## Where it lives
+## Where It Lives
 
 `ConfigManager` (`nemo_voice_agent/utils/config_manager.py`) reads `model_registry.yaml` from the
 **server base path** — the directory containing the server script. For the example server that is
@@ -50,9 +49,10 @@ stt_models:
 `yaml_id` is a bare filename. It is resolved against the sibling directory for that component —
 `server_configs/llm_configs/`, `server_configs/tts_configs/`, or `server_configs/stt_configs/`.
 
-## Resolution order
+## Resolution Order
 
-For each of LLM, TTS, and STT independently, `ConfigManager` picks a sub-config like this:
+For each large language model (LLM), text-to-speech (TTS), and speech-to-text (STT) component,
+`ConfigManager` selects a sub-config in this order:
 
 | Step | Condition | Result |
 | --- | --- | --- |
@@ -64,7 +64,7 @@ For each of LLM, TTS, and STT independently, `ConfigManager` picks a sub-config 
 
 `server.use_model_registry` defaults to `true` when the key is absent.
 
-Two details that surprise people:
+Two path-handling details affect resolution:
 
 - **`model_config` is reduced to its basename.** Only the filename is kept; the directory part of the
   value is discarded and the file is looked up in the component's `*_configs/` directory. So
@@ -74,9 +74,9 @@ Two details that surprise people:
   without the extension, so a local checkpoint path can still match a registry entry.
 
 Whatever sub-config gets loaded, its keys **override** the top-level block — not the other way round.
-See [Server Config](server-config.md) for that precedence rule.
+For that precedence rule, refer to [Server Config](server-config.md).
 
-## Reasoning auto-swap
+## Reasoning Auto-Swap
 
 An LLM registry entry may declare `reasoning_supported: true`. That is a promise that a sibling file
 with the same name plus a `_think` suffix exists and has been tested — for example `qwen3-8B.yaml`
@@ -93,7 +93,7 @@ file is missing, startup fails with a `FileNotFoundError` naming the path it tri
 
 Today `Qwen/Qwen3-8B` is the only registry entry with `reasoning_supported: true`.
 
-### The swap does not fire for the shipped default
+### The Swap Does Not Fire for the Shipped Default
 
 `server_configs/default.yaml` sets both `llm.model` and `llm.model_config`:
 
@@ -117,14 +117,15 @@ llm:
 
 The `_think` variant raises `max_new_tokens` to 4096, adds a `thinking_budget`, and flips the vLLM
 `enable_thinking` chat-template kwarg to `True`. Both variants keep `start_vllm_on_init: false`, so
-you still start vLLM yourself. See [Reasoning Mode](../../about/core-concepts/language-models/reasoning.md) for the runtime side.
+you still start vLLM yourself. For runtime behavior, refer to
+[Reasoning Mode](../../about/core-concepts/language-models/reasoning.md).
 
-## The registry does not cover every shipped model
+## The Registry Does Not Cover Every Shipped Model
 
 The registry is a partial, hand-maintained list. Several configs under `server_configs/` have no
 entry, and the models named in `default.yaml` are among them:
 
-| Component | `default.yaml` value | In registry? |
+| Component | `default.yaml` Value | In Registry? |
 | --- | --- | --- |
 | LLM | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4` | No |
 | STT | `nvidia/parakeet_realtime_eou_120m-v1` | No |
@@ -136,11 +137,11 @@ registry entry include `nemotron_nano_v3.yaml`, `nemotron_nano_v3_think.yaml`,
 `tts_configs/magpie_tts_multilingual_357m.yaml` — reach them with `model_config`.
 
 `server_configs/default_nvidia.yaml` leaves `use_model_registry: true` but sets no `model_config`
-anywhere; its hosted model ids miss the registry, so every component falls to step 4 and is
-configured entirely from the top-level blocks. Warnings in `bot_server.log` about a model not being
-in the model registry are expected there. See [NVIDIA NIM](../model-serving/nvidia-nim.md).
+anywhere. Its hosted model IDs miss the registry, so every component falls to step 4 and uses only the
+top-level blocks. Warnings in `bot_server.log` about a model not being in the registry are expected. Refer to
+[NVIDIA NIM](../model-serving/nvidia-nim.md).
 
-## Adding an entry
+## Adding an Entry
 
 Add a registry-backed model by updating both the relevant sub-config and `model_registry.yaml`.
 
@@ -160,25 +161,25 @@ llm_models:
 Confirm the resolution in the log — `ConfigManager` writes a `Loading LLM config from: ...` line, plus
 one line per key it overrode, before the pipeline starts.
 
-## Turning the registry off
+## Turning the Registry Off
 
 Set `server.use_model_registry: false` and give every component an explicit `model_config` (or a
 complete top-level block). This is what the evaluation harness does: `evaluation/server_configs/*.yaml`
 all set `use_model_registry: false`.
 
-Do this whenever your server base path has no `model_registry.yaml`. With `use_model_registry: true`
-and a missing or unreadable registry file, `ConfigManager` logs an error, falls back to an empty
-registry, and then raises a `ConfigAttributeError` on the first component that reaches step 2 —
-`Missing key stt_models`, since `_initialize_config_parameters` configures STT before LLM and TTS
-(`Missing key llm_models` if only the STT block has an explicit `model_config`). A component with an
-explicit `model_config` sails past the lookup, so the failure can look arbitrary. The `evaluation/`
-directory has no registry file, which is why those configs disable it.
+Do this whenever your server base path has no `model_registry.yaml`. With `use_model_registry: true` and a
+missing or unreadable registry file, `ConfigManager` logs an error and falls back to an empty registry. It
+then raises a `ConfigAttributeError` on the first component that reaches step 2. The first error is
+`Missing key stt_models` because `_initialize_config_parameters` configures STT before LLM and TTS. The error
+is `Missing key llm_models` if only the STT block has an explicit `model_config`. A component with an explicit
+`model_config` bypasses the lookup, which can make the failure appear inconsistent. The `evaluation/`
+directory has no registry file, so those configs disable it.
 
-## Related pages
+## Related Pages
 
 Use these pages to configure the files and runtime behavior that surround registry resolution:
 
 - [Server Config](server-config.md) — the full merge order and precedence rules.
 - [Configuration Model](index.md) — how the config files fit together.
 - [LLM Backends](../../about/core-concepts/language-models/llm.md) — what `llm.type` (`auto`, `hf`, `vllm`, `nvidia`) selects.
-- [Reasoning Mode](../../about/core-concepts/language-models/reasoning.md) — thinking-mode behaviour at runtime.
+- [Reasoning Mode](../../about/core-concepts/language-models/reasoning.md) — thinking-mode behavior at runtime.

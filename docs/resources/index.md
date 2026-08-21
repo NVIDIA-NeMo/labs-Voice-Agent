@@ -17,14 +17,14 @@ limitations under the License.
 
 # Resources
 
-Use these resources when contributing to the repository or checking license information for packaged
-dependencies and evaluation data.
+Use these resources to contribute to the repository or review license and provenance information for
+packaged dependencies and evaluation data.
 
 Choose a resource based on the information you need:
 
-| Resource | Use it to |
+| Resource | Use It to |
 | --- | --- |
 | [Contribute](contribute/index.md) | Set up a development environment, run tests, build documentation, regenerate data, and report security issues. |
-| [Third-party notices](third-party-notices.md) | Review licenses and provenance for bundled or referenced third-party material. |
+| [Third-Party Notices](third-party-notices.md) | Review licenses and provenance for bundled or referenced third-party material. |
 
 For product configuration and command lookup, use [Reference](../reference/index.md).

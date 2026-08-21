@@ -18,18 +18,19 @@ limitations under the License.
 # Quickstart
 
 Run your first NeMo Labs Voice Agent evaluation. The harness needs **three processes**: a simulated-user
-bot, the agent under test, and the bridge that connects them over audio and scores the result. See
-[Evaluation overview](../index.md) for how the pieces fit together.
+bot, the agent under test, and the bridge that connects them over audio and scores the result. Refer to the
+[Evaluation Overview](../index.md) for how the components fit together.
 
 ## Prerequisites
 
 Before you start, complete these setup requirements.
 
-1. Install the package and activate the venv — see [Installation](../../get-started/installation.md).
+1. Install the package and activate the virtual environment as described in
+   [Installation](../../get-started/installation.md).
 2. Start a vLLM server. Both eval configs (`evaluation/server_configs/agent.yaml` and `user.yaml`) set
    `start_vllm_on_init: false` and point `llm.base_url` at `http://localhost:8000/v1`, so nothing launches
    vLLM for you. Use the flags from the `llm.vllm_server_params` field of those configs — that field is the
-   authoritative source if this snippet drifts:
+   authoritative source if this code example becomes outdated:
 
    ```bash
    vllm serve nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4 \
@@ -37,16 +38,17 @@ Before you start, complete these setup requirements.
        --gpu-memory-utilization 0.85 --reasoning-parser deepseek_r1
    ```
 
-   Both bots and the default LLM judge share this one endpoint. See [vLLM backend](../../build-voice-agents/model-serving/vllm.md).
+   Both bots and the default large language model (LLM) judge share this endpoint. Refer to the
+   [vLLM Backend](../../build-voice-agents/model-serving/vllm.md).
 3. Only if you switch to the hosted configs (`agent_nvidia.yaml`, `user_nvidia.yaml`): copy
    `evaluation/.env.example` to `evaluation/.env` and fill in `NVIDIA_API_KEY`.
 
 ## Quickstart Steps
 
-Complete the following three-terminal workflow to start both bots, run a smoke domain, and locate the saved
+Complete the following three-terminal workflow to start both bots, run a basic verification domain, and locate the saved
 evaluation evidence.
 
-### Use the evaluation directory
+### Use the Evaluation Directory
 
 `SERVER_CONFIG_PATH` is resolved **against the current working directory**, not against the script's
 directory. `ConfigManager` receives the raw string and calls `os.path.exists` on it. Every command below —
@@ -59,7 +61,7 @@ FileNotFoundError: Server configuration file not found at server_configs/agent.y
 That error means you ran the command from somewhere other than `evaluation/`. `cd evaluation` and retry, or
 export an absolute path.
 
-### Start the simulated user bot on port 8766
+### Start the Simulated User Bot on Port 8766
 
 In the first terminal, start the bot that plays the scenario's simulated user.
 
@@ -72,7 +74,7 @@ export CUDA_VISIBLE_DEVICES=0
 python bot_server.py
 ```
 
-### Start the agent under test on port 8765
+### Start the Agent Under Test on Port 8765
 
 In the second terminal, start the agent that the harness evaluates.
 
@@ -85,8 +87,9 @@ export CUDA_VISIBLE_DEVICES=1
 python bot_server.py
 ```
 
-`bot_server.py` is the same script for both roles — `SERVER_CONFIG_PATH` is what selects the role. ASR and
-TTS run locally on GPU in each process, so give the two bots separate devices when you can. Each process also
+`bot_server.py` is the same script for both roles — `SERVER_CONFIG_PATH` is what selects the role. Automatic
+speech recognition (ASR) and text-to-speech (TTS) run locally on GPU in each process. Give the two bots
+separate devices when you can. Each process also
 starts a small FastAPI app on `FASTAPI_PORT`, so those two values must differ as well.
 
 | Variable | Default | Purpose |
@@ -101,7 +104,7 @@ starts a small FastAPI app on `FASTAPI_PORT`, so those two values must differ as
 Wait until both processes log that they are serving before starting the bridge. Bot-side logs go to
 `bot_user_server.log` and `bot_agent_server.log` in `evaluation/`.
 
-### Helper launch scripts
+### Helper Launch Scripts
 
 `run_user.sh` and `run_agent.sh` wrap the two invocations above with the environment already exported. They
 resolve their own directory only to locate `bot_server.py`; the exported `SERVER_CONFIG_PATH` stays relative,
@@ -113,9 +116,9 @@ cd evaluation
 ./run_agent.sh   # agent role,     server_configs/agent.yaml, ws 8765, http 7860
 ```
 
-### Run the bridge
+### Run the Bridge
 
-After both bots report that they are serving, start the bridge with a small smoke domain.
+After both bots report that they are serving, start the bridge with a small verification domain.
 
 ```bash
 cd evaluation
@@ -136,14 +139,14 @@ python run_evaluation.py --list-domains   # domain names + scenario counts
 python run_evaluation.py --list           # every scenario name, grouped by domain
 ```
 
-`restaurant`, `customer_service`, and `qa` are small, fast smoke domains. `fastbite` and `simple_qa_1`
+`restaurant`, `customer_service`, and `qa` are small verification domains. `fastbite` and `simple_qa_1`
 through `simple_qa_3` carry no `domain__` prefix, so `--list` files them under "Legacy scenarios" and you run
 them with `--scenarios fastbite simple_qa_1` rather than `--domain`. The benchmark domains are much larger —
 `eva_airline` (50 scenarios), `tau2_airline` (50), `tau2_retail` (114), and `tau2_telecom` (114, plus a
-parallel `tau2_telecom_workflow` registration over the same 114 tasks). See
-[Benchmark domains](../understand-scoring/benchmarks.md).
+parallel `tau2_telecom_workflow` registration over the same 114 tasks). Refer to
+[Benchmark Domains](../understand-scoring/benchmarks.md).
 
-### Flags worth knowing on run one
+### Flags Worth Knowing on Run One
 
 Use these flags to select work, control output placement, and configure the first scoring run.
 
@@ -157,12 +160,13 @@ Use these flags to select work, control output placement, and configure the firs
 | `--judge-url` | `http://localhost:8000/v1/chat/completions` | The LLM judge is on by default and reuses your vLLM server |
 | `--judge-api-key-name` | `JUDGE_API_KEY` | Environment variable read when `--judge-api-key` is not passed |
 
-Full list: [Evaluation CLI reference](../../reference/evaluation/eval-cli.md).
+Refer to the [Evaluation Command-Line Interface (CLI) Reference](../../reference/evaluation/eval-cli.md) for all flags.
 
-### Verify the saved results
+### Verify the Saved Results
 
 Each invocation creates a timestamped session directory under `--output-dir`, with one subdirectory per
-scenario:
+scenario. Database (DB) hashes appear for scenarios that use DB-based scoring. The following tree shows the
+saved artifacts:
 
 ```
 evaluation/eval_results/eval_YYYYMMDD_HHMMSS/
@@ -192,9 +196,9 @@ failed. `eval_results/` is gitignored.
 
 Use the scoring, results, resume, and external-agent guides to continue after the first successful run.
 
-| Guide | Use it to |
+| Guide | Use It to |
 | --- | --- |
 | [Scoring Model](../understand-scoring/scoring.md) | Understand the six signals and how the composite verdict is computed. |
 | [Reading Results](results.md) | Review the generated artifacts field by field. |
-| [Resuming & Long Runs](resume.md) | Pick up a killed run with `--resume <timestamp>`. |
+| [Resume and Manage Long Runs](resume.md) | Pick up a killed run with `--resume <timestamp>`. |
 | [Evaluating an External Agent](external-agents.md) | Point the bridge at a non-Pipecat agent. |

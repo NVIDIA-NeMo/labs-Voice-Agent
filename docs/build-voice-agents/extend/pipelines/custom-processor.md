@@ -18,9 +18,9 @@ limitations under the License.
 # Custom Frame Processors
 
 A Pipecat `FrameProcessor` is a single node in the bot pipeline: it receives frames, optionally
-transforms or absorbs them, and forwards the rest. Writing one is the cheapest way to insert
-behavior that NeMo Labs Voice Agent's builders do not already provide — an ASR post-corrector, a
-Markdown sanitizer before TTS, a redaction pass on transcripts.
+transforms or absorbs them, and forwards the rest. Writing one is the lowest-scope way to add
+behavior that NeMo Labs Voice Agent's builders do not provide. Examples include an automatic speech
+recognition (ASR) post-corrector, a Markdown sanitizer before text-to-speech (TTS), and transcript redaction.
 
 ## Prerequisites
 
@@ -30,22 +30,22 @@ Before you add a processor, complete the following preparation:
 2. Identify the frame type you need to transform and the pipeline stage that emits it.
 3. Choose the demo server or evaluation bot entrypoint where you will insert the processor.
 
-## Processor or builder swap?
+## Processor or Builder Swap?
 
 Choose a processor for frame transformations and a builder change for service construction.
 
-| You want to | Do this |
+| You Want to | Do This |
 | --- | --- |
-| Use a different STT / LLM / TTS model or endpoint | Edit YAML. See [Server Config](../../configure/server-config.md). |
-| Change how an existing stage is constructed | Swap the builder. See [The Builder API](builders.md). |
+| Use a different STT, LLM, or TTS model or endpoint | Edit YAML. Refer to [Server Config](../../configure/server-config.md). |
+| Change how an existing stage is constructed | Swap the builder. Refer to [The Builder API](builders.md). |
 | Add a transform *between* two existing stages | Write a `FrameProcessor` (this page). |
-| Change the pipeline shape, transport, or control plane | See [Building Your Own Pipeline](custom-pipeline.md). |
+| Change the pipeline shape, transport, or control plane | Refer to [Building Your Own Pipeline](custom-pipeline.md). |
 
 A processor is the right tool when the stages themselves are fine and you only need to touch the
 frames flowing between them. It requires no changes to `nemo_voice_agent/`, only a few lines in your
 copy of the server entrypoint.
 
-## Where the pipeline is assembled
+## Where the Pipeline Is Assembled
 
 Both entrypoints — `examples/generic_voice_agent/server/server.py` and `evaluation/bot_server.py` —
 build the pipeline in `run_bot_websocket()` as a flat list, appending optional stages only when their
@@ -69,27 +69,27 @@ pipeline_list.extend([tts, ws_transport.output(), assistant_agg])
 pipeline = Pipeline(pipeline_list)
 ```
 
-Insert your processor by adding one more element to that list. See
+Insert your processor by adding one more element to that list. Refer to
 [How It Works](../../../about/architecture.md) for what each stage does.
 
-## Insertion points
+## Insertion Points
 
 Pick the position by the frame type you need to see. Frame classes come from
 `pipecat.frames.frames` unless noted.
 
-| Position | Frames arriving there | Typical use |
+| Position | Frames Arriving There | Typical Use |
 | --- | --- | --- |
 | After `ws_transport.input()` | `InputAudioRawFrame` | Resampling, gain control, noise suppression |
 | Between `stt` and `user_agg` | `TranscriptionFrame`, `InterimTranscriptionFrame` | ASR error correction, PII redaction, language routing |
 | After `diar` | `DiarResultFrame` (from `nemo_voice_agent.pipecat.frames.frames`) | Rewriting or filtering speaker labels |
-| Between `user_agg` and `llm` | `LLMRunFrame` and everything from upstream | Context shaping, retrieval / memory injection |
+| Between `user_agg` and `llm` | `LLMRunFrame` and everything from upstream | Context shaping, retrieval, or memory injection |
 | Between `llm` and `llm_text_processor` | `LLMTextFrame` (streaming token chunks) | Token-level filtering; text may be split mid-word |
 | Between `llm_text_processor` and `tts` | `AggregatedTextFrame` (whole sentences) | Markdown stripping, profanity filter, pronunciation rewrites |
 | Between `tts` and `ws_transport.output()` | `TTSAudioRawFrame` | Output audio effects, loudness metering |
 
-Two things decide between the last two text positions. `LLMTextProcessor` is what converts
-`LLMTextFrame` into sentence-sized `AggregatedTextFrame` (see `build_llm_text_processor` in
-`nemo_voice_agent/pipecat/services/nemo/builders.py`). Any regex that must match across token
+Two things decide between the last two text positions. `LLMTextProcessor` converts
+`LLMTextFrame` into sentence-sized `AggregatedTextFrame`, as implemented by `build_llm_text_processor` in
+`nemo_voice_agent/pipecat/services/nemo/builders.py`. Any regex that must match across token
 boundaries belongs *after* it. Note that it is only present when `tts.use_text_aggregator` is true —
 the default; when it is false, the TTS service does its own aggregation internally and only
 `LLMTextFrame` reaches that point.
@@ -115,7 +115,7 @@ Follow these rules so unrelated frames and pipeline direction continue to work a
 - **System frames jump the queue.** `InputAudioRawFrame` and other `SystemFrame` subclasses are
   dispatched ahead of queued data frames, so do not assume ordering between audio and transcripts.
 
-## Example: strip Markdown before TTS
+## Example: Strip Markdown Before TTS
 
 LLMs emit `**bold**`, `# heading`, and `- bullet` markup even when the system prompt forbids it, and
 the TTS voice reads the punctuation aloud. A sanitizer placed immediately before `tts` fixes this
@@ -173,7 +173,7 @@ pipeline_list.append(markdown_stripper)  # after aggregation, before TTS
 pipeline_list.extend([tts, ws_transport.output(), assistant_agg])
 ```
 
-## Side effects to watch
+## Side Effects to Watch
 
 A processor can affect downstream context, timing, and logging even when it changes only one frame type:
 
@@ -185,14 +185,15 @@ A processor can affect downstream context, timing, and logging even when it chan
   iterated by `_reset_services` in
   `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`, which calls a plain synchronous
   `reset()` on any entry that has one and skips `None`. Add your processor to that list and give it
-  a `reset()` method if it carries per-conversation state. See
+  a `reset()` method if it carries per-conversation state. Refer to
   [RTVI Control Plane](../protocols/rtvi-actions.md).
 - **Configuration belongs in YAML.** Accept options in `__init__` and read them from a section of
   the server config, the way the existing builders do, rather than hardcoding them.
 - **Reasoning spans are handled elsewhere.** TTS already skips text between `tts.think_tokens`; do
-  not reimplement that in a processor. See [Reasoning Mode](../../../about/core-concepts/language-models/reasoning.md).
+  not reimplement that in a processor. Refer to
+  [Reasoning Mode](../../../about/core-concepts/language-models/reasoning.md).
 
-## Test it
+## Test It
 
 Processors are unit-testable without a pipeline: keep the transform in a pure classmethod, then
 drive `process_frame` directly with a stubbed `push_frame` to check forwarding and frame typing.
@@ -202,11 +203,11 @@ drive `process_frame` directly with a stubbed `push_frame` to check forwarding a
 uv run pytest tests/unit -m "not gpu"
 ```
 
-Then run the bot end to end and listen — see [Quickstart](../../../get-started/quickstart.md). If your
-processor never fires, confirm it is actually in `pipeline_list` (the optional stages around it are
-appended conditionally) and that the frame class you match on really reaches that position.
+Then run the bot end to end and listen. Refer to [Quickstart](../../../get-started/quickstart.md). If your
+processor does not process frames, confirm it is in `pipeline_list` because optional surrounding stages are
+appended conditionally. Also confirm that the selected frame class reaches that position.
 
-## Next steps
+## Next Steps
 
 Continue with the guide for the extension boundary you need:
 

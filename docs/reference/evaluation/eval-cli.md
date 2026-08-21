@@ -24,13 +24,13 @@ The NeMo Labs Voice Agent evaluation harness ships two command-line entry points
 | `run_evaluation.py` | Drives the bridge: runs scenarios against a live agent bot and a simulated-user bot, then scores and aggregates the results. |
 | `check_resume.py` | Dry-run inspection of an existing result directory: reports which scenarios `--resume` would re-run. Never writes to disk. |
 
-Every default below is read from the `argparse` definitions in those two files.
+The `argparse` definitions in those two files specify every default below.
 
-## Before you run
+## Before You Run
 
-`run_evaluation.py` only orchestrates — the two bot servers must already be listening. `SERVER_CONFIG_PATH`
-is resolved against the current working directory, so `cd evaluation` first (the `run_agent.sh` /
-`run_user.sh` helpers do the same and export the ports shown here).
+Start both bot servers before you run `run_evaluation.py`. The code resolves `SERVER_CONFIG_PATH` against the
+current working directory, so run `cd evaluation` first. The `run_agent.sh` and `run_user.sh` helpers also
+change to that directory and export the following ports.
 
 ```bash
 # Terminal 1 — simulated user bot
@@ -45,14 +45,14 @@ cd evaluation && WEBSOCKET_PORT=8765 FASTAPI_PORT=7860 \
 cd evaluation && python run_evaluation.py --domain eva_airline
 ```
 
-See [Environment variables](../runtime/environment.md) for the full bot-server variable list and
-[Evaluation quickstart](../../evaluate/run-evaluations/quickstart.md) for the end-to-end walkthrough.
+Refer to [Environment Variables](../runtime/environment.md) for the complete bot-server variable list and
+[Evaluation Quickstart](../../evaluate/run-evaluations/quickstart.md) for the end-to-end walkthrough.
 
 ## `run_evaluation.py`
 
 Use the following option groups to select scenarios, connect the bots, control runs, and configure scoring.
 
-### Scenario selection and listing
+### Scenario Selection and Listing
 
 Use these flags to list or select the scenarios included in a run.
 
@@ -66,10 +66,11 @@ Use these flags to list or select the scenarios included in a run.
 Domain filtering is a literal prefix match, so `--domain tau2_telecom` selects only the
 `tau2_telecom__…` scenarios; the parallel workflow-policy registration is a separate domain,
 `--domain tau2_telecom_workflow`. The four benchmark domains carry 50 (`eva_airline`), 50
-(`tau2_airline`), 114 (`tau2_retail`) and 114 (`tau2_telecom`, mirrored by
-`tau2_telecom_workflow`) scenarios — see [Benchmark domains](../../evaluate/understand-scoring/benchmarks.md).
+(`tau2_airline`), 114 (`tau2_retail`), and 114 (`tau2_telecom`, mirrored by
+`tau2_telecom_workflow`) scenarios. For domain details, refer to
+[Benchmark Domains](../../evaluate/understand-scoring/benchmarks.md).
 
-### Connection and audio
+### Connection and Audio
 
 Use these flags to configure bot endpoints, result storage, and audio streaming.
 
@@ -82,14 +83,14 @@ Use these flags to configure bot endpoints, result storage, and audio streaming.
 | `--audio-chunk-in-seconds SEC` | `0.016` | Size of each audio chunk the bridge streams between the bots. |
 | `--pause SEC` | `0.5` | Pause between scenario setup and the scenario run. |
 
-### Run control
+### Run Control
 
 Use these flags to set scenario limits, resume runs, and control matching behavior.
 
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--duration SEC` | `None` | Hard cap per scenario. When unset, each scenario's own `max_duration` applies (900 s for the eva and tau2 bases, shorter for the small demo domains). |
-| `--min-agent-turns N` | `3` | Minimum agent LLM responses for a scenario to be scored on its own merits. Pass `0` to disable. |
+| `--min-agent-turns N` | `3` | Minimum agent large language model (LLM) responses for a scenario to be scored on its own merits. Pass `0` to disable. |
 | `--resume TIMESTAMP` | `None` | Reuse the existing `eval_<TIMESTAMP>/` session directory under `--output-dir`. Exits with status 1 if that directory does not exist. |
 | `--strict-match` | off | Force `disallow_extra_items=True` on every scenario, overriding each scenario's own setting, so the action-list comparator requires exact-length matches. |
 
@@ -99,7 +100,7 @@ are **counted as failures** in the composite success rate and **skipped** in the
 additionally treated as in-flight and re-run. The turn count comes from the live-recorded
 `token_usage.agent.n_calls` in `metrics.json`, falling back to the saved agent LLM context for older runs.
 
-### LLM judge
+### LLM Judge
 
 Use these flags to connect and configure the optional LLM judge.
 
@@ -122,11 +123,12 @@ Use these flags to connect and configure the optional LLM judge.
 | `--judge-context-system-string-limit N` | `None` | Max system-message length, applied when `--judge-compact-context` is on. |
 | `--judge-context-string-limit N` | `None` | Max non-system string length, applied when `--judge-compact-context` is on. |
 
-The judge is constructed only when both `--judge-url` and `--judge-model` are non-empty; passing an empty
-string to either disables judging for the run. Judge thinking is always enabled and is deliberately not
-exposed as a flag — toggling it would silently change what the scores mean across runs.
+The runner constructs the judge only when both `--judge-url` and `--judge-model` are nonempty. Passing an
+empty string to either option disables judging for the run. Judge thinking is always enabled and is not
+exposed as a flag. Changing that behavior would silently change score semantics across runs.
 
-Numeric options are validated before the run starts, and a violation exits through `parser.error` (status 2):
+The runner validates numeric options before the run starts. A violation exits through `parser.error`
+(status 2):
 
 | Option | Rule |
 | --- | --- |
@@ -134,9 +136,9 @@ Numeric options are validated before the run starts, and a violation exits throu
 | `--judge-timeout` | finite float greater than 0 |
 | `--judge-max-tokens`, `--judge-thinking-token-budget`, `--judge-context-message-limit`, `--judge-context-system-string-limit`, `--judge-context-string-limit` | positive integer |
 
-`--judge-temperature` and `--judge-seed` are passed through unvalidated.
+The runner passes `--judge-temperature` and `--judge-seed` through without validation.
 
-### Exit codes
+### Exit Codes
 
 The evaluation driver exits with one of the following status codes.
 
@@ -146,24 +148,24 @@ The evaluation driver exits with one of the following status codes.
 | `1` | Unknown scenario name, empty domain, no registered scenarios, missing `--resume` directory, `KeyboardInterrupt`, or an unhandled exception during the run. |
 | `2` | `argparse` usage error, including the judge numeric validation above. |
 
-### Invocation record
+### Invocation Record
 
 Every run writes `run_args.json` into the session directory with the shape
 `{"invocations": [...]}` — each entry holds `started_at`, the raw `argv`, the parsed args (judge API key
 redacted), and the resolved scenario names and count. A `--resume` invocation appends a new entry and
 soft-checks it against the previous one on the scoring-relevant fields `domain`, `scenarios`, `duration`,
 `judge_url`, `judge_model`, `judge_threshold`, `judge_max_tokens`, `judge_temperature`, `judge_top_p`,
-`judge_seed`, and `strict_match`. Mismatches log a warning and the run proceeds — nothing is blocked.
+`judge_seed`, and `strict_match`. Mismatches log a warning but do not block the run.
 
-Result artifacts (`all_metrics.json`, `all_summary.txt`, per-scenario `metrics.json`) are described in
-[Reading results](../../evaluate/run-evaluations/results.md) and the [Metrics dictionary](metrics.md); the six scoring
-signals are described in [Scoring](../../evaluate/understand-scoring/scoring.md).
+For result artifacts (`all_metrics.json`, `all_summary.txt`, and per-scenario `metrics.json`), refer to
+[Reading Results](../../evaluate/run-evaluations/results.md) and the [Metrics Dictionary](metrics.md). For the
+six scoring signals, refer to [Scoring](../../evaluate/understand-scoring/scoring.md).
 
 ## `check_resume.py`
 
-Dry-run classifier for a finished or interrupted session directory. It applies the same
-classification the runner uses, so its output predicts what `--resume` would do, without moving or
-deleting anything.
+Use `check_resume.py` to classify a finished or interrupted session directory without moving or deleting
+anything. The script applies the same classification as the runner, so its output predicts what `--resume`
+would do.
 
 ```bash
 cd evaluation
@@ -190,4 +192,4 @@ Directories already named `*.killed.*` or containing `__KILLED__`, and top-level
 `run_args.json` and `evaluation_log.txt`, are ignored. The script prints per-bucket counts followed by the
 re-run and fresh lists, with the classification reason next to each re-run entry.
 
-For the resume workflow itself, see [Resuming a run](../../evaluate/run-evaluations/resume.md).
+For the resume workflow, refer to [Resuming a Run](../../evaluate/run-evaluations/resume.md).

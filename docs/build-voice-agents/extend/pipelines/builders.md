@@ -25,14 +25,14 @@ independent — import only the ones you need, and construct anything they do no
 Two bots in this repo use them: `examples/generic_voice_agent/server/server.py` and
 `evaluation/bot_server.py`. Both call the same eleven builders in the same order.
 
-## Every builder
+## Every Builder
 
 Each builder owns one runtime component and reads the corresponding configuration block.
 
 | Builder | Reads | Returns |
 | --- | --- | --- |
 | `build_audio_logger(config_manager)` | `transport.record_audio_data`, `transport.audio_log_dir` | `AudioLogger`, or `None` when recording is off. Session id is a timestamp. |
-| `build_vad_analyzer(config_manager)` | `vad.*` (via `ConfigManager.get_vad_params()`), `transport.audio_in_sample_rate` | `SileroVADAnalyzer`. Never `None`. |
+| `build_vad_analyzer(config_manager)` | `vad.*` (using `ConfigManager.get_vad_params()`), `transport.audio_in_sample_rate` | `SileroVADAnalyzer`. Never `None`. |
 | `build_vad_processor(vad_analyzer)` | nothing — takes the analyzer, not the config | `VADProcessor` wrapping the analyzer, or `None` if you passed `None`. |
 | `build_ws_transport(config_manager, vad_analyzer, host, port)` | `transport.audio_in_sample_rate`, `transport.audio_out_sample_rate`, `transport.audio_out_10ms_chunks` | `SingleClientWebsocketServerTransport` with a Protobuf serializer and `session_timeout=None`. |
 | `build_stt(config_manager, audio_logger=None)` | the whole `stt` block | An `STTService` from `get_stt_service_from_config`. Never `None`. |
@@ -65,11 +65,11 @@ Details worth knowing:
   Pipecat silently ignores unknown constructor kwargs, so passing an aggregator to the TTS service
   would fall back to plain sentence splitting with no error.
 
-## Optional stages
+## Optional Stages
 
 `build_audio_logger`, `build_diar`, `build_turn_taking`, and `build_llm_text_processor` return `None`
 to mean "omit this stage". `build_vad_processor` returns `None` only if you hand it `None`, and
-`build_vad_analyzer` always returns an analyzer — so VAD is never actually dropped on the shipped
+`build_vad_analyzer` always returns an analyzer — so VAD is never omitted on the shipped
 path. Assemble the pipeline behind `if x is not None` checks rather than leaving placeholders:
 
 ```python
@@ -87,7 +87,7 @@ if llm_text_processor is not None:
 pipeline_list.extend([tts, ws_transport.output(), assistant_agg])
 ```
 
-## Call order
+## Call Order
 
 Three dependencies constrain the order:
 
@@ -95,23 +95,23 @@ Three dependencies constrain the order:
 2. `build_llm` before `build_context_and_aggregators`.
 3. `build_turn_taking` before `build_context_and_aggregators` — **and pass its result through**.
 
-The third one matters most. In Pipecat 1.0+ exactly one component may emit
-`UserStartedSpeakingFrame` / `UserStoppedSpeakingFrame`, and the `turn_taking` argument is what
-decides which. Given a service, the builder selects `ExternalUserTurnStrategies` so
+The third dependency matters most. In Pipecat 1.0+, exactly one component may emit
+`UserStartedSpeakingFrame` and `UserStoppedSpeakingFrame`. The `turn_taking` argument determines that
+component. Given a service, the builder selects `ExternalUserTurnStrategies` so
 `NeMoTurnTakingService` owns turn detection and the aggregator stays quiet. Passing `None` is
 indistinguishable from omitting the argument — `None` is the parameter's default — so in both cases
 the builder re-derives the answer from `turn_taking.enabled`. When that key is false (the
 `*_nvidia.yaml` configs) it builds `UserTurnStrategies` from `VADUserTurnStartStrategy` plus
-`SpeechTimeoutUserTurnStopStrategy` so the aggregator drives the turn from VAD frames directly; when
-it is true or absent (the shipped `default.yaml`) it still selects `ExternalUserTurnStrategies`, and
-nothing is left in the pipeline to emit the user-turn frames. That fallback is right for the stock
-builders but silently wrong for a bot that constructs its turn-taking service inline — such a bot
-must pass the service explicitly.
+`SpeechTimeoutUserTurnStopStrategy`, so the aggregator drives the turn directly from VAD frames. When the key
+is true or absent (the shipped `default.yaml`), it still selects `ExternalUserTurnStrategies`. Nothing is
+then left in the pipeline to emit the user-turn frames. That fallback is correct for the stock builders but
+not for a bot that constructs its turn-taking service inline. Such a bot must pass the service explicitly.
 
 `original_messages`, the fourth tuple element, is a fresh deep copy of the initial message list. Hand
-it to the reset and update-prompt RTVI handler factories — see [RTVI actions](../protocols/rtvi-actions.md).
+it to the reset and update-prompt RTVI handler factories. Refer to
+[RTVI Actions](../protocols/rtvi-actions.md).
 
-## Substituting your own service
+## Substituting Your Own Service
 
 Every builder returns a stock Pipecat base type, so swapping one out is a one-line change in the bot
 script. Replace the call, keep the object in the same position in `pipeline_list`, and the rest of
@@ -126,7 +126,7 @@ stt = MySTTService(model="my-model", sample_rate=16000, audio_passthrough=True)
 
 The contracts your replacement must honor:
 
-| Slot | Base class to subclass |
+| Slot | Base Class to Subclass |
 | --- | --- |
 | STT | `pipecat.services.stt_service.STTService` (`NemoDiarService` also subclasses this) |
 | TTS | `pipecat.services.tts_service.TTSService` |
@@ -137,17 +137,17 @@ Two extra behaviors are duck-typed rather than enforced by the base classes:
 
 - **Reset.** The bot passes a `resettable` list to `create_reset_context_action`. The handler calls
   `.reset()` on each entry that defines one and skips `None` entries, so a service without `reset()`
-  is simply not reset between scenarios.
+  is not reset between scenarios.
 - **Tool calling.** A service only exposes tools if it mixes in `ToolCallingMixin` from
   `nemo_voice_agent/utils/tool_calling/mixins.py` and is listed in the `tool_mixins` argument of
-  `register_direct_tools_to_llm`. See [Custom tools](../../tools/custom-tools.md).
+  `register_direct_tools_to_llm`. Refer to [Custom Tools](../../tools/custom-tools.md).
 
-If your service needs config of its own, add a block to the YAML and read it from
-`config_manager.server_config` rather than threading new arguments through the shipped builders —
-`ConfigManager` passes unknown keys through untouched. See
-[Server config](../../configure/server-config.md).
+If your service needs its own config, add a block to the YAML and read it from
+`config_manager.server_config`. `ConfigManager` passes unknown keys through untouched, so you do not need to
+thread new arguments through the shipped builders. Refer to
+[Server Config](../../configure/server-config.md).
 
-## Next steps
+## Next Steps
 
 Choose the next guide based on whether you need to replace an assembly or transform frames within it:
 

@@ -17,12 +17,13 @@ limitations under the License.
 
 # Evaluation Reference
 
-Look up runner options and the fields written by an evaluation run.
+Use this section to look up evaluation command-line interface (CLI) options and the fields written by an
+evaluation run.
 
 | Reference | Contents |
 | --- | --- |
 | [Evaluation CLI](eval-cli.md) | `run_evaluation.py` and `check_resume.py` options and defaults. |
 | [Metrics](metrics.md) | Scenario-level fields, aggregate rates, and output locations. |
 
-For a task-oriented first run, use the [evaluation quickstart](../../evaluate/run-evaluations/quickstart.md).
-For interpretation guidance, see [Understand scoring](../../evaluate/understand-scoring/index.md).
+For a task-oriented first run, use the [Evaluation Quickstart](../../evaluate/run-evaluations/quickstart.md).
+For interpretation guidance, refer to [Understand Scoring](../../evaluate/understand-scoring/index.md).

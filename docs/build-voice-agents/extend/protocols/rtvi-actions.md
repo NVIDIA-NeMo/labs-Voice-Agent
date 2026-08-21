@@ -17,113 +17,114 @@ limitations under the License.
 
 # RTVI Control Plane
 
-Every NeMo Labs Voice Agent bot embeds a pipecat `RTVIProcessor` in its pipeline. Alongside the audio
-stream, a connected client can send **client messages** over the same WebSocket to inspect or mutate bot
-state: clear the conversation, swap the system prompt and tool surface, snapshot the LLM context, or seed
-scenario fixtures. That is the control plane.
+Every NeMo Labs Voice Agent bot embeds a Pipecat `RTVIProcessor` in its pipeline. Alongside the audio stream,
+a connected client can send **client messages** over the same WebSocket to inspect or mutate bot state. The
+client can clear the conversation, swap the system prompt and tool surface, snapshot the large language model
+(LLM) context, or seed scenario fixtures. These operations form the control plane.
 
 The handlers live in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Each is produced by a
 `create_*_action` factory that returns a `(wire_name, handler)` pair; the bot installs them all with a single
-call to `register_client_message_handlers`. For the on-the-wire envelope (`client-message` /
-`server-response` / `error-response` and the `t` / `d` argument encoding), see
+call to `register_client_message_handlers`. For the wire envelope (`client-message` /
+`server-response` / `error-response` and the `t` / `d` argument encoding), refer to
 [RTVI Message Reference](../../../reference/runtime/rtvi-messages.md).
 
-> Pipecat 1.0 removed the `RTVIAction` / `RTVIProcessor.register_action()` API. The wire names below survive
+> Pipecat 1.0 removed the `RTVIAction` and `RTVIProcessor.register_action()` API. The wire names below survive
 > from that era — the code still calls them "actions" — but they are now plain client-message types.
 
-## The six handlers
+## The Six Handlers
 
 The shipped handlers cover runtime reset, prompt updates, state initialization and synchronization, and
 result retrieval.
 
-| Wire name | Factory | Returns | Registered by |
+| Wire Name | Factory | Returns | Registered by |
 | --- | --- | --- | --- |
-| `reset` | `create_reset_context_action` | `bool` | example server + eval bot |
+| `reset` | `create_reset_context_action` | `bool` | example server and eval bot |
 | `update_system_prompt` | `create_update_system_prompt_action` | `bool` | eval bot |
 | `get_context_history` | `create_get_context_history_action` | `context` string | eval bot |
-| `get_scenario_summary` | `create_get_scenario_summary_action` | `actions` + `db_hash` | eval bot |
-| `apply_initialization` | `create_apply_initialization_action` | `success` + `errors` | eval bot |
-| `apply_sync_delta` | `create_apply_sync_delta_action` | `success` + `errors` | eval bot |
+| `get_scenario_summary` | `create_get_scenario_summary_action` | `actions` and `db_hash` | eval bot |
+| `apply_initialization` | `create_apply_initialization_action` | `success` and `errors` | eval bot |
+| `apply_sync_delta` | `create_apply_sync_delta_action` | `success` and `errors` | eval bot |
 
 `examples/generic_voice_agent/server/server.py` registers only `reset` — that is all the browser client
 needs. `evaluation/bot_server.py` registers all six, because the evaluation bridge drives the full scenario
 lifecycle over this channel.
 
-### `reset`
+### reset
 
-Takes no arguments. Resets the user and assistant aggregators, re-seeds both with a deep copy of
-`original_messages` (captured by reference, so it always reflects whatever `update_system_prompt` last
-wrote), and calls `.reset()` on every entry of `resettable_services` that defines one. `None` entries are
-skipped. The browser client wires this to its **Reset** button via `sendClientRequest('reset', {})`.
+Takes no arguments. Resets the user and assistant aggregators and re-seeds both with a deep copy of
+`original_messages`. The handler captures `original_messages` by reference, so the deep copy reflects the
+last value that `update_system_prompt` wrote. It calls `.reset()` on each `resettable_services` entry that
+defines one and skips `None` entries. The browser client connects this action to its **Reset** button using
+`sendClientRequest('reset', {})`.
 
-### `update_system_prompt`
+### update_system_prompt
 
 Arguments: `prompt` (required), `tools` (JSON string), `add_suffix` (default `true`), `tool_domain`
 (default `"default"`).
 
-Replaces the system message, optionally appending the configured system-prompt suffix, then resets both
-aggregators. It is also the **scenario-start gate**: it clears `shared_state` in place — via `dict.clear()`,
-so tools holding a reference keep seeing the same object — and stashes two bot-side runtime sentinels,
-`__rtvi__` (used by write tools to emit `action-applied` messages) and `__tool_domain__`. When tool calling
-is enabled and a `tools` payload is present, each entry is built through the injected `tool_factory` and
-swapped onto the LLM by `register_schema_tools`, replacing the previous tool set.
+Replaces the system message, optionally appends the configured system-prompt suffix, and then resets both
+aggregators. It is also the **scenario-start gate**. It clears `shared_state` in place using `dict.clear()`,
+so tools holding a reference continue to use the same object. The handler then stashes two bot-side runtime
+sentinels: `__rtvi__` and `__tool_domain__`. Write tools use `__rtvi__` to emit `action-applied` messages.
+When tool calling is enabled and a `tools` payload is present, the injected `tool_factory` builds each entry.
+`register_schema_tools` then replaces the previous LLM tool set with those entries.
 
 It does **not** load scenario fixture data. `db_path`, DB contents, and custom shared-state keys all arrive
 through `apply_initialization`.
 
-### `get_context_history`
+### get_context_history
 
-No arguments. Returns the assistant aggregator's message list, stringified, as `context`. Before
-snapshotting it polls the aggregator's `has_function_calls_in_progress` property until in-flight function
-calls commit, with a hard 3-second deadline so a stuck tool degrades to a warning instead of a deadlock. The
-snapshot then passes through `sanitize_context_for_transport`, which replaces raw audio/image/file blobs with
-placeholder tags — omni models keep audio inline, and serializing it verbatim overflows pipecat's WebSocket
-frame cap. Sanitization is non-mutating; the live context keeps its bytes.
+No arguments. Returns the assistant aggregator's message list, stringified, as `context`. Before creating the
+snapshot, it polls `has_function_calls_in_progress` until in-flight function calls commit. A hard 3-second
+deadline turns a stuck tool into a warning instead of a deadlock. The snapshot then passes through
+`sanitize_context_for_transport`, which replaces raw audio, image, and file blobs with placeholder tags.
+Omni models keep audio inline, and serializing it verbatim overflows Pipecat's WebSocket frame cap.
+Sanitization is non-mutating, so the live context keeps its bytes.
 
-### `get_scenario_summary`
+### get_scenario_summary
 
 Argument: `include_db` (default `false`).
 
-Returns `actions` (the auto-aggregated write-tool records from `shared_state`) and `db_hash`, the SHA-256 of
-the canonicalized DB computed by `get_dict_hash` from `nemo_voice_agent.evaluation.db_hash`. The DB itself
-stays on the bot server — the runner computes the same hash from its in-process gold replay and compares
-strings, which keeps the payload small regardless of DB size. Setting `include_db` to true adds the inline
-`db` dict; the bridge only does that for domains whose per-predicate `db_state_assertions` need real values
-and whose DB is small enough to cross the frame limit.
+Returns `actions`, the auto-aggregated write-tool records from `shared_state`, and `db_hash`. The hash is the
+SHA-256 of the canonicalized DB that `get_dict_hash` from `nemo_voice_agent.evaluation.db_hash` computes. The
+DB stays on the bot server. The runner
+computes the same hash from its in-process gold replay and compares strings, keeping the payload small.
+Setting `include_db` to true adds the inline `db` dict. The bridge requests it only for domains whose
+per-predicate `db_state_assertions` need real values and whose DB fits within the frame limit.
 
 Each bot returns only its own DB. The `db` versus `user_db` distinction is applied bridge-side, based on
 which WebSocket the response came from.
 
-### `apply_initialization`
+### apply_initialization
 
 Arguments: `domain`, `shared_state_init` (JSON string), `actions` (list).
 
-The single scenario-state initializer, called once per bot immediately after `update_system_prompt`. It does
+The single scenario-state initializer is called for each bot immediately after `update_system_prompt`. It does
 three things in order:
 
 1. Merges the decoded `shared_state_init` into `shared_state`, preserving the runtime sentinels.
 2. If the merged state carries a `db_path`, resolves it under the eval data root and loads it into `db`.
    Idempotent — skipped when `db` is already present, and the redundant `db_path` key is dropped either way.
-3. Dispatches each `func_name` / `arguments` record in `actions` against the loaded `db`, using the
+3. Dispatches each `func_name` and `arguments` record in `actions` against the loaded `db`, using the
    registry in `nemo_voice_agent/evaluation/initialization_functions.py`.
 
 Returns `success` and `errors`. The bridge calls it for every scenario even when there are no init actions,
 because steps 1 and 2 must still run. Any `success: false` aborts the scenario rather than scoring partially
 seeded state.
 
-### `apply_sync_delta`
+### apply_sync_delta
 
 Arguments: `domain`, `delta` (dict).
 
-Bot-side endpoint of the cross-side state-sync pipeline. After a write tool on one bot emits `action-applied`,
-the bridge replays it onto its shadow DBs, runs the scenario's `sync_state`, and pushes any non-empty per-side
-delta here. The handler dispatches through the per-domain applier registry in
-`nemo_voice_agent/evaluation/sync_appliers.py`, which mutates `shared_state["db"]` in place; unregistered
-domains fall back to a generic dotted-path setter. Returns `success` and `errors`, both informational — a
-malformed delta should not stall the conversation. Only scenarios that override `Scenario.sync_state` (today:
-telecom) trigger it, but the handler is registered domain-agnostically.
+Bot-side endpoint of the cross-side state-sync pipeline. After a write tool emits `action-applied`, the bridge
+replays the action onto its shadow DBs and runs the scenario's `sync_state`. It pushes any non-empty per-side
+delta to this endpoint. The handler dispatches through the per-domain applier registry in
+`nemo_voice_agent/evaluation/sync_appliers.py`, which mutates `shared_state["db"]` in place. Unregistered
+domains use a generic dotted-path setter. The returned `success` and `errors` values are informational, so a
+malformed delta does not stall the conversation. Only scenarios that override `Scenario.sync_state` trigger
+the handler. Currently, telecom scenarios use it, but the registration is domain-agnostic.
 
-## `register_client_message_handlers`
+## register_client_message_handlers
 
 Register message types with the `RTVIProcessor` before the pipeline starts processing client messages.
 
@@ -151,7 +152,7 @@ module: `TaskRef`, `register_client_message_handlers`, `sanitize_context_for_tra
 `update_system_prompt` / `get_context_history` factories. `SharedStateRef`, `ClientMessageHandler`, and the
 three evaluation-specific factories must be imported from the `rtvi_actions` module directly.
 
-## `TaskRef` and `SharedStateRef`
+## TaskRef and SharedStateRef
 
 Both are small mutable dataclasses that exist to break a construction-order cycle — the handlers are built
 before the objects they need.
@@ -161,16 +162,16 @@ before the objects they need.
 | `TaskRef` | `task`, `running` | `run_bot_websocket_server` in `nemo_voice_agent/pipecat/bot_server.py` |
 | `SharedStateRef` | `state` (dict) | `update_system_prompt` clears it; `apply_initialization` fills it |
 
-`TaskRef` exists because the `PipelineWorker` cannot be constructed until after the RTVI processor (the
-worker takes `rtvi` in its observer list). Create the ref early, hand it to the factories, and
-`run_bot_websocket_server` sets `task` and flips `running` to true; the runner flips it back during shutdown
-so a handler can avoid queueing frames onto a dead task.
+`TaskRef` exists because the `PipelineWorker` cannot be constructed until after the RTVI processor. The
+worker takes `rtvi` in its observer list. Create the ref early and give it to the factories.
+`run_bot_websocket_server` sets `task` and flips `running` to true. The runner flips it back during shutdown,
+so a handler can avoid queuing frames onto a stopped task.
 
 `SharedStateRef.state` is the same dict passed to tool constructors, which is why handlers can read
 `actions` and `db` without holding tool references. Its identity is never reassigned, so tools registered for
 an earlier scenario stay valid.
 
-## Adding your own handler
+## Adding Your Own Handler
 
 Write a factory that closes over whatever pipeline objects it needs and returns a `(name, coroutine)` pair,
 then append it to the list you pass to `register_client_message_handlers`:
@@ -205,7 +206,7 @@ Two rules:
 If you need bot-to-client notifications instead of request/response, push an `RTVI.ServerMessage` with
 `rtvi.push_transport_message(...)` — that is how write tools emit `action-applied`.
 
-## Related pages
+## Related Pages
 
 Use these pages for wire-level message fields and end-to-end client connection behavior:
 

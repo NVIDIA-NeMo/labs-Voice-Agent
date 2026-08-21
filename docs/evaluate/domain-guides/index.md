@@ -30,4 +30,4 @@ Choose a domain guide to review its fixtures, tools, prompts, runtime behavior, 
 | [tau2_airline](tau2-airline.md) | Review reservation and flight-service tasks from tau2-bench. |
 | [tau2_retail](tau2-retail.md) | Review order, return, exchange, and account tasks from tau2-bench. |
 | [tau2_telecom](tau2-telecom.md) | Review dual-side telecom support with synchronized agent and user state. |
-| [Fixture Data & Provenance](data-provenance.md) | Trace the source and licence of every packaged evaluation fixture. |
+| [Fixture Data and Provenance](data-provenance.md) | Trace the source and license of every packaged evaluation fixture. |

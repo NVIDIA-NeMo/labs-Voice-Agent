@@ -17,12 +17,13 @@ limitations under the License.
 
 # Release Notes for NeMo Voice Agent
 
-Dated feature updates for NeMo Labs Voice Agent, newest first. This page is the documentation site's
-canonical history of the milestones listed below.
+Dated feature updates for NeMo Labs Voice Agent appear newest first. This page is the documentation site's
+canonical history of automatic speech recognition (ASR), large language model (LLM), text-to-speech (TTS),
+and evaluation milestones.
 
 There are no per-entry version tags: the package version is a single value declared in
 `nemo_voice_agent/package_info.py` and exposed as `nemo_voice_agent.package_info.__version__`.
-For changes made after the most recent entry below, read the repository commit history.
+For changes after the most recent entry, refer to the repository commit history.
 
 ## Release History
 
@@ -34,10 +35,10 @@ The following table summarizes the dated project milestones documented on this p
 | 2026-06-13 | Voice-agent evaluation harness with four benchmark domains |
 | 2026-05-15 | Omni (multimodal) LLM support |
 | 2026-01-26 | Nemotron-3-Nano-30B-A3B-BF16 LLM and Magpie multilingual TTS |
-| 2025-12-31 | Tool-calling examples; diarization model upgrade |
+| 2025-12-31 | Tool-calling examples and diarization model upgrade |
 | 2025-11-14 | Joint ASR and end-of-utterance detection |
 | 2025-10-10 | Kokoro-82M TTS |
-| 2025-10-03 | vLLM serving with automatic HuggingFace fallback |
+| 2025-10-03 | vLLM serving with automatic Hugging Face fallback |
 | 2025-09-05 | First release |
 
 ## 2026-08-06 — Standalone Repository
@@ -49,17 +50,17 @@ lived as a sub-package, and is now developed in its own repository. The Python p
 
 ## 2026-06-13 — Evaluation Harness
 
-Shipped the two-bot evaluation harness: a simulated user bot talks to the agent under test through a
-bridge that shuttles audio between two WebSocket Pipecat servers and scores the outcome.
+This milestone shipped the two-bot evaluation harness. A simulated user bot talks to the agent under
+test through a bridge that transfers audio between two WebSocket Pipecat servers and scores the outcome.
 
-Four benchmark domains ported:
+The release ported four benchmark domains:
 
-| Domain | Scenarios | Upstream source |
+| Domain | Scenarios | Upstream Source |
 | --- | --- | --- |
 | `eva_airline` | 50 | ServiceNow `eva` |
 | `tau2_airline` | 50 | tau2-bench airline |
 | `tau2_retail` | 114 | tau2-bench retail |
-| `tau2_telecom` | 114 | tau2-bench telecom (dual-side: separate agent-side and user-side DBs) |
+| `tau2_telecom` | 114 | tau2-bench telecom (dual-side: separate agent-side and user-side databases) |
 
 `tau2_telecom` is registered twice — a second `tau2_telecom_workflow` family shares the same 114
 upstream tasks and differs only in which policy file is rendered into the agent prompt.
@@ -75,7 +76,7 @@ Learn more: [Evaluation overview](../evaluate/index.md) ·
 [tau2_retail](../evaluate/domain-guides/tau2-retail.md) ·
 [tau2_telecom](../evaluate/domain-guides/tau2-telecom.md)
 
-## 2026-05-15 — Omni (Multimodal) LLM Support
+## 2026-05-15 — Omni and Multimodal LLM Support
 
 Added support for `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4`, served through the
 `llm_configs/nemotron_nano_v3_omni.yaml` model config (a `_think.yaml` sibling enables reasoning).
@@ -89,9 +90,9 @@ Learn more: [Multimodal models](core-concepts/language-models/multimodal.md) · 
 This milestone added the following language and speech model support.
 
 - Added support for the `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` LLM. The
-  `llm_configs/nemotron_nano_v3.yaml` model config covers this family; the NVFP4 variant is the
+  `llm_configs/nemotron_nano_v3.yaml` model configuration covers this family. The NVFP4 variant is the
   shipped default and needs a GPU with FP4 support.
-- Added support for the `nvidia/magpie_tts_multilingual_357m` TTS model, via
+- Added support for the `nvidia/magpie_tts_multilingual_357m` TTS model, using
   `tts_configs/magpie_tts_multilingual_357m.yaml`.
 
 Learn more: [LLM backends](core-concepts/language-models/llm.md) · [TTS](core-concepts/speech-pipeline/tts.md) ·
@@ -115,7 +116,7 @@ Learn more: [Tool calling](../build-voice-agents/tools/tool-calling.md) · [Cust
 ## 2025-11-14 — Joint ASR and End-of-Utterance Detection
 
 Added support for `nvidia/parakeet_realtime_eou_120m-v1`, which predicts end-of-utterance jointly
-with transcription. It is the shipped default STT model and is optimized for lowest latency; it does
+with transcription. It is the shipped default STT model and is optimized for lowest latency. It does
 not emit punctuation or capitalization.
 
 Learn more: [ASR](core-concepts/speech-pipeline/asr.md) · [Turn taking](core-concepts/speech-pipeline/turn-taking.md)
@@ -131,11 +132,11 @@ Learn more: [TTS](core-concepts/speech-pipeline/tts.md)
 
 This milestone added the following serving and backend-selection capabilities.
 
-- Added vLLM as an LLM serving backend alongside HuggingFace.
+- Added vLLM as an LLM serving backend alongside Hugging Face.
 - Added automatic backend selection: with `llm.type: auto`, the server tries vLLM first and falls
-  back to HuggingFace, so parameters for both backends must be valid.
-- Made `nvidia/NVIDIA-Nemotron-Nano-9B-v2` the default LLM at the time. (The current default is the
-  Nemotron-3-Nano-30B-A3B family — see the 2026-01-26 entry.)
+  back to Hugging Face, so parameters for both backends must be valid.
+- Made `nvidia/NVIDIA-Nemotron-Nano-9B-v2` the default LLM at the time. The current default is the
+  Nemotron-3-Nano-30B-A3B family, as described in the 2026-01-26 entry.
 
 Learn more: [vLLM backend](../build-voice-agents/model-serving/vllm.md) · [LLM backends](core-concepts/language-models/llm.md)
 
@@ -144,7 +145,7 @@ Learn more: [vLLM backend](../build-voice-agents/model-serving/vllm.md) · [LLM 
 First release of NeMo Labs Voice Agent: a real-time speech-to-speech pipeline built on Pipecat, with
 streaming ASR, speaker diarization, LLM, and TTS behind a WebSocket server, plus a browser client.
 Shipped at the time as a sub-package of
-[NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent); see the
+[NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent). Refer to the
 2026-08-06 entry for the move to a standalone repository.
 
 Learn more: [Architecture](architecture.md) ·
@@ -152,7 +153,7 @@ Learn more: [Architecture](architecture.md) ·
 
 ## Upcoming Work
 
-Work called out as next up in the repository `README.md`:
+The repository `README.md` lists the following planned work:
 
 - Accuracy and robustness improvements to the ASR models.
 - Combined ASR and speaker diarization to handle overlapping speech.
@@ -162,6 +163,6 @@ Work called out as next up in the repository `README.md`:
 
 Use these pages to begin with the current project, understand its architecture, or review its evaluation capabilities.
 
-- [Quickstart](../get-started/quickstart.md)
-- [Architecture overview](architecture.md)
-- [Evaluation overview](../evaluate/index.md)
+- [Quickstart](../get-started/quickstart.md) — run the current default configuration.
+- [Architecture overview](architecture.md) — understand the runtime pipeline and services.
+- [Evaluation overview](../evaluate/index.md) — understand the evaluation workflow and scoring signals.

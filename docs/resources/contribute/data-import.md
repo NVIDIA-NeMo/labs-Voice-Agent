@@ -17,19 +17,19 @@ limitations under the License.
 
 # Regenerating Benchmark Data
 
-Benchmark fixtures and the scenario classes bound to them are **committed artifacts**, not runtime
-downloads. Two script directories produce them, and both are developer-only — nothing in CI or in a normal
-eval run invokes them.
+Benchmark fixtures and their scenario classes are **committed artifacts**, not runtime downloads. Two
+developer-only script directories produce them. Continuous integration (CI) and normal evaluation runs do
+not invoke these scripts. The directories have the following responsibilities:
 
 | Directory | Purpose |
 | --- | --- |
 | `scripts/prepare_eva_data/` | Scaffold `eva_airline` scenario classes from the packaged eva dataset |
-| `scripts/prepare_tau2_data/` | Import tau2-bench upstream data, shard oversized DBs, scaffold the three tau2 domains |
+| `scripts/prepare_tau2_data/` | Import tau2-bench upstream data, shard oversized databases, and scaffold the three tau2 domains |
 
-For where the resulting files live on disk and under which licence, see
+For the resulting file locations and applicable licenses, refer to
 [Fixture Data & Provenance](../../evaluate/domain-guides/data-provenance.md).
 
-## Script inventory
+## Script Inventory
 
 Use this inventory to identify the script that owns each generated artifact:
 
@@ -42,60 +42,62 @@ Use this inventory to identify the script that owns each generated artifact:
 | `prepare_tau2_data/generate_telecom_scaffolds.py` | `data/tau2_telecom/` | `scenarios/data/tau2_telecom/group_Nx.py` |
 | `prepare_eva_data/generate_airline_scaffolds.py` | `data/eva_airline/eva_airline_dataset.jsonl` | stdout |
 
-Paths in the Reads/Writes columns are relative to `nemo_voice_agent/evaluation/`. Only `prepare_telecom.py`
-needs an upstream checkout; every other script reads data that is already committed to this repo.
+Paths in the Reads and Writes columns are relative to `nemo_voice_agent/evaluation/`. Only
+`prepare_telecom.py` needs an upstream checkout. Every other script reads data that is already committed to
+this repository.
 
-## Importing tau2 telecom data
+## Importing tau2 Telecom Data
 
-`prepare_telecom.py` is the only import script. Airline and retail ship their DBs as `.json` upstream and
-were copied in directly when those domains were first ported; telecom ships `db.toml` / `user_db.toml`, so a
-conversion step is needed to keep the bot-side loader on a single `json.load` path.
+`prepare_telecom.py` is the only import script. Airline and retail provide their databases as upstream
+`.json` files, which were copied directly when those domains were first ported. Telecom provides `db.toml`
+and `user_db.toml`, so a conversion step keeps the bot-side loader on a single `json.load` path.
 
 ```bash
 uv run python scripts/prepare_tau2_data/prepare_telecom.py --source /path/to/tau2-bench
 ```
 
-`--source` defaults to a developer-local absolute path, so pass it explicitly. `--dest` redirects the output
-(useful for diffing a candidate import against the committed tree before overwriting it).
+`--source` defaults to a developer-local absolute path, so pass it explicitly. Use `--dest` to redirect the
+output and compare a candidate import with the committed tree before overwriting it.
 
 The script performs three transformations and copies the rest verbatim:
 
 | Step | Files | Behavior |
 | --- | --- | --- |
-| Convert | `db.toml`, `user_db.toml` | Parsed with `tomllib`, validated through the `TelecomDB` / `TelecomUserDB` models in `nemo_voice_agent.evaluation.tools.tau2_telecom_params`, re-serialized as indent-2 JSON. The Pydantic round-trip materializes defaults the raw TOML omits, so predicates and init functions never need defensive lookups. |
-| Filter | `tasks.json` | Keeps only entries whose `id` appears in `split_tasks.json["base"]` (114 ids). Raises if a base id has no upstream task definition. |
-| Filter | `tasks_voice.json` | Keeps only the base ids in its `configs` map. Raises if a base id has no upstream voice config. |
-| Copy | `split_tasks.json`, `audio_difficulty.json`, `main_policy.md`, `tech_support_manual.md`, `tech_support_workflow.md`, `workflows/` | Byte-for-byte. Missing optional inputs produce a warning and are skipped, not a failure. |
+| Convert | `db.toml`, `user_db.toml` | Parse with `tomllib`, validate with the `TelecomDB` and `TelecomUserDB` models in `nemo_voice_agent.evaluation.tools.tau2_telecom_params`, and serialize as indent-2 JSON. The Pydantic round trip materializes defaults that the raw TOML omits. Predicates and initialization functions do not need defensive lookups. |
+| Filter | `tasks.json` | Keep only entries whose `id` appears in `split_tasks.json["base"]` (114 IDs). Raise an error if a base ID has no upstream task definition. |
+| Filter | `tasks_voice.json` | Keep only the base IDs in its `configs` map. Raise an error if a base ID has no upstream voice configuration. |
+| Copy | `split_tasks.json`, `audio_difficulty.json`, `main_policy.md`, `tech_support_manual.md`, `tech_support_workflow.md`, `workflows/` | Copy byte-for-byte. Warn about and skip missing optional inputs instead of failing. |
 
-The run is idempotent and prints a truncated SHA-256 per output file plus kept/dropped counts for the
-filtered ones — diff those hashes against the previous run to see exactly what upstream changed.
+The run is idempotent. It prints a truncated SHA-256 hash for each output file and kept or dropped counts for
+filtered files. Compare these hashes with the previous run to identify upstream changes.
 
-Note that the repository does not currently track every file the script can emit: `audio_difficulty.json`
-and `workflows/` are traceability-only and are not consumed by the eval pipeline, so they are not committed.
+The repository does not currently track every file that the script can emit. `audio_difficulty.json`
+and `workflows/` are traceability-only and are not consumed by the evaluation pipeline, so they are not committed.
 The agent policy is assembled from `main_policy.md` plus `tech_support_manual.md` or
-`tech_support_workflow.md` — see [tau2-telecom](../../evaluate/domain-guides/tau2-telecom.md).
+`tech_support_workflow.md`. For details, refer to
+[tau2 Telecom](../../evaluate/domain-guides/tau2-telecom.md).
 
-## Sharding an oversized database
+## Sharding an Oversized Database
 
-The GitLab mirror enforces a 5 MB per-file cap, which the airline DB exceeds. `shard_db.py` splits a
-top-level dict into one file per key:
+The GitLab mirror enforces a 5 MB per-file cap, which the airline database exceeds. `shard_db.py` splits a
+top-level dictionary into one file per key:
 
 ```bash
 uv run python scripts/prepare_tau2_data/shard_db.py \
     nemo_voice_agent/evaluation/data/tau2_airline/db.json
 ```
 
-This writes `db/flights.json`, `db/users.json`, `db/reservations.json` and then **deletes the source
-`db.json`**; pass `--keep-source` to retain it. `load_db_artifact` in `nemo_voice_agent/evaluation/__init__.py`
-probes `<path>.json` first and falls back to `<path>/`, so both layouts reassemble into an identical
-in-memory dict and DB hashes are unaffected. Re-shard after any fresh upstream pull that restores a
-single-file `db.json`.
+This writes `db/flights.json`, `db/users.json`, and `db/reservations.json`, and then **deletes the source
+`db.json`**. Pass `--keep-source` to retain it. `load_db_artifact` in
+`nemo_voice_agent/evaluation/__init__.py` probes `<path>.json` first and falls back to `<path>/`. Both layouts
+reassemble into an identical in-memory dictionary, and database hashes are unaffected. Shard the database
+again after any upstream pull that restores a single-file `db.json`.
 
-## Scaffolding tau2 scenario classes
+## Scaffolding tau2 Scenario Classes
 
-The three tau2 scaffolders take no arguments. Each reads the already-imported data, chunks the base-split ids
-10 per group, **overwrites** every `group_Nx.py` in the target package, and rewrites that package's
-`__init__.py` with side-imports so `@register_eval_scenario` fires on import.
+The three tau2 scaffolders take no arguments. Each reads the imported data, divides the base-split IDs into
+groups of 10, **overwrites** every `group_Nx.py` in the target package, and rewrites that package's
+`__init__.py` with side-effect imports so `@register_eval_scenario` fires on import.
 
 ```bash
 uv run python scripts/prepare_tau2_data/generate_airline_scaffolds.py   # 50 tasks  → 5 groups
@@ -103,10 +105,10 @@ uv run python scripts/prepare_tau2_data/generate_retail_scaffolds.py    # 114 ta
 uv run python scripts/prepare_tau2_data/generate_telecom_scaffolds.py   # 114 tasks → 12 groups
 ```
 
-Emitted classes are deliberately minimal — `name` plus `tau2_id`, with everything else derived by the domain
-base class from the upstream task. Airline and retail have integer ids and get decade-based filenames
-(`group_0x.py` holds ids 0-9). Telecom ids are descriptive strings, so filenames use a sequential chunk
-index and the class/scenario names are parsed out of the id:
+Generated classes contain only `name` and `tau2_id`. The domain base class derives everything else from the
+upstream task. Airline and retail use integer IDs and decade-based filenames (`group_0x.py` holds IDs 0–9).
+Telecom IDs are descriptive strings. Its filenames use a sequential chunk index, and the generator parses
+the class and scenario names from the ID:
 
 ```text
 tau2_id  [mms_issue]airplane_mode_on|data_mode_off[PERSONA:Hard]
@@ -115,15 +117,15 @@ class    Tau2TelecomMmsIssueAirplaneModeOnDataModeOffHard
 ```
 
 A `PERSONA:None` suffix is dropped from both the name and the class. The telecom generator emits **two**
-classes per task — one on `Tau2TelecomBaseScenario` (`policy_variant="manual"`) and one on
-`Tau2TelecomWorkflowBaseScenario` (`policy_variant="workflow"`) — so 114 tasks produce 228 classes across
+classes per task—one on `Tau2TelecomBaseScenario` (`policy_variant="manual"`) and one on
+`Tau2TelecomWorkflowBaseScenario` (`policy_variant="workflow"`)—so 114 tasks produce 228 classes across
 the `tau2_telecom` and `tau2_telecom_workflow` registrations. It also checks for class-name and
-scenario-name collisions across both variants before writing anything, and aborts rather than emit a
+scenario-name collisions across both variants before writing anything. It aborts rather than emitting a
 silently shadowed scenario.
 
-## Scaffolding eva_airline scenarios
+## Scaffolding eva_airline Scenarios
 
-There is no eva import script; the eva fixtures were copied verbatim from upstream. The generator reads the
+There is no eva import script. The eva fixtures were copied verbatim from upstream. The generator reads the
 packaged `eva_airline_dataset.jsonl` and **streams to stdout** instead of overwriting group files, because
 eva scenarios carry curated prose that the dataset alone cannot express.
 
@@ -138,19 +140,19 @@ uv run python scripts/prepare_eva_data/generate_airline_scaffolds.py > /tmp/all_
 
 `--dataset` points at an alternate JSONL. The per-group manifest goes to stderr so it never pollutes the
 generated Python. Five hand-authored seed scenarios (`1.1.2`, `2.1.1`, `3.1.3`, `5.1.1`, `7.2.1`) are skipped
-— they remain the reference for prose style. The generator applies the voice-readability rule from
+—they remain the reference for prose style. The generator applies the voice-readability rule from
 `nemo_voice_agent/utils/voice_prompts.py`, spelling confirmation numbers and airport codes out
 character-by-character, and folds each entry's criteria and edge cases into the scenario guidelines.
 
 Treat the output as a starting point: review the prose and prune bullets before committing.
 
-## Bumping the upstream pin
+## Bumping the Upstream Pin
 
 To update the tau2-bench source revision and regenerate affected artifacts, complete the following steps:
 
 1. Check out `sierra-research/tau2-bench` at the new tag or commit.
 2. Update `PINNED_COMMIT` in `scripts/prepare_tau2_data/prepare_telecom.py`. The check is intentionally
-   soft — a mismatch warns and continues, so you can test against an unpinned checkout first.
+   nonblocking—a mismatch produces a warning and continues, so you can test an unpinned checkout first.
 3. Re-run `prepare_telecom.py`, then re-shard any DB that grew past the file cap.
 4. Re-run every tau2 scaffolder whose `tasks.json` or `split_tasks.json` changed.
 5. Update the source and version fields in `nemo_voice_agent/evaluation/data/README.md`.
@@ -164,14 +166,14 @@ uv run pytest tests/unit -m "not gpu"
 
 `tests/unit/test_tau2_telecom_scenarios.py` asserts 114 manual plus 114 workflow registrations,
 `tests/unit/test_tau2_retail_scenarios.py` asserts 114 retail registrations, and the eva suites cover the
-airline tools and scenario metadata — a scaffolding regression shows up there first. Generated modules carry
-the SPDX header their templates emit, which is what keeps the `copyright-check.yml` gate green.
+airline tools and scenario metadata. A scaffolding regression shows up there first. Generated modules carry
+the SPDX header their templates emit, which keeps the `copyright-check.yml` gate green.
 
-## Related pages
+## Related Pages
 
 Use these pages for provenance requirements, authoring guidance, and validation details:
 
-- [Fixture Data & Provenance](../../evaluate/domain-guides/data-provenance.md) — on-disk layout, licences, `EVAL_DATA_ROOT`
-- [Authoring Scenarios](../../evaluate/create-evaluations/authoring-scenarios.md) — writing a scenario class by hand
-- [Adding a Domain](../../evaluate/create-evaluations/authoring-domains.md) — wiring a new benchmark end to end
-- [Testing](testing.md) — markers, suites, and what CI runs
+- [Fixture Data & Provenance](../../evaluate/domain-guides/data-provenance.md): On-disk layout, licenses, and `EVAL_DATA_ROOT`.
+- [Authoring Scenarios](../../evaluate/create-evaluations/authoring-scenarios.md): How to write a scenario class manually.
+- [Adding a Domain](../../evaluate/create-evaluations/authoring-domains.md): How to integrate a new benchmark end to end.
+- [Testing](testing.md): Markers, suites, and CI behavior.

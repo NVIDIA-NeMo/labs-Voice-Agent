@@ -17,16 +17,16 @@ limitations under the License.
 
 # Choose Your Path
 
-Use this page to select the documentation path that matches what you want to accomplish. All paths assume
-a source checkout of the repository; the installation script creates the project virtual environment.
+Use this page to select the documentation path that matches your goal. Each path assumes a source checkout
+of the repository. The installation script creates the project virtual environment.
 
 Before you begin, review [Prerequisites](prerequisites.md) for the system, software, and audio requirements.
 
 ## Choose by Goal
 
-Match your goal to its starting page, then follow the related guide for the next part of the workflow.
+Match your goal to its starting page, then follow the related guide for the next part of the workflow:
 
-| Goal | Start here | Continue with |
+| Goal | Start Here | Continue With |
 | --- | --- | --- |
 | Talk to the default agent | [Prerequisites](prerequisites.md) | [Installation](installation.md), then [Quickstart](quickstart.md) |
 | Understand the pipeline first | [Overview](../about/overview.md) | [Architecture](../about/architecture.md) |
@@ -34,7 +34,7 @@ Match your goal to its starting page, then follow the related guide for the next
 | Add pipeline code | [Extend](../build-voice-agents/extend/index.md) | [Pipelines](../build-voice-agents/extend/pipelines/index.md) or [Protocols](../build-voice-agents/extend/protocols/index.md) |
 | Measure an agent | [Evaluation overview](../evaluate/index.md) | [Run evaluations](../evaluate/run-evaluations/index.md) |
 
-## First-run sequence
+## First-Run Sequence
 
 For the shortest path to a working browser session:
 

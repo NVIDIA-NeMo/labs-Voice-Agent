@@ -17,13 +17,14 @@ limitations under the License.
 
 # Runtime Reference
 
-Look up the configuration and control-plane interfaces used by the browser server and evaluation bots.
+Use this section to look up the configuration and control-plane interfaces for the browser server and
+evaluation bots.
 
 | Reference | Contents |
 | --- | --- |
-| [Server configuration schema](config-schema.md) | YAML blocks, keys, types, and defaults. |
-| [Environment variables](environment.md) | Variables read by the servers, model libraries, and runner. |
-| [RTVI messages](rtvi-messages.md) | Client requests, actions, arguments, and response shapes. |
+| [Server Config Schema](config-schema.md) | YAML blocks, keys, types, and defaults. |
+| [Environment Variables](environment.md) | Variables read by the servers, model libraries, and runner. |
+| [RTVI Messages](rtvi-messages.md) | Real-time voice interface (RTVI) client requests, actions, arguments, and response shapes. |
 
 For explanations and procedures, start with [Configure](../../build-voice-agents/configure/index.md) or
 [Protocols](../../build-voice-agents/extend/protocols/index.md).

@@ -17,30 +17,30 @@ limitations under the License.
 
 # Tool Calling
 
-Tool calling lets the LLM invoke Python functions mid-conversation — either to reach outside the
-process (look up the weather) or to reconfigure the agent itself (speak faster, switch accent). NeMo Labs
-Voice Agent ships both kinds as working demos, so you can try tool calling with the default config before
-writing any code.
+Tool calling lets the large language model (LLM) invoke Python functions during a conversation. A function
+can access an external service, such as weather data, or reconfigure the agent, such as changing its speaking
+rate or accent. NeMo Labs Voice Agent ships working demos of both kinds. You can try them with the default
+config before writing code.
 
-## Backend support
+## Backend Support
 
 Tool calls are produced by the LLM backend, so only backends that parse tool-call syntax can serve them.
 
-| `llm.type` | Tool calling | Notes |
+| `llm.type` | Tool Calling | Notes |
 | --- | --- | --- |
 | `vllm` | Yes | Requires `--enable-auto-tool-choice` plus a `--tool-call-parser` in `vllm_server_params`. |
-| `nvidia` | Yes | Hosted NIM endpoint; see [NVIDIA NIM Services](../model-serving/nvidia-nim.md). |
+| `nvidia` | Yes | Hosted NIM endpoint; refer to [NVIDIA NIM Services](../model-serving/nvidia-nim.md). |
 | `hf` | No | `HuggingFaceLLMService` streams text only — its `_process_context` never inspects `tool_calls`. |
 | `auto` | Depends | Resolves to `vllm` or `hf` at startup; only the `vllm` outcome supports tools. |
 
 `examples/generic_voice_agent/server/server.py` gates registration purely on `llm.enable_tool_calling` —
 there is **no backend check**. Setting the flag under `llm.type: hf` registers the tools and advertises them
 to the model, but nothing ever fires them. The shipped model sub-YAMLs handle this for you by forcing
-`type: vllm` alongside `enable_tool_calling: true` (see
-`server_configs/llm_configs/nemotron_nano_v3.yaml`). Remember that the model sub-YAML *overrides*
+`type: vllm` alongside `enable_tool_calling: true`, as configured in
+`server_configs/llm_configs/nemotron_nano_v3.yaml`. The model sub-YAML *overrides*
 `default.yaml`, so flipping `llm.type` in `default.yaml` has no effect.
 
-## Enabling it
+## Enabling It
 
 The default config (`llm_configs/nemotron_nano_v3.yaml` for
 `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4`) already has tool calling on. Because that file sets
@@ -68,9 +68,9 @@ Relevant config keys:
 
 Different models need different parsers. `nemotron_nano_v3.yaml` uses vLLM's built-in `qwen3_coder` parser;
 `nemotron_nano_v2.yaml` loads the repo's streaming parser plugin with `--tool-parser-plugin` and
-`--tool-call-parser nemotron_json` (see [vLLM plugins](../model-serving/vllm-plugins.md)).
+`--tool-call-parser nemotron_json` (refer to [vLLM Plugins](../model-serving/vllm-plugins.md)).
 
-## Shipped demo tools
+## Shipped Demo Tools
 
 Two registration mechanisms are demonstrated, both wired up in one call to `register_direct_tools_to_llm`
 in `examples/generic_voice_agent/server/server.py`.
@@ -89,14 +89,14 @@ tools from its `setup_tool_calling` method (`nemo_voice_agent/pipecat/services/n
 | `tool_tts_speak_slower` | Multiplies the current speaking rate by 0.85 per call. |
 | `tool_tts_set_speed` | Scales the current rate by a caller-supplied positive factor. |
 | `tool_tts_reset_speed` | Restores the rate configured in the TTS YAML. |
-| `tool_tts_set_voice` | Switches accent (American or British English) and/or gender; reloads the Kokoro pipeline. |
+| `tool_tts_set_voice` | Switches accent (American or British English), gender, or both; reloads the Kokoro pipeline. |
 | `tool_tts_reset_voice` | Restores the original accent and voice. |
 
 These voice tools exist only on the Kokoro service. `MagpieTTSService` and the FastPitch/HiFi-GAN service
 register no tools, and the hosted `tts.type: nvidia` service is not a `ToolCallingMixin` at all — it is
 skipped with a warning. Use `tts.model: kokoro` to try them.
 
-### Phrases to try
+### Phrases to Try
 
 With the default config, say:
 
@@ -104,46 +104,46 @@ With the default config, say:
 - "Can you speak faster?" / "Speak twice as fast." / "Reset to the original speaking speed."
 - "Speak in a British accent." / "Switch to a male voice." / "Reset to the original voice."
 
-## Tool-call timeouts
+## Tool-Call Timeouts
 
 `llm.function_call_timeout_secs` bounds how long the pipeline waits for a tool result. The service factory in
 `nemo_voice_agent/pipecat/services/nemo/llm.py` reads it once and passes it to whichever backend it builds,
 defaulting to `10.0` when the key is absent. Pipecat's own default is unbounded, which would let a hung tool
 stall a turn forever with no error — the explicit `10.0` restores a bounded wait. Raise it if you register a
-genuinely slow tool, or set it to `null` to opt back into pipecat's unbounded behavior.
+genuinely slow tool, or set it to `null` to opt back into Pipecat's unbounded behavior.
 
-## Unknown tools
+## Unknown Tools
 
 Models sometimes invent tool names that were never registered. Pipecat 1.6 answers any unmatched name with a
 terminal placeholder result ("the function is not currently available"), so the turn completes instead of
-wedging.
+stalling.
 
-`register_schema_tools_to_llm` in `nemo_voice_agent/utils/tool_calling/base.py` installs a richer catch-all
-on top of that: it returns a structured error carrying `error_type: unknown_tool` **plus the list of tool
-names the LLM can actually see**, so the model can self-correct on the next turn. It deliberately reads that
-list from the context's tool schema rather than the Python-side function registry, because per-scenario
-re-registration replaces the former without clearing the latter — reading the registry once made an agent
-announce stale bootstrap tools to the user. Pass `register_unknown_tool_handler=False` if you have already
-registered your own catch-all.
+`register_schema_tools_to_llm` in `nemo_voice_agent/utils/tool_calling/base.py` installs a structured catch-all
+on top of that behavior. It returns an error carrying `error_type: unknown_tool` **and the list of tool names
+available to the LLM**, so the model can self-correct on the next turn. The handler reads that list from the
+context's tool schema instead of the Python-side function registry. Per-scenario registration replaces the
+schema without clearing the registry. Previously, reading the registry at registration time caused an agent
+to announce stale bootstrap tools. Pass `register_unknown_tool_handler=False` if you have already registered
+your own catch-all.
 
-This richer handler ships with the schema-tool path used by the evaluation bots. The example server uses
-`register_direct_tools_to_llm`, which does not install it, so unknown calls there fall through to pipecat's
+This structured handler ships with the schema-tool path used by the evaluation bots. The example server uses
+`register_direct_tools_to_llm`, which does not install it, so unknown calls there fall through to Pipecat's
 generic placeholder.
 
-## Prompting notes
+## Prompting Notes
 
-Tool availability changes how the model behaves on *non*-tool questions. Two failure modes show up in
+Tool availability changes how the model behaves on *non*-tool questions. Two failure modes occur in
 practice:
 
-- The model announces it is using a tool without actually calling it.
+- The model announces that it is using a tool without emitting a call.
 - After one tool-related answer it refuses unrelated questions ("commitment bias"), or the reverse.
 
-The shipped `system_prompt_suffix` in the Nemotron sub-YAMLs counteracts both by explicitly instructing the
-model to check whether a tool fits, to skip tools for casual conversation, and to keep answering questions
-outside the tool surface. Tune that string first when adapting a new model — see
+The `system_prompt_suffix` in the Nemotron sub-YAMLs addresses both failure modes. It instructs the model to
+check whether a tool fits and skip tools for casual conversation. It also instructs the model to answer
+questions outside the tool surface. Tune that string first when adapting a new model. Refer to
 [Prompts](../configure/prompts.md).
 
-## Next steps
+## Next Steps
 
 Continue with the implementation or reference guide for the tool surface you need:
 

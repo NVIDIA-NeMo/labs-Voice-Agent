@@ -17,11 +17,12 @@ limitations under the License.
 
 # tau2_airline
 
-Fifty airline customer-support scenarios — cancel, rebook, upgrade, add baggage, compensate — ported from
-[tau2-bench](https://github.com/sierra-research/tau2-bench) and run as full voice conversations. The agent
-receives tau2's `policy.md` unchanged; scoring is a path-independent hash of the end-state database.
+`tau2_airline` provides 50 airline customer-support scenarios ported from
+[tau2-bench](https://github.com/sierra-research/tau2-bench) as full voice conversations. Tasks include
+cancellations, rebooking, upgrades, baggage changes, and compensation. The agent receives tau2's
+`policy.md` unchanged, and scoring uses a path-independent hash of the end-state database.
 
-## At a glance
+## At a Glance
 
 The following table summarizes the domain's registry, fixtures, tool surface, and state model.
 
@@ -37,9 +38,9 @@ The following table summarizes the domain's registry, fixtures, tool surface, an
 | Sides | Single-side — `has_user_state = False`, no user-side tools, no cross-side sync |
 | Scored signals | `DB_STATE_MATCH`, `CLEAN_EXIT` |
 | `max_duration` | 900 s, inherited from `Tau2BaseScenario` |
-| Upstream | tag `voice-user-sim-v1.0` (commit `17e07b1`), MIT — see [Data provenance](data-provenance.md) |
+| Upstream | Tag `voice-user-sim-v1.0` (commit `17e07b1`), MIT. Refer to [Data Provenance](data-provenance.md). |
 
-## Run it
+## Run It
 
 Start the two bots and the bridge as described in the [evaluation quickstart](../run-evaluations/quickstart.md), then:
 
@@ -56,12 +57,12 @@ python run_evaluation.py --scenarios tau2_airline__11 tau2_airline__17
 ```
 
 Two flags matter for a 50-scenario job. `--duration` is unset by default, so each scenario gets its own
-900-second ceiling; pass an integer to cap it globally. `--min-agent-turns` defaults to `3` — scenarios that
-end with fewer completed agent turns (a stalled vLLM server, a bot that never spoke) are counted as failures
-in the composite rate and skipped in the per-signal rates rather than dropped. Full flag list:
-[Evaluation CLI](../../reference/evaluation/eval-cli.md).
+900-second ceiling; pass an integer to cap it globally. `--min-agent-turns` defaults to `3`. Scenarios with
+fewer completed agent turns count as failures in the composite rate. The per-signal rates skip them instead
+of dropping them. Refer to the
+[Evaluation Command-Line Interface (CLI)](../../reference/evaluation/eval-cli.md) for all flags.
 
-## One attribute per scenario
+## One Attribute Per Scenario
 
 Every concrete class sets `name` and `tau2_id` and nothing else:
 
@@ -76,19 +77,18 @@ class Tau2Airline11(Tau2AirlineBaseScenario):
 
 | Property | Source |
 | --- | --- |
-| `tau2_task` | `tasks.json` entry, joined with the voice-eligible id list in `tasks_voice.json` and intersected with `split_tasks.json["base"]` |
+| `tau2_task` | `tasks.json` entry, joined with the voice-eligible ID list in `tasks_voice.json` and intersected with `split_tasks.json["base"]` |
 | `persona_name` | `tasks_voice.json` control preset — a metric-slicing label only; it never enters a prompt |
-| `policy` | `policy.md`, read once per process |
+| `policy` | `policy.md`, read one time per process |
 | `db` | `db/` fixture, loaded by `load_db_artifact` |
-| `expected_scenario_db` | Post-replay agent DB (see below) |
+| `expected_scenario_db` | Post-replay agent database (DB), described in the gold replay section |
 | `reference_answer` | Recorded actions from the same replay |
 | `user_persona` / `user_task` / `user_resources` | `tasks.json` field `user_scenario.instructions` |
 
-There is no `current_date` attribute and no `tool_map` attribute here; the tool map is built on demand by
-`_build_tool_map(state)`, which instantiates every entry of `TAU2_AIRLINE_TOOL_NAME_TO_CLASS` bound to the
-given state dict.
+There is no `current_date` or `tool_map` attribute. `_build_tool_map(state)` builds the tool map on demand by
+instantiating each `TAU2_AIRLINE_TOOL_NAME_TO_CLASS` entry with the given state dictionary.
 
-## The agent prompt
+## The Agent Prompt
 
 `get_agent_prompt()` returns `policy.md` **verbatim**, then appends one `## Additional Notes to Follow`
 section containing four constants, in this order:
@@ -103,10 +103,10 @@ section containing four constants, in this order:
 Sierra's published voice numbers assume the policy reaches the agent unchanged, so nothing is spliced into
 the policy body. The `agent_persona` / `agent_task` / `agent_actions` stubs on the base class exist purely so
 that code iterating `Scenario` subclasses does not hit `NotImplementedError` — they do **not** participate in
-prompt assembly. `agent_resources` is the one agent-side property the base overrides for real, because the
+prompt assembly. `agent_resources` is the one agent-side property the base uses at runtime because the
 bot server reads it to register tools.
 
-## The simulated user
+## The Simulated User
 
 The user side is assembled from the structured `user_scenario` block through the inherited
 `get_user_prompt()`:
@@ -114,7 +114,7 @@ The user side is assembled from the structured `user_scenario` block through the
 - `task_instructions` becomes the persona's `personality`; `reason_for_call` becomes the task goal.
 - `known_info` and `unknown_info` render as `Things you know` / `Things you don't know` info sections. Naming
   what the caller does *not* know is what stops the simulator from inventing plausible reservation IDs.
-- `user_persona.name` is deliberately `None`. Identity comes from `known_info` (for example, a user id like
+- `user_persona.name` is deliberately `None`. Identity comes from `known_info` (for example, a user ID like
   `daiki_muller_1116`); injecting the tau2 `persona_name` would contradict it.
 - The only user-side guideline is `VOICE_ALPHANUMERIC_RULE`. The user simulator gets no tools in this domain.
 
@@ -124,7 +124,7 @@ Fourteen tools are ported from tau2's `AirlineTools`, registered under the `tau2
 scenario also requests `EndConversationTool`, which resolves through the registry's `default` namespace, for
 15 registered tools in total. Only write tools call `_record_action`.
 
-| Tool class | Action name | Records |
+| Tool Class | Action Name | Records |
 | --- | --- | --- |
 | `GetUserDetailsTool` | `get_user_details` | no |
 | `GetReservationDetailsTool` | `get_reservation_details` | no |
@@ -148,10 +148,10 @@ session down cleanly.
 
 Every tool subclasses `_Tau2ReadTool` or `_Tau2WriteTool`, both of which mix in `_Tau2InvokeMixin`. That
 mixin gives each tool a sync `invoke(**kwargs)` for gold replay and an async `_execute(**kwargs)` for live
-pipecat calls, both routing into a single `_do_work(p)`. New tools implement only `_do_work`, `properties`,
-`required_properties`, and `DESCRIPTION` — see [Authoring tools](../create-evaluations/authoring-tools.md).
+Pipecat calls, both routing into a single `_do_work(p)`. New tools implement only `_do_work`, `properties`,
+`required_properties`, and `DESCRIPTION`. Refer to [Authoring Tools](../create-evaluations/authoring-tools.md).
 
-## Gold replay, expected DB, and reference_answer
+## Gold Replay, Expected DB, and reference_answer
 
 `Tau2BaseScenario._gold_replay` deep-copies the seeded DB, instantiates the full tool map against it, and
 dispatches each entry of `evaluation_criteria.actions` through `invoke()`. One pass yields two ground truths:
@@ -192,33 +192,34 @@ end state passes.
 
 `ACTION_MATCH` is still computed, because the scenario has a `reference_answer` — but it is not whitelisted,
 so it lands in `success_breakdown.excluded` as a diagnostic rather than gating the verdict. This domain sets
-no `nl_assertions`, no `db_state_assertions`, and no `initialization_actions`. See the
-[scoring model](../understand-scoring/scoring.md) for how the composite is built and [Reading results](../run-evaluations/results.md) for where
+no `nl_assertions`, no `db_state_assertions`, and no `initialization_actions`. Refer to the
+[Scoring Model](../understand-scoring/scoring.md) for how the composite is built and
+[Reading Results](../run-evaluations/results.md) for where
 each field is written.
 
-## Database seeding and key casing
+## Database Seeding and Key Casing
 
 `setup_shared_state` writes `state["db_path"] = "tau2_airline/db.json"` for the agent side only; the bot
 resolves it against `EVAL_DATA_ROOT` in its `apply_initialization` handler. The path is sent instead of the
-DB itself because the airline database exceeds pipecat's WebSocket frame limit. On disk it is sharded as
-`db/flights.json`, `db/users.json`, and `db/reservations.json` — `load_db_artifact` probes `<name>.json`
-first, then the `<name>/` directory, and reassembles an identical in-memory dict either way, so hashes are
-unaffected by the layout.
+DB itself because the airline database exceeds Pipecat's WebSocket frame limit. On disk, it is sharded as
+`db/flights.json`, `db/users.json`, and `db/reservations.json`. `load_db_artifact` probes `<name>.json` and
+then the `<name>/` directory. Both layouts produce an identical in-memory dictionary, so hashes are unchanged.
 
-ASR after letter-by-letter spelling returns inconsistent case, so the lookup helpers normalize:
+Automatic speech recognition (ASR) after letter-by-letter spelling returns inconsistent case, so the
+lookup helpers normalize:
 
-| Key | Casing in the fixture | Helper |
+| Key | Casing in the Fixture | Helper |
 | --- | --- | --- |
 | `reservation_id` | Uppercase (`XEHM4B`) | `_get_reservation_dict` uppercases |
 | `flight_number` | Uppercase (`HAT001`) | `_get_flight_dict` uppercases |
 | `user_id` | Lowercase (`daiki_muller_1116`) | `_get_user_dict` lowercases |
 
-Replay determinism relies on three more upstream behaviors reproduced verbatim: a frozen clock of
-`2024-05-15T15:00:00` for `created_at`, new reservation ids allocated from `HATHAT` / `HATHAU` / `HATHAV` in
-order, and certificate payment ids from a fixed triple.
+Replay determinism also relies on three upstream behaviors reproduced verbatim. The `created_at` clock is
+frozen at `2024-05-15T15:00:00`. New reservation IDs are allocated from `HATHAT`, `HATHAU`, and `HATHAV` in
+order, and certificate payment IDs come from a fixed triple.
 
 ## Related
 
 [tau2_retail](tau2-retail.md) adds NL assertions on the same machinery, [tau2_telecom](tau2-telecom.md) is
 the dual-side variant with cross-side state sync, and [eva_airline](eva-airline.md) is the other airline
-domain. To add scenarios of your own, see [Authoring scenarios](../create-evaluations/authoring-scenarios.md).
+domain. To add scenarios, refer to [Authoring Scenarios](../create-evaluations/authoring-scenarios.md).
