@@ -19,8 +19,10 @@ limitations under the License.
 
 Look up runner options and the fields written by an evaluation run.
 
-- [Evaluation CLI](eval-cli.md) documents `run_evaluation.py` and `check_resume.py` options and defaults.
-- [Metrics](metrics.md) documents scenario-level fields, aggregate rates, and output locations.
+| Reference | Contents |
+| --- | --- |
+| [Evaluation CLI](eval-cli.md) | `run_evaluation.py` and `check_resume.py` options and defaults. |
+| [Metrics](metrics.md) | Scenario-level fields, aggregate rates, and output locations. |
 
 For a task-oriented first run, use the [evaluation quickstart](../../evaluate/run-evaluations/quickstart.md).
 For interpretation guidance, see [Understand scoring](../../evaluate/understand-scoring/index.md).

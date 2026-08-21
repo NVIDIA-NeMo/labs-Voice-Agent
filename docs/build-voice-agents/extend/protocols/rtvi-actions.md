@@ -33,6 +33,9 @@ call to `register_client_message_handlers`. For the on-the-wire envelope (`clien
 
 ## The six handlers
 
+The shipped handlers cover runtime reset, prompt updates, state initialization and synchronization, and
+result retrieval.
+
 | Wire name | Factory | Returns | Registered by |
 | --- | --- | --- | --- |
 | `reset` | `create_reset_context_action` | `bool` | example server + eval bot |
@@ -122,6 +125,8 @@ telecom) trigger it, but the handler is registered domain-agnostically.
 
 ## `register_client_message_handlers`
 
+Register message types with the `RTVIProcessor` before the pipeline starts processing client messages.
+
 ```python
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     TaskRef,
@@ -201,6 +206,8 @@ If you need bot-to-client notifications instead of request/response, push an `RT
 `rtvi.push_transport_message(...)` — that is how write tools emit `action-applied`.
 
 ## Related pages
+
+Use these pages for wire-level message fields and end-to-end client connection behavior:
 
 - [RTVI Message Reference](../../../reference/runtime/rtvi-messages.md) — wire format and per-message payloads
 - [Client Protocol](client-protocol.md) — connecting a client to the bot

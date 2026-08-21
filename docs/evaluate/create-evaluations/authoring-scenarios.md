@@ -28,6 +28,8 @@ everything derives from a single `tau2_id` / `eva_id` class attribute.
 
 ## Where scenarios live
 
+The following table shows the package shape used by each benchmark-derived domain.
+
 | Domain | Location | Shape |
 |---|---|---|
 | `eva_airline` | `scenarios/data/eva_airline/` | package: `base.py` + `group_Nx.py` shards |
@@ -56,6 +58,8 @@ system prompt by `get_user_prompt()` / `get_agent_prompt()`.
 prompt rendering or wired into the pipeline; treat them as metric-slicing labels only.
 
 ## Scenario-level fields
+
+Use these fields to define the scenario identity, runtime limits, scoring contract, and fixture state.
 
 | Field | Purpose |
 |---|---|

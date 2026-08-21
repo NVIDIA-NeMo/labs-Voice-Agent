@@ -24,6 +24,8 @@ constructs before it builds any pipeline stage.
 
 ## Where the files live
 
+The demo server and evaluation harness keep their top-level configuration in separate directories.
+
 ```
 examples/generic_voice_agent/server/
 ├── model_registry.yaml          # model id -> sub-config filename
@@ -47,6 +49,8 @@ SERVER_CONFIG_PATH=server_configs/default_nvidia.yaml python server.py
 ```
 
 ## The three layers
+
+`ConfigManager` combines three configuration layers before a builder reads its component block.
 
 | Layer | What it sets | How it is selected |
 | --- | --- | --- |
@@ -166,6 +170,8 @@ setting appears to be ignored — the override log names the file that won.
 
 ## Gotchas
 
+Keep these merge and path behaviors in mind when a configuration edit does not take effect:
+
 - The shipped `llm_configs/nemotron_nano_v3.yaml` sets `start_vllm_on_init: false`, so `python server.py` alone
   will not work: start vLLM yourself first, or flip that key. See [vLLM Backend](../model-serving/vllm.md).
 - `turn_taking.backchannel_phrases_path` is tried against the working directory first, then against the server
@@ -175,6 +181,8 @@ setting appears to be ignored — the override log names the file that won.
   the incumbent is kept. No config key changes this.
 
 ## Next
+
+Continue with the configuration guide that matches the setting you need to change:
 
 - [Server Config Reference](server-config.md) — block-by-block walkthrough of the top-level file.
 - [Model Registry](model-registry.md) — adding a model so it auto-resolves.

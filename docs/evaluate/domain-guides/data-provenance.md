@@ -110,6 +110,9 @@ The source file is deleted after sharding unless you pass `--keep-source`.
 
 ## Upstream sources
 
+The following table records the authoritative upstream project, pinned version, and licence for each
+benchmark-derived fixture set.
+
 | Domain | Upstream project | Pinned version | Licence |
 |---|---|---|---|
 | `eva_airline` | [ServiceNow/eva](https://github.com/ServiceNow/eva) | `0.1.3` | MIT (Copyright (c) 2026 ServiceNow) |
@@ -125,7 +128,11 @@ attribution at the top of the file. Data fixtures are verbatim copies except whe
 
 ## Per-domain file inventory
 
+Each domain packages the files required to seed its scenarios and reproduce its scoring inputs.
+
 ### `eva_airline` — 50 scenarios
+
+The EVA airline fixture directory contains the source dataset and its generated scenario index.
 
 | File | Contents |
 |---|---|
@@ -136,6 +143,8 @@ attribution at the top of the file. Data fixtures are verbatim copies except whe
 Read once per process and indexed by scenario id. See [eva_airline](eva-airline.md).
 
 ### `tau2_airline` — 50 tasks
+
+The tau2 airline fixtures separate the policy, task split, and sharded database artifacts.
 
 | File | Contents |
 |---|---|
@@ -186,6 +195,8 @@ renders. See [tau2_telecom](tau2-telecom.md).
 Import scripts and scaffold generators live under `scripts/`; the workflow is documented in
 [Importing benchmark data](../../resources/contribute/data-import.md), and the scenario-class side in
 [Authoring domains](../create-evaluations/authoring-domains.md). When you add a source, also:
+
+Complete the following provenance steps before committing generated fixtures.
 
 1. Namespace its files under a new `nemo_voice_agent/evaluation/data/<domain>/` subdirectory so fixtures
    from different upstream libraries cannot collide.

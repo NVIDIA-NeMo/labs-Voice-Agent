@@ -31,6 +31,8 @@ For where the resulting files live on disk and under which licence, see
 
 ## Script inventory
 
+Use this inventory to identify the script that owns each generated artifact:
+
 | Script | Reads | Writes |
 | --- | --- | --- |
 | `prepare_tau2_data/prepare_telecom.py` | A local `tau2-bench` checkout | `nemo_voice_agent/evaluation/data/tau2_telecom/` |
@@ -144,6 +146,8 @@ Treat the output as a starting point: review the prose and prune bullets before 
 
 ## Bumping the upstream pin
 
+To update the tau2-bench source revision and regenerate affected artifacts, complete the following steps:
+
 1. Check out `sierra-research/tau2-bench` at the new tag or commit.
 2. Update `PINNED_COMMIT` in `scripts/prepare_tau2_data/prepare_telecom.py`. The check is intentionally
    soft — a mismatch warns and continues, so you can test against an unpinned checkout first.
@@ -164,6 +168,8 @@ airline tools and scenario metadata — a scaffolding regression shows up there 
 the SPDX header their templates emit, which is what keeps the `copyright-check.yml` gate green.
 
 ## Related pages
+
+Use these pages for provenance requirements, authoring guidance, and validation details:
 
 - [Fixture Data & Provenance](../../evaluate/domain-guides/data-provenance.md) — on-disk layout, licences, `EVAL_DATA_ROOT`
 - [Authoring Scenarios](../../evaluate/create-evaluations/authoring-scenarios.md) — writing a scenario class by hand

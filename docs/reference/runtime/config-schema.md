@@ -31,6 +31,8 @@ an issue if you spot drift.
 
 ## How a config resolves
 
+The server resolves a configuration in the following order before any service builders consume it.
+
 1. `ConfigManager` loads the top-level YAML (`SERVER_CONFIG_PATH`, else `server_configs/default.yaml`) and
    resolves all OmegaConf interpolation such as `${llm.temperature}`.
 2. For each of `stt`, `llm`, `tts` it picks a sub-config: the **basename** of that block's `model_config`
@@ -46,6 +48,8 @@ an issue if you spot drift.
 
 ## `server`
 
+The `server` block controls model-registry lookup and evaluation-server logging and startup behavior.
+
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
 | `use_model_registry` | bool | `true` | `ConfigManager` — gates loading `model_registry.yaml` |
@@ -60,6 +64,8 @@ and passes `talk_first=True` literally, so the five logging/`talk_first` keys ab
 `evaluation/bot_server.py` or in your own bot script that wires them through the builders.
 
 ## `transport`
+
+The `transport` block controls WebSocket audio framing, sample rates, and optional audio recording.
 
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
@@ -88,6 +94,8 @@ All four are read without a fallback and passed to pipecat's `VADParams`. VAD is
 
 ## `stt`
 
+The `stt` block selects and configures the local or hosted speech-recognition backend.
+
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
 | `type` | `nemo` \| `nvidia` | required | `get_stt_service_from_config` (asserted) |
@@ -110,6 +118,8 @@ More detail in [ASR](../../about/core-concepts/speech-pipeline/asr.md).
 
 ## `diar`
 
+The `diar` block enables speaker diarization and sets its model and detection parameters.
+
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
 | `enabled` | bool | required | `ConfigManager`, `build_diar` — returns `None` when false |
@@ -121,6 +131,8 @@ More detail in [ASR](../../about/core-concepts/speech-pipeline/asr.md).
 `stt.device` for the diarizer. See [Diarization](../../about/core-concepts/speech-pipeline/diarization.md).
 
 ## `turn_taking`
+
+The `turn_taking` block controls backchannel handling and interruption timing.
 
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
@@ -195,6 +207,8 @@ Omni / multimodal keys, read by `server.py` to insert a `UserAudioBuffer` (see [
 
 ## `tts`
 
+The `tts` block selects the speech-synthesis backend and configures its model, voice, and retry behavior.
+
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
 | `type` | `nemo` \| `nvidia` \| `nemotron` | required | `get_tts_service_from_config` (asserted); only `nvidia` selects the hosted service, the others dispatch on `model` |
@@ -229,6 +243,8 @@ three are absent, so their defaults apply unless you add them:
 | `use_legacy_eos_detection` | bool | `false` |
 
 ## Related
+
+Use these pages for task-oriented configuration guidance and related runtime references.
 
 - [Server Configuration](../../build-voice-agents/configure/server-config.md) — editing workflow and precedence rules
 - [Model Registry](../../build-voice-agents/configure/model-registry.md) — how `yaml_id` and `reasoning_supported` resolve

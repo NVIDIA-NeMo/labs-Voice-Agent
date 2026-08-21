@@ -142,6 +142,8 @@ in the model registry are expected there. See [NVIDIA NIM](../model-serving/nvid
 
 ## Adding an entry
 
+Add a registry-backed model by updating both the relevant sub-config and `model_registry.yaml`.
+
 1. Put the sub-config in the right directory, e.g. `server_configs/llm_configs/my-model.yaml`.
 2. If you want a tested thinking variant, add `server_configs/llm_configs/my-model_think.yaml`.
 3. Register it:
@@ -173,6 +175,8 @@ explicit `model_config` sails past the lookup, so the failure can look arbitrary
 directory has no registry file, which is why those configs disable it.
 
 ## Related pages
+
+Use these pages to configure the files and runtime behavior that surround registry resolution:
 
 - [Server Config](server-config.md) — the full merge order and precedence rules.
 - [Configuration Model](index.md) — how the config files fit together.

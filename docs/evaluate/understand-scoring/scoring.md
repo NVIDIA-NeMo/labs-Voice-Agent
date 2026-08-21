@@ -27,6 +27,8 @@ whitelisted are still saved — they land in `success_breakdown.excluded` as dia
 
 ## Signal matrix
 
+The following matrix maps each supported signal to its persisted field, value type, and current domain use.
+
 | Enum member | Value in `success_breakdown` | `metrics.json` field read | Type | Path-dependent | Opted in by |
 |---|---|---|---|---|---|
 | `ACTION_MATCH` | `is_action_match` | `is_action_match` | `bool` or `"N/A"` | Yes — compares the action list | `restaurant`, `customer_service`, `fastbite` (computed for any scenario with a `reference_answer`) |
@@ -151,6 +153,8 @@ The `excluded` bucket is how you spot "all gating signals passed, but the agent 
 telecom, `db_state_match` and `is_action_match` land there on every scenario.
 
 ## Where the numbers land
+
+Use the session and scenario artifacts according to the level of detail you need.
 
 | Artifact | Contents |
 |---|---|

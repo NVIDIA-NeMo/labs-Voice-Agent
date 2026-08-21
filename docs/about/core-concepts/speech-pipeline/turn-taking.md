@@ -15,14 +15,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}
 
-# Turn Taking & Backchannels
+# Turn Taking and Backchannels
 
 Turn taking decides when the user's turn ends, when the bot may speak, and which user utterances are
 allowed to interrupt the bot. NeMo Labs Voice Agent combines two signals: Silero VAD (energy/speech
 activity) and the ASR model's end-of-utterance tokens. Backchannel suppression sits on top so short
 acknowledgements like "uh-huh" do not cut the bot off mid-sentence.
 
-## How a turn is detected
+## How Turn Detection Works
 
 Three pipeline stages cooperate:
 
@@ -42,7 +42,7 @@ itself flagged the segment as a backchannel. Only ASR models listed in `ASR_EOU_
 them — the shipped default `nvidia/parakeet_realtime_eou_120m-v1` does. Set `stt.ignore_eou_eob: true` to
 strip both tokens and fall back to VAD-only boundaries. See [ASR](asr.md).
 
-## VAD settings
+## VAD Settings
 
 Configured under the top-level `vad:` block; `ConfigManager.get_vad_params()` maps them onto pipecat's
 `VADParams`. Shipped values in `server_configs/default.yaml`:
@@ -64,7 +64,9 @@ arrives from `<EOU>` first, and VAD stop acts as the fallback — the log line
 The analyzer runs at `transport.audio_in_sample_rate` (falling back to the config-wide sample rate). VAD is
 not optional on the websocket path: `build_vad_analyzer` always returns an analyzer.
 
-## Turn-taking settings
+## Turn-Taking Settings
+
+The following settings control turn finalization, backchannel filtering, and response timing.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -76,7 +78,7 @@ not optional on the websocket path: `build_vad_analyzer` always returns an analy
 `bot_stop_delay` matters for backchannels: suppression only applies while the bot is considered to be
 speaking, so a value that is too small lets a trailing "okay" from the user start a new LLM turn.
 
-## Backchannel suppression
+## Backchannel Suppression
 
 The config key is **`turn_taking.backchannel_phrases_path`** (not `backchannel_phrases`). Despite the name
 it accepts three forms, resolved by `ConfigManager._resolve_backchannel_phrases` and validated in
@@ -128,7 +130,9 @@ grep -E "backchannel phrases|Backchannel detected" examples/generic_voice_agent/
 `Backchannel detected:` appears each time a phrase is suppressed. When the audio logger is enabled the
 suppressed segment is tagged `is_backchannel` — see [Audio logging](../../../build-voice-agents/configure/audio-logging.md).
 
-## Disabling turn taking
+## Disable Turn Taking
+
+To let VAD drive turn boundaries without the turn-taking service, update the configuration as follows.
 
 ```yaml
 turn_taking:
@@ -145,13 +149,15 @@ The two evaluation configs (`evaluation/server_configs/agent.yaml` and `user.yam
 turn taking stays enabled but `backchannel_phrases_path: null`, `max_buffer_size: 0`, and
 `bot_stop_delay: 0.0` — the bot-to-bot harness wants the fastest, most deterministic barge-in possible.
 
-## Diarization interaction
+## Diarization Interaction
 
 When `diar.enabled` is true, `NeMoTurnTakingService` receives `DiarResultFrame` and prefixes the buffered
 utterance with a `<speaker_N>` tag, which is stripped again before backchannel matching. A buffer that
 contains only a speaker tag is never pushed downstream. See [Diarization](diarization.md).
 
-## Related pages
+## Related Topics
+
+Use these pages to understand the recognition and diarization signals that influence turn boundaries.
 
 - [ASR](asr.md) — EOU/EOB-capable models and `stt.ignore_eou_eob`.
 - [Server configuration](../../../build-voice-agents/configure/server-config.md) — how `default.yaml` and model sub-YAMLs merge.

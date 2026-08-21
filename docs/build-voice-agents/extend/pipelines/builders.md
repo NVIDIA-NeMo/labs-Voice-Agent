@@ -27,6 +27,8 @@ Two bots in this repo use them: `examples/generic_voice_agent/server/server.py` 
 
 ## Every builder
 
+Each builder owns one runtime component and reads the corresponding configuration block.
+
 | Builder | Reads | Returns |
 | --- | --- | --- |
 | `build_audio_logger(config_manager)` | `transport.record_audio_data`, `transport.audio_log_dir` | `AudioLogger`, or `None` when recording is off. Session id is a timestamp. |
@@ -146,6 +148,8 @@ If your service needs config of its own, add a block to the YAML and read it fro
 [Server config](../../configure/server-config.md).
 
 ## Next steps
+
+Choose the next guide based on whether you need to replace an assembly or transform frames within it:
 
 - [Build a custom pipeline](custom-pipeline.md) — writing a bot script from scratch.
 - [Write a custom processor](custom-processor.md) — a new stage rather than a replacement one.

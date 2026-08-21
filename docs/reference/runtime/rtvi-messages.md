@@ -68,6 +68,8 @@ builds the envelope and resolves with the `d` payload. The evaluation bridge
 
 ## Message types
 
+The following table summarizes the custom request types registered by the example and evaluation servers.
+
 | `t` | Arguments | Response `d` | Registered by |
 | --- | --- | --- | --- |
 | `reset` | none | `true` / `false` | example server + eval bot |
@@ -86,6 +88,8 @@ all six. There is no schema or defaults layer on this path: every handler reads 
 Send `"d": {}`. Response `d` is a bare boolean — `true` on success, `false` if the aggregator reset raised.
 
 ### `update_system_prompt`
+
+Use the following arguments to replace the evaluation bot's system prompt and register scenario tools.
 
 | Argument | Type | Default | Notes |
 | --- | --- | --- | --- |
@@ -114,6 +118,8 @@ and file blobs with placeholder tags. On an internal error the handler returns `
 
 ### `get_scenario_summary`
 
+Use the following argument to control whether the response includes the bot's inline database.
+
 | Argument | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `include_db` | bool | `false` | Also inline this bot's `db` dict in the response. |
@@ -131,6 +137,8 @@ bot returns only its own DB — the agent-versus-user labeling is applied by the
 the response arrived on.
 
 ### `apply_initialization`
+
+Use the following arguments to seed shared state, load fixture data, and apply initialization actions.
 
 | Argument | Type | Default | Notes |
 | --- | --- | --- | --- |
@@ -152,6 +160,8 @@ data root (`nemo_voice_agent/evaluation/data/`, overridable with `EVAL_DATA_ROOT
 already present.
 
 ### `apply_sync_delta`
+
+Use the following arguments to apply a cross-side state update to the bot's database.
 
 | Argument | Type | Default | Notes |
 | --- | --- | --- | --- |

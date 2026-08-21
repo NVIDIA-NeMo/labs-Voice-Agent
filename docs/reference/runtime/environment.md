@@ -36,7 +36,11 @@ Both server entrypoints call `load_dotenv(override=True)` at import time, as doe
 placeholder keys (`OPENAI_API_KEY`, `ELEVENLABS_API_KEY`, `HUGGINGFACE_TOKEN`) that no shipped code path in this
 repository reads; only the variables tabulated below are consumed.
 
-## Server and transport
+## General Environment Variables
+
+The following groups cover the environment variables that the runtime and evaluation harness read directly.
+
+### Server and transport
 
 Read at module import in `examples/generic_voice_agent/server/server.py` and, for the evaluation harness, in
 `evaluation/bot_server.py`. The two files agree on every default except `SERVER_CONFIG_PATH`.
@@ -82,6 +86,8 @@ rather than a startup crash.
 
 ## Credentials
 
+The following variables provide credentials or configure model-library authentication and caches.
+
 | Variable | Read by | Default | Notes |
 | --- | --- | --- | --- |
 | `NVIDIA_API_KEY` | STT, TTS, and LLM builders in `nemo_voice_agent/pipecat/services/nemo/` | falls back to the `api_key` key in YAML, else the literal string `"None"` | Required by the hosted NVIDIA backends. The LLM builder raises `ValueError` at startup when `llm.base_url` is `https://integrate.api.nvidia.com/v1` and no key resolves. |
@@ -96,6 +102,8 @@ through the environment or `.env` either way. See [Evaluation CLI](../evaluation
 
 ## Evaluation data
 
+The following variable overrides where the evaluation harness resolves its packaged fixture data.
+
 | Variable | Read by | Default | Purpose |
 | --- | --- | --- | --- |
 | `EVAL_DATA_ROOT` | `get_eval_data_root()` in `nemo_voice_agent/evaluation/__init__.py` | the packaged `nemo_voice_agent/evaluation/data/` directory | Overrides the fixture root for scenario DBs, policies, and task indexes. |
@@ -107,6 +115,8 @@ scenario fails to seed its DB, the `apply_initialization` handler logs the resol
 See [Evaluation Overview](../../evaluate/index.md).
 
 ## Packaging
+
+The following variable controls whether the package version includes source-control metadata.
 
 | Variable | Read by | Default | Purpose |
 | --- | --- | --- | --- |
@@ -124,6 +134,8 @@ becomes the empty string. A plain `cuda` leaves the variable untouched, so whate
 by the vLLM process.
 
 ## Quick reference
+
+Use the following examples as a quick lookup for common local-development and evaluation environments.
 
 Local development against the default HuggingFace or vLLM backend:
 
@@ -160,6 +172,11 @@ the `7860` default makes the second process fail with `[Errno 98] Address alread
 launchers pair the ports the same way: `evaluation/run_agent.sh` uses `8765`/`7860` and
 `evaluation/run_user.sh` uses `8766`/`7861`.
 
-Related pages: [Installation](../../get-started/installation.md), [Quickstart](../../get-started/quickstart.md),
-[Evaluation Quickstart](../../evaluate/run-evaluations/quickstart.md), and
-[Troubleshooting](../../troubleshooting/index.md).
+## Related Topics
+
+Use these pages for the procedures and troubleshooting context associated with the variables in this reference:
+
+- [Installation](../../get-started/installation.md)
+- [Quickstart](../../get-started/quickstart.md)
+- [Evaluation Quickstart](../../evaluate/run-evaluations/quickstart.md)
+- [Troubleshooting](../../troubleshooting/index.md)

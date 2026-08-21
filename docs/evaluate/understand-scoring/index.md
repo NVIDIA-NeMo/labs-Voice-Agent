@@ -21,9 +21,16 @@ Evaluation results combine deterministic outcome checks, action records, an LLM 
 assertions, and clean conversation exit. Each domain chooses which supported signals gate its composite
 success verdict.
 
-- [Benchmarks and domains](benchmarks.md) explains the scenario collections and what each domain measures.
-- [Scoring model](scoring.md) defines the six signals, domain whitelists, and aggregation rules.
-- [Metrics reference](../../reference/evaluation/metrics.md) lists the exact fields written to result files.
+## Scoring Guides
+
+Use these pages to identify the available scenario collections, interpret their success signals, and look up
+the exact metrics fields written by the runner.
+
+| Guide | Scope |
+| --- | --- |
+| [Benchmarks & Domains](benchmarks.md) | Explore the scenario collections and what each domain measures. |
+| [Scoring Model](scoring.md) | Understand the six signals, domain whitelists, and aggregation rules. |
+| [Metrics Dictionary](../../reference/evaluation/metrics.md) | Look up the exact fields written to evaluation result files. |
 
 Read the scoring model before treating one percentage as a complete quality measure. A run can include useful
 per-signal evidence even when a short or incomplete conversation fails the composite result.

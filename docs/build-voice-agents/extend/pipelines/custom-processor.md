@@ -22,7 +22,17 @@ transforms or absorbs them, and forwards the rest. Writing one is the cheapest w
 behavior that NeMo Labs Voice Agent's builders do not already provide — an ASR post-corrector, a
 Markdown sanitizer before TTS, a redaction pass on transcripts.
 
+## Prerequisites
+
+Before you add a processor, complete the following preparation:
+
+1. Run the [Quickstart](../../../get-started/quickstart.md) with the shipped pipeline.
+2. Identify the frame type you need to transform and the pipeline stage that emits it.
+3. Choose the demo server or evaluation bot entrypoint where you will insert the processor.
+
 ## Processor or builder swap?
+
+Choose a processor for frame transformations and a builder change for service construction.
 
 | You want to | Do this |
 | --- | --- |
@@ -85,6 +95,8 @@ the default; when it is false, the TTS service does its own aggregation internal
 `LLMTextFrame` reaches that point.
 
 ## Rules
+
+Follow these rules so unrelated frames and pipeline direction continue to work as designed:
 
 - **Subclass `FrameProcessor`** and override `async def process_frame(self, frame, direction)`.
 - **Call `await super().process_frame(frame, direction)` first.** The base implementation handles
@@ -163,6 +175,8 @@ pipeline_list.extend([tts, ws_transport.output(), assistant_agg])
 
 ## Side effects to watch
 
+A processor can affect downstream context, timing, and logging even when it changes only one frame type:
+
 - **The assistant context sees your edits.** `assistant_agg` sits at the end of the pipeline and
   builds the assistant turn from text frames whose `append_to_context` is true — the same objects
   your processor already mutated. For Markdown stripping that is desirable; for a change you want
@@ -193,6 +207,8 @@ processor never fires, confirm it is actually in `pipeline_list` (the optional s
 appended conditionally) and that the frame class you match on really reaches that position.
 
 ## Next steps
+
+Continue with the guide for the extension boundary you need:
 
 - [The Builder API](builders.md) — swap how a stage is constructed instead of what flows between stages.
 - [Building Your Own Pipeline](custom-pipeline.md) — replace `run_bot_websocket()` entirely.

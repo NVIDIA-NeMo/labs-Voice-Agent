@@ -22,7 +22,7 @@ process. The service classes live in `nemo_voice_agent/pipecat/services/nemo/tts
 `get_tts_service_from_config` in that file dispatches on `tts.model` and is what
 `build_tts` (in `nemo_voice_agent/pipecat/services/nemo/builders.py`) calls.
 
-## Available models
+## Available Models
 
 Three local models ship with configs under
 `examples/generic_voice_agent/server/server_configs/tts_configs/`. The `tts.model` value is the
@@ -42,7 +42,7 @@ the Kokoro voice, the HiFi-GAN vocoder for FastPitch, and `null` for Magpie. Bot
 HuggingFace/NGC identifier or a local `.nemo` path (FastPitch, HiFi-GAN, and Magpie call
 `restore_from` when the string ends in `.nemo`).
 
-## Selecting a model
+## Select a Model
 
 `tts.model` and `tts.model_config` live in the top-level config
 (`examples/generic_voice_agent/server/server_configs/default.yaml`). The sub-YAML named by
@@ -72,7 +72,7 @@ python server.py
 `fastpitch-hifigan` and `hexgrad/Kokoro-82M`; setting `model_config` explicitly, as the shipped
 default does, is the reliable path. See [Model registry](../../../build-voice-agents/configure/model-registry.md).
 
-## Shared TTS keys
+## Shared TTS Keys
 
 These are read for every local model.
 
@@ -89,7 +89,7 @@ These are read for every local model.
 
 The last three have no entry in the shipped YAML files — add them under `tts:` if you need them.
 
-### Chunking and latency
+### Chunking and Latency
 
 Text aggregation is **not** part of the TTS service. Since pipecat 1.0 it belongs to an
 `LLMTextProcessor` that `build_llm_text_processor` inserts between the LLM and the TTS service, built
@@ -105,7 +105,7 @@ keep the processor upstream of TTS; see [Builders](../../../build-voice-agents/e
 If TTS playback stutters on the client, raise `transport.audio_out_10ms_chunks` in
 `default.yaml` (the shipped value is `8`; pipecat's WebSocket default is `4`).
 
-### Reasoning models
+### Reasoning Models
 
 `think_tokens` is what keeps a reasoning model's scratchpad out of the audio: `_handle_think_tokens`
 tracks the open/close markers across streamed chunks and returns only the text after the closing
@@ -113,7 +113,9 @@ token, so the user hears the answer and not the deliberation. Set it to `null` t
 When the LLM runs on vLLM with a reasoning parser, the reasoning is already stripped upstream — see
 [Reasoning mode](../language-models/reasoning.md).
 
-## Kokoro-specific keys
+## Kokoro-Specific Keys
+
+The following settings control Kokoro voice selection, speed, and text normalization behavior.
 
 | Key | Default | Effect |
 | --- | --- | --- |
@@ -134,7 +136,9 @@ functions the LLM can call mid-conversation — `tool_tts_speak_faster` and `too
 An RTVI context reset also resets the service: Kokoro's `reset()` restores the original speed, voice,
 accent, and pipeline, so a new session never inherits the previous caller's "speak faster".
 
-## Magpie-specific keys
+## Magpie-Specific Keys
+
+The following settings control Magpie language and text normalization behavior.
 
 | Key | Default | Effect |
 | --- | --- | --- |
@@ -145,7 +149,7 @@ accent, and pipeline, so a new session never inherits the previous caller's "spe
 Magpie warms up at load time by synthesizing a fixed sentence, so the first real turn is not slowed by
 lazy CUDA initialization.
 
-## Licensing note for Kokoro
+## Licensing Note for Kokoro
 
 Kokoro's upstream grapheme-to-phoneme stack falls back to espeak-ng via `phonemizer`, both GPL-3.0,
 which this repo excludes. `_espeak_gpl_shim.py` installs no-op stand-ins so `kokoro`/`misaki` import
@@ -153,7 +157,18 @@ cleanly, and `_g2p_fallback.py` supplies an Apache-2.0 replacement built on `g2p
 to misaki's phoneme inventory. Without that fallback, out-of-vocabulary words would be silently
 dropped from the audio. Both modules are in `nemo_voice_agent/pipecat/services/nemo/`.
 
-## Recording synthesized audio
+## Record Synthesized Audio
+
+Audio logging captures synthesized output alongside the other session audio when recording is enabled.
 
 `build_tts` accepts the audio logger built by `build_audio_logger`, so bot audio is captured when
 recording is enabled. See [Audio logging](../../../build-voice-agents/configure/audio-logging.md).
+
+## Related Topics
+
+Use these pages to understand the upstream language-model stream and configure speech output behavior.
+
+- [LLM Backends](../language-models/llm.md)
+- [Reasoning Mode](../language-models/reasoning.md)
+- [Server Configuration](../../../build-voice-agents/configure/server-config.md)
+- [Audio Logging](../../../build-voice-agents/configure/audio-logging.md)

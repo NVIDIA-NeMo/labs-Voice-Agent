@@ -22,6 +22,14 @@ GPU models. This is a pure configuration change — `stt.type`, `llm.type`, and 
 `nvidia`, and the builders in `nemo_voice_agent/pipecat/services/nemo/` construct pipecat's NVIDIA
 services from the same YAML blocks. No code edit is required.
 
+## Prerequisites
+
+Before you connect the agent to hosted NVIDIA endpoints, complete the following preparation:
+
+1. Install NeMo Labs Voice Agent by following the [Installation](../../get-started/installation.md) guide.
+2. Obtain the NVIDIA API key required by the endpoint you plan to use.
+3. Choose the demo-server or evaluation configuration for your run.
+
 ## Run it
 
 `server_configs/default_nvidia.yaml` is the ready-made top-level config: all three component types are
@@ -42,6 +50,8 @@ The two-bot eval harness has matching configs (`evaluation/server_configs/agent_
 `user_nvidia.yaml`, `agent_nvidia_omni.yaml`); see [Evaluation quickstart](../../evaluate/run-evaluations/quickstart.md).
 
 ## Credentials
+
+Hosted NVIDIA services read credentials from environment variables rather than the server YAML.
 
 | Variable | When it is used | Behaviour if missing |
 | --- | --- | --- |
@@ -157,6 +167,8 @@ plaintext local deployment:
 
 ## Gotchas
 
+Use these symptoms to distinguish credential, endpoint, and tool-calling configuration problems.
+
 | Symptom | Cause |
 | --- | --- |
 | Startup logs a not-in-registry warning for the STT, LLM, and TTS model | None of the hosted model ids appear in `model_registry.yaml` and no block sets `model_config`, so no sub-config is merged and every key comes from `default_nvidia.yaml` alone. Expected — see [Model Registry](../configure/model-registry.md). |
@@ -165,6 +177,8 @@ plaintext local deployment:
 | A changed `model` returns errors for an unrelated model | `function_id` still points at the old deployment. |
 
 ## Related
+
+Continue with the concept or configuration reference that matches the backend you are using:
 
 - [LLM Backends](../../about/core-concepts/language-models/llm.md) — the `auto`, `hf`, `vllm`, `nvidia` selection.
 - [ASR](../../about/core-concepts/speech-pipeline/asr.md) and [TTS](../../about/core-concepts/speech-pipeline/tts.md) — the local counterparts of these blocks.

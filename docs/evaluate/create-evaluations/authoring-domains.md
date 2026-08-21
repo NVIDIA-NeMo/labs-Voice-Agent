@@ -24,6 +24,8 @@ registry bucket, a base scenario class, and a scoring configuration. See
 
 ## Pieces of a domain
 
+A complete domain can include the following fixture, runtime, and scoring components.
+
 | Piece | Location | Required |
 | --- | --- | --- |
 | Fixtures (DB, policy, task index) | `nemo_voice_agent/evaluation/data/<domain>/` | Only if the domain has state |
@@ -89,6 +91,8 @@ list them under their registered PascalCase key.
 
 ## 3. Write the base scenario
 
+Define a base scenario that binds the registry namespace and derives shared behavior for the domain.
+
 ```python
 from functools import cached_property
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario, SuccessSignal
@@ -131,6 +135,8 @@ of `nemo_voice_agent/evaluation/tools/__init__.py`, and your scenario package to
 side-import each `group_Nx.py` shard so every scaffolded scenario registers.
 
 ## 5. Understand the runtime state flow
+
+The runtime initializes domain state and tools in the following order.
 
 | Step | RTVI client message | Carries |
 | --- | --- | --- |
@@ -224,6 +230,8 @@ cross-side state), and again after every `action-applied` event from either bot.
 `llm.enable_tool_calling: true` in their server config for a dual-side domain.
 
 ## 9. Verify
+
+Run the focused registry, scoring, and documentation checks after wiring the new domain.
 
 ```bash
 cd /path/to/Voice-Agent/evaluation

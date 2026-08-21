@@ -41,6 +41,8 @@ Use one of these contact points instead:
 
 ### What to include in a report
 
+Include enough detail for NVIDIA PSIRT to reproduce and assess the issue:
+
 - Product name and the version, branch, or commit that contains the vulnerability.
 - Type of vulnerability (code execution, denial of service, buffer overflow, and so on).
 - Step-by-step instructions to reproduce it.
@@ -112,6 +114,8 @@ if this repository's use of the dependency is what makes the issue exploitable. 
 [Third-party notices](../third-party-notices.md) for the dependency inventory.
 
 ## Related pages
+
+Use these pages for the broader contribution and installation requirements:
 
 - [Contributing](index.md) — development workflow, linting, and pre-commit setup.
 - [Installation](../../get-started/installation.md) — supported Python versions and install procedure.

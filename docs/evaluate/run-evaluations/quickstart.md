@@ -21,7 +21,9 @@ Run your first NeMo Labs Voice Agent evaluation. The harness needs **three proce
 bot, the agent under test, and the bridge that connects them over audio and scores the result. See
 [Evaluation overview](../index.md) for how the pieces fit together.
 
-## Before you start
+## Prerequisites
+
+Before you start, complete these setup requirements.
 
 1. Install the package and activate the venv — see [Installation](../../get-started/installation.md).
 2. Start a vLLM server. Both eval configs (`evaluation/server_configs/agent.yaml` and `user.yaml`) set
@@ -39,7 +41,12 @@ bot, the agent under test, and the bridge that connects them over audio and scor
 3. Only if you switch to the hosted configs (`agent_nvidia.yaml`, `user_nvidia.yaml`): copy
    `evaluation/.env.example` to `evaluation/.env` and fill in `NVIDIA_API_KEY`.
 
-## The one rule that breaks everything
+## Quickstart Steps
+
+Complete the following three-terminal workflow to start both bots, run a smoke domain, and locate the saved
+evaluation evidence.
+
+### Use the evaluation directory
 
 `SERVER_CONFIG_PATH` is resolved **against the current working directory**, not against the script's
 directory. `ConfigManager` receives the raw string and calls `os.path.exists` on it. Every command below —
@@ -52,7 +59,9 @@ FileNotFoundError: Server configuration file not found at server_configs/agent.y
 That error means you ran the command from somewhere other than `evaluation/`. `cd evaluation` and retry, or
 export an absolute path.
 
-## Terminal 1 — simulated user bot (port 8766)
+### Start the simulated user bot on port 8766
+
+In the first terminal, start the bot that plays the scenario's simulated user.
 
 ```bash
 cd evaluation
@@ -63,7 +72,9 @@ export CUDA_VISIBLE_DEVICES=0
 python bot_server.py
 ```
 
-## Terminal 2 — agent under test (port 8765)
+### Start the agent under test on port 8765
+
+In the second terminal, start the agent that the harness evaluates.
 
 ```bash
 cd evaluation
@@ -102,7 +113,9 @@ cd evaluation
 ./run_agent.sh   # agent role,     server_configs/agent.yaml, ws 8765, http 7860
 ```
 
-## Terminal 3 — the bridge
+### Run the bridge
+
+After both bots report that they are serving, start the bridge with a small smoke domain.
 
 ```bash
 cd evaluation
@@ -132,6 +145,8 @@ parallel `tau2_telecom_workflow` registration over the same 114 tasks). See
 
 ### Flags worth knowing on run one
 
+Use these flags to select work, control output placement, and configure the first scoring run.
+
 | Flag | Default | Notes |
 | --- | --- | --- |
 | `--domain` | none | Runs every scenario whose name starts with `<domain>__` |
@@ -144,7 +159,7 @@ parallel `tau2_telecom_workflow` registration over the same 114 tasks). See
 
 Full list: [Evaluation CLI reference](../../reference/evaluation/eval-cli.md).
 
-## Where results land
+### Verify the saved results
 
 Each invocation creates a timestamped session directory under `--output-dir`, with one subdirectory per
 scenario:
@@ -173,9 +188,13 @@ evaluation/eval_results/eval_YYYYMMDD_HHMMSS/
 Read `all_summary.txt` first, then open `metrics.json` and `conversation_log.wav` for any scenario that
 failed. `eval_results/` is gitignored.
 
-## Next steps
+## Next Steps
 
-- [Scoring signals](../understand-scoring/scoring.md) — the six signals and how the composite verdict is computed.
-- [Reading results](results.md) — field-by-field walkthrough of the artifacts above.
-- [Resuming a run](resume.md) — pick up a killed run with `--resume <timestamp>`.
-- [Evaluating an external agent](external-agents.md) — point the bridge at a non-Pipecat agent.
+Use the scoring, results, resume, and external-agent guides to continue after the first successful run.
+
+| Guide | Use it to |
+| --- | --- |
+| [Scoring Model](../understand-scoring/scoring.md) | Understand the six signals and how the composite verdict is computed. |
+| [Reading Results](results.md) | Review the generated artifacts field by field. |
+| [Resuming & Long Runs](resume.md) | Pick up a killed run with `--resume <timestamp>`. |
+| [Evaluating an External Agent](external-agents.md) | Point the bridge at a non-Pipecat agent. |

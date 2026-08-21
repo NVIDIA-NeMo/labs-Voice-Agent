@@ -15,17 +15,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}
 
-# Run Evaluations
+# About Running Evaluations
 
 Run the simulated-user bot, the agent under test, and the bridge as three processes. The bridge exchanges
 audio, captures artifacts, and passes each completed scenario to the scoring runner.
 
+## Workflow Overview
+
+Start with the quickstart, inspect the generated evidence, and use the specialized guides when a run is long
+or the agent under test is hosted outside this repository.
+
+## Key Concepts
+
+An evaluation run coordinates three independent processes: a simulated-user bot, the agent under test, and
+the bridge. The bridge saves both session-level aggregates and per-scenario evidence, so reading results is
+part of the workflow rather than a separate scoring step.
+
 | Guide | Use it to |
 | --- | --- |
 | [Quickstart](quickstart.md) | Complete a first local evaluation from startup through saved results. |
-| [Read results](results.md) | Interpret the run summary, scenario metrics, transcript, audio, and logs. |
-| [Resume long runs](resume.md) | Continue an interrupted evaluation without rerunning completed scenarios. |
-| [Evaluate an external agent](external-agents.md) | Point the bridge at an agent outside this repository. |
+| [Reading Results](results.md) | Interpret the run summary, scenario metrics, transcript, audio, and logs. |
+| [Resuming & Long Runs](resume.md) | Continue an interrupted evaluation without rerunning completed scenarios. |
+| [Evaluating an External Agent](external-agents.md) | Point the bridge at an agent outside this repository. |
 
 Before comparing runs, review [Understand scoring](../understand-scoring/index.md) so the composite success
 rate and per-signal denominators are interpreted correctly.

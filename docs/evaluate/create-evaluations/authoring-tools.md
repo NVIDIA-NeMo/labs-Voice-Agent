@@ -206,4 +206,10 @@ the runner's gold replay and the cross-side sync shadow-DB replay call in proces
 overrides `Scenario.sync_state` must also provide `_build_tool_map(state)` returning tools with a sync
 `invoke`. Single-side domains do not need it.
 
-Next: [Authoring Scenarios](authoring-scenarios.md) and [Authoring Domains](authoring-domains.md).
+## Next Steps
+
+After implementing a tool, register it in a scenario and verify that live execution and any gold replay use
+the same state mutation.
+
+- [Author scenarios](authoring-scenarios.md) to expose the tool and select its success signals.
+- [Add a domain](authoring-domains.md) to register a new tool namespace and fixture set.

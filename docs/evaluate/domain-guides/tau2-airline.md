@@ -23,6 +23,8 @@ receives tau2's `policy.md` unchanged; scoring is a path-independent hash of the
 
 ## At a glance
 
+The following table summarizes the domain's registry, fixtures, tool surface, and state model.
+
 | Property | Value |
 | --- | --- |
 | Scenario names | `tau2_airline__0` … `tau2_airline__49` (50, contiguous) |

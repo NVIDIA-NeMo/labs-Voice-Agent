@@ -22,6 +22,9 @@ Agent supports direct functions registered by the server and tools owned by a pi
 
 ## Choose a guide
 
+Choose the overview when you need to enable the feature, or the implementation guide when you are ready to
+add an application action.
+
 - [Tool calling](tool-calling.md) explains backend requirements, parser configuration, registration, and the
   runtime call lifecycle.
 - [Write your own tools](custom-tools.md) walks through direct functions and component-owned tools.

@@ -19,7 +19,21 @@ limitations under the License.
 
 NeMo Labs Voice Agent is a Pipecat pipeline assembled from a small set of builder functions. Customizing it means changing one of three things: which models the builders instantiate, which processors sit in the chain, or the assembly code itself. Pick the lowest tier that does the job.
 
-## Two entrypoints, one pipeline
+## Workflow overview
+
+Choose one of three extension tiers, starting with the least invasive option that supports your change.
+
+| Tier | What you change | Python needed | Use when |
+|---|---|---|---|
+| 1. YAML swap | A file under `server_configs/` | None | A different model or endpoint that the existing builders already support. |
+| 2. Custom frame processor | One `FrameProcessor` subclass, inserted into `pipeline_list` | ~20 lines | You need a transform between two existing stages. |
+| 3. New pipeline | Your own `run_bot_websocket()` | ~150 lines | Different services or a different pipeline shape entirely. |
+
+## Key concepts
+
+Both shipped entrypoints use the same pipeline shape, builders, and extension boundaries.
+
+### Two entrypoints, one pipeline
 
 Everything on this page applies to both shipped entrypoints. They differ only in config directory and in how many RTVI control-plane handlers they register.
 
@@ -39,13 +53,9 @@ Bracketed stages are dropped when their builder returns `None`: `Diar` when `dia
 
 ## Three tiers
 
-| Tier | What you change | Python needed | Use when |
-|---|---|---|---|
-| 1. YAML swap | A file under `server_configs/` | None | A different model or endpoint that the existing builders already support. |
-| 2. Custom frame processor | One `FrameProcessor` subclass, inserted into `pipeline_list` | ~20 lines | You need a transform between two existing stages. |
-| 3. New pipeline | Your own `run_bot_websocket()` | ~150 lines | Different services or a different pipeline shape entirely. |
+The following tiers describe what each extension approach changes and where to implement it.
 
-## Tier 1 — swap models via YAML
+### Tier 1 — swap models via YAML
 
 `ConfigManager` (`nemo_voice_agent/utils/config_manager.py`) reads the file named by the `SERVER_CONFIG_PATH` environment variable and hands each section to the matching builder: `stt:` to `build_stt`, `diar:` to `build_diar`, `llm:` to `build_llm`, `tts:` to `build_tts`, `vad:` to `build_vad_analyzer`, `turn_taking:` to `build_turn_taking`, `transport:` to `build_ws_transport`.
 
@@ -85,7 +95,7 @@ WEBSOCKET_PORT=8765 SERVER_CONFIG_PATH=server_configs/agent.yaml python bot_serv
 
 Full key reference: [Server Config](../configure/server-config.md) and [Config Schema](../../reference/runtime/config-schema.md).
 
-## Tier 2 — insert a frame processor
+### Tier 2 — insert a frame processor
 
 When no builder exposes what you want — typically a transform between two stages — write a `FrameProcessor` subclass and slot it into `pipeline_list` before the `Pipeline(...)` call. Both entrypoints build that list inline, so the edit is a couple of lines.
 
@@ -99,7 +109,7 @@ When no builder exposes what you want — typically a transform between two stag
 
 Three rules cover most processors: call `super().process_frame(frame, direction)` first, filter with `isinstance` so unrelated frame types pass through untouched, and always finish by pushing the frame onward. Worked examples in [Custom Frame Processors](pipelines/custom-processor.md).
 
-## Tier 3 — replace the assembly
+### Tier 3 — replace the assembly
 
 At this tier you write your own `run_bot_websocket()` and choose every service yourself. Two things stay fixed.
 
@@ -139,6 +149,8 @@ Then read the per-scenario output directory:
 | `final_scenario_db_hash.txt` | Should carry a hash line; absence means `get_scenario_summary` returned the wrong shape. |
 
 ## Related pages
+
+Use these pages for implementation details and evaluation integration:
 
 - [The Builder API](pipelines/builders.md) — every `build_*` function and the config keys it reads.
 - [Writing Your Own Tools](../tools/custom-tools.md) — extending the agent's capabilities rather than its pipeline.

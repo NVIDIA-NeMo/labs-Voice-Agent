@@ -20,11 +20,14 @@ limitations under the License.
 Each benchmark domain defines its own scenario data, tool surface, state model, and supported success signals.
 Use these guides to understand domain-specific behavior before interpreting results or extending a fixture.
 
-| Domain | Focus |
-| --- | --- |
-| [eva_airline](eva-airline.md) | Airline-service scenarios derived from the EVA dataset. |
-| [tau2_airline](tau2-airline.md) | Reservation and flight-service tasks from tau2-bench. |
-| [tau2_retail](tau2-retail.md) | Order, return, exchange, and account tasks from tau2-bench. |
-| [tau2_telecom](tau2-telecom.md) | Dual-side telecom support with synchronized agent and user state. |
+## Available Domains
 
-The [data provenance](data-provenance.md) page records the source and license of packaged evaluation fixtures.
+Choose a domain guide to review its fixtures, tools, prompts, runtime behavior, and scoring contract.
+
+| Guide | Scope |
+| --- | --- |
+| [eva_airline](eva-airline.md) | Review airline-service scenarios derived from the EVA dataset. |
+| [tau2_airline](tau2-airline.md) | Review reservation and flight-service tasks from tau2-bench. |
+| [tau2_retail](tau2-retail.md) | Review order, return, exchange, and account tasks from tau2-bench. |
+| [tau2_telecom](tau2-telecom.md) | Review dual-side telecom support with synchronized agent and user state. |
+| [Fixture Data & Provenance](data-provenance.md) | Trace the source and licence of every packaged evaluation fixture. |

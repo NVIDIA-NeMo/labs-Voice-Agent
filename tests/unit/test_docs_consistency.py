@@ -104,7 +104,10 @@ def test_rtvi_action_count_matches_factories():
     actual = len(factories)
     word = {5: "five", 6: "six", 7: "seven"}[actual]
 
-    for rel in ("extend/rtvi-actions.md", "reference/rtvi-messages.md"):
+    for rel in (
+        "build-voice-agents/extend/protocols/rtvi-actions.md",
+        "reference/runtime/rtvi-messages.md",
+    ):
         text = _read(DOCS / rel).lower()
         for w in {"five", "six", "seven"} - {word}:
             assert f"{w} rtvi" not in text and f"{w} required action" not in text, (

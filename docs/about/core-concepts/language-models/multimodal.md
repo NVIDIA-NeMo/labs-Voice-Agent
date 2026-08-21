@@ -15,14 +15,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}
 
-# Multimodal / Omni
+# Multimodal and Omni Models
 
 NeMo Labs Voice Agent can send the user's **raw audio** to the LLM instead of (or in addition to) the ASR
 transcript, for models that accept audio input. This page covers the shipped Nemotron Omni configs, the
 `llm.is_omni_model` switch, and every omni-specific key that
 `examples/generic_voice_agent/server/server.py` actually reads.
 
-## Shipped model and configs
+## Shipped Model and Configurations
+
+The following configurations select the shipped Nemotron Omni model with or without thinking enabled.
 
 | File (under `examples/generic_voice_agent/server/server_configs/llm_configs/`) | Purpose |
 | --- | --- |
@@ -34,7 +36,9 @@ yourself. Neither is listed in `server/model_registry.yaml`, so you must point `
 file you want; `llm.enable_reasoning: true` will **not** auto-swap to the `_think.yaml` variant (the swap
 only fires for models resolved through the registry, see `nemo_voice_agent/utils/config_manager.py`).
 
-## Enable it
+## Enable an Omni Model
+
+To send raw user audio to the LLM with the shipped Omni configuration, complete the following steps.
 
 1. In `server_configs/default.yaml`, switch the `llm` block to the omni pair (both lines ship commented out):
 
@@ -76,7 +80,7 @@ only fires for models resolved through the registry, see `nemo_voice_agent/utils
 See [Serving with vLLM](../../../build-voice-agents/model-serving/vllm.md) for the general vLLM story and [Reasoning Mode](reasoning.md) for the
 thinking variant.
 
-## What `is_omni_model` changes
+## How `is_omni_model` Changes the Pipeline
 
 When `llm.is_omni_model` is true, `server.py` constructs a `UserAudioBuffer`
 (`nemo_voice_agent/pipecat/services/common.py`) and inserts it into the pipeline **after** the STT,
@@ -99,7 +103,7 @@ the buffer) and is still what drives barge-in and backchannel handling — see [
 The buffer is registered in the server's `resettable` list, so the RTVI `reset` action clears any partially
 buffered audio and transcript along with the conversation context.
 
-## Config keys
+## Configuration Keys
 
 All of these live under `llm:` and are read in `server.py` only when `is_omni_model` is true.
 
@@ -136,7 +140,7 @@ tool calling with the `qwen3_coder` tool parser and `nemotron_v3` reasoning pars
 configs set `think_tokens` so reasoning spans are not spoken. See
 [Tool Calling](../../../build-voice-agents/tools/tool-calling.md).
 
-## Hosted (NIM) omni
+## Hosted NVIDIA NIM Omni Models
 
 `llm.is_omni_model` is backend-agnostic — the evaluation harness ships
 `evaluation/server_configs/agent_nvidia_omni.yaml`, which uses `llm.type: nvidia` with the same omni keys.
@@ -148,9 +152,20 @@ is the case `keep_only_last_audio_turn` was added for. Note that
 
 ## Troubleshooting
 
+Use the following checks to diagnose common multimodal configuration and context problems.
+
 | Symptom | Check |
 | --- | --- |
 | Model replies as if it heard nothing | Confirm `is_omni_model: true` landed in the *final* merged config — the sub-YAML wins, so a value set only in `default.yaml` may be overwritten. The server logs the final LLM config at startup. |
 | Errors about too many audio inputs | Set `keep_only_last_audio_turn: true`, or raise the audio limit in `--limit-mm-per-prompt`. |
 | First word of each utterance is clipped | Increase `pre_cache_duration_secs`. |
 | Context grows very fast | Each turn carries a WAV payload; lower `llm.max_new_tokens` is irrelevant here — use `keep_only_last_audio_turn: true` or reset the context. |
+
+## Related Topics
+
+Use these pages to configure model serving, reasoning, tool use, and evaluation for multimodal agents.
+
+- [Serving with vLLM](../../../build-voice-agents/model-serving/vllm.md)
+- [Reasoning Mode](reasoning.md)
+- [Tool Calling](../../../build-voice-agents/tools/tool-calling.md)
+- [Evaluation Overview](../../../evaluate/index.md)

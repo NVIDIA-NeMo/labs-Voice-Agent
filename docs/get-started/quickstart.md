@@ -17,11 +17,22 @@ limitations under the License.
 
 # Quickstart
 
-Bring up NeMo Labs Voice Agent end to end and talk to it in a browser. You need three terminals: one for
-vLLM, one for the agent server, one for the web client. This page assumes you already followed
-[Installation](installation.md) and can activate the project venv with `source .venv/bin/activate`.
+Bring up NeMo Labs Voice Agent end to end and talk to it in a browser. This quickstart starts vLLM, the
+agent server, and the web client, and then verifies the browser-to-agent connection.
 
-## Step 1 — Start vLLM yourself
+## Prerequisites
+
+Before you begin, prepare the installed project and the terminal sessions used by its three services.
+
+- Complete [Prerequisites](prerequisites.md) and [Installation](installation.md).
+- Verify that you can activate the project environment with `source .venv/bin/activate`.
+- Open three terminals: one for vLLM, one for the agent server, and one for the web client.
+
+## Quickstart Steps
+
+Complete these four steps in order to start the services and connect from the browser.
+
+### Step 1 — Start vLLM yourself
 
 This is the most common first-run failure. The shipped default LLM config
 (`examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3.yaml`) sets
@@ -47,7 +58,7 @@ Remember that the model sub-YAML **overrides** `default.yaml`, not the other way
 `default.yaml`'s `llm.type: auto` ends up as `vllm` at runtime. Details in
 [Server configuration](../build-voice-agents/configure/server-config.md).
 
-## Step 2 — Start the agent server
+### Step 2 — Start the agent server
 
 In the second terminal:
 
@@ -75,7 +86,7 @@ directory is loaded and takes precedence over the shell environment):
 `HF_TOKEN` and `HF_HUB_CACHE` are honored by the HuggingFace libraries if you need a gated model or a custom
 cache location. The full list lives in [Environment variables](../reference/runtime/environment.md).
 
-## How the two ports fit together
+### How the two ports fit together
 
 The browser talks to two different ports, and mixing them up is the second-most-common first-run problem.
 
@@ -100,7 +111,7 @@ Only one client at a time is supported. While a client is connected, the transpo
 connection with WebSocket close code `1013` and keeps the incumbent; the next client can connect once the
 current one disconnects.
 
-## Step 3 — Start the web client
+### Step 3 — Start the web client
 
 In the third terminal, on the server machine:
 
@@ -113,7 +124,7 @@ npm run dev
 Vite prints the address it is listening on. It binds `0.0.0.0:5173` by default; change the `port` value in
 `examples/generic_voice_agent/client/vite.config.js` if 5173 is taken.
 
-## Step 4 — Connect from the browser
+### Step 4 — Connect from the browser
 
 Open `http://<your-machine-ip>:5173/` (or whatever Vite printed).
 
@@ -129,6 +140,8 @@ finishes.
 
 ## Controls
 
+Use the browser controls to manage the active session and inspect its state.
+
 | Control | Effect |
 | --- | --- |
 | **Connect** / **Disconnect** | Open or close the WebSocket session. The server keeps running and accepts the next connection. |
@@ -137,7 +150,7 @@ finishes.
 | Microphone Volume bar | Local input level, driven by a browser `AnalyserNode`. Useful for confirming the mic is live. |
 | Debug Info panel | Timestamped log with user transcripts in blue and bot responses in green. |
 
-## Verify and troubleshoot
+## Troubleshooting
 
 Server-side logs are written to `bot_server.log` in the directory you launched `server.py` from (rotated
 daily; check the newest `bot_server.<timestamp>.log` for a run that already rotated). The name, level, and
@@ -159,9 +172,14 @@ curl -s -X POST http://localhost:7860/connect
 If the second command returns `ws://127.0.0.1:8765` but you are browsing from another machine, go back to
 `SERVER_PUBLIC_HOST`. More failure modes are collected in [Troubleshooting](../troubleshooting/index.md).
 
-## Next steps
+## Next Steps
 
-- [Architecture](../about/architecture.md) — what the pipeline does with your audio.
-- [Server configuration](../build-voice-agents/configure/server-config.md) — swap models, prompts, and VAD settings.
-- [Tool calling](../build-voice-agents/tools/tool-calling.md) — let the agent call functions.
-- [Evaluation quickstart](../evaluate/run-evaluations/quickstart.md) — score the agent on benchmark scenarios.
+After the first browser session works, explore the pipeline design, configuration, tools, or evaluation
+workflow.
+
+| Continue with | Purpose |
+| --- | --- |
+| [Architecture](../about/architecture.md) | Learn what the pipeline does with your audio. |
+| [Server Configuration](../build-voice-agents/configure/server-config.md) | Swap models, prompts, and VAD settings. |
+| [Tool Calling](../build-voice-agents/tools/tool-calling.md) | Let the agent call functions. |
+| [Evaluation Quickstart](../evaluate/run-evaluations/quickstart.md) | Score the agent on benchmark scenarios. |

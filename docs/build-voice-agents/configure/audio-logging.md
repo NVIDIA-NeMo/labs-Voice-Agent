@@ -52,6 +52,8 @@ same session directory.
 
 ## What lands on disk
 
+Each capture session produces per-speaker audio and metadata plus a whole-session stereo mixdown.
+
 ```text
 audio_logs/
 └── session_20260806_141200/
@@ -163,6 +165,8 @@ The evaluation role configs (`evaluation/server_configs/agent.yaml` and `user.ya
 scenario's output directory — see [Evaluation Results](../../evaluate/run-evaluations/results.md).
 
 ## Related pages
+
+Use these pages to continue configuring or inspecting the runtime:
 
 - [Server Config](server-config.md) — the rest of the top-level YAML.
 - [Configuration](index.md) — how `default.yaml` and the model sub-configs merge.

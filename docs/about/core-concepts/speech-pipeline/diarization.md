@@ -21,7 +21,7 @@ NeMo Labs Voice Agent uses streaming Sortformer to identify which speaker is tal
 turn, so a multi-person conversation reaches the LLM with the speaker attached to every utterance.
 Diarization is on by default in `server_configs/default.yaml`.
 
-## How it works
+## How Speaker Diarization Works
 
 The diarization service (`nemo_voice_agent/pipecat/services/nemo/diar.py`) sits immediately after STT in
 the pipeline and before turn-taking. It is a pass-through stage: it never produces transcripts, only
@@ -45,7 +45,9 @@ The stock system prompt in `default.yaml` already tells the LLM how to interpret
 to identify the speaker, never echo them back). If you replace the system prompt, carry that instruction
 over — see [Prompts](../../../build-voice-agents/configure/prompts.md).
 
-## Supported models
+## Supported Models
+
+The following models are available for local and hosted speaker diarization.
 
 | Model | Notes |
 | --- | --- |
@@ -92,6 +94,8 @@ other way round.
 
 ## Limits
 
+The following limits come from the service implementation and the shipped diarization configuration.
+
 | Limit | Value | Why |
 | --- | --- | --- |
 | Speakers per user turn | 1 | Only the dominant speaker of a turn is reported; overlapping speech within one turn collapses to a single tag. |
@@ -101,7 +105,9 @@ other way round.
 Different turns can come from different speakers; that is the supported multi-speaker mode. Splitting a
 single turn between two people is not supported.
 
-## Accuracy caveats
+## Accuracy Considerations
+
+Account for the following behavior when you decide whether diarization fits your conversation environment.
 
 - The diarization model is not noise-robust. In a noisy room it can drop or confuse speakers; use a
   noise-cancelling microphone or a quiet environment.
@@ -111,7 +117,7 @@ single turn between two people is not supported.
   button, which sends the RTVI `reset` client message) calls `reset()` on the diarization service, which
   clears the Sortformer streaming state and speaker cache. Speaker numbering restarts from scratch.
 
-## Disabling diarization
+## Disable Diarization
 
 Turn it off when you have a single known user, when you are latency- or VRAM-constrained, or when the
 model is mislabeling speakers:
@@ -135,7 +141,9 @@ Several shipped configs already ship with it off:
 | `server_configs/default_nvidia.yaml` | Hosted NIM path — see [NVIDIA NIM](../../../build-voice-agents/model-serving/nvidia-nim.md); there is no diarization NIM yet, so the local model is disabled. |
 | `evaluation/server_configs/agent.yaml`, `evaluation/server_configs/user.yaml` | The evaluation harness is a two-bot, single-voice-per-side setup, so speaker tags add nothing. |
 
-## Related pages
+## Related Topics
+
+Use these pages to understand the adjacent recognition and turn-taking stages or to change diarization settings.
 
 - [Speech Recognition](asr.md) — the STT stage that feeds diarization.
 - [Turn Taking](turn-taking.md) — consumes `DiarResultFrame` and writes the speaker tag into the transcript.

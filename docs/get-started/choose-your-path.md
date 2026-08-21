@@ -17,8 +17,14 @@ limitations under the License.
 
 # Choose Your Path
 
-Start with the path that matches what you want to accomplish. All paths assume a source checkout of the
-repository; the installation script creates the project virtual environment.
+Use this page to select the documentation path that matches what you want to accomplish. All paths assume
+a source checkout of the repository; the installation script creates the project virtual environment.
+
+Before you begin, review [Prerequisites](prerequisites.md) for the system, software, and audio requirements.
+
+## Choose by Goal
+
+Match your goal to its starting page, then follow the related guide for the next part of the workflow.
 
 | Goal | Start here | Continue with |
 | --- | --- | --- |

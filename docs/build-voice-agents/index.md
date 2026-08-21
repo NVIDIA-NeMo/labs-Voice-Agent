@@ -20,6 +20,10 @@ limitations under the License.
 Start with configuration when the shipped pipeline already supports the behavior you need. Add tools or
 custom pipeline code only when configuration is not enough.
 
+## Choose an area
+
+Choose the smallest surface that supports the behavior you want to add.
+
 | Area | Use it to |
 | --- | --- |
 | [Configure](configure/index.md) | Select component configs, prompts, model-registry entries, and audio logging. |
@@ -29,7 +33,19 @@ custom pipeline code only when configuration is not enough.
 
 ## Recommended order
 
+Use this order to move from a working example to the smallest maintainable customization.
+
 1. Confirm the current behavior in the [Quickstart](../get-started/quickstart.md).
 2. Make the smallest configuration change that satisfies the requirement.
 3. Add a tool for a discrete action or a processor for a new pipeline transformation.
 4. Build a custom pipeline only when the shipped assembly cannot express the design.
+
+## Key concepts
+
+The extension surface you choose determines where the change belongs and how much pipeline behavior you
+own:
+
+- **Configuration** selects existing components and behavior without changing Python code.
+- **Tools** let supported language models invoke application functions during a conversation.
+- **Processors** transform frames at a focused point in the shipped pipeline.
+- **Custom pipelines** replace the shipped assembly when stage ordering or ownership must change.

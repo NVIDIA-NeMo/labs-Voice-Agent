@@ -213,6 +213,8 @@ The agent guidelines add one airline-specific companion rule — internal journe
 
 ## Extending the domain
 
+Choose the extension path that matches whether you are adding scenario coverage, tools, or fixture data.
+
 - Add a scenario: subclass `EvaAirlineBaseScenario`, set `name` / `eva_id` / `description` and the three
   user-side members, and decorate with `@register_eval_scenario`. See
   [Authoring scenarios](../create-evaluations/authoring-scenarios.md).

@@ -23,6 +23,8 @@ context by `build_context_and_aggregators` in `nemo_voice_agent/pipecat/services
 
 ## Keys
 
+Three LLM keys control the system prompt and how it is applied to a conversation.
+
 | Key | Type | Effect |
 | --- | --- | --- |
 | `llm.system_prompt` | string | The prompt itself, **or** a path to a text file containing it. If unset or `null`, a built-in three-sentence fallback ("You are a helpful AI agent named Lisa…") is used. |

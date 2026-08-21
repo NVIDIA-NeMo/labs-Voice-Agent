@@ -19,9 +19,11 @@ limitations under the License.
 
 Look up the configuration and control-plane interfaces used by the browser server and evaluation bots.
 
-- [Server configuration schema](config-schema.md) lists the YAML blocks, keys, types, and defaults.
-- [Environment variables](environment.md) lists variables read by the servers, model libraries, and runner.
-- [RTVI messages](rtvi-messages.md) lists client requests, actions, arguments, and response shapes.
+| Reference | Contents |
+| --- | --- |
+| [Server configuration schema](config-schema.md) | YAML blocks, keys, types, and defaults. |
+| [Environment variables](environment.md) | Variables read by the servers, model libraries, and runner. |
+| [RTVI messages](rtvi-messages.md) | Client requests, actions, arguments, and response shapes. |
 
 For explanations and procedures, start with [Configure](../../build-voice-agents/configure/index.md) or
 [Protocols](../../build-voice-agents/extend/protocols/index.md).

@@ -23,6 +23,8 @@ or by domain. This page lists what is available, where each domain came from, an
 
 ## Catalogue
 
+The catalogue distinguishes benchmark-derived domains from the smaller in-repository smoke sets.
+
 | Domain | Scenarios | Upstream | License | Gating signals |
 | --- | --- | --- | --- | --- |
 | `eva_airline` | 50 | [ServiceNow/eva](https://github.com/ServiceNow/eva) 0.1.3 | MIT | `DB_STATE_MATCH`, `CLEAN_EXIT` |

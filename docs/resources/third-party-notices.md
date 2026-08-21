@@ -26,6 +26,8 @@ and that file ever disagree, the root file wins.
 
 ## Project license
 
+Use the repository files and package metadata in this table as the authoritative project-license references:
+
 | Item | Value |
 | --- | --- |
 | License | Apache License, Version 2.0 |
@@ -82,6 +84,8 @@ The example browser client was adapted from Pipecat's RTVI client sample. The fi
 line and `SPDX-License-Identifier: BSD 2-Clause License` header.
 
 ## Attribution conventions
+
+The repository records attribution at the following levels:
 
 | Convention | Where |
 | --- | --- |

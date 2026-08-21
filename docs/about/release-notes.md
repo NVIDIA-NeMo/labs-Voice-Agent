@@ -15,7 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}
 
-# Release Notes
+# Release Notes for NeMo Voice Agent
 
 Dated feature updates for NeMo Labs Voice Agent, newest first. This page is the documentation site's
 canonical history of the milestones listed below.
@@ -24,7 +24,9 @@ There are no per-entry version tags: the package version is a single value decla
 `nemo_voice_agent/package_info.py` and exposed as `nemo_voice_agent.package_info.__version__`.
 For changes made after the most recent entry below, read the repository commit history.
 
-## Summary
+## Release History
+
+The following table summarizes the dated project milestones documented on this page.
 
 | Date | Highlights |
 | --- | --- |
@@ -38,14 +40,14 @@ For changes made after the most recent entry below, read the repository commit h
 | 2025-10-03 | vLLM serving with automatic HuggingFace fallback |
 | 2025-09-05 | First release |
 
-## 2026-08-06 — Standalone repository
+## 2026-08-06 — Standalone Repository
 
 NeMo Labs Voice Agent graduated out of
 [NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent), where it had
 lived as a sub-package, and is now developed in its own repository. The Python package name
 (`nemo_voice_agent`) and every import path are unchanged.
 
-## 2026-06-13 — Evaluation harness
+## 2026-06-13 — Evaluation Harness
 
 Shipped the two-bot evaluation harness: a simulated user bot talks to the agent under test through a
 bridge that shuttles audio between two WebSocket Pipecat servers and scores the outcome.
@@ -73,7 +75,7 @@ Learn more: [Evaluation overview](../evaluate/index.md) ·
 [tau2_retail](../evaluate/domain-guides/tau2-retail.md) ·
 [tau2_telecom](../evaluate/domain-guides/tau2-telecom.md)
 
-## 2026-05-15 — Omni (multimodal) LLM support
+## 2026-05-15 — Omni (Multimodal) LLM Support
 
 Added support for `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4`, served through the
 `llm_configs/nemotron_nano_v3_omni.yaml` model config (a `_think.yaml` sibling enables reasoning).
@@ -84,6 +86,8 @@ Learn more: [Multimodal models](core-concepts/language-models/multimodal.md) · 
 
 ## 2026-01-26 — Nemotron-3-Nano-30B-A3B and Magpie TTS
 
+This milestone added the following language and speech model support.
+
 - Added support for the `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` LLM. The
   `llm_configs/nemotron_nano_v3.yaml` model config covers this family; the NVFP4 variant is the
   shipped default and needs a GPU with FP4 support.
@@ -93,7 +97,9 @@ Learn more: [Multimodal models](core-concepts/language-models/multimodal.md) · 
 Learn more: [LLM backends](core-concepts/language-models/llm.md) · [TTS](core-concepts/speech-pipeline/tts.md) ·
 [Model registry](../build-voice-agents/configure/model-registry.md)
 
-## 2025-12-31 — Tool calling examples and diarization upgrade
+## 2025-12-31 — Tool-Calling Examples and Diarization Upgrade
+
+This milestone expanded tool-calling examples and updated the default diarization model.
 
 - Added tool-calling examples. The Kokoro TTS service registers six direct functions that let the
   LLM change how the agent sounds mid-conversation: `tool_tts_speak_faster`, `tool_tts_speak_slower`,
@@ -106,7 +112,7 @@ Learn more: [LLM backends](core-concepts/language-models/llm.md) · [TTS](core-c
 Learn more: [Tool calling](../build-voice-agents/tools/tool-calling.md) · [Custom tools](../build-voice-agents/tools/custom-tools.md) ·
 [Diarization](core-concepts/speech-pipeline/diarization.md)
 
-## 2025-11-14 — Joint ASR and end-of-utterance detection
+## 2025-11-14 — Joint ASR and End-of-Utterance Detection
 
 Added support for `nvidia/parakeet_realtime_eou_120m-v1`, which predicts end-of-utterance jointly
 with transcription. It is the shipped default STT model and is optimized for lowest latency; it does
@@ -121,7 +127,9 @@ Added support for the `hexgrad/Kokoro-82M` TTS model, configured through
 
 Learn more: [TTS](core-concepts/speech-pipeline/tts.md)
 
-## 2025-10-03 — vLLM serving and automatic backend selection
+## 2025-10-03 — vLLM Serving and Automatic Backend Selection
+
+This milestone added the following serving and backend-selection capabilities.
 
 - Added vLLM as an LLM serving backend alongside HuggingFace.
 - Added automatic backend selection: with `llm.type: auto`, the server tries vLLM first and falls
@@ -131,7 +139,7 @@ Learn more: [TTS](core-concepts/speech-pipeline/tts.md)
 
 Learn more: [vLLM backend](../build-voice-agents/model-serving/vllm.md) · [LLM backends](core-concepts/language-models/llm.md)
 
-## 2025-09-05 — First release
+## 2025-09-05 — First Release
 
 First release of NeMo Labs Voice Agent: a real-time speech-to-speech pipeline built on Pipecat, with
 streaming ASR, speaker diarization, LLM, and TTS behind a WebSocket server, plus a browser client.
@@ -142,10 +150,18 @@ Shipped at the time as a sub-package of
 Learn more: [Architecture](architecture.md) ·
 [Quickstart](../get-started/quickstart.md)
 
-## Upcoming
+## Upcoming Work
 
 Work called out as next up in the repository `README.md`:
 
 - Accuracy and robustness improvements to the ASR models.
 - Combined ASR and speaker diarization to handle overlapping speech.
 - More evaluation domains and scenarios.
+
+## Related Topics
+
+Use these pages to begin with the current project, understand its architecture, or review its evaluation capabilities.
+
+- [Quickstart](../get-started/quickstart.md)
+- [Architecture overview](architecture.md)
+- [Evaluation overview](../evaluate/index.md)

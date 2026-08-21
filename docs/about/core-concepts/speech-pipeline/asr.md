@@ -27,7 +27,7 @@ loading and cache management in `nemo_voice_agent/pipecat/services/nemo/streamin
 (`NemoStreamingASRService`). The pipeline stage is constructed by `build_stt` in
 `nemo_voice_agent/pipecat/services/nemo/builders.py`.
 
-## Supported models
+## Supported Models
 
 All shipped models are English. Pick based on whether you need end-of-utterance (EOU) prediction or
 punctuation — no current model gives you both.
@@ -43,7 +43,7 @@ punctuation — no current model gives you both.
 `ASRModel.from_pretrained()`; a value ending in `.nemo` is treated as a local checkpoint path and loaded with
 `ASRModel.restore_from()`.
 
-## The `stt` config block
+## The `stt` Configuration Block
 
 The default block in `examples/generic_voice_agent/server/server_configs/default.yaml`:
 
@@ -73,7 +73,7 @@ frame_len_in_secs: 0.08
 audio_chunk_size_in_secs: 0.08
 ```
 
-## Keys read by the STT builder
+## Keys Read by the STT Builder
 
 These are the keys `get_stt_service_from_config` actually reads for `type: nemo`. Anything else in the block is
 ignored.
@@ -96,7 +96,7 @@ Two constructor arguments are fixed by the builder and are not configurable from
 (`legacy`) and `decoder_type` (`rnnt`, which selects the transducer branch on hybrid checkpoints). Audio
 passthrough is on, so frames continue downstream to diarization and turn-taking after transcription.
 
-## EOU detection and turn-taking
+## EOU Detection and Turn Taking
 
 `parakeet_realtime_eou_120m-v1` emits `EOU` (end of utterance) and `EOB` (end of backchannel) tokens inline in
 the hypothesis. `NemoSTTService` keeps a module-level allowlist, `ASR_EOU_MODELS`, and enables EOU-driven
@@ -138,7 +138,7 @@ block). `model` and `function_id` are a matched pair addressing one specific dep
 neither. A worked config ships as `server_configs/default_nvidia.yaml`. See
 [NVIDIA NIM](../../../build-voice-agents/model-serving/nvidia-nim.md).
 
-## Verifying your setup
+## Verify Your Setup
 
 Start the server and grep the log for the resolved configuration — `_configure_stt` prints the merged block,
 and the service prints the model it loaded:
@@ -152,7 +152,9 @@ get one line per non-empty chunk containing the inference time and the running t
 latency and probability when the tokens fire — useful for confirming that ASR inference is comfortably faster
 than the 80 ms of audio it consumes per step.
 
-## Related pages
+## Related Topics
+
+Use these pages to understand the stages that act on ASR output and to configure other speech services.
 
 - [Turn taking](turn-taking.md) — how EOU tokens, VAD, and backchannel phrases combine into turn ends.
 - [Diarization](diarization.md) — the optional speaker-tagging stage that sits after ASR.

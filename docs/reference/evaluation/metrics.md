@@ -25,6 +25,8 @@ it is produced by `nemo_voice_agent/evaluation/runner.py` (per-scenario scoring 
 
 ## Value conventions
 
+Use these conventions to distinguish an absent signal from an applicable signal without evidence.
+
 | Convention | Meaning |
 |---|---|
 | Key absent | The signal did not apply to this scenario at all (for example, no `expected_scenario_db`, or no judge configured). |
@@ -60,6 +62,8 @@ user bot's last audio frame to the agent's first audio frame after it, in millis
 includes ASR, LLM, and TTS time-to-first-byte, not just LLM latency.
 
 ## `metrics.json` — conditional
+
+The following keys are written only when the corresponding scenario signal or run feature applies.
 
 | Field | Type | Written when |
 |---|---|---|
@@ -170,6 +174,8 @@ lives in `metrics.json`. The resulting `all_summary.txt` is identical whether a 
 was loaded from a prior session.
 
 ## Related
+
+Use these pages to connect the field definitions to scoring behavior, result inspection, and domain-specific use.
 
 - [Scoring](../../evaluate/understand-scoring/scoring.md) — how each of the six signals is derived and combined.
 - [Reading Results](../../evaluate/run-evaluations/results.md) — the full artifact layout and triage recipes.

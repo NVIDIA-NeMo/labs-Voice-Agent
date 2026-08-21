@@ -20,11 +20,17 @@ limitations under the License.
 Pipeline extensions change how services are constructed, transform frames between stages, or replace the
 shipped assembly.
 
+## Choose an extension point
+
+Use the narrowest guide that gives you control over the pipeline behavior you need.
+
 | Guide | Scope |
 | --- | --- |
 | [Builder API](builders.md) | Component construction and the configuration consumed by each builder. |
 | [Custom frame processors](custom-processor.md) | Add a focused transformation between existing stages. |
 | [Custom pipelines](custom-pipeline.md) | Assemble a different `run_bot_websocket` pipeline. |
+
+## Decision guidance
 
 Start with a processor for one transformation. Replace the complete pipeline only when stage ordering or
 ownership must differ from the shipped server.

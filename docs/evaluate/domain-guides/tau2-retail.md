@@ -27,6 +27,8 @@ which 40 of the 114 tasks carry and which the LLM judge scores one at a time.
 
 ## At a glance
 
+The following table summarizes the domain's scenario set, scoring signals, and runtime state.
+
 | Property | Value |
 | --- | --- |
 | Scenario names | `tau2_retail__0` … `tau2_retail__113` (zero-based upstream task id) |
@@ -174,6 +176,8 @@ Zip codes are compared exactly. Normalization happens only at lookup — the key
 their upstream form, which keeps the DB hash stable regardless of how the caller pronounced the id.
 
 ## Related pages
+
+Use these pages to interpret retail results or compare the domain with the other benchmark ports.
 
 - [Scoring model](../understand-scoring/scoring.md) — how the six signals combine into `is_successful`.
 - [Benchmarks & domains](../understand-scoring/benchmarks.md) — the full catalogue and naming conventions.

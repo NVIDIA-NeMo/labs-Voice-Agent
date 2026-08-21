@@ -27,7 +27,7 @@ is visible there in about 100 lines.
 
 ## The contract
 
-Two hard requirements.
+An external agent must satisfy two hard requirements before the harness can initialize or score it.
 
 **1. A pipecat WebSocket server transport.** The bridge connects with the `websockets` client library and
 frames everything through `ProtobufFrameSerializer`, so use a pipecat WS transport rather than
@@ -193,6 +193,8 @@ framing and the RTVI message layer before the bridge could talk to it. If you ta
 [RTVI Message Reference](../../reference/runtime/rtvi-messages.md) as the message-level one.
 
 ## Related pages
+
+Use these pages to assemble an agent around the contract, run it, and interpret the resulting evidence.
 
 - [Building Your Own Pipeline](../../build-voice-agents/extend/pipelines/custom-pipeline.md) — assembling a bot around the contract
 - [RTVI Control Plane](../../build-voice-agents/extend/protocols/rtvi-actions.md) — per-handler arguments and return shapes

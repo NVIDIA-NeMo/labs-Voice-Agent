@@ -22,7 +22,9 @@ key. The backend is built by `get_llm_service_from_config` in
 `nemo_voice_agent/pipecat/services/nemo/llm.py`, which the pipeline reaches through `build_llm` in
 `nemo_voice_agent/pipecat/services/nemo/builders.py`.
 
-## Choosing a backend
+## Choose a Backend
+
+Choose the backend that matches where the model runs and the capabilities your agent requires.
 
 | `llm.type` | Runs where | What it needs | Tool calling |
 | --- | --- | --- | --- |
@@ -31,14 +33,14 @@ key. The backend is built by `get_llm_service_from_config` in
 | `nvidia` | A hosted NVIDIA endpoint | `NVIDIA_API_KEY` in the environment | Supported |
 | `auto` | Resolves to `vllm` or `hf` at startup | Same as whichever it picks | Depends on the resolved backend |
 
-### How `auto` resolves
+### How `auto` Resolves
 
 `auto` tries to construct a vLLM `ModelConfig` for `llm.model` with `trust_remote_code=True`. If that
 succeeds, the backend becomes `vllm`; if it raises, the server logs the reason and falls back to `hf`.
 This is a *model-support* probe only — it does not check that a vLLM server is reachable. If you know
 your model is vLLM-supported, set `type: vllm` explicitly rather than relying on the probe.
 
-## Where the LLM config lives
+## Where the LLM Configuration Lives
 
 `llm:` in `examples/generic_voice_agent/server/server_configs/default.yaml` holds the top-level block.
 Each entry in `server_configs/llm_configs/` is a model sub-config that gets merged in on top of it.
@@ -58,7 +60,7 @@ warning and merges no sub-config at all — your top-level `llm:` block must the
 run an arbitrary HuggingFace checkpoint, point `model_config` at `llm_configs/hf_llm_generic.yaml`
 instead of relying on a fallback.
 
-## Shipped model configs
+## Shipped Model Configurations
 
 All paths are relative to `examples/generic_voice_agent/server/server_configs/llm_configs/`.
 
@@ -77,7 +79,7 @@ All paths are relative to `examples/generic_voice_agent/server/server_configs/ll
 The omni configs additionally set `is_omni_model: true`, which inserts the audio-buffer stage — see
 [Multimodal Models](multimodal.md). `llama3.1-8B-instruct.yaml` requires `HF_TOKEN` for gated access.
 
-### The shipped default
+### The Shipped Default
 
 `default.yaml` ships `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4` with
 `model_config: ./server_configs/llm_configs/nemotron_nano_v3.yaml`. That file sets
@@ -96,7 +98,7 @@ Wait until vLLM reports it is serving on `http://localhost:8000`, then start the
 the agent launch vLLM instead, set `start_vllm_on_init: true` in the model config. Details and flag
 reference: [Serving with vLLM](../../../build-voice-agents/model-serving/vllm.md).
 
-## Which parameters go where
+## Parameter Precedence
 
 Generation settings are duplicated on purpose: `llm.temperature`, `llm.top_k`, `llm.top_p`,
 `llm.min_p`, and `llm.max_new_tokens` are the human-facing knobs, and the per-backend blocks reference
@@ -124,7 +126,7 @@ Notes on the individual blocks:
   where the Nemotron configs flip `enable_thinking`. `extra` must be a mapping or `null`; any other
   type raises at startup.
 
-## Switching models
+## Switch Models
 
 Point both keys at the model and its config, in `default.yaml`:
 
@@ -148,7 +150,7 @@ cd examples/generic_voice_agent/server
 SERVER_CONFIG_PATH=./server_configs/default_nvidia.yaml python server.py
 ```
 
-## Hosted endpoints (`nvidia`)
+## Hosted Endpoints (`nvidia`)
 
 `server_configs/default_nvidia.yaml` is the ready-made example: `llm.type: nvidia`,
 `base_url: https://integrate.api.nvidia.com/v1`, `model: nvidia/nemotron-3-nano-30b-a3b`. It reads
@@ -158,7 +160,9 @@ Unlike the local backends, this config carries its generation settings inline un
 `llm.nvidia_generation_params` rather than in a `llm_configs/` sub-file. See
 [NVIDIA NIM & Riva](../../../build-voice-agents/model-serving/nvidia-nim.md).
 
-## Related
+## Related Topics
+
+Use these pages to serve models, enable advanced response behavior, and configure prompts or tools.
 
 - [Serving with vLLM](../../../build-voice-agents/model-serving/vllm.md) and [vLLM Plugins](../../../build-voice-agents/model-serving/vllm-plugins.md)
 - [Reasoning Mode](reasoning.md) for `enable_reasoning` and the `_think.yaml` configs

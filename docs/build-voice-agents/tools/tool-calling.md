@@ -145,6 +145,8 @@ outside the tool surface. Tune that string first when adapting a new model — s
 
 ## Next steps
 
+Continue with the implementation or reference guide for the tool surface you need:
+
 - [Writing Your Own Tools](custom-tools.md) — add a direct function or a component-owned tool.
 - [Server Configuration](../configure/server-config.md) — how config layering and overrides work.
 - [vLLM Backend](../model-serving/vllm.md) — parser flags and server startup options.

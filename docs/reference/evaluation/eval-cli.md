@@ -50,7 +50,11 @@ See [Environment variables](../runtime/environment.md) for the full bot-server v
 
 ## `run_evaluation.py`
 
+Use the following option groups to select scenarios, connect the bots, control runs, and configure scoring.
+
 ### Scenario selection and listing
+
+Use these flags to list or select the scenarios included in a run.
 
 | Flag | Default | Description |
 | --- | --- | --- |
@@ -67,6 +71,8 @@ Domain filtering is a literal prefix match, so `--domain tau2_telecom` selects o
 
 ### Connection and audio
 
+Use these flags to configure bot endpoints, result storage, and audio streaming.
+
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--user-url URL` | `ws://localhost:8766` | WebSocket URL of the simulated-user bot. |
@@ -77,6 +83,8 @@ Domain filtering is a literal prefix match, so `--domain tau2_telecom` selects o
 | `--pause SEC` | `0.5` | Pause between scenario setup and the scenario run. |
 
 ### Run control
+
+Use these flags to set scenario limits, resume runs, and control matching behavior.
 
 | Flag | Default | Description |
 | --- | --- | --- |
@@ -92,6 +100,8 @@ additionally treated as in-flight and re-run. The turn count comes from the live
 `token_usage.agent.n_calls` in `metrics.json`, falling back to the saved agent LLM context for older runs.
 
 ### LLM judge
+
+Use these flags to connect and configure the optional LLM judge.
 
 | Flag | Default | Description |
 | --- | --- | --- |
@@ -127,6 +137,8 @@ Numeric options are validated before the run starts, and a violation exits throu
 `--judge-temperature` and `--judge-seed` are passed through unvalidated.
 
 ### Exit codes
+
+The evaluation driver exits with one of the following status codes.
 
 | Code | Meaning |
 | --- | --- |

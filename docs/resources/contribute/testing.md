@@ -149,6 +149,8 @@ code without unit tests is the usual way to trip the 75 gate.
 
 ## Adding a test
 
+To add a test that matches the repository layout and CI contracts, complete the following steps:
+
 1. Put the module in `tests/unit/` (default) or under the matching `tests/functional/<area>/`
    directory. Never at the top level of `tests/`.
 2. Add the SPDX/Apache header — `copyright-check.yml` hard-fails on any `*.py` without one in its

@@ -21,6 +21,14 @@ With `llm.type: vllm`, NeMo Labs Voice Agent does not load the LLM in-process. I
 OpenAI-compatible vLLM server over `llm.base_url`. This page covers who starts that server, which flags it
 needs, and how to point the agent at one that is already running.
 
+## Prerequisites
+
+Before you start a vLLM deployment, complete the following preparation:
+
+1. Install NeMo Labs Voice Agent by following the [Installation](../../get-started/installation.md) guide.
+2. Activate the repository's Python environment.
+3. Read the model sub-YAML you plan to use so the served model ID and flags match the agent configuration.
+
 ## The model sub-YAML is the source of truth
 
 Serving flags live in the model config that `llm.model_config` points at — not in `default.yaml`, and not in
@@ -44,6 +52,8 @@ Keys that matter for vLLM:
 | `llm.device` | Read only by the `hf` backend. It is not passed to `VLLMService`, so it has no effect on the spawned vLLM process (see below). |
 
 ## Who starts vLLM
+
+The `start_vllm_on_init` setting determines whether the voice-agent process owns the vLLM server lifecycle.
 
 | `start_vllm_on_init` | Behavior | Ships with |
 | --- | --- | --- |
@@ -179,6 +189,8 @@ described above. Set `keep_only_last_audio_turn: false` against a self-hosted vL
 audio turns. See [Multimodal / Omni](../../about/core-concepts/language-models/multimodal.md) for the rest of the omni keys.
 
 ## Related pages
+
+Use these pages to configure the backend and understand the model behavior behind it:
 
 - [LLM Backends](../../about/core-concepts/language-models/llm.md) — choosing between `auto`, `hf`, `vllm`, and `nvidia`.
 - [Server Configuration](../configure/server-config.md) — how the sub-YAML merge works.

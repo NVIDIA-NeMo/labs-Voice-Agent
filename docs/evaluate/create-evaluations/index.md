@@ -20,11 +20,15 @@ limitations under the License.
 Extend the harness by defining scenarios, exposing tools, or adding a complete domain. Keep scenario fixture
 state, live tool behavior, and gold replay behavior aligned so deterministic scoring remains meaningful.
 
+## Authoring Guides
+
+Choose the guide that matches the evaluation surface you need to extend.
+
 | Guide | Scope |
 | --- | --- |
-| [Author scenarios](authoring-scenarios.md) | Personas, tasks, prompts, expected state, and success signals. |
-| [Author tools](authoring-tools.md) | Read and write tools, action records, and domain registration. |
-| [Add a domain](authoring-domains.md) | Package fixtures, register scenarios, and connect domain-specific scoring. |
+| [Authoring Scenarios](authoring-scenarios.md) | Define personas, tasks, prompts, expected state, and success signals. |
+| [Authoring Tools](authoring-tools.md) | Implement read and write tools, action records, and domain registration. |
+| [Adding a Domain](authoring-domains.md) | Package fixtures, register scenarios, and connect domain-specific scoring. |
 
 Use the existing [domain guides](../domain-guides/index.md) as implementation examples, then validate the new
 content with the documentation-consistency tests.

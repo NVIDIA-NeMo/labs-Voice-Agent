@@ -23,6 +23,8 @@ NVIDIA endpoint.
 
 ## Core concepts
 
+The following pages explain how language models generate, reason about, and consume voice-agent context.
+
 | Concept | What it explains |
 | --- | --- |
 | [LLM backends](llm.md) | Backend selection, configuration layers, and supported tool-calling paths. |
@@ -32,7 +34,9 @@ NVIDIA endpoint.
 Model concepts describe runtime behavior. For deployment and endpoint setup, continue to
 [Model serving](../../../build-voice-agents/model-serving/index.md).
 
-## Next steps
+## Related Topics
+
+Use these pages to configure model behavior, serve a backend, or connect models to application tools.
 
 - [System prompts](../../../build-voice-agents/configure/prompts.md) to control assistant behavior.
 - [Tools](../../../build-voice-agents/tools/index.md) to let supported backends call functions.

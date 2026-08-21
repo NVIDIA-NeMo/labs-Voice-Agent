@@ -28,6 +28,14 @@ NeMo Labs Voice Agent gives you three ways to expose a Python callable to the LL
 
 The first two paths both hand pipecat a `DirectFunction`, so they share one contract.
 
+## Prerequisites
+
+Before you add a tool, complete the following preparation:
+
+1. Configure a supported backend and parser by following [Tool Calling](tool-calling.md).
+2. Decide whether the callable is standalone, owned by a component, or needs an explicit schema.
+3. Identify the pipeline entrypoint where the tool will be registered.
+
 ## The direct-function contract
 
 `pipecat/adapters/schemas/direct_function.py` validates and introspects every direct function at
@@ -224,6 +232,8 @@ SPDX/Apache header in its first 10 lines (CI hard-fails without it), and ruff is
 linter — run `uv run ruff format my_tools.py` and `uv run ruff check --fix my_tools.py`.
 
 ## Next steps
+
+Continue with the runtime or reference guide that matches the tool surface you are implementing:
 
 - [Tool Calling](tool-calling.md) — backend support, parser flags, and the shipped demo tools.
 - [Authoring Evaluation Tools](../../evaluate/create-evaluations/authoring-tools.md) — the schema-tool path in depth.

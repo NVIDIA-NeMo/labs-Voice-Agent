@@ -53,6 +53,8 @@ up in `model_registry.yaml` instead — see [Model Registry](model-registry.md).
 
 ## `server`
 
+The `server` block controls model-registry resolution and the connection lifecycle.
+
 | Key | Effect |
 | --- | --- |
 | `log_file`, `log_level` | Log destination and level. Consumed through `resolve_log_file_path` in `builders.py`; the example server calls `setup_logging()` with its own defaults (`bot_server.log`, `DEBUG`), which happen to match the shipped values. The evaluation bot server honors them. |
@@ -196,6 +198,8 @@ turns. Its `llm` block carries `base_url`, `system_role`, `system_prompt_suffix`
 component and every key is taken from this one file. See [NVIDIA NIM](../model-serving/nvidia-nim.md).
 
 ## Next steps
+
+Continue with the guide for the component or behavior you need to refine:
 
 - [Model Registry](model-registry.md) — how a model name resolves to a sub-config.
 - [Prompts](prompts.md) — system prompt files and suffixes.

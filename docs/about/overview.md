@@ -23,6 +23,8 @@ pipeline with a browser client and a spoken-conversation evaluation harness.
 
 ## Skip Ahead
 
+Use the following paths to find the information that matches your goal.
+
 | I want to | Start here |
 | --- | --- |
 | Understand the system | [Architecture](architecture.md) |
@@ -33,12 +35,16 @@ pipeline with a browser client and a spoken-conversation evaluation harness.
 
 ## Use Cases
 
+NeMo Voice Agent supports the following voice-agent development and evaluation use cases.
+
 - Run a local voice pipeline with configurable speech, language, and text-to-speech models.
 - Connect supported stages to hosted NVIDIA endpoints.
 - Add application tools or custom frame processors.
 - Evaluate an in-repository or external voice agent through live audio conversations.
 
 ## Core Concepts
+
+Start with these explanations to understand how the framework processes speech and generates responses.
 
 - [Speech pipeline](core-concepts/speech-pipeline/overview.md) covers recognition, diarization, turn taking,
   and synthesis.
@@ -47,6 +53,8 @@ pipeline with a browser client and a spoken-conversation evaluation harness.
 - [Architecture](architecture.md) shows how the pipeline stages and control messages fit together.
 
 ## Core Components
+
+The following components work together to provide the runtime and evaluation experiences.
 
 | Component | Role |
 | --- | --- |

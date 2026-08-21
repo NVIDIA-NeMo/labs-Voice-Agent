@@ -20,9 +20,11 @@ limitations under the License.
 Use these resources when contributing to the repository or checking license information for packaged
 dependencies and evaluation data.
 
-- [Contribute](contribute/index.md) covers development setup, testing, documentation, data regeneration, and
-  security reporting.
-- [Third-party notices](third-party-notices.md) records licenses and provenance for bundled or referenced
-  third-party material.
+Choose a resource based on the information you need:
+
+| Resource | Use it to |
+| --- | --- |
+| [Contribute](contribute/index.md) | Set up a development environment, run tests, build documentation, regenerate data, and report security issues. |
+| [Third-party notices](third-party-notices.md) | Review licenses and provenance for bundled or referenced third-party material. |
 
 For product configuration and command lookup, use [Reference](../reference/index.md).

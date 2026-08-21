@@ -29,6 +29,8 @@ and for older vLLM releases.
 
 ## What ships
 
+The repository includes parser plugins for tool calls and reasoning plus a deprecated logits processor.
+
 | File | Plugin kind | Loaded by | Status |
 | --- | --- | --- | --- |
 | `examples/generic_voice_agent/server/parsers/nemotron_toolcall_parser_streaming.py` | Tool-call parser, registered as `nemotron_json` | `llm_configs/nemotron_nano_v2.yaml` via `--tool-parser-plugin` | **Current** — required for Nemotron-Nano-v2 |
@@ -36,6 +38,8 @@ and for older vLLM releases.
 | `nemo_voice_agent/vllm/v1/sample/logits_processor/reasoning_budget_logits_processor.py` | V1 logits processor, `ReasoningBudgetLogitsProcessor` | Nothing | **Deprecated** — use `thinking_token_budget` |
 
 ### Which do you need?
+
+Choose plugins according to the model's output format and whether it exposes reasoning or tool calls.
 
 | Model | Reasoning | Thinking budget | Tool calls |
 | --- | --- | --- | --- |
@@ -191,6 +195,8 @@ Note that the `llm.reasoning_budget` config key is unrelated to this plugin: it 
 HuggingFace backend path in `nemo_voice_agent/pipecat/services/nemo/llm.py` and is never forwarded to vLLM.
 
 ## Related pages
+
+Use these pages for the server configuration and runtime behavior that load the plugins:
 
 - [vLLM Backend](vllm.md) — starting the server, `vllm_server_params`, `start_vllm_on_init`.
 - [Reasoning](../../about/core-concepts/language-models/reasoning.md) — thinking mode, `tts.think_tokens`, the `*_think.yaml` configs.

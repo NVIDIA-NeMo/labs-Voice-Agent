@@ -26,6 +26,14 @@ YAML-only ([Server Configuration](../../configure/server-config.md)), and a tran
 is one class ([Custom Frame Processors](custom-processor.md)). This tier is for a genuinely
 different pipeline shape, or services the [builders](builders.md) do not cover.
 
+## Prerequisites
+
+Before you build a replacement pipeline, complete the following preparation:
+
+1. Run the [Quickstart](../../../get-started/quickstart.md) with the shipped pipeline.
+2. Choose whether the replacement must serve the browser client, the evaluation harness, or both.
+3. Identify the stage ordering or service requirement that the shipped builders cannot express.
+
 ## Two entry points, two contracts
 
 There are two `run_bot_websocket()` implementations, and they demand different things from a replacement.
@@ -73,6 +81,9 @@ See [RTVI Control Plane](../protocols/rtvi-actions.md) for handler semantics and
 
 ## What you may not change
 
+Preserve the following contracts if the browser client or evaluation harness must connect to the new
+pipeline:
+
 - **The wire protocol.** Use a pipecat WebSocket server transport. Re-implementing protobuf framing
   by hand is out of scope.
 - **The six message types and their response shapes.** The bridge sends and parses these literally.
@@ -83,6 +94,8 @@ See [RTVI Control Plane](../protocols/rtvi-actions.md) for handler semantics and
   `get_schema_tool_for_eval` implements. See [Custom Tools](../../tools/custom-tools.md).
 
 ## Free-choice points
+
+Everything outside the connection and RTVI contracts can be adapted to the agent's requirements.
 
 | Area | Freedom |
 |---|---|
@@ -222,3 +235,13 @@ Evaluating an agent that is not built on pipecat means re-implementing the trans
 RTVI control plane yourself. Treat `pipecat.transports.websocket.server` and
 `pipecat.serializers.protobuf` as the wire specification. See
 [External Agents](../../../evaluate/run-evaluations/external-agents.md) for the harness-side view.
+
+## Next steps
+
+Continue with the implementation guide for the extension surface you need next:
+
+- [The Builder API](builders.md) explains how to reuse or replace component construction.
+- [Create a Custom Frame Processor](custom-processor.md) shows how to add a focused transformation without
+  replacing the full pipeline.
+- [RTVI Control Plane](../protocols/rtvi-actions.md) documents the handlers a compatible evaluation bot
+  must register.

@@ -26,7 +26,9 @@ latency", and the default LLM sub-config (`server_configs/llm_configs/nemotron_n
 
 Turn it on when answer quality on multi-step or tool-heavy tasks matters more than time-to-first-audio.
 
-## The four moving parts
+## Reasoning Components
+
+The following settings and configuration files control whether reasoning runs and whether it reaches audio output.
 
 | Piece | Where it lives | What it does |
 | --- | --- | --- |
@@ -35,7 +37,7 @@ Turn it on when answer quality on multi-step or tool-heavy tasks matters more th
 | `tts.think_tokens` | `server_configs/tts_configs/*.yaml` | Delimiter pair the local TTS services use to suppress the reasoning span so the user never hears it. |
 | `--reasoning-parser` | inside `llm.vllm_server_params` | Makes vLLM split reasoning into a separate response field, so it never enters the text stream at all. |
 
-## Enabling reasoning
+## Enable Reasoning
 
 `llm.enable_reasoning: true` on its own does **not** always change the model's behavior. The swap in
 `nemo_voice_agent/utils/config_manager.py` (`_configure_llm`) fires only when all three hold:
@@ -51,7 +53,7 @@ Only then is the resolved path rewritten from `<name>.yaml` to `<name>_think.yam
 Because `default.yaml` pins `llm.model_config` explicitly, **the swap never fires for the shipped
 default model.** Point `model_config` at the think variant by hand instead.
 
-### Route 1 — point `model_config` at the `_think.yaml` (shipped default)
+### Route 1 — Point `model_config` at `_think.yaml` for the Shipped Default
 
 Edit `examples/generic_voice_agent/server/server_configs/default.yaml`:
 
@@ -72,7 +74,7 @@ cd examples/generic_voice_agent/server
 SERVER_CONFIG_PATH=./server_configs/my_think.yaml python server.py
 ```
 
-### Route 2 — registry-driven swap
+### Route 2 — Use a Registry-Driven Swap
 
 Drop `llm.model_config` entirely and let the registry resolve the file:
 
@@ -87,7 +89,7 @@ llm:
 To make this work for a model you added, give it a `reasoning_supported: true` entry plus a
 `_think.yaml` sibling — see [Model Registry](../../../build-voice-agents/configure/model-registry.md).
 
-### Route 3 — interpolate the flag (hosted NIM endpoints)
+### Route 3 — Interpolate the Flag for Hosted NVIDIA NIM Endpoints
 
 `default_nvidia.yaml` wires the switch directly into the request body with OmegaConf interpolation,
 so no file swap is needed — flipping `llm.enable_reasoning` is enough:
@@ -106,7 +108,7 @@ llm:
 
 See [NVIDIA NIM Endpoints](../../../build-voice-agents/model-serving/nvidia-nim.md).
 
-## What the `_think.yaml` variants change
+## How the `_think.yaml` Variants Work
 
 Diffing each pair shows the whole delta — the rest of the config is identical.
 
@@ -119,7 +121,7 @@ Diffing each pair shows the whole delta — the rest of the config is identical.
 Raising `max_new_tokens` matters: the reasoning block and the spoken answer share one completion
 budget, so a think config left at 1024 tokens can truncate mid-thought and produce no audio at all.
 
-## Keeping reasoning out of the audio
+## Keep Reasoning Out of the Audio
 
 `tts.think_tokens` is a two-element list of delimiters. The local NeMo TTS services strip everything
 between them before synthesis, streaming-safe: text before the opening tag is spoken, chunks inside
@@ -139,7 +141,7 @@ NeMo TTS services honor it: `tts.type: nvidia` (Riva/NVCF Magpie) is built witho
 argument, so with a hosted TTS you must rely on the vLLM-side parser below. See
 [Text-to-Speech](../speech-pipeline/tts.md).
 
-## Filtering on the vLLM side
+## Filter Reasoning with vLLM
 
 The more robust option is to let vLLM separate the reasoning itself. Add `--reasoning-parser` to
 `llm.vllm_server_params`; vLLM then routes the thinking block to a separate response field that the
@@ -167,7 +169,7 @@ vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4 \
 
 Details in [Serving with vLLM](../../../build-voice-agents/model-serving/vllm.md).
 
-## Bounding how long the model thinks
+## Bound Reasoning Time
 
 Two independent mechanisms:
 
@@ -180,7 +182,7 @@ Two independent mechanisms:
   driven per-request via `vllm_xargs`, so it works for models that ignore `thinking_token_budget`. No
   shipped config enables it — see [vLLM Plugins](../../../build-voice-agents/model-serving/vllm-plugins.md).
 
-## Verifying it took effect
+## Verify Reasoning Behavior
 
 Reasoning mode fails quietly, so check the log rather than guessing. With `server.log_level: DEBUG`
 (the default), `bot_server.log` shows:
@@ -200,3 +202,12 @@ Symptom-to-cause shortcuts:
 
 More in [Troubleshooting](../../../troubleshooting/index.md) and the
 [Configuration Schema](../../../reference/runtime/config-schema.md).
+
+## Related Topics
+
+Use these pages to configure the surrounding model-serving and runtime behavior.
+
+- [LLM Backends](llm.md)
+- [Serving with vLLM](../../../build-voice-agents/model-serving/vllm.md)
+- [Server Configuration](../../../build-voice-agents/configure/server-config.md)
+- [Troubleshooting](../../../troubleshooting/index.md)

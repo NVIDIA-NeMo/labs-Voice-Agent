@@ -22,6 +22,8 @@ Voice Agent eval harness: the simulated user owns a mock phone (`TelecomUserDB`)
 LLM-callable tools, while the agent owns the carrier back office (`TelecomDB`) with 13 tools. Neither
 side can see the other's database, so the bridge reconciles them after every write.
 
+The following table summarizes the two registrations, split state model, tool surfaces, and scoring signals.
+
 | | |
 |---|---|
 | Scenario count | 114 (`tau2_telecom__*`) plus a parallel 114 (`tau2_telecom_workflow__*`) over the same tasks |
@@ -197,6 +199,8 @@ returning tools with a synchronous `invoke`, since that is what the bridge uses 
 Single-side domains keep the inherited no-op and skip the pipeline entirely.
 
 ## Related
+
+Use these pages to compare state models, inspect the source fixtures, or review the scoring contract.
 
 - [tau2_airline](tau2-airline.md) and [tau2_retail](tau2-retail.md) — single-side tau2 domains
 - [Authoring domains](../create-evaluations/authoring-domains.md) — adding your own

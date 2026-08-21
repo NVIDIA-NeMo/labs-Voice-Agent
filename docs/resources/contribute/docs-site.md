@@ -23,6 +23,8 @@ Markdown; the Fern configuration lives in `docs/fern/`. Everything below runs fr
 
 ## Prerequisites
 
+Before you build or preview the documentation, review the requirements for the task you plan to run:
+
 | Requirement | Why |
 |---|---|
 | Node.js 20 or newer, installed via a version manager | `docs/fern/package.json` declares `engines.node >= 20`, and CI pins Node 20, so that is the supported floor for `npm run check`. Node 18 fails immediately with `ReferenceError: crypto is not defined`. For `npm run dev` specifically, prefer Node 22.13+: the dev server bootstraps `pnpm`, whose current release declares `node >= 22.13`. Install through `nvm` (or similar) rather than a system package — the dev server installs `pnpm` globally, which fails with `EACCES` when npm's global prefix is a root-owned directory such as `/usr/local`. |
@@ -33,6 +35,8 @@ The Fern CLI is **not** installed globally. Every npm script fetches and runs th
 pinned in `docs/fern/fern.config.json` via `npm exec`, so local runs match CI.
 
 ## Scripts
+
+Use these scripts from `docs/fern` to generate, validate, preview, or publish the site:
 
 | Command | What it does |
 |---|---|
@@ -114,6 +118,8 @@ generator directly, run the sanitizer too.
 
 ## Running the dev server
 
+To authenticate Fern and start the local documentation server, run:
+
 ```bash
 cd docs/fern
 npm run login   # once, or whenever the theme fetch 403s
@@ -158,6 +164,8 @@ three most recent versions, and opens a PR to persist the registry change back t
 Pre-release tags publish but skip version registration.
 
 ## Related
+
+Use these pages for the repository contribution workflow and test suites:
 
 - [Contributing](index.md) — branch, lint, and PR conventions for the repository.
 - [Testing](testing.md) — running the pytest suites.

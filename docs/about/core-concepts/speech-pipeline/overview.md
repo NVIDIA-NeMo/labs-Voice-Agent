@@ -29,6 +29,8 @@ runtime ordering and the frames exchanged between stages, see [Architecture](../
 
 ## Core concepts
 
+The following pages explain the stages that interpret incoming audio and produce spoken output.
+
 | Concept | What it explains |
 | --- | --- |
 | [Speech recognition](asr.md) | Streaming transcription, model selection, and end-of-utterance tokens. |
@@ -36,7 +38,9 @@ runtime ordering and the frames exchanged between stages, see [Architecture](../
 | [Text to speech](tts.md) | Streaming synthesis, voices, and text aggregation. |
 | [Turn taking](turn-taking.md) | VAD, end-of-utterance signals, interruptions, and backchannels. |
 
-## Next steps
+## Related Topics
+
+Use these pages to experience the pipeline, change its configuration, or understand the complete architecture.
 
 - [Quickstart](../../../get-started/quickstart.md) to experience the complete pipeline.
 - [Configure](../../../build-voice-agents/configure/index.md) to select models and tune pipeline behavior.

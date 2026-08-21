@@ -15,7 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}
 
-# Evaluation Overview
+# About Voice Agent Evaluation
 
 The NeMo Labs Voice Agent evaluation harness scores a voice agent by having a **simulated user** — another
 full voice agent — hold a live spoken conversation with it. A **bridge** process sits between the two,
@@ -25,7 +25,14 @@ result to a runner that scores it.
 Nothing is scored from text alone. Every turn goes through TTS on one side and ASR on the other, so ASR
 errors, barge-in, and turn-taking failures show up in the score the same way they would with a human caller.
 
-## Architecture
+## Workflow Overview
+
+The evaluation workflow connects two independent bot servers through a bridge and then sends the captured
+conversation evidence to the runner for scoring.
+
+### Architecture
+
+The following diagram shows the audio, state, and scoring flow between the four runtime components.
 
 ```
 ┌──────────────────────┐      audio + RTVI     ┌──────────────────────┐     audio + RTVI    ┌──────────────────────┐
@@ -56,7 +63,13 @@ variable picks the role. Each runs its own Pipecat pipeline and holds a per-scen
 | Runner | `nemo_voice_agent/evaluation/runner.py` | Drives the scenario list, scores each result, writes per-scenario and run-level artifacts. |
 | CLI | `evaluation/run_evaluation.py` | Argument parsing, scenario selection, resume handling. |
 
-## What the bridge does
+## Key Concepts
+
+The bridge and scoring outputs are the two concepts to understand before you run or extend an evaluation.
+
+### What the bridge does
+
+The bridge is responsible for the following runtime coordination and evidence-capture tasks.
 
 - **Audio routing.** Audio is resampled at the source (matching browser-client behavior) rather than
   leaving small chunks for ASR to resample. Optional additive noise, configured per scenario, is applied
@@ -85,7 +98,7 @@ The bridge relies on six RTVI actions being registered by both bots — `reset`,
 agent that implements them can be evaluated; see [External agents](run-evaluations/external-agents.md) and the
 [RTVI message reference](../reference/runtime/rtvi-messages.md).
 
-## What you get out
+### What you get out
 
 Each scenario is scored by up to six orthogonal signals. A scenario's domain declares which of them gate
 the composite `is_successful` verdict; the rest are still computed and saved as informational.
@@ -148,6 +161,8 @@ with `--resume`, described in [Resuming a run](run-evaluations/resume.md).
 
 ## Benchmark domains
 
+The harness includes large benchmark-derived domains and smaller in-repository smoke domains.
+
 | Domain | Scenarios | Notes |
 |---|---|---|
 | [eva_airline](domain-guides/eva-airline.md) | 50 | Flight changes, irregular operations, refunds, vouchers |
@@ -161,7 +176,9 @@ of the authoring pattern. Fixtures for all domains are packaged inside the libra
 environment variable as an override. Upstream sources and licenses are recorded in
 [Data provenance](domain-guides/data-provenance.md).
 
-## Next steps
+## Next Steps
+
+Continue with the first-run workflow, domain catalogue, scoring details, or extension guides.
 
 - [Quickstart](run-evaluations/quickstart.md) — first run, end to end.
 - [Benchmarks and domains](understand-scoring/benchmarks.md) — what each domain measures.

@@ -20,8 +20,15 @@ limitations under the License.
 The browser client and evaluation bridge control a running pipeline through the WebSocket transport and RTVI
 messages.
 
+## Choose an integration guide
+
+Choose the client protocol for connection behavior or the RTVI control plane for actions sent after a client
+connects.
+
 - [Client protocol](client-protocol.md) explains the `/connect` handshake, WebSocket URL, and browser flow.
 - [RTVI control plane](rtvi-actions.md) explains the actions used to reset services, update prompts, initialize
   evaluation state, and retrieve results.
+
+## Related reference
 
 For message shapes and fields, use the [RTVI reference](../../../reference/runtime/rtvi-messages.md).

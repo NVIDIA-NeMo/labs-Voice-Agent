@@ -15,7 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}
 
-# How It Works
+# Architecture Overview for NeMo Voice Agent
 
 NeMo Labs Voice Agent is a [Pipecat](https://github.com/pipecat-ai/pipecat) pipeline. One function —
 `run_bot_websocket()` in `examples/generic_voice_agent/server/server.py` — reads a YAML config, builds
@@ -23,7 +23,32 @@ each service, assembles them into a linear list of frame processors, and hands t
 `PipelineWorker`. Everything else in this repo is either a service that plugs into that list or a
 config that changes which services get built.
 
-## The pipeline
+## Components
+
+Each stage is constructed by a small, independent builder in
+`nemo_voice_agent/pipecat/services/nemo/builders.py`. They are thin wrappers over the service
+constructors that read `ConfigManager` properties for you, so `server.py` stays close to a
+declarative description of the pipeline and rarely needs editing.
+
+| Builder | Returns |
+| --- | --- |
+| `build_audio_logger` | `AudioLogger` or `None` (`transport.record_audio_data`) |
+| `build_vad_analyzer` | `SileroVADAnalyzer` (never `None`) |
+| `build_vad_processor` | `VADProcessor`, or `None` if given no analyzer |
+| `build_ws_transport` | `SingleClientWebsocketServerTransport` |
+| `build_stt` | STT service |
+| `build_diar` | Diarization service or `None` |
+| `build_turn_taking` | Turn-taking service or `None` |
+| `build_llm` | LLM service for the configured `llm.type` |
+| `build_llm_text_processor` | `LLMTextProcessor` or `None` |
+| `build_tts` | TTS service |
+| `build_context_and_aggregators` | `(context, user_aggregator, assistant_aggregator, original_messages)` |
+
+Because the builders are independent, a custom bot can import only the ones it needs and construct
+anything unusual inline. See [Builders](../build-voice-agents/extend/pipelines/builders.md) and
+[Build a custom pipeline](../build-voice-agents/extend/pipelines/custom-pipeline.md).
+
+## Data Flow
 
 Frames flow left to right. Audio arrives from the browser on a WebSocket, and synthesized audio goes
 back out on the same socket.
@@ -53,7 +78,9 @@ behind — the pipeline is genuinely shorter.
 | `ws.output` | Transport output side. Serializes audio back to the client. |
 | AssistantAggregator | Appends the assistant's final text to the `LLMContext` so the next turn has history. |
 
-## Which stages are optional, and why
+## Optional Pipeline Stages
+
+The following table shows when each conditional stage is present and why it can be omitted.
 
 | Stage | Included when | Notes |
 | --- | --- | --- |
@@ -69,32 +96,7 @@ it stays quiet and lets `NeMoTurnTakingService` emit the user-turn frames; when 
 aggregator emits them itself, driven straight off the VAD frames. Only one component ever emits
 `UserStartedSpeakingFrame`, so there is no double emission either way.
 
-## The builder pattern
-
-Each stage is constructed by a small, independent builder in
-`nemo_voice_agent/pipecat/services/nemo/builders.py`. They are thin wrappers over the service
-constructors that read `ConfigManager` properties for you, so `server.py` stays close to a
-declarative description of the pipeline and rarely needs editing.
-
-| Builder | Returns |
-| --- | --- |
-| `build_audio_logger` | `AudioLogger` or `None` (`transport.record_audio_data`) |
-| `build_vad_analyzer` | `SileroVADAnalyzer` (never `None`) |
-| `build_vad_processor` | `VADProcessor`, or `None` if given no analyzer |
-| `build_ws_transport` | `SingleClientWebsocketServerTransport` |
-| `build_stt` | STT service |
-| `build_diar` | Diarization service or `None` |
-| `build_turn_taking` | Turn-taking service or `None` |
-| `build_llm` | LLM service for the configured `llm.type` |
-| `build_llm_text_processor` | `LLMTextProcessor` or `None` |
-| `build_tts` | TTS service |
-| `build_context_and_aggregators` | `(context, user_aggregator, assistant_aggregator, original_messages)` |
-
-Because the builders are independent, a custom bot can import only the ones it needs and construct
-anything unusual inline. See [Builders](../build-voice-agents/extend/pipelines/builders.md) and
-[Build a custom pipeline](../build-voice-agents/extend/pipelines/custom-pipeline.md).
-
-## Config drives everything
+## Configuration Flow
 
 `ConfigManager` (`nemo_voice_agent/utils/config_manager.py`) loads
 `server_configs/default.yaml`, then merges in the model-specific YAML named by each component's
@@ -110,7 +112,7 @@ anything unusual inline. See [Builders](../build-voice-agents/extend/pipelines/b
 Details are in [Configuration](../build-voice-agents/configure/index.md) and
 [Server config reference](../build-voice-agents/configure/server-config.md).
 
-## Connection lifecycle
+## Service Interactions
 
 Two servers run concurrently, wired up by `run_bot_with_fastapi`:
 
@@ -152,7 +154,9 @@ Observers watch frames without sitting in the chain. Two are attached to the `Pi
 - `RTVIAudioLoggerObserver` — writes session audio to disk when audio logging is on; see
   [Audio logging](../build-voice-agents/configure/audio-logging.md).
 
-## Next
+## Related Topics
+
+Use these pages to run, configure, extend, or troubleshoot the architecture described here.
 
 - [Quickstart](../get-started/quickstart.md) — get it talking.
 - [Speech recognition](core-concepts/speech-pipeline/asr.md), [Diarization](core-concepts/speech-pipeline/diarization.md),

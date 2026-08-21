@@ -23,6 +23,8 @@ subdirectory named after the scenario. This page maps each artifact to the quest
 
 ## Directory layout
 
+Each run directory combines session-level aggregates with one evidence directory per scenario.
+
 ```text
 eval_results/eval_YYYYMMDD_HHMMSS/
 ├── evaluation_log.txt            # runner log for the whole session
@@ -51,6 +53,8 @@ eval_results/eval_YYYYMMDD_HHMMSS/
 ```
 
 ## Which file answers which question
+
+Start with the artifact that most directly answers your investigation question.
 
 | Question | File |
 |---|---|
@@ -169,6 +173,9 @@ dispatches, and the end-of-scenario summary pull. Start here when a scenario pro
 
 ## Triage recipes
 
+Use these commands to identify failed or stalled scenarios and inspect their latency and database-state
+evidence.
+
 ```bash
 cd eval_results/eval_20260730_075304
 
@@ -187,7 +194,9 @@ jq -r .expected_db_hash tau2_retail__1/scenario_config/metadata.json
 cat tau2_retail__1/final_scenario_db_hash.txt
 ```
 
-## Next steps
+## Next Steps
+
+Continue with the scoring definitions or operational guides that match what you found in the artifacts.
 
 - [Scoring](../understand-scoring/scoring.md) — how each of the six signals is computed and combined.
 - [Resuming a Run](resume.md) — re-running stalled or in-flight scenarios into the same session directory.

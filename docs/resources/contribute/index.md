@@ -155,6 +155,8 @@ distinct from GitHub *signed* (GPG-verified) commits, which affect CI triggering
 
 ## Pull request flow
 
+To prepare and submit a pull request, complete the following steps:
+
 1. Open an issue first for anything non-trivial, so the approach can be discussed.
 2. Fork the repo, branch off `main` with a descriptive name (`feature/...`, `fix/...`).
 3. Implement the change together with tests and doc updates.
@@ -185,6 +187,8 @@ path filter and gate on MDX safety, `fern check`, and offline link checking. See
 [Building the Docs](docs-site.md) before editing anything under `docs/`.
 
 ## Where changes usually go
+
+Use this table to find the documentation and implementation guidance for a change:
 
 | Change | Start here |
 | --- | --- |

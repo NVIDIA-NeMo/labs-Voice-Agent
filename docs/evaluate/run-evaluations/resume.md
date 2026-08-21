@@ -21,6 +21,11 @@ A full benchmark domain is 50–114 scenarios run end to end over live WebSocket
 and can die halfway through — a hung LLM server, an OOM, or a deliberate Ctrl+C. `run_evaluation.py --resume`
 picks the session back up instead of starting over.
 
+## Prerequisites
+
+Keep the original session directory under `eval_results/`, and restart the simulated-user and agent bot
+servers before reconnecting the bridge.
+
 ## Resume a run
 
 Both bot servers must be up again before you resume; the bridge reconnects to them per scenario.
@@ -139,6 +144,8 @@ Two things to know:
 
 ## Tips for long runs
 
+Use these practices to control scenario duration, preserve evidence, and avoid unnecessary reruns.
+
 - `--duration` is unset by default, in which case each scenario's own `max_duration` applies. Setting it
   overrides every scenario and is one of the diffed consistency fields.
 - Resume in the same shell environment. `--output-dir` is relative to the CWD, so running from a different
@@ -148,7 +155,10 @@ Two things to know:
 - If many scenarios stall at once, fix the backend first (see [Troubleshooting](../../troubleshooting/index.md))
   and only then resume; resuming into a still-broken LLM server just re-kills the same scenarios.
 
-## Related pages
+## Next Steps
+
+Use the quickstart for a fresh run, the results guide for artifact triage, and the CLI reference for every
+resume option.
 
 - [Evaluation Quickstart](quickstart.md) — first end-to-end run
 - [Scoring](../understand-scoring/scoring.md) — the six success signals and how the composite is computed

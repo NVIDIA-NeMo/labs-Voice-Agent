@@ -29,6 +29,15 @@ The two servers are started together by `run_bot_with_fastapi` in `nemo_voice_ag
 | FastAPI | 7860 | `FASTAPI_PORT` | `POST /connect` discovery only |
 | WebSocket | 8765 | `WEBSOCKET_PORT` | Audio frames and RTVI messages |
 
+## Prerequisites
+
+Before you connect a custom client, complete the following preparation:
+
+1. Start the voice-agent server by following the [Quickstart](../../../get-started/quickstart.md).
+2. Choose whether the client will use the `/connect` discovery endpoint or connect directly to the
+   WebSocket port.
+3. Use a client that can serialize and deserialize pipecat Protobuf frames.
+
 ## Step 1: POST /connect
 
 The endpoint takes no meaningful request body and returns one key:
@@ -166,6 +175,8 @@ serializer's tables expect.
 
 ## Connection rules
 
+Clients must follow these lifecycle rules to connect without replacing or corrupting the active session:
+
 - **One client at a time.** While a client is connected, a second connection is closed immediately with
   WebSocket code `1013` and reason `Server already has a connected client`. The incumbent keeps talking.
 - **The pipeline outlives the connection.** On disconnect the server deliberately does not end the
@@ -175,6 +186,8 @@ serializer's tables expect.
   Send the `reset` message to clear it explicitly.
 
 ## Next
+
+Continue with the protocol guide or reference that matches your integration work:
 
 - [RTVI control plane](rtvi-actions.md) — add your own client message types.
 - [RTVI message reference](../../../reference/runtime/rtvi-messages.md) — every message the server understands.
