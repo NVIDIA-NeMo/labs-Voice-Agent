@@ -255,17 +255,18 @@ Check the matching page whenever you touch:
 
 | You changed | Check |
 |---|---|
-| a config key, default, or `server_configs/**` YAML | `docs/configure/`, `docs/reference/config-schema.md` |
-| a `build_*` function or the pipeline order | `docs/get-started/architecture.md`, `docs/extend/builders.md` |
-| an STT / TTS / diarization / turn-taking service or model | the matching `docs/models/*.md` |
-| LLM backend selection, vLLM flags, reasoning, omni | `docs/models/{llm,vllm,vllm-plugins,reasoning,multimodal}.md` |
-| tool calling or `utils/tool_calling/**` | `docs/features/{tool-calling,custom-tools}.md` |
-| an RTVI action or the `/connect` handshake | `docs/extend/{rtvi-actions,client-protocol}.md`, `docs/reference/rtvi-messages.md` |
-| `run_evaluation.py` flags, defaults, or scoring | `docs/evaluate/{scoring,resume}.md`, `docs/reference/eval-cli.md` |
-| eval scenarios, tools, or fixtures for a domain | `docs/evaluate/domains/*.md`, `docs/evaluate/authoring-*.md` |
-| a metric written to `metrics.json` / `all_summary.txt` | `docs/reference/metrics.md` |
-| an env var | `docs/reference/environment.md` |
-| deps, Python version, test layout, or lint tooling | `docs/contribute/{index,testing}.md` |
+| a config key, default, or `server_configs/**` YAML | `docs/build-voice-agents/configure/`, `docs/reference/runtime/config-schema.md` |
+| a `build_*` function or the pipeline order | `docs/about/architecture.md`, `docs/build-voice-agents/extend/pipelines/builders.md` |
+| an STT / TTS / diarization / turn-taking service or model | the matching `docs/about/core-concepts/speech-pipeline/*.md` page |
+| LLM backend selection, reasoning, or omni | `docs/about/core-concepts/language-models/{llm,reasoning,multimodal}.md` |
+| vLLM serving, plugins, or hosted NVIDIA endpoints | `docs/build-voice-agents/model-serving/{vllm,vllm-plugins,nvidia-nim}.md` |
+| tool calling or `utils/tool_calling/**` | `docs/build-voice-agents/tools/{tool-calling,custom-tools}.md` |
+| an RTVI action or the `/connect` handshake | `docs/build-voice-agents/extend/protocols/{rtvi-actions,client-protocol}.md`, `docs/reference/runtime/rtvi-messages.md` |
+| `run_evaluation.py` flags, defaults, or scoring | `docs/evaluate/understand-scoring/scoring.md`, `docs/evaluate/run-evaluations/resume.md`, `docs/reference/evaluation/eval-cli.md` |
+| eval scenarios, tools, or fixtures for a domain | `docs/evaluate/domain-guides/*.md`, `docs/evaluate/create-evaluations/authoring-*.md` |
+| a metric written to `metrics.json` / `all_summary.txt` | `docs/reference/evaluation/metrics.md` |
+| an env var | `docs/reference/runtime/environment.md` |
+| deps, Python version, test layout, or lint tooling | `docs/resources/contribute/{index,testing}.md` |
 
 Rules of thumb:
 
@@ -304,7 +305,7 @@ Four things to know before touching it:
 - **Hard CI gates:** no non-self-closing `<img …>` anywhere under `docs/`; `fern check`; and lychee `--offline`
   over `docs/**/*.md`, which requires every relative link target to exist on disk (no `.lycheeignore` exists).
 - Author pages as `.md` (`.mdx` is the generated-only format). Fern renders `.md` through MDX, so bare `{`, `}`,
-  `<` outside code fences break the build — that is why `docs/index.md` uses a `{/* … */}` comment header.
+  `<` outside code fences break the build — that is why authored pages use a `{/* … */}` comment header.
 - `docs/fern/product-docs/**` is the generated Python API reference: gitignored and regenerated per build.
   `fern check` does **not** need it on disk (CI has no generate step and still passes) — `npm run check` alone
   is enough for a prose change. Only a locally rendered `npm run dev` needs it, via
@@ -331,5 +332,5 @@ Four things to know before touching it:
   built-ins for Nemotron-3 and newer: `nano_v3_reasoning_parser.py` by `--reasoning-parser nemotron_v3`, and
   `ReasoningBudgetLogitsProcessor` by the `thinking_token_budget` request parameter (see
   `nemotron_nano_v3_think.yaml`). Neither is loaded by any shipped config; both are kept only for deployments
-  pinned to older vLLM releases. Don't wire them into new configs — see `docs/models/vllm-plugins.md`.
+  pinned to older vLLM releases. Don't wire them into new configs — see `docs/build-voice-agents/model-serving/vllm-plugins.md`.
 - `bot_server.log` saves the logs from the pipecat pipeline, by default it's rotated every day. Recent failures: check the newest `bot_server.<timestamp>.log`, not just `bot_server.log` (which may be from an in-flight run).

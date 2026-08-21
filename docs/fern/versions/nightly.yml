@@ -22,135 +22,198 @@
 #
 
 navigation:
-  - page: Home
-    path: ../../index.md
-    slug: ""
+  - section: About
+    contents:
+      - page: Overview
+        path: ../../about/overview.md
+      - page: Architecture
+        path: ../../about/architecture.md
+      - page: Release Notes
+        path: ../../about/release-notes.md
+      - section: Core Concepts
+        contents:
+          - section: Speech Pipeline
+            contents:
+              - page: Overview
+                path: ../../about/core-concepts/speech-pipeline/overview.md
+              - page: Speech Recognition
+                path: ../../about/core-concepts/speech-pipeline/asr.md
+              - page: Speaker Diarization
+                path: ../../about/core-concepts/speech-pipeline/diarization.md
+              - page: Text to Speech
+                path: ../../about/core-concepts/speech-pipeline/tts.md
+              - page: Turn Taking & Backchannels
+                path: ../../about/core-concepts/speech-pipeline/turn-taking.md
+          - section: Language Models
+            contents:
+              - page: Overview
+                path: ../../about/core-concepts/language-models/overview.md
+              - page: LLM Backends
+                path: ../../about/core-concepts/language-models/llm.md
+              - page: Reasoning Mode
+                path: ../../about/core-concepts/language-models/reasoning.md
+              - page: Multimodal / Omni
+                path: ../../about/core-concepts/language-models/multimodal.md
   - section: Get Started
     contents:
+      - page: Choose Your Path
+        path: ../../get-started/choose-your-path.md
+      - page: Prerequisites
+        path: ../../get-started/prerequisites.md
       - page: Installation
         path: ../../get-started/installation.md
       - page: Quickstart
         path: ../../get-started/quickstart.md
-      - page: How It Works
-        path: ../../get-started/architecture.md
-      - page: Troubleshooting
-        path: ../../get-started/troubleshooting.md
-  - section: Configure
+  - section: Build Voice Agents
     contents:
-      - page: Configuration Model
-        path: ../../configure/index.md
-      - page: Server Config
-        path: ../../configure/server-config.md
-      - page: Model Registry
-        path: ../../configure/model-registry.md
-      - page: System Prompts
-        path: ../../configure/prompts.md
-      - page: Audio Capture & Logging
-        path: ../../configure/audio-logging.md
-  - section: Models & Features
-    contents:
-      - page: LLM Backends
-        path: ../../models/llm.md
-      - page: Serving with vLLM
-        path: ../../models/vllm.md
-      - page: vLLM Plugins
-        path: ../../models/vllm-plugins.md
-      - page: Reasoning Mode
-        path: ../../models/reasoning.md
-      - page: Multimodal / Omni
-        path: ../../models/multimodal.md
-      - page: Speech Recognition
-        path: ../../models/asr.md
-      - page: Speaker Diarization
-        path: ../../models/diarization.md
-      - page: Text to Speech
-        path: ../../models/tts.md
-      - page: Turn Taking & Backchannels
-        path: ../../models/turn-taking.md
-      - page: NVIDIA NIM & Riva
-        path: ../../models/nvidia-nim.md
-      - page: Tool Calling
-        path: ../../features/tool-calling.md
-      - page: Writing Your Own Tools
-        path: ../../features/custom-tools.md
-  - section: Extend
-    contents:
-      - page: Extension Overview
-        path: ../../extend/index.md
-      - page: The Builder API
-        path: ../../extend/builders.md
-      - page: Custom Frame Processors
-        path: ../../extend/custom-processor.md
-      - page: Building Your Own Pipeline
-        path: ../../extend/custom-pipeline.md
-      - page: RTVI Control Plane
-        path: ../../extend/rtvi-actions.md
-      - page: Client Protocol
-        path: ../../extend/client-protocol.md
-  - section: Evaluate
-    contents:
-      - page: Evaluation Overview
-        path: ../../evaluate/index.md
-      - page: Quickstart
-        path: ../../evaluate/quickstart.md
-      - page: Benchmarks & Domains
-        path: ../../evaluate/benchmarks.md
-      - page: Scoring Model
-        path: ../../evaluate/scoring.md
-      - page: Reading Results
-        path: ../../evaluate/results.md
-      - page: Resuming & Long Runs
-        path: ../../evaluate/resume.md
-      - page: Authoring Scenarios
-        path: ../../evaluate/authoring-scenarios.md
-      - page: Authoring Tools
-        path: ../../evaluate/authoring-tools.md
-      - page: Adding a Domain
-        path: ../../evaluate/authoring-domains.md
-      - page: Evaluating an External Agent
-        path: ../../evaluate/external-agents.md
-      - page: Fixture Data & Provenance
-        path: ../../evaluate/data-provenance.md
-      - section: Domain Notes
+      - page: Overview
+        path: ../../build-voice-agents/index.md
+      - section: Configure
         contents:
+          - page: Overview
+            path: ../../build-voice-agents/configure/index.md
+          - page: Server Config
+            path: ../../build-voice-agents/configure/server-config.md
+          - page: Model Registry
+            path: ../../build-voice-agents/configure/model-registry.md
+          - page: System Prompts
+            path: ../../build-voice-agents/configure/prompts.md
+          - page: Audio Capture & Logging
+            path: ../../build-voice-agents/configure/audio-logging.md
+      - section: Model Serving
+        contents:
+          - page: Overview
+            path: ../../build-voice-agents/model-serving/index.md
+          - page: Serving with vLLM
+            path: ../../build-voice-agents/model-serving/vllm.md
+          - page: vLLM Plugins
+            path: ../../build-voice-agents/model-serving/vllm-plugins.md
+          - page: NVIDIA NIM & Riva
+            path: ../../build-voice-agents/model-serving/nvidia-nim.md
+      - section: Tools
+        contents:
+          - page: Overview
+            path: ../../build-voice-agents/tools/index.md
+          - page: Tool Calling
+            path: ../../build-voice-agents/tools/tool-calling.md
+          - page: Writing Your Own Tools
+            path: ../../build-voice-agents/tools/custom-tools.md
+      - section: Extend
+        contents:
+          - page: Overview
+            path: ../../build-voice-agents/extend/index.md
+          - section: Pipelines
+            contents:
+              - page: Overview
+                path: ../../build-voice-agents/extend/pipelines/index.md
+              - page: The Builder API
+                path: ../../build-voice-agents/extend/pipelines/builders.md
+              - page: Custom Frame Processors
+                path: ../../build-voice-agents/extend/pipelines/custom-processor.md
+              - page: Building Your Own Pipeline
+                path: ../../build-voice-agents/extend/pipelines/custom-pipeline.md
+          - section: Protocols
+            contents:
+              - page: Overview
+                path: ../../build-voice-agents/extend/protocols/index.md
+              - page: RTVI Control Plane
+                path: ../../build-voice-agents/extend/protocols/rtvi-actions.md
+              - page: Client Protocol
+                path: ../../build-voice-agents/extend/protocols/client-protocol.md
+  - section: Evaluate Voice Agents
+    contents:
+      - page: Overview
+        path: ../../evaluate/index.md
+      - section: Run Evaluations
+        contents:
+          - page: Overview
+            path: ../../evaluate/run-evaluations/index.md
+          - page: Quickstart
+            path: ../../evaluate/run-evaluations/quickstart.md
+          - page: Reading Results
+            path: ../../evaluate/run-evaluations/results.md
+          - page: Resuming & Long Runs
+            path: ../../evaluate/run-evaluations/resume.md
+          - page: Evaluating an External Agent
+            path: ../../evaluate/run-evaluations/external-agents.md
+      - section: Understand Scoring
+        contents:
+          - page: Overview
+            path: ../../evaluate/understand-scoring/index.md
+          - page: Benchmarks & Domains
+            path: ../../evaluate/understand-scoring/benchmarks.md
+          - page: Scoring Model
+            path: ../../evaluate/understand-scoring/scoring.md
+      - section: Create Evaluations
+        contents:
+          - page: Overview
+            path: ../../evaluate/create-evaluations/index.md
+          - page: Authoring Scenarios
+            path: ../../evaluate/create-evaluations/authoring-scenarios.md
+          - page: Authoring Tools
+            path: ../../evaluate/create-evaluations/authoring-tools.md
+          - page: Adding a Domain
+            path: ../../evaluate/create-evaluations/authoring-domains.md
+      - section: Domain Guides
+        contents:
+          - page: Overview
+            path: ../../evaluate/domain-guides/index.md
+          - page: Fixture Data & Provenance
+            path: ../../evaluate/domain-guides/data-provenance.md
           - page: eva_airline
-            path: ../../evaluate/domains/eva-airline.md
+            path: ../../evaluate/domain-guides/eva-airline.md
           - page: tau2_airline
-            path: ../../evaluate/domains/tau2-airline.md
+            path: ../../evaluate/domain-guides/tau2-airline.md
           - page: tau2_retail
-            path: ../../evaluate/domains/tau2-retail.md
+            path: ../../evaluate/domain-guides/tau2-retail.md
           - page: tau2_telecom
-            path: ../../evaluate/domains/tau2-telecom.md
+            path: ../../evaluate/domain-guides/tau2-telecom.md
   - section: Reference
     slug: reference
     contents:
-      - page: Server Config Schema
-        path: ../../reference/config-schema.md
-      - page: Environment Variables
-        path: ../../reference/environment.md
-      - page: Evaluation CLI
-        path: ../../reference/eval-cli.md
-      - page: Metrics Dictionary
-        path: ../../reference/metrics.md
-      - page: RTVI Message Reference
-        path: ../../reference/rtvi-messages.md
-      - page: Third-Party Notices
-        path: ../../reference/third-party-notices.md
-      - page: Changelog
-        path: ../../reference/changelog.md
+      - page: Overview
+        path: ../../reference/index.md
+      - section: Runtime
+        contents:
+          - page: Overview
+            path: ../../reference/runtime/index.md
+          - page: Server Config Schema
+            path: ../../reference/runtime/config-schema.md
+          - page: Environment Variables
+            path: ../../reference/runtime/environment.md
+          - page: RTVI Message Reference
+            path: ../../reference/runtime/rtvi-messages.md
+      - section: Evaluation
+        contents:
+          - page: Overview
+            path: ../../reference/evaluation/index.md
+          - page: Evaluation CLI
+            path: ../../reference/evaluation/eval-cli.md
+          - page: Metrics Dictionary
+            path: ../../reference/evaluation/metrics.md
       # Generated Python API reference. Path is relative to
       # docs/fern/versions/ in BOTH files — the release sed rewrites
       # only "path: ", never "folder: ".
       - folder: ../product-docs/nemo-labs-voice-agent/Full-Library-Reference
-  - section: Contribute
+  - section: Troubleshooting
     contents:
-      - page: Contributing
-        path: ../../contribute/index.md
-      - page: Testing
-        path: ../../contribute/testing.md
-      - page: Building the Docs
-        path: ../../contribute/docs-site.md
-      - page: Regenerating Benchmark Data
-        path: ../../contribute/data-import.md
-      - page: Security Policy
-        path: ../../contribute/security.md
+      - page: Troubleshooting
+        path: ../../troubleshooting/index.md
+  - section: Resources
+    contents:
+      - page: Overview
+        path: ../../resources/index.md
+      - page: Third-Party Notices
+        path: ../../resources/third-party-notices.md
+      - section: Contribute
+        contents:
+          - page: Contributing
+            path: ../../resources/contribute/index.md
+          - page: Testing
+            path: ../../resources/contribute/testing.md
+          - page: Building the Docs
+            path: ../../resources/contribute/docs-site.md
+          - page: Regenerating Benchmark Data
+            path: ../../resources/contribute/data-import.md
+          - page: Security Policy
+            path: ../../resources/contribute/security.md

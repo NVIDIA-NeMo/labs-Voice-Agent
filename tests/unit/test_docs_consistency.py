@@ -88,7 +88,7 @@ def test_scoring_signal_count_matches_enum():
     actual = len(list(SuccessSignal))
     word = {5: "five", 6: "six", 7: "seven"}[actual]
 
-    page = DOCS / "evaluate" / "scoring.md"
+    page = DOCS / "evaluate" / "understand-scoring" / "scoring.md"
     text = _read(page).lower()
     wrong = {"five", "six", "seven"} - {word}
     for w in wrong:
@@ -104,7 +104,10 @@ def test_rtvi_action_count_matches_factories():
     actual = len(factories)
     word = {5: "five", 6: "six", 7: "seven"}[actual]
 
-    for rel in ("extend/rtvi-actions.md", "reference/rtvi-messages.md"):
+    for rel in (
+        "build-voice-agents/extend/protocols/rtvi-actions.md",
+        "reference/runtime/rtvi-messages.md",
+    ):
         text = _read(DOCS / rel).lower()
         for w in {"five", "six", "seven"} - {word}:
             assert f"{w} rtvi" not in text and f"{w} required action" not in text, (
@@ -130,7 +133,7 @@ def _argparse_defaults() -> dict[str, str]:
 
 
 def test_eval_cli_reference_documents_true_defaults():
-    """docs/reference/eval-cli.md must not contradict argparse on defaults.
+    """docs/reference/evaluation/eval-cli.md must not contradict argparse on defaults.
 
     `--min-agent-turns` shipped documented as "0 (disabled)" while defaulting to
     3, silently reshaping every aggregate rate.
@@ -138,7 +141,7 @@ def test_eval_cli_reference_documents_true_defaults():
     defaults = _argparse_defaults()
     assert defaults, "failed to parse any argparse defaults — the extractor needs updating"
 
-    page = _read(DOCS / "reference" / "eval-cli.md")
+    page = _read(DOCS / "reference" / "evaluation" / "eval-cli.md")
 
     # The page documents two tools whose --min-agent-turns defaults legitimately
     # differ (run_evaluation.py 3, check_resume.py 0), so scope to the runner's
@@ -152,17 +155,17 @@ def test_eval_cli_reference_documents_true_defaults():
         f"--min-agent-turns default changed to {defaults['--min-agent-turns']}; update the docs and this test"
     )
     assert re.search(r"`--min-agent-turns[^`]*`\s*\|\s*`3`", runner_section), (
-        "docs/reference/eval-cli.md does not document the runner's --min-agent-turns default of 3"
+        "docs/reference/evaluation/eval-cli.md does not document the runner's --min-agent-turns default of 3"
     )
     assert not re.search(r"`--min-agent-turns[^`]*`\s*\|\s*`0`", runner_section), (
-        "docs/reference/eval-cli.md claims the runner's --min-agent-turns defaults to 0"
+        "docs/reference/evaluation/eval-cli.md claims the runner's --min-agent-turns defaults to 0"
     )
 
     assert defaults["--duration"] == "None", (
         f"--duration default changed to {defaults['--duration']}; update the docs and this test"
     )
     assert not re.search(r"`--duration[^`]*`\s*\|\s*`?(120|300)`?", runner_section), (
-        "docs/reference/eval-cli.md states a numeric --duration default; it is None "
+        "docs/reference/evaluation/eval-cli.md states a numeric --duration default; it is None "
         "(falls back to each scenario's max_duration)"
     )
 
@@ -197,9 +200,9 @@ def test_eval_fixture_root_documented_correctly():
     assert not (REPO / "evaluation" / "data").exists(), (
         "evaluation/data/ exists again — the docs describe the packaged location; reconcile them"
     )
-    text = _read(DOCS / "evaluate" / "data-provenance.md")
+    text = _read(DOCS / "evaluate" / "domain-guides" / "data-provenance.md")
     assert "nemo_voice_agent/evaluation/data" in text, (
-        "docs/evaluate/data-provenance.md must name the packaged fixture root"
+        "docs/evaluate/domain-guides/data-provenance.md must name the packaged fixture root"
     )
 
 
@@ -272,10 +275,14 @@ def test_nav_manifest_covers_every_page_and_only_real_pages():
     declared: set[str] = set()
     if root := nav.get("root"):
         declared.add(root["path"])
+
+    def collect(section: dict) -> None:
+        declared.update(p["path"] for p in section.get("pages", []))
+        for subsection in section.get("subsections", []):
+            collect(subsection)
+
     for section in nav["sections"]:
-        declared.update(p["path"] for p in section["pages"])
-        for sub in section.get("subsections", []):
-            declared.update(p["path"] for p in sub["pages"])
+        collect(section)
 
     on_disk = {str(p.relative_to(DOCS)) for p in _docs_pages()}
 
