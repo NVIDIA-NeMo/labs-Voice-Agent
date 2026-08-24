@@ -171,8 +171,6 @@ navigation:
   - section: Reference
     slug: reference
     contents:
-      - page: Overview
-        path: ../../reference/index.md
       - section: Runtime
         contents:
           - page: Overview

@@ -27,4 +27,5 @@ Choose a resource based on the information you need:
 | [Contribute](contribute/index.md) | Set up a development environment, run tests, build documentation, regenerate data, and report security issues. |
 | [Third-Party Notices](third-party-notices.md) | Review licenses and provenance for bundled or referenced third-party material. |
 
-For product configuration and command lookup, use [Reference](../reference/index.md).
+For product lookup, use the [Runtime reference](../reference/runtime/index.md) or
+[Evaluation reference](../reference/evaluation/index.md).

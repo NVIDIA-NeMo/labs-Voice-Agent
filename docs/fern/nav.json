@@ -165,9 +165,6 @@
     {
       "title": "Reference",
       "slug": "reference",
-      "pages": [
-        { "title": "Overview", "path": "reference/index.md" }
-      ],
       "subsections": [
         {
           "title": "Runtime",
