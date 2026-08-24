@@ -98,9 +98,9 @@ The buffer works per user turn:
 - While the user is silent it keeps a ring buffer of the most recent `pre_cache_duration_secs` of input
   audio, so the syllables VAD clipped off at speech onset are not lost.
 - While the user is speaking it appends every input audio frame.
-- On `UserStoppedSpeakingFrame` it appends one user message to the LLM context containing the whole
-  utterance (encoded by Pipecat as base64 WAV) plus the text in `text_prompt_for_audio`, then triggers an
-  LLM run.
+- On `UserStoppedSpeakingFrame` it appends one user message to the LLM context. The message contains the
+  whole utterance, encoded by Pipecat as base64 WAV, plus the text in `text_prompt_for_audio`. It then
+  triggers an LLM run.
 
 The buffer **consumes** `TranscriptionFrame` instances instead of forwarding them downstream. With omni
 enabled, user turns in the LLM context therefore hold audio rather than ASR text. ASR output still reaches
@@ -136,8 +136,9 @@ Notes on the individual keys:
   `text_prompt_for_transcript`, then the utterance transcript. Use it when the model benefits from a
   textual anchor. Leave it false to evaluate the model's own audio understanding.
 - **`keep_only_last_audio_turn: true`** rewrites the previous audio turn in the context into a plain-text
-  replacement (built from `text_prompt_for_audio`, `text_prompt_for_transcript`, and that turn's ASR
-  transcript) before adding the new one, so only the newest turn carries real audio. Set it to `true` for
+  replacement before adding the new one. The replacement uses `text_prompt_for_audio`,
+  `text_prompt_for_transcript`, and that turn's ASR transcript, so only the newest turn carries real audio.
+  Set it to `true` for
   endpoints that accept a single audio turn per request. Leave it `false` on vLLM, which accepts multiple
   audio turns. The stand-in text is derived from the ASR transcript regardless of `use_stt_transcript`, so
   keep STT enabled if you use this mode.

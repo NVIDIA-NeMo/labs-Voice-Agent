@@ -64,7 +64,7 @@ Use these flags to list or select the scenarios included in a run.
 | `--domain DOMAIN` | `None` | Run every scenario whose name starts with the `DOMAIN__` prefix. Exits with status 1 if nothing matches. |
 
 Domain filtering is a literal prefix match, so `--domain tau2_telecom` selects only the
-`tau2_telecom__…` scenarios; the parallel workflow-policy registration is a separate domain,
+`tau2_telecom__…` scenarios. The parallel workflow-policy registration is a separate domain,
 `--domain tau2_telecom_workflow`. The four benchmark domains carry 50 (`eva_airline`), 50
 (`tau2_airline`), 114 (`tau2_retail`), and 114 (`tau2_telecom`, mirrored by
 `tau2_telecom_workflow`) scenarios. For domain details, refer to
@@ -151,8 +151,13 @@ The evaluation driver exits with one of the following status codes.
 ### Invocation Record
 
 Every run writes `run_args.json` into the session directory with the shape
-`{"invocations": [...]}` — each entry holds `started_at`, the raw `argv`, the parsed args (judge API key
-redacted), and the resolved scenario names and count. A `--resume` invocation appends a new entry and
+`{"invocations": [...]}`. Each entry records:
+
+- `started_at` and the raw `argv`.
+- The parsed arguments, with the judge API key redacted.
+- The resolved scenario names and count.
+
+A `--resume` invocation appends a new entry and
 soft-checks it against the previous one on the scoring-relevant fields `domain`, `scenarios`, `duration`,
 `judge_url`, `judge_model`, `judge_threshold`, `judge_max_tokens`, `judge_temperature`, `judge_top_p`,
 `judge_seed`, and `strict_match`. Mismatches log a warning but do not block the run.

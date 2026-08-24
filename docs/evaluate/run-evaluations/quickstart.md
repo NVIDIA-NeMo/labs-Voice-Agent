@@ -107,7 +107,7 @@ Wait until both processes log that they are serving before starting the bridge. 
 ### Helper Launch Scripts
 
 `run_user.sh` and `run_agent.sh` wrap the two invocations above with the environment already exported. They
-resolve their own directory only to locate `bot_server.py`; the exported `SERVER_CONFIG_PATH` stays relative,
+resolve their own directory only to locate `bot_server.py`. The exported `SERVER_CONFIG_PATH` stays relative,
 so **they must also be run from `evaluation/`**:
 
 ```bash

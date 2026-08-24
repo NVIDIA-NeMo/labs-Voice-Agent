@@ -84,7 +84,7 @@ class Tau2Retail0(Tau2RetailBaseScenario):
 
 The gold replay runs one time in process and yields both ground-truth signals, so the expected database (DB) and the
 reference action list can never disagree. `initialization_actions` and `db_state_assertions` are `None` for
-every retail task; those are telecom mechanics.
+every retail task. Those are telecom mechanics.
 
 ## Prompts
 
@@ -147,8 +147,8 @@ only needs to state it. The mechanics:
 4. The judge's reply is normalized to exactly one entry per assertion, in order, each carrying `index`,
    `assertion`, `passed`, and `reason`. Missing entries, out-of-range indices, non-boolean `passed`, and judge
    transport errors all become `passed=false` with explanatory text rather than a crash.
-5. Verdicts land in `judge_result.json` under `nl_assertion_verdicts`; the scenario-level
-   `nl_assertion_pass_rate` lands in `metrics.json`; the run-level roll-up prints as `NL-Assertion pass` in
+5. Verdicts land in `judge_result.json` under `nl_assertion_verdicts`. The scenario-level
+   `nl_assertion_pass_rate` lands in `metrics.json`. The run-level roll-up prints as `NL-Assertion pass` in
    `all_summary.txt`, denominated in assertions rather than scenarios.
 
 The pass-rate threshold is `1.0`, so every assertion in a task must pass for the signal to pass. The

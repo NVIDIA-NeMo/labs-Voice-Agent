@@ -145,7 +145,7 @@ The runtime initializes domain state and tools in the following order.
 | Prompt + tool surface | `update_system_prompt` | `prompt`, `tools`, `add_suffix`, `tool_domain` |
 | Scenario state seeding | `apply_initialization` | `domain`, `shared_state_init` (JSON string), `actions` |
 | Cross-side propagation | `apply_sync_delta` | `domain`, `delta` |
-| End-of-scenario pull | `get_scenario_summary` | request `include_db`; response `actions`, `db_hash`, optional `db` |
+| End-of-scenario pull | `get_scenario_summary` | Request `include_db`. Response: `actions`, `db_hash`, optional `db` |
 
 `apply_initialization` is *the* scenario-state initializer. Its handler merges `shared_state_init` into
 the bot's `shared_state` (preserving runtime sentinels), resolves `db_path` into `db` if present, then
@@ -211,7 +211,7 @@ example. Refer to [tau2-telecom](../domain-guides/tau2-telecom.md). Complete the
    keeps single-side domains out of the pipeline entirely.
 4. Provide `_build_tool_map(state)` returning name-to-instance pairs where each tool has a **sync**
    `invoke(**kwargs)` method. The bridge replays fired actions onto in-process shadow DBs through this
-   map before calling `sync_state`. Tau2 tools get this from `_Tau2InvokeMixin`; EVA tools have only
+   map before calling `sync_state`. Tau2 tools get this from `_Tau2InvokeMixin`. EVA tools have only
    the async `_execute` and would need a sync wrapper first.
 5. Register a sync applier if your deltas are not plain dotted paths:
 

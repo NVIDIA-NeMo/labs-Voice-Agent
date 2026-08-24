@@ -32,7 +32,7 @@ All evaluation tools derive from `StandardSchemaTool`
 | `StandardSchemaTool` | `nemo_voice_agent/utils/tool_calling/base.py` | Read-only lookups. No action record. |
 | `WriteScenarioTool` | `nemo_voice_agent/evaluation/tools/_write_tool_base.py` | Mutating tools whose calls must appear in the bridge-pulled action list. |
 | `SendRTVIMessageTool` / `SendScenarioSummaryTool` / `SendExitMessageTool` | `nemo_voice_agent/evaluation/tools/rtvi_control.py` | Harness control signals sent to the bridge over the real-time voice interface (RTVI). |
-| `EndConversationTool` | `nemo_voice_agent/evaluation/tools/basic_tools.py` | The `<exit>` signal; include it in every scenario's agent tool list. |
+| `EndConversationTool` | `nemo_voice_agent/evaluation/tools/basic_tools.py` | The `<exit>` signal. Include it in every scenario's agent tool list. |
 
 A subclass implements three members. The `properties` property returns the JSON Schema properties
 dictionary. The `required_properties` property returns the names that the model must supply.
@@ -79,11 +79,11 @@ Two patterns coexist. New benchmarks should use the bridge-pull pattern.
 
 | Pattern | Domains | How the Bridge Captures Results |
 | --- | --- | --- |
-| Bridge-pull (preferred) | `eva_airline`, all `tau2_*` | Write tools call `self._record_action(...)`; at scenario end, the bridge pulls `{actions, db_hash}` from each bot through the `get_scenario_summary` action (with an opt-in `include_db` when the scenario has DB-state assertions). No LLM-callable summary exists. |
-| LLM summary (legacy) | Small in-repository sets: `restaurant` (including its waitlist scenario), `customer_service`, `qa`, `fastbite`, `simple_qa` | A `SendScenarioSummaryTool` subclass wraps the agent's structured result in `<final_response>` tags; the bridge writes it to `final_agent_response.json`. |
+| Bridge-pull (preferred) | `eva_airline`, all `tau2_*` | Write tools call `self._record_action(...)`. At scenario end, the bridge pulls `{actions, db_hash}` from each bot through the `get_scenario_summary` action (with an opt-in `include_db` when the scenario has DB-state assertions). No LLM-callable summary exists. |
+| LLM summary (legacy) | Small in-repository sets: `restaurant` (including its waitlist scenario), `customer_service`, `qa`, `fastbite`, `simple_qa` | A `SendScenarioSummaryTool` subclass wraps the agent's structured result in `<final_response>` tags. The bridge writes it to `final_agent_response.json`. |
 
 Both patterns need `EndConversationTool` in the agent's tool list. It emits `<exit>`, which stops the
-scenario early; without it the bridge waits out the scenario's `max_duration`. `CLEAN_EXIT` is one of the
+scenario early. Without it, the bridge waits out the scenario's `max_duration`. `CLEAN_EXIT` is one of the
 six scoring signals. Refer to [Scoring](../understand-scoring/scoring.md).
 
 Terminal tools that record an action and end the call (`TransferToHumanAgentsTool`) emit the exit signal from
@@ -142,7 +142,7 @@ class CancelOrderTool(WriteScenarioTool):
 
 A read-only tool has the same shape with `StandardSchemaTool` as the base, no `ACTION_TYPES`, and no
 `_record_action` call. `ACTION_TYPES` is a `ClassVar` list that `_record_action` validates `action_type`
-against; a mismatch logs a warning rather than raising, so check the bot log when an action fails to
+against. A mismatch logs a warning rather than raising, so check the bot log when an action fails to
 score. The record's `name` field is the upstream method name used for action-list comparison and is
 independent of the class name.
 
@@ -172,7 +172,7 @@ constructible in a unit test with no arguments.
 ## Per-Domain Registry
 
 `ALL_SCHEMA_TOOLS_FOR_EVAL` is a `dict` of domain to a `dict` of name to class. The same short class name
-can exist in several domains; within one domain a duplicate name raises `ValueError` at decoration time.
+can exist in several domains. Within one domain, a duplicate name raises `ValueError` at decoration time.
 
 ```python
 @register_schema_tool_for_eval(domain="tau2_airline")   # keyword form

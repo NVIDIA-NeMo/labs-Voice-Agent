@@ -28,7 +28,7 @@ Before you add a processor, complete the following preparation:
 
 1. Run the [Quickstart](../../../get-started/quickstart.md) with the shipped pipeline.
 2. Identify the frame type you need to transform and the pipeline stage that emits it.
-3. Choose the demo server or evaluation bot entrypoint where you will insert the processor.
+3. Choose the demo server or evaluation bot entrypoint where you want to insert the processor.
 
 ## Processor or Builder Swap?
 
@@ -83,7 +83,7 @@ Pick the position by the frame type you need to see. Frame classes come from
 | Between `stt` and `user_agg` | `TranscriptionFrame`, `InterimTranscriptionFrame` | ASR error correction, PII redaction, language routing |
 | After `diar` | `DiarResultFrame` (from `nemo_voice_agent.pipecat.frames.frames`) | Rewriting or filtering speaker labels |
 | Between `user_agg` and `llm` | `LLMRunFrame` and everything from upstream | Context shaping, retrieval, or memory injection |
-| Between `llm` and `llm_text_processor` | `LLMTextFrame` (streaming token chunks) | Token-level filtering; text may be split mid-word |
+| Between `llm` and `llm_text_processor` | `LLMTextFrame` (streaming token chunks) | Token-level filtering; text can be split mid-word |
 | Between `llm_text_processor` and `tts` | `AggregatedTextFrame` (whole sentences) | Markdown stripping, profanity filter, pronunciation rewrites |
 | Between `tts` and `ws_transport.output()` | `TTSAudioRawFrame` | Output audio effects, loudness metering |
 
@@ -91,7 +91,7 @@ Two things decide between the last two text positions. `LLMTextProcessor` conver
 `LLMTextFrame` into sentence-sized `AggregatedTextFrame`, as implemented by `build_llm_text_processor` in
 `nemo_voice_agent/pipecat/services/nemo/builders.py`. Any regex that must match across token
 boundaries belongs *after* it. Note that it is only present when `tts.use_text_aggregator` is true —
-the default; when it is false, the TTS service does its own aggregation internally and only
+the default. When it is false, the TTS service does its own aggregation internally and only
 `LLMTextFrame` reaches that point.
 
 ## Rules
@@ -107,7 +107,7 @@ Follow these rules so unrelated frames and pipeline direction continue to work a
 - **Filter on frame type.** `TranscriptionFrame`, `InterimTranscriptionFrame`, `LLMTextFrame`, and
   `AggregatedTextFrame` are all subclasses of `TextFrame`, so an `isinstance(frame, TextFrame)` test
   matches user speech as well as bot speech. Match the narrowest class you mean.
-- **Check `direction`.** `FrameDirection.DOWNSTREAM` runs input toward output;
+- **Check `direction`.** `FrameDirection.DOWNSTREAM` runs input toward output.
   `FrameDirection.UPSTREAM` carries errors and control signals back. Transforms should almost always
   guard on `DOWNSTREAM` and pass upstream frames through untouched.
 - **Frames are mutable dataclasses**, so in-place edits such as `frame.text = ...` work and preserve
@@ -178,18 +178,18 @@ pipeline_list.extend([tts, ws_transport.output(), assistant_agg])
 A processor can affect downstream context, timing, and logging even when it changes only one frame type:
 
 - **The assistant context sees your edits.** `assistant_agg` sits at the end of the pipeline and
-  builds the assistant turn from text frames whose `append_to_context` is true — the same objects
-  your processor already mutated. For Markdown stripping that is desirable; for a change you want
+  builds the assistant turn from text frames whose `append_to_context` is true. These are the same
+  objects your processor already mutated. For Markdown stripping that is desirable. For a change you want
   spoken but not remembered, emit a modified copy instead of editing in place.
 - **Stateful processors need a reset hook.** The `resettable` list passed to the RTVI actions is
-  iterated by `_reset_services` in
-  `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`, which calls a plain synchronous
-  `reset()` on any entry that has one and skips `None`. Add your processor to that list and give it
+  iterated by `_reset_services` in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`.
+  The function calls a plain synchronous `reset()` on any entry that has one and skips `None`.
+  Add your processor to that list and give it
   a `reset()` method if it carries per-conversation state. Refer to
   [RTVI Control Plane](../protocols/rtvi-actions.md).
 - **Configuration belongs in YAML.** Accept options in `__init__` and read them from a section of
   the server config, the way the existing builders do, rather than hardcoding them.
-- **Reasoning spans are handled elsewhere.** TTS already skips text between `tts.think_tokens`; do
+- **Reasoning spans are handled elsewhere.** TTS already skips text between `tts.think_tokens`. Do
   not reimplement that in a processor. Refer to
   [Reasoning Mode](../../../about/core-concepts/language-models/reasoning.md).
 

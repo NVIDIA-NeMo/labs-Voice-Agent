@@ -62,8 +62,8 @@ The `server` block controls model-registry lookup and evaluation-server logging 
 | `talk_first` | bool | `true` | `evaluation/bot_server.py` — queue the first LLM turn on client-ready |
 
 The example server `examples/generic_voice_agent/server/server.py` calls `setup_logging()` with no arguments
-and passes `talk_first=True` literally, so the five logging/`talk_first` keys above take effect only in
-`evaluation/bot_server.py` or in your own bot script that wires them through the builders.
+and passes `talk_first=True` literally. The five logging and `talk_first` keys above therefore take effect
+only in `evaluation/bot_server.py` or in your own bot script that wires them through the builders.
 
 ## transport
 

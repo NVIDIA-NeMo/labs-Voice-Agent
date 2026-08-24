@@ -168,9 +168,9 @@ safe on fork pull requests.
 on any push to `main` that touches `docs/**`, gated on the repository variable `PUBLISH_FERN=true`.
 There is no manual approval step—review the preview before merging.
 
-Releases are separate. For a published GitHub Release or a manual dispatch with a tag, the same
-workflow freezes that tag's documentation into a versioned channel, registers it in `docs.yml`, prunes to the
-three most recent versions, and opens a pull request to persist the registry change back to `main`.
+Releases are separate. For a published GitHub Release or a manual dispatch with a tag, the same workflow
+freezes that tag's documentation into a versioned channel. It registers the channel in `docs.yml`, prunes to
+the three most recent versions, and opens a pull request to persist the registry change back to `main`.
 Pre-release tags publish but skip version registration.
 
 ## Related

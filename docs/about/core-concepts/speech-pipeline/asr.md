@@ -59,10 +59,10 @@ stt:
 To switch models, uncomment the second `model:` line and comment out the first. Keep `model_config` pointing
 at `nemo_cache_aware_streaming.yaml` — both models are cache-aware FastConformers and share those parameters.
 
-`model_config` behaves like the large language model (LLM) configuration: the system uses only its
-**basename**, resolved against
-`server_configs/stt_configs/`, and **the sub-YAML overrides the top-level `stt` block**, not the other way
-round. The `_configure_stt` function in `nemo_voice_agent/utils/config_manager.py` logs each override at startup.
+`model_config` behaves like the large language model (LLM) configuration. The system uses only its
+**basename**, resolved against `server_configs/stt_configs/`. **The sub-YAML overrides the top-level `stt`
+block**, not the other way round. The `_configure_stt` function in
+`nemo_voice_agent/utils/config_manager.py` logs each override at startup.
 If `model_config` is omitted and `server.use_model_registry` is true, the model name is looked up in
 `stt_models` in `server/model_registry.yaml` instead. For registry behavior, refer to
 [Model registry](../../../build-voice-agents/configure/model-registry.md).

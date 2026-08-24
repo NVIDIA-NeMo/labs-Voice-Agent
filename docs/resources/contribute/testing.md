@@ -142,9 +142,9 @@ uv run coverage report -i
 | `functional-tests-h100` | `L0_Functional_VLLM_Reasoning_Budget` | `tests/functional/vllm` | `functional and gpu and not pleasefixme` |
 | `functional-tests-h100` | `L1_Functional_Cached_Model_Runtime` | `tests/functional/models` | `functional and gpu and not pleasefixme` |
 
-A separate `coverage` job combines the uploaded data files and enforces `--fail-under` per flag:
-75 for the unit lane, 0 for the end-to-end lane, and 80 for the combined `all` flag. Adding library
-code without unit tests commonly causes the unit coverage threshold of 75 to fail.
+A separate `coverage` job combines the uploaded data files. It enforces `--fail-under` per flag: 75 for the
+unit lane, 0 for the end-to-end lane, and 80 for the combined `all` flag. Adding library code without unit
+tests commonly causes the unit coverage threshold of 75 to fail.
 
 ## Adding a Test
 

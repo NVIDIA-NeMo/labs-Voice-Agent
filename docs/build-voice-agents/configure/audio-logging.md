@@ -79,7 +79,7 @@ audio_logs/
 | `session_metadata.json` | Rolling index of every entry; rewritten after each save and again at finalize. |
 | `conversation_stereo.wav` | Whole-session mixdown, left channel = agent, right channel = user, 16 kHz. Written only at finalize. |
 
-The `NNNNN` prefix is a per-speaker counter (users and agents count separately), and `HHMMSS` is
+The `NNNNN` prefix is a per-speaker counter (the user and agent counters are separate), and `HHMMSS` is
 wall-clock time at save. User turns get a 0.8-second pre-roll prepended, clamped so a turn never
 overlaps the previous entry's end time.
 
@@ -107,7 +107,7 @@ turn. `finalize_session` adds `end_time`, `total_user_entries`, `total_agent_seg
 ## How Capture Is Wired
 
 `AudioLogger` (`nemo_voice_agent/pipecat/services/nemo/audio_logger.py`) is a plain object passed
-into the services by the builders; each service pushes data into it at the right moment.
+into the services by the builders. Each service pushes data into it at the right moment.
 
 | Source | What It Contributes |
 | --- | --- |

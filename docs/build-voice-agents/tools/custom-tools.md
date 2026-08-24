@@ -34,12 +34,12 @@ Before you add a tool, complete the following preparation:
 
 1. Configure a supported backend and parser by following [Tool Calling](tool-calling.md).
 2. Decide whether the callable is standalone, owned by a component, or needs an explicit schema.
-3. Identify the pipeline entrypoint where the tool will be registered.
+3. Identify the pipeline entrypoint where you want to register the tool.
 
 ## The Direct-Function Contract
 
 `pipecat/adapters/schemas/direct_function.py` validates and introspects every direct function at
-registration time; violating the first two rules raises at startup, not at call time.
+registration time. Violating the first two rules raises at startup, not at call time.
 
 1. The function must be `async`.
 2. Its first parameter must be named exactly `params` (it receives a `FunctionCallParams`).
@@ -173,7 +173,7 @@ resolves to the hosted NVIDIA service.
 ## 3. Schema Tools
 
 `StandardSchemaTool` in `nemo_voice_agent/utils/tool_calling/base.py` is the explicit-schema path. Subclass
-it and implement three members; the base builds the `FunctionSchema` and owns delivery:
+it and implement three members. The base builds the `FunctionSchema` and owns delivery:
 
 ```python
 class StandardSchemaTool:
@@ -220,7 +220,7 @@ in for a genuinely fire-and-forget tool. For bounded waits, use `llm.function_ca
 
 Both paths are testable without a GPU or a running LLM: build a duck-typed stand-in for
 `FunctionCallParams` that records `result_callback` calls, then await the tool.
-`tests/unit/test_runtime_basic_weather_tool.py` does this for the weather tool;
+`tests/unit/test_runtime_basic_weather_tool.py` does this for the weather tool.
 `tests/unit/test_tool_call_contract.py` does it for the schema-tool contract.
 
 ```bash
@@ -228,7 +228,7 @@ uv run pytest tests/unit/test_runtime_basic_weather_tool.py tests/unit/test_tool
 ```
 
 Two repository-wide requirements apply before committing. Every `.py` file other than `__init__.py` needs the
-SPDX/Apache header in its first 10 lines; CI fails without it. Ruff is the only formatter and linter. Run
+SPDX/Apache header in its first 10 lines. CI fails without it. Ruff is the only formatter and linter. Run
 `uv run ruff format my_tools.py` and `uv run ruff check --fix my_tools.py`.
 
 ## Next Steps

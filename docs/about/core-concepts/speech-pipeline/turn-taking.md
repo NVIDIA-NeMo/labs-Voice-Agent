@@ -73,7 +73,7 @@ The following settings control turn finalization, backchannel filtering, and res
 | --- | --- | --- |
 | `turn_taking.enabled` | `true` when the key is absent | `false` makes `build_turn_taking` return `None`, dropping the processor from the pipeline. |
 | `turn_taking.backchannel_phrases_path` | `"./backchannel_phrases.yaml"` | YAML file path, inline list, or `null`. Refer to Backchannel Suppression. |
-| `turn_taking.max_buffer_size` | `2` | Number of completed words that may accumulate mid-utterance before the bot is interrupted and an interim transcript is pushed downstream. Lower interrupts sooner. |
+| `turn_taking.max_buffer_size` | `2` | Number of completed words that can accumulate mid-utterance before the bot is interrupted and an interim transcript is pushed downstream. Lower interrupts sooner. |
 | `turn_taking.bot_stop_delay` | `0.5` | Seconds to keep treating the bot as "still speaking" after `BotStoppedSpeakingFrame`, covering audio still buffered on the client. `0` flips the flag immediately. |
 
 `bot_stop_delay` affects backchannels because the service applies suppression only while it considers the
@@ -107,14 +107,14 @@ The `clean_text` and `is_backchannel` functions in `turn_taking.py` apply the fo
 
 - Comparison is case-insensitive and whitespace-normalized.
 - A trailing `<EOU>` or `<EOB>` token and any leading `<speaker_N>` tag are stripped first.
-- Every character except `a`-`z`, apostrophes, and whitespace is **deleted, not replaced by a space** — so
-  `uh-huh` normalizes to `uhhuh`, which is why the shipped file lists both `uh huh` and `uh-huh`.
+- Every character except `a`-`z`, apostrophes, and whitespace is **deleted, not replaced by a space**.
+  Therefore, `uh-huh` normalizes to `uhhuh`, and the shipped file lists both `uh huh` and `uh-huh`.
 - The match is exact against the normalized set. There is no substring or fuzzy matching.
 - Only English is supported — `clean_text` raises `ValueError` for any other `Language`.
 
 A phrase is suppressed **only while the bot is speaking**. The service pushes the text upstream as a
-transcription frame wrapped in parentheses, for example `(uh huh)`, so it reaches the client transcript and
-the audio logger without entering the LLM context or triggering an interruption. When the bot is silent the
+transcription frame wrapped in parentheses, for example `(uh huh)`. It reaches the client transcript and
+audio logger without entering the LLM context or triggering an interruption. When the bot is silent the
 same phrase is treated as ordinary user speech and starts a normal turn.
 
 Anything longer than the phrase list still interrupts. After `max_buffer_size` completed words accumulate,

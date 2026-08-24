@@ -141,7 +141,7 @@ think_tokens: ["<think>", "</think>"]
 ```
 
 Set it to `null` if you want the model to think out loud. This setting is useful for debugging but unsuitable
-for end users.
+for production use.
 
 The value must be a list of exactly **two** strings (asserted at construction), and only the local
 NeMo TTS services honor it. `tts.type: nvidia` (Riva or NVIDIA Cloud Functions (NVCF) Magpie) is built

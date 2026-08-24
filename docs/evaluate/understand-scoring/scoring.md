@@ -48,7 +48,7 @@ Note the two float signals: the enum value written to `success_breakdown` is `db
 must have an order-independent match in the prediction. Extra prediction keys and list items are tolerated
 unless the scenario sets `disallow_extra_items` or the run passes `--strict-match`. String comparison honors the
 scenario's `ignore_capitalization`, `ignore_punctuation`, and `clean_text` flags. `"N/A"` when the scenario has
-no reference answer; `False` when the reference exists but the agent produced no prediction file.
+no reference answer. The result is `False` when the reference exists but the agent produced no prediction file.
 
 **`DB_STATE_MATCH`** — the bot computes `get_dict_hash(shared_state["db"])` inside the `get_scenario_summary`
 real-time voice interface (RTVI) handler and returns only the SHA-256 string. The runner hashes
@@ -71,14 +71,14 @@ outcome. Refer to [tau2_telecom](../domain-guides/tau2-telecom.md).
 **`NL_ASSERTION`** — natural-language claims about the conversation, judged per assertion by the large
 language model (LLM) judge.
 Only populated when the scenario declares `nl_assertions` **and** the judge ran. Per-assertion verdicts live in
-`judge_result.json` under `nl_assertion_verdicts`; the scenario-level rate is `nl_assertion_pass_rate` in
+`judge_result.json` under `nl_assertion_verdicts`. The scenario-level rate is `nl_assertion_pass_rate` in
 `metrics.json`.
 
 **`JUDGE_PASSED`** — `judge_score >= --judge-threshold` (threshold default `0.9`). The raw float is saved
 separately as `judge_score`. The judge receives the reference and prediction payloads when they exist, both
 bots' `llm_context.json` histories, the numbered NL assertions, and — only with
 `--judge-include-conversation` — the bridge transcript turns. Both `--judge-url` and `--judge-model` carry
-defaults pointing at a local OpenAI-compatible endpoint, so the judge is constructed on every run; override them
+defaults pointing at a local OpenAI-compatible endpoint, so the judge is constructed on every run. Override them
 to target your own judge. Refer to the
 [Evaluation Command-Line Interface (CLI) Reference](../../reference/evaluation/eval-cli.md).
 
@@ -89,16 +89,16 @@ to target your own judge. Refer to the
 
 `Scenario.compute_is_successful` takes the dict of all six verdicts and returns:
 
-- the strict **AND** over the whitelist entries whose verdict is not `None`;
+- the strict **AND** over the whitelist entries whose verdict is not `None`, or
 - the literal string `"N/A"` when no whitelisted signal was applicable (for example, a `qa` run with no
   reachable judge).
 
 Two runner-level overrides sit on top of this:
 
 - **Stalled scenarios.** With `--min-agent-turns` (default `3`), a scenario whose agent produced fewer
-  completed turns is forced to `is_successful = False` and counted as a failure in the composite rate, while
-  being skipped in the per-signal rates — the individual measurements are meaningless for a conversation that
-  never happened. It is *not* excluded from the denominator.
+  completed turns is forced to `is_successful = False`. It counts as a composite-rate failure but is skipped
+  in the per-signal rates. The individual measurements are meaningless for a conversation that never happened.
+  The scenario remains in the denominator.
 - **`is_task_successful`.** The same conjunction with `clean_exit` removed from the failed set, so you can read
   "did the agent do the work" separately from "did the agent hang up properly". Reported as
   `Task Success Rate (excl. clean_exit)` in `all_summary.txt`.

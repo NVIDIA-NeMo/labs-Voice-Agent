@@ -95,8 +95,8 @@ again after any upstream pull that restores a single-file `db.json`.
 
 ## Scaffolding tau2 Scenario Classes
 
-The three tau2 scaffolders take no arguments. Each reads the imported data, divides the base-split IDs into
-groups of 10, **overwrites** every `group_Nx.py` in the target package, and rewrites that package's
+The three tau2 scaffolders take no arguments. Each reads the imported data and divides the base-split IDs
+into groups of 10. It then **overwrites** every `group_Nx.py` in the target package and rewrites that package's
 `__init__.py` with side-effect imports so `@register_eval_scenario` fires on import.
 
 ```bash

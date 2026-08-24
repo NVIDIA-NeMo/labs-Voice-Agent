@@ -50,7 +50,7 @@ for a scenario.
 | `reset` | bridge to bot | Clears conversation history and resets stateful services between scenarios. |
 
 All six factories live in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Each returns a
-`(wire_name, handler)` pair; install them with one call to `register_client_message_handlers`. Per-handler
+`(wire_name, handler)` pair. Install them with one call to `register_client_message_handlers`. Per-handler
 argument and return shapes are documented in
 [RTVI Control Plane](../../build-voice-agents/extend/protocols/rtvi-actions.md). An unregistered
 type produces an `error-response`, which surfaces in `bridge_log.txt` as `unknown message type`.
@@ -124,9 +124,9 @@ Beyond the six handlers, the bridge relies on several behaviors that the referen
 
 Scoring reads two pieces of bot-owned state, both keyed off `shared_state`:
 
-- `shared_state["actions"]` — appended to by each write tool; returned by `get_scenario_summary` and used for
+- `shared_state["actions"]` — appended to by each write tool, returned by `get_scenario_summary`, and used for
   `ACTION_MATCH` and judge input.
-- `shared_state["db"]` — mutated in place by write tools; hashed with `get_dict_hash` for `DB_STATE_MATCH`,
+- `shared_state["db"]` — mutated in place by write tools and hashed with `get_dict_hash` for `DB_STATE_MATCH`,
   or returned inline when the bridge asks for `include_db` so `DB_STATE_ASSERTION` predicates can run.
 
 If you reuse the tool classes under `nemo_voice_agent/evaluation/tools/`, they provide both values

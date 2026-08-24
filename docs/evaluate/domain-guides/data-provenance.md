@@ -40,7 +40,7 @@ nemo_voice_agent/evaluation/data/
 
 They ship in the wheel through `[tool.setuptools.package-data]` in `pyproject.toml`, which matches
 `evaluation/data/**/*.json`, `**/*.jsonl`, and `**/*.md`. A `pip install` of the package therefore carries
-the full eval surface; nothing is downloaded at run time.
+the full eval surface. Nothing is downloaded at run time.
 
 ## Resolution Order and EVAL_DATA_ROOT
 
@@ -91,7 +91,7 @@ resolved root printed in the message.
 suffix and probes two on-disk layouts:
 
 1. `<path>.json` — a single file, parsed with `json.loads`.
-2. `<path>/` — a directory; every top-level `*.json` file becomes one key in the returned dict, using the
+2. `<path>/` — a directory. Every top-level `*.json` file becomes one key in the returned dict, using the
    file stem as the key. Sorted, non-recursive.
 
 Neither form present raises `FileNotFoundError`. The two layouts are equivalent as in-memory dicts, so DB
@@ -194,7 +194,7 @@ renders. Refer to [tau2_telecom](tau2-telecom.md).
 
 ## Adding a New Source
 
-Import scripts and scaffold generators live under `scripts/`; the workflow is documented in
+Import scripts and scaffold generators live under `scripts/`. The workflow is documented in
 [Importing benchmark data](../../resources/contribute/data-import.md), and the scenario-class side in
 [Authoring domains](../create-evaluations/authoring-domains.md). When you add a source, also:
 

@@ -56,8 +56,8 @@ Run subsequent commands through `uv run`, or activate the virtual environment fo
 with `source .venv/bin/activate`. Review these constraints:
 
 - **Do not run `uv sync` inside an active non-`base` Conda environment.** `install.sh` exits early when
-  `CONDA_DEFAULT_ENV` is set to anything other than `base`, because Conda's `gcc` combined with system Python
-  headers breaks C extensions. Run `conda deactivate` first.
+  `CONDA_DEFAULT_ENV` is set to anything other than `base`. Conda's `gcc` combined with system Python headers
+  breaks C extensions. Run `conda deactivate` first.
 - **The default install pulls CUDA 13.0 wheels** (`torch-backend = "cu130"` under `[tool.uv]`). Edit that key
   in `pyproject.toml` before syncing if you need `cu128`, `cu124`, or CPU-only. Refer to
   [Installation](../../get-started/installation.md).

@@ -34,7 +34,7 @@ The two servers are started together by `run_bot_with_fastapi` in `nemo_voice_ag
 Before you connect a custom client, complete the following preparation:
 
 1. Start the voice-agent server by following the [Quickstart](../../../get-started/quickstart.md).
-2. Choose whether the client will use the `/connect` discovery endpoint or connect directly to the
+2. Choose whether the client uses the `/connect` discovery endpoint or connects directly to the
    WebSocket port.
 3. Use a client that can serialize and deserialize Pipecat Protobuf frames.
 
@@ -76,7 +76,7 @@ message — in both directions — is a binary Protobuf `Frame` with a oneof:
 
 Audio is 16-bit signed little-endian PCM, mono. Inbound audio is expected at
 `transport.audio_in_sample_rate` (default 16000). Outbound audio follows the TTS service's rate unless
-you set `transport.audio_out_sample_rate`; the JavaScript transport plays back at 24 kHz by default.
+you set `transport.audio_out_sample_rate`. The JavaScript transport plays back at 24 kHz by default.
 
 ### RTVI Messages
 
@@ -92,8 +92,8 @@ keys. Two exchanges matter to every client:
    `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`.
 
 The example server registers exactly one custom type, `reset`, which clears the conversation context
-back to the original system prompt. The evaluation bots register five more; refer to
-[RTVI control plane](rtvi-actions.md) and [RTVI message reference](../../../reference/runtime/rtvi-messages.md).
+back to the original system prompt. The evaluation bots register five more. Refer to
+[RTVI Control Plane](rtvi-actions.md) and [RTVI Message Reference](../../../reference/runtime/rtvi-messages.md).
 
 Server-to-client event messages (`user-transcription`, `bot-transcription`, `bot-llm-text`,
 `bot-tts-text`, `bot-started-speaking`, `bot-stopped-speaking`, `metrics`, `server-message`, …) are
@@ -117,7 +117,7 @@ not connect to the socket directly. The `reset` message goes through
 `client.sendClientRequest("reset", {})`, which resolves with the handler's return value.
 
 Run it with `npm install && npm run dev`. The dev server listens on port 5173 on all interfaces and
-proxies `/connect` to `http://0.0.0.0:7860`. The demo page has a **Server** dropdown; leave it on
+proxies `/connect` to `http://0.0.0.0:7860`. The demo page has a **Server** dropdown. Leave it on
 "WebSocket Server", which points at port 7860. Startup details are in the
 [Quickstart](../../../get-started/quickstart.md).
 
@@ -179,8 +179,8 @@ Clients must follow these lifecycle rules to connect without replacing or corrup
 - **One client at a time.** While a client is connected, a second connection is closed immediately with
   WebSocket code `1013` and reason `Server already has a connected client`. The incumbent keeps talking.
 - **The pipeline outlives the connection.** On disconnect the server deliberately does not end the
-  pipeline task — the WebSocket listener lives inside the input transport, so ending the task would
-  leave `/connect` advertising a dead port. The next client is accepted into the same running pipeline.
+  pipeline task. The WebSocket listener lives inside the input transport, so ending the task would
+  leave `/connect` advertising a dead port. The next client enters the same running pipeline.
 - **Context survives reconnects.** Because the pipeline persists, so does the LLM conversation history.
   Send the `reset` message to clear it explicitly.
 

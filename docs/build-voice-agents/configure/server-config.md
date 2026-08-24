@@ -87,15 +87,15 @@ the processor placed right after `transport.input()`.
 | --- | --- |
 | `confidence` | Speech-probability threshold. |
 | `start_secs` | Minimum speech duration before a user-started-speaking frame. |
-| `stop_secs` | Minimum silence before a user-stopped-speaking frame. Lower it for snappier turn ends, raise it if the bot cuts users off. |
+| `stop_secs` | Minimum silence before a user-stopped-speaking frame. Lower it for faster turn ends, or raise it if the bot cuts you off. |
 | `min_volume` | Microphone volume floor. |
 
 All four are read as direct attributes and passed to Pipecat's `VADParams`, so all four must be present.
 
 ## stt
 
-Consumed by `build_stt` using `get_stt_service_from_config`. `type` accepts `nemo` or `nvidia`; anything
-else raises. For details, refer to [ASR](../../about/core-concepts/speech-pipeline/asr.md).
+Consumed by `build_stt` using `get_stt_service_from_config`. `type` accepts `nemo` or `nvidia`. Any other
+value raises. For details, refer to [ASR](../../about/core-concepts/speech-pipeline/asr.md).
 
 | Key | Effect |
 | --- | --- |
@@ -128,8 +128,8 @@ Two keys in the shipped file are inert: `diar.device` is not read — `build_dia
 
 Consumed by `build_turn_taking`, which returns `None` when `enabled` is false (the key is absent from
 `default.yaml` and defaults to true). Whether this service exists also decides who emits user-turn
-frames: with turn-taking on, `build_context_and_aggregators` selects `ExternalUserTurnStrategies`;
-with it off, the aggregator drives turns from VAD. Refer to
+frames. With turn-taking on, `build_context_and_aggregators` selects `ExternalUserTurnStrategies`.
+With it off, the aggregator drives turns from VAD. Refer to
 [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md).
 
 | Key | Effect |
@@ -177,7 +177,7 @@ and `text_prompt_for_transcript` keys. Refer to
 ## tts
 
 Consumed by `build_tts` (the synthesis service) and `build_llm_text_processor` (the upstream text
-segmenter). `type` accepts `nemo`, `nvidia`, or `nemotron`; for `type: nemo` the supported `model` values
+segmenter). `type` accepts `nemo`, `nvidia`, or `nemotron`. For `type: nemo`, the supported `model` values
 are `kokoro`, `fastpitch-hifigan`, and `magpie`. Refer to
 [TTS](../../about/core-concepts/speech-pipeline/tts.md).
 

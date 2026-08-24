@@ -100,17 +100,17 @@ When a block has no `model_config:` and `server.use_model_registry` is true, `Co
   name ends in `_think.yaml`. Because an explicit `model_config:` bypasses the registry, the swap does not fire
   for the shipped default — point `model_config:` at the `_think.yaml` by hand. Refer to
   [Reasoning](../../about/core-concepts/language-models/reasoning.md).
-- **No match.** If the model is in neither `model_config:` nor the registry, no sub-config is loaded and a
-  warning is logged; the top-level block must then be complete on its own. Nothing is silently substituted.
+- **No match.** If the model is in neither `model_config:` nor the registry, no sub-config is loaded, and the
+  system logs a warning. The top-level block must then be complete on its own. Nothing is silently substituted.
 
 ## OmegaConf Interpolation
 
-Configs use OmegaConf, so a value may reference another key. Resolution happens in two distinct phases, and the
+Configs use OmegaConf, so a value can reference another key. Resolution happens in two distinct phases, and the
 difference matters:
 
 - **Top-level file: resolved eagerly at load.** `ConfigManager` calls `OmegaConf.to_container(..., resolve=True)`
-  before any sub-config is merged. An interpolation here can only reference keys present in the same file;
-  referencing one that only a sub-config supplies raises `InterpolationKeyError` at startup.
+  before any sub-config is merged. An interpolation here can only reference keys present in the same file.
+  Referencing one that only a sub-config supplies raises `InterpolationKeyError` at startup.
 - **Sub-config: resolved lazily against the merged root.** Sub-config values are copied over verbatim and
   resolved on access, against the *final merged* server config. That is why `llm_configs/nemotron_nano_v3.yaml`
   can write the following and get `0.6` and `1024` — the values its own file contributed to `llm.temperature`
@@ -164,8 +164,8 @@ vLLM can load the model and falls back to the Hugging Face backend if not. Refer
 ## Inspecting the Merged Result
 
 The startup log is the source of truth. `ConfigManager` emits `Final STT config:`, `Final LLM config:`, and
-`Final TTS config:` lines after each merge, plus one `... is overridden from ... by ...` line per replaced key;
-the example server then logs the fully resolved config as `Server config:`. Check those lines first whenever a
+`Final TTS config:` lines after each merge. It also emits one `... is overridden from ... by ...` line per
+replaced key. The example server then logs the fully resolved config as `Server config:`. Check those lines whenever a
 setting appears to be ignored — the override log names the file that won.
 
 ## Gotchas
@@ -178,8 +178,8 @@ Keep these merge and path behaviors in mind when a configuration edit does not t
 - `turn_taking.backchannel_phrases_path` is tried against the working directory first, then against the server
   base path, and raises `FileNotFoundError` naming both if neither exists. An inline list or `null` is also
   accepted — `null` lets any speech interrupt the bot.
-- Only one client may be connected at a time; a second connection is rejected with WebSocket close code 1013 and
-  the incumbent is kept. No config key changes this.
+- Only one client can be connected at a time. A second connection is rejected with WebSocket close code 1013,
+  and the incumbent is kept. No config key changes this.
 
 ## Next
 

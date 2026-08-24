@@ -144,7 +144,10 @@ At this tier you write your own `run_bot_websocket()` and choose every service y
 `ProtobufFrameSerializer`. That pairing is the wire contract that browser clients and the evaluation bridge
 both use. For protocol details, refer to [Client Protocol](protocols/client-protocol.md).
 
-**An `RTVIProcessor` with handlers registered.** Handler factories live in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`; each returns a `(message_type, handler)` pair that you pass to `register_client_message_handlers`. A demo server needs only `reset`. An eval bot needs all six, because the bridge drives scenario lifecycle over them.
+**An `RTVIProcessor` with handlers registered.** Handler factories live in
+`nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Each returns a
+`(message_type, handler)` pair that you pass to `register_client_message_handlers`. A demo server needs only
+`reset`. An eval bot needs all six because the bridge drives scenario lifecycle over them.
 
 | Message Type | Factory | Purpose |
 |---|---|---|
@@ -155,7 +158,10 @@ both use. For protocol details, refer to [Client Protocol](protocols/client-prot
 | `get_scenario_summary` | `create_get_scenario_summary_action` | Return `actions` plus `db_hash`, and the inline `db` when `include_db` is requested. |
 | `get_context_history` | `create_get_context_history_action` | Return the LLM conversation history for the run artifacts. |
 
-An unregistered type produces an `error-response` rather than a hang, so a missing handler shows up immediately in the bridge log. Skeleton code in [Building Your Own Pipeline](pipelines/custom-pipeline.md); message payloads in [RTVI Control Plane](protocols/rtvi-actions.md) and [RTVI Messages](../../reference/runtime/rtvi-messages.md).
+An unregistered type produces an `error-response` rather than a hang, so a missing handler shows up
+immediately in the bridge log. For skeleton code, refer to
+[Building Your Own Pipeline](pipelines/custom-pipeline.md). For message payloads, refer to
+[RTVI Control Plane](protocols/rtvi-actions.md) and [RTVI Messages](../../reference/runtime/rtvi-messages.md).
 
 ## Verify Your Customization
 

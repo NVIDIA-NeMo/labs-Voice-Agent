@@ -53,10 +53,10 @@ Two helpers in the same module are not pipeline stages:
 Details worth knowing:
 
 - `build_ws_transport` accepts `vad_analyzer` but ignores it. Since Pipecat 1.0 the input transport no
-  longer runs VAD; the argument is kept only so existing call sites still work. Pass the analyzer to
+  longer runs VAD. The argument is kept only so existing call sites still work. Pass the analyzer to
   `build_vad_processor` and place the result right after `transport.input()` instead.
 - `build_diar` takes the diarization device from `stt.device`, not from `diar.device`.
-- `build_diar` and `build_turn_taking` accept `audio_logger` for call-site symmetry; only
+- `build_diar` and `build_turn_taking` accept `audio_logger` for call-site symmetry. Only
   `build_turn_taking` forwards it to the service. `build_stt` and `build_tts` forward it into their
   `get_stt_service_from_config` / `get_tts_service_from_config` factory.
 - `build_turn_taking` is annotated as returning `NeMoTurnTakingService` but returns `None` when
@@ -95,7 +95,7 @@ Three dependencies constrain the order:
 2. `build_llm` before `build_context_and_aggregators`.
 3. `build_turn_taking` before `build_context_and_aggregators` — **and pass its result through**.
 
-The third dependency matters most. In Pipecat 1.0+, exactly one component may emit
+The third dependency matters most. In Pipecat 1.0+, the pipeline permits exactly one component to emit
 `UserStartedSpeakingFrame` and `UserStoppedSpeakingFrame`. The `turn_taking` argument determines that
 component. Given a service, the builder selects `ExternalUserTurnStrategies` so
 `NeMoTurnTakingService` owns turn detection and the aggregator stays quiet. Passing `None` is

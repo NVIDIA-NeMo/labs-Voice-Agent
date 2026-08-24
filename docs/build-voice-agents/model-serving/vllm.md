@@ -36,7 +36,7 @@ Serving flags live in the model config that `llm.model_config` points at — not
 this page. The sub-YAML **overrides** `default.yaml` for every `llm.*` key it sets, which is why the shipped
 `llm.type: auto` ends up as `vllm`. Read
 `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3.yaml` before copying any
-command from here; if the two disagree, the YAML wins.
+command from here. If the two disagree, the YAML wins.
 
 Keys that matter for vLLM:
 
@@ -91,8 +91,8 @@ Only then start the agent from `examples/generic_voice_agent/server/`.
 
 Notes on individual flags:
 
-- `--max-num-seqs 1` — the agent serves one client at a time (a second WebSocket connection is rejected with
-  close code 1013 and the incumbent is kept), so extra sequence slots only cost memory.
+- `--max-num-seqs 1` — the agent serves one client at a time. A second WebSocket connection is rejected with
+  close code 1013, and the incumbent is kept. Extra sequence slots only cost memory.
 - `--enable-auto-tool-choice --tool-call-parser qwen3_coder` — required for [tool calling](../tools/tool-calling.md).
   Without them the model's tool calls arrive as plain text. Some models need a parser plugin file instead. Refer to
   [vLLM Plugins](vllm-plugins.md).
@@ -111,7 +111,7 @@ new `thinking_budget: 2048` forwarded as `thinking_token_budget`.
 Set `start_vllm_on_init: true` in the model sub-YAML. At startup `VLLMService` (in
 `nemo_voice_agent/pipecat/services/nemo/llm.py`) does the following:
 
-1. Takes the port from `base_url`; an explicit `--port` inside `vllm_server_params` overrides it with a warning.
+1. Takes the port from `base_url`. An explicit `--port` inside `vllm_server_params` overrides it with a warning.
 2. Probes `/v1/models` on that port. If a server is already answering there with the **same** model ID, it
    reuses it and skips the spawn entirely.
 3. Otherwise scans upward from that port for a free one, rewrites the base URL to

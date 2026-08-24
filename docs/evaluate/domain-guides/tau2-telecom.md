@@ -35,7 +35,7 @@ The following table summarizes the two registrations, split state model, tool su
 | Agent policy | `main_policy.md` + `tech_support_manual.md` or `tech_support_workflow.md`, concatenated |
 | Gating signals | `db_state_assertion`, `clean_exit` (plus `nl_assertion` when a task declares any) |
 
-Every one of the 114 tasks ships `db_state_assertions` and `initialization_actions`; none currently
+Every one of the 114 tasks ships `db_state_assertions` and `initialization_actions`. None currently
 ship `nl_assertions`.
 
 ## Run It
@@ -160,7 +160,7 @@ before the conversation starts, after `shared_state_init` is merged and `db_path
 loaded DB. Telecom registers 20 initialization functions in
 `nemo_voice_agent/evaluation/tools/tau2_telecom_init_functions.py` — `turn_airplane_mode_on`,
 `unseat_sim_card`, `break_apn_settings`, `set_data_usage`, `suspend_line_for_overdue_bill`, and so
-on. Each mutates the DB in place; the bridge filters records by `side` first, so each bot only
+on. Each mutates the DB in place. The bridge filters records by `side` first, so each bot only
 applies the mutations meant for its own DB.
 
 ## Cross-Side State Sync
@@ -184,13 +184,13 @@ Propagation paths:
 
 Two invocation points mirror upstream's call sites:
 
-1. **Post-initialization.** After `apply_initialization` succeeds, the bridge loads shadow DBs,
-   replays the init actions onto them, runs `sync_state` one time, and dispatches the resulting deltas so
+1. **Post-initialization.** After `apply_initialization` succeeds, the bridge loads shadow DBs and
+   replays the init actions onto them. It runs `sync_state` one time and dispatches the resulting deltas so
    both bots start from coherent cross-side state.
 2. **Per action.** Every `WriteScenarioTool._record_action` pushes an `action-applied` RTVI server
-   message. The bridge replays that action onto the shadow DBs using the scenario's `_build_tool_map`
-   (each tool exposes a synchronous `invoke`), runs `sync_state`, and sends each non-empty side delta
-   as an `apply_sync_delta` RTVI client message.
+   message. The bridge replays that action onto the shadow DBs using the scenario's `_build_tool_map`.
+   Each tool exposes a synchronous `invoke`. The bridge then runs `sync_state` and sends each non-empty
+   side delta as an `apply_sync_delta` RTVI client message.
 
 Bot-side, `apply_sync_delta` dispatches through the per-domain applier registry in
 `nemo_voice_agent/evaluation/sync_appliers.py`. Telecom registers `apply_telecom_sync_delta`. It handles

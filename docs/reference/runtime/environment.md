@@ -78,9 +78,9 @@ with `cd evaluation`. `SERVER_CONFIG_PATH` is also how one script serves both ev
 ### SERVER_PUBLIC_HOST and WEBSOCKET_SCHEME
 
 These variables do not affect the server bind address. They affect only the URL that `POST /connect`
-returns. Set
-`SERVER_PUBLIC_HOST` to your machine's routable hostname or IP when the browser runs on a different machine,
-and set `WEBSOCKET_SCHEME=wss` when a reverse proxy terminates TLS in front of the WebSocket port.
+returns. Set `SERVER_PUBLIC_HOST` to your machine's routable hostname or IP when the browser runs on a
+different machine. Set `WEBSOCKET_SCHEME=wss` when a reverse proxy terminates TLS in front of the WebSocket
+port.
 
 `build_websocket_url` in `nemo_voice_agent/utils/websocket_url.py` normalizes both variables for each
 `/connect` request. It strips a scheme prefix from the host, brackets bare IPv6 literals, and raises
@@ -113,9 +113,9 @@ The following variable overrides where the evaluation harness resolves its packa
 | --- | --- | --- | --- |
 | `EVAL_DATA_ROOT` | `get_eval_data_root()` in `nemo_voice_agent/evaluation/__init__.py` | the packaged `nemo_voice_agent/evaluation/data/` directory | Overrides the fixture root for scenario databases (DBs), policies, and task indexes. |
 
-`get_eval_data_root()` is a function rather than a module constant, so changing the variable after import takes
-effect — which is what lets the bridge process and each bot process resolve the same relative `db_path` to
-different absolute roots. Fixture paths stored in `shared_state_init` are always relative to this root. If a
+`get_eval_data_root()` is a function rather than a module constant, so changes after import take effect.
+This behavior lets the bridge process and each bot process resolve the same relative `db_path` to different
+absolute roots. Fixture paths stored in `shared_state_init` are always relative to this root. If a
 scenario fails to seed its DB, the `apply_initialization` handler logs the resolved root in the error message.
 For evaluation procedures, refer to [Evaluation Overview](../../evaluate/index.md).
 

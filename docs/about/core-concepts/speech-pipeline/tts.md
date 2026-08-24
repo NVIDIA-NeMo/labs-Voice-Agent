@@ -96,9 +96,9 @@ The last three have no entry in the shipped YAML files — add them under `tts:`
 Text aggregation is **not** part of the TTS service. Since Pipecat 1.0, it belongs to an
 `LLMTextProcessor` that `build_llm_text_processor` inserts between the LLM and the TTS service, built
 from `SimpleSegmentedTextAggregator` (`nemo_voice_agent/pipecat/utils/text/simple_text_aggregator.py`).
-That aggregator is why `extra_separator` includes `,` — it emits a chunk at the last valid comma so
-audio starts before the sentence is finished, while its period/comma heuristics avoid splitting on
-decimals (`3.14`), bullet numbering (`1.`), abbreviations (`e.g.`, `Dr.`), and times (`p.m.`).
+That aggregator is why `extra_separator` includes `,`. It emits a chunk at the last valid comma, so
+audio starts before the sentence is finished. Its period and comma heuristics avoid splitting on decimals
+(`3.14`), bullet numbering (`1.`), abbreviations (`e.g.`, `Dr.`), and times (`p.m.`).
 
 Pipecat silently ignores the aggregator when you pass it to the TTS service because it drops unknown
 constructor keyword arguments. Segmentation then degrades without an error. In a custom pipeline,
@@ -128,11 +128,15 @@ The following settings control Kokoro voice selection, speed, and text normaliza
 `KokoroTTSService` preloads both English pipelines (`a` = American, `b` = British) at startup so voice
 switches at conversation time do not pay a download cost.
 
-Kokoro is also the canonical component-owned tool provider: `setup_tool_calling` registers six direct
-functions the LLM can call mid-conversation — `tool_tts_speak_faster` and `tool_tts_speak_slower`
-(each a 15% relative change), `tool_tts_set_speed`, `tool_tts_reset_speed`, `tool_tts_set_voice`
-(accent `American English` or `British English` plus gender, mapping to `af_heart`, `am_michael`,
-`bf_emma`, `bm_george`), and `tool_tts_reset_voice`. They are only registered when
+Kokoro is also the canonical component-owned tool provider. `setup_tool_calling` registers six direct
+functions that the LLM can call mid-conversation:
+
+- `tool_tts_speak_faster` and `tool_tts_speak_slower`, each applying a 15% relative change.
+- `tool_tts_set_speed` and `tool_tts_reset_speed`.
+- `tool_tts_set_voice` and `tool_tts_reset_voice`. The setter accepts `American English` or
+  `British English` plus gender and maps to `af_heart`, `am_michael`, `bf_emma`, or `bm_george`.
+
+The functions are only registered when
 `llm.enable_tool_calling` is true. `server.py` passes the TTS service in the `tool_mixins` list. For registration
 details, refer to [Tool calling](../../../build-voice-agents/tools/tool-calling.md). FastPitch-HiFiGAN and
 Magpie register no tools.

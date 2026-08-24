@@ -114,9 +114,9 @@ The per-scenario source of truth. Fields always present:
 | `is_task_successful` | Same conjunction ignoring `clean_exit` |
 
 Conditional fields appear only when the corresponding signal applies:
-`db_state_match` plus `db_state_expected_hash` / `db_state_actual_hash`;
-`db_state_assertion_pass_rate` plus per-predicate `db_state_assertion_verdicts`;
-`nl_assertion_pass_rate`; `judge_score` and `judge_passed`; and
+`db_state_match` plus `db_state_expected_hash` / `db_state_actual_hash`,
+`db_state_assertion_pass_rate` plus per-predicate `db_state_assertion_verdicts`,
+`nl_assertion_pass_rate`, `judge_score` and `judge_passed`, and
 `insufficient_agent_turns` (only when the stall filter fired). A `trace_metrics` block is folded in
 when a `trace_metrics.json` file exists in the scenario directory or in `bot_logs_agent/`.
 
@@ -139,7 +139,7 @@ a surprising score without re-deriving the prompt). Scenarios with natural-langu
 `final_agent_response.json` is always list-wrapped as `[{"actions": [...]}]`. Each action record
 carries the upstream tool `name`, its `arguments`, a `result`, and a `side` tag stamped by the
 bridge according to which bot produced it (`"agent"` or `"user"`). For
-single-side domains everything is tagged `"agent"`; for the dual-side telecom domain, user-sim tool
+single-side domains, everything is tagged `"agent"`. For the dual-side telecom domain, user-sim tool
 calls arrive tagged `"user"`. Refer to [tau2-telecom](../domain-guides/tau2-telecom.md).
 
 `final_scenario_db_hash.txt` records one or two lines, `db_hash: <sha256>` and, when the scenario has

@@ -133,9 +133,9 @@ Use the following argument to control whether the response includes the bot's in
 ```
 
 `db_hash` is the SHA-256 of the canonicalized DB from `nemo_voice_agent.evaluation.db_hash.get_dict_hash`, or
-`null` when the bot holds no DB. The `db` key is present only when `include_db` was true; keep it off for
-large databases, which overflow Pipecat's 1 MB WebSocket frame cap and close the connection with code 1009. Each
-bot returns only its own DB — the agent-versus-user labeling is applied by the caller, based on which socket
+`null` when the bot holds no DB. The `db` key is present only when `include_db` was true. Keep it off for
+large databases, which overflow Pipecat's 1 MB WebSocket frame cap and close the connection with code 1009.
+Each bot returns only its own DB. The caller applies agent-versus-user labels based on which socket
 the response arrived on.
 
 ### apply_initialization
@@ -155,9 +155,14 @@ Use the following arguments to seed shared state, load fixture data, and apply i
        "actions": [{"func_name": "set_data_usage", "arguments": {"usage_gb": 15.1}}]}}
 ```
 
-Response `d` is `{"success": bool, "errors": [string]}`. `success` is false — with an explanatory entry in
-`errors` — when `shared_state_init` is not valid JSON or does not decode to an object, when `actions` is not
-a list, or when actions were supplied but no `db` could be resolved. A `db_path` is resolved against the eval
+Response `d` is `{"success": bool, "errors": [string]}`. `success` is false, with an explanatory entry in
+`errors`, under any of these conditions:
+
+- `shared_state_init` is not valid JSON or does not decode to an object.
+- `actions` is not a list.
+- Actions were supplied, but no `db` could be resolved.
+
+A `db_path` is resolved against the eval
 data root (`nemo_voice_agent/evaluation/data/`, overridable with `EVAL_DATA_ROOT`) and is skipped when `db` is
 already present.
 

@@ -18,7 +18,7 @@ limitations under the License.
 # Benchmarks and Domains
 
 NeMo Labs Voice Agent ships a scenario catalog for the two-bot evaluation harness. Every scenario is a
-registered Python class under `nemo_voice_agent/evaluation/scenarios/data/`; the runner selects them by name
+registered Python class under `nemo_voice_agent/evaluation/scenarios/data/`. The runner selects them by name
 or by domain. This page lists what is available, where each domain came from, and how to run it.
 
 ## Catalog
@@ -38,7 +38,7 @@ The catalog distinguishes benchmark-derived domains from smaller in-repository v
 | Legacy (`fastbite`, `simple_qa_1`–`simple_qa_3`) | 4 | in-repository | Apache-2.0 | `ACTION_MATCH` or `JUDGE_PASSED`, plus `CLEAN_EXIT` |
 
 Counts come from the live registry (`ALL_EVAL_SCENARIOS` in
-`nemo_voice_agent/evaluation/scenarios/__init__.py`); reproduce them with `--list-domains` below. Signals not
+`nemo_voice_agent/evaluation/scenarios/__init__.py`). Reproduce them with `--list-domains` below. Signals not
 in a scenario's whitelist are still computed and saved for diagnostics — they just do not gate the verdict.
 Refer to [Scoring Signals](scoring.md) for how the six `SuccessSignal` members combine.
 
@@ -90,13 +90,13 @@ Each domain has its own page with the task shape, tool surface, and known caveat
   the upstream `policy.md` verbatim plus a short voice-realization appendix, which keeps scores comparable to
   the published tau2 voice numbers. Agent tool surface: 14 tools plus `EndConversationTool`.
 - [tau2_retail](../domain-guides/tau2-retail.md) — the 114 IDs in the retail `base` split. 40 of them carry
-  `nl_assertions` (natural-language claims judged by the LLM judge); the rest are action/DB-only. Agent tool
+  `nl_assertions` (natural-language claims judged by the LLM judge). The rest are action/DB-only. Agent tool
   surface: 16 tools plus `EndConversationTool`.
-- [tau2_telecom](../domain-guides/tau2-telecom.md) — the 114 IDs in the telecom `base` split, and the only dual-side
-  domain: the simulated user gets 30 phone-control tools and its own user-side database alongside the agent's
-  13 tools plus `EndConversationTool`. All 114 tasks carry `db_state_assertions`, which is why per-predicate
-  scoring gates the verdict instead of whole-DB hash equality — telecom has an open solution space where
-  several valid action sequences land in different databases.
+- [tau2_telecom](../domain-guides/tau2-telecom.md) — the 114 IDs in the telecom `base` split and the only
+  dual-side domain. The simulated user gets 30 phone-control tools and its own user-side database. The agent
+  gets 13 tools plus `EndConversationTool`. All 114 tasks carry `db_state_assertions`, so per-predicate scoring
+  gates the verdict instead of whole-DB hash equality. Telecom has an open solution space where several
+  valid action sequences land in different databases.
 
 ### Telecom Policy Variants
 
@@ -135,7 +135,7 @@ you explicitly blank the URL (`--judge-url ""`), those scenarios yield `is_succe
 The shorthand `simple_qa_1..3` refers to `simple_qa_1`, `simple_qa_2`, and `simple_qa_3`. These scenarios and
 `fastbite` have no `<domain>__` prefix, so they are listed
 separately by `--list-domains` and cannot be selected with `--domain`. Pass them to `--scenarios` by name.
-They predate the domain convention and are kept as minimal regression cases; `fastbite` is a single
+They predate the domain convention and are kept as minimal regression cases. `fastbite` is a single
 noisy-audio ordering scenario, and the `simple_qa_*` trio are one-shot question/answer checks.
 
 ## Fixtures and Provenance

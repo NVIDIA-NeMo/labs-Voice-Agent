@@ -54,7 +54,7 @@ For stateful domains, each bot can hold its own database (DB) in shared state.
                                                  runner → scoring → eval_results/
 ```
 
-Both bot servers are the same script (`evaluation/bot_server.py`); the `SERVER_CONFIG_PATH` environment
+Both bot servers are the same script (`evaluation/bot_server.py`). The `SERVER_CONFIG_PATH` environment
 variable picks the role. Each runs its own Pipecat pipeline and holds a per-scenario `shared_state` dict.
 
 | Component | Source | Responsibility |
@@ -79,19 +79,19 @@ The bridge is responsible for the following runtime coordination and evidence-ca
 - **Latency measurement.** Every measurement pairs the moment the user stopped speaking with the moment the
   agent started speaking. The bridge reports mean, P50, P95, min, and max per scenario and across the run.
 - **Transcript and audio capture.** A timestamped conversation log, a segLST speaker-segment file, and a
-  stereo WAV (left channel: user to agent; right channel: agent to user).
+  stereo WAV (left channel: user to agent, right channel: agent to user).
 - **Scenario setup.** Per scenario the bridge sends `update_system_prompt` (prompt, tool registration,
   shared-state reset) followed by `apply_initialization` (merges the scenario's `shared_state_init` payload,
   resolves `db_path` to a loaded DB, applies init-function mutations). Both bots always receive
   `apply_initialization`, because the DB-load step runs even when a scenario declares no init mutations.
 - **Termination detection.** The agent ends a conversation by calling its end-conversation tool, which emits
-  an `<exit>` tag; the bridge records stop reason `[EXIT]`. Hitting the time limit records `[TIMEOUT]`.
-- **Cross-side state sync.** For dual-side domains, each write tool emits an `action-applied` event; the
-  bridge replays it onto shadow DBs, calls the scenario's `sync_state`, and pushes the resulting delta to
+  an `<exit>` tag. The bridge records stop reason `[EXIT]`. Hitting the time limit records `[TIMEOUT]`.
+- **Cross-side state sync.** For dual-side domains, each write tool emits an `action-applied` event. The
+  bridge replays it onto shadow DBs and calls the scenario's `sync_state`. It pushes the resulting delta to
   the other bot through `apply_sync_delta`. Single-side domains skip this step. Refer to
   [tau2_telecom](domain-guides/tau2-telecom.md).
 - **End-of-scenario pull.** The bridge pulls `get_context_history` and `get_scenario_summary` from each bot
-  inside that bot's own WebSocket scope. `get_scenario_summary` returns `{actions, db_hash}`; the inline DB
+  inside that bot's own WebSocket scope. `get_scenario_summary` returns `{actions, db_hash}`. The inline DB
   comes back only when the bridge opts in with `include_db` (needed for DB-state assertions).
 
 The bridge relies on both bots registering six RTVI actions — `reset`,
@@ -103,7 +103,7 @@ agent that implements them can be evaluated. Refer to [External agents](run-eval
 ### What You Get Out
 
 The runner scores each scenario with up to six independent signals. A scenario's domain declares which signals gate
-the composite `is_successful` verdict; the rest are still computed and saved as informational.
+the composite `is_successful` verdict. The rest are still computed and saved as informational.
 
 | Signal | `metrics.json` Key | Kind |
 |---|---|---|
@@ -146,19 +146,19 @@ python run_evaluation.py \
     --domain restaurant
 ```
 
-`run_agent.sh` and `run_user.sh` wrap terminals 1 and 2 with the environment already exported; run them from
+`run_agent.sh` and `run_user.sh` wrap terminals 1 and 2 with the environment already exported. Run them from
 `evaluation/` for the same reason. Use `--list-domains` and `--list` to list registered domains and scenarios.
 
 Two defaults to know before you compare runs:
 
 - `--min-agent-turns` defaults to `3`. Scenarios where the agent completed fewer turns are counted as
-  **failures** in the composite success rate and **skipped** in the per-signal rates — this catches a hung
-  LLM server, but it also depresses the headline while shrinking each per-signal denominator. Check the
+  **failures** in the composite success rate and **skipped** in the per-signal rates. This catches a hung
+  LLM server. It also depresses the headline while shrinking each per-signal denominator. Check the
   warning line in `all_summary.txt` before reading the numbers. Pass `0` to disable.
 - `--duration` defaults to unset, in which case each scenario's own `max_duration` applies. Passing a value
   overrides every scenario.
 
-The full flag list is in the [eval CLI reference](../reference/evaluation/eval-cli.md); interrupted runs are picked up
+The full flag list is in the [eval CLI reference](../reference/evaluation/eval-cli.md). Interrupted runs are picked up
 with `--resume`, described in [Resuming a run](run-evaluations/resume.md).
 
 ## Benchmark Domains

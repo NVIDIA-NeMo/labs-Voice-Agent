@@ -47,7 +47,7 @@ client is unchanged. Refer to [Quickstart](../../get-started/quickstart.md). Unl
 this config has no local model server to start in a second terminal.
 
 The two-bot eval harness has matching configs (`evaluation/server_configs/agent_nvidia.yaml`,
-`user_nvidia.yaml`, `agent_nvidia_omni.yaml`); refer to
+`user_nvidia.yaml`, `agent_nvidia_omni.yaml`). Refer to
 [Evaluation Quickstart](../../evaluate/run-evaluations/quickstart.md).
 
 ## Credentials
@@ -121,7 +121,7 @@ Why the subclass exists: upstream treats every synthesis exception as terminal, 
 failure `DEADLINE_EXCEEDED: failed to establish link to worker` silently drops a whole bot turn. The
 subclass replays the buffered text and retries — but **only when the attempt produced no audio**, since
 re-running mid-utterance would splice a duplicate prefix into the speech. The output sample rate on this
-path is fixed at 22050 Hz by the builder; `tts.sample_rate` is not consulted.
+path is fixed at 22050 Hz by the builder. `tts.sample_rate` is not consulted.
 
 ## Tool Calling
 
@@ -162,11 +162,11 @@ and both `stt.server` and `tts.server` to your Riva host and gRPC port. Consider
 plaintext local deployment:
 
 - The builders do not forward Pipecat's `use_ssl` flag, which defaults to `True`. A Riva server without
-  TLS cannot be reached by YAML alone; it needs a builder change. Refer to
+  TLS cannot be reached by YAML alone. It needs a builder change. Refer to
   [Builders](../extend/pipelines/builders.md).
 - `stt.language` and `tts.language` are read from YAML and passed to the constructor, but Pipecat 1.6
-  takes the language from its settings object instead, so the value is discarded and both services stay
-  on `en-US`.
+  takes the language from its settings object instead. The value is therefore discarded, and both services
+  stay on `en-US`.
 
 ## Gotchas
 

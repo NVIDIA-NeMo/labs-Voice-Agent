@@ -30,7 +30,7 @@ servers before reconnecting the bridge.
 
 ## Resume a Run
 
-Both bot servers must be up again before you resume; the bridge reconnects to them per scenario.
+Both bot servers must be up again before you resume. The bridge reconnects to them per scenario.
 
 ```bash
 # Terminal 1 + 2: restart the two bots (SERVER_CONFIG_PATH resolves against the CWD, so cd first)
@@ -87,7 +87,7 @@ fields below and logs a warning listing every mismatch. It is a **soft** check â
 | `strict_match` | Changes the action-list comparator |
 
 Output directory and WebSocket URLs are recorded but not diffed. If you do change a scored field mid-session,
-the aggregate mixes scenarios graded under different settings; re-run from scratch (omit `--resume`) when you
+the aggregate mixes scenarios graded under different settings. Re-run from scratch (omit `--resume`) when you
 need a clean comparison.
 
 ## --min-agent-turns

@@ -35,7 +35,7 @@ The following table shows the package shape used by each benchmark-derived domai
 | `eva_airline` | `scenarios/data/eva_airline/` | package: `base.py` + `group_Nx.py` shards |
 | `tau2_airline` | `scenarios/data/tau2_airline/` | package: `base.py` + `group_Nx.py` shards |
 | `tau2_retail` | `scenarios/data/tau2_retail/` | package: `base.py` + `group_Nx.py` shards |
-| `tau2_telecom` | `scenarios/data/tau2_telecom/` | package; also emits the parallel `tau2_telecom_workflow__` registrations |
+| `tau2_telecom` | `scenarios/data/tau2_telecom/` | Package that also emits the parallel `tau2_telecom_workflow__` registrations |
 | `restaurant`, `customer_service`, `qa`, `fastbite`, `simple_qa` | `scenarios/data/<name>.py` | single file (in-repo smoke sets) |
 
 New modules must be side-imported from `scenarios/data/__init__.py` so the decorators run at import
@@ -81,7 +81,7 @@ Use these fields to define the scenario identity, runtime limits, scoring contra
 ## The success_signals Contract
 
 `success_signals` is the whitelist of signals that gate the composite `is_successful` verdict. It must
-resolve to a non-empty sequence of `SuccessSignal` members; `Scenario.__init_subclass__` raises
+resolve to a non-empty sequence of `SuccessSignal` members. `Scenario.__init_subclass__` raises
 `TypeError` at class-definition time for any class that declares `name` without one.
 
 | Member | Metric Key | Use When |

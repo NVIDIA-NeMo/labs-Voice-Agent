@@ -56,7 +56,7 @@ for the full flag surface.
 ## Scenario Layout
 
 Scenario classes live in the package `nemo_voice_agent/evaluation/scenarios/data/eva_airline/`. `base.py`
-holds `EvaAirlineBaseScenario` plus five hand-authored seed scenarios; the `group_Nx.py` shards hold
+holds `EvaAirlineBaseScenario` plus five hand-authored seed scenarios. The `group_Nx.py` shards hold
 scenarios auto-scaffolded from the dataset by `scripts/prepare_eva_data/generate_airline_scaffolds.py`.
 The package `__init__.py` imports every shard so the `@register_eval_scenario` decorators run.
 
@@ -107,7 +107,7 @@ Unlike the tau2 domains,
 
 The live agent prompt starts with the `role` and complete `instructions` from ServiceNow/eva 0.1.3's
 `configs/agents/airline_agent.yaml`. A pinned copy lives at
-`nemo_voice_agent/evaluation/data/eva_airline/airline_agent.yaml`; only upstream trailing whitespace is
+`nemo_voice_agent/evaluation/data/eva_airline/airline_agent.yaml`. Only upstream trailing whitespace is
 normalized. This keeps authentication, fees, rebooking, refunds, compensation, standby, elite-status, and
 escalation rules in one auditable upstream-derived source instead of reconstructing a shorter policy in
 `base.py`.
@@ -115,10 +115,10 @@ escalation rules in one auditable upstream-derived source instead of reconstruct
 `get_agent_prompt()` preserves that policy content and then appends a clearly marked
 `## Additional Notes to Follow` section containing only NeMo voice/runtime guidance:
 
-- the scenario's current date;
-- the general voice-agent prompt and spoken alphanumeric rule;
-- the rule not to read internal journey IDs aloud;
-- clean conversation termination and execution-honesty guidance.
+- The scenario's current date.
+- The general voice-agent prompt and spoken alphanumeric rule.
+- The rule not to read internal journey IDs aloud.
+- Clean conversation termination and execution-honesty guidance.
 
 The YAML's tool declarations are retained for provenance, but the callable surface is still defined by
 `agent_resources` and the NeMo eva tool implementations described below.
@@ -193,7 +193,7 @@ in the composite rate and skipped in the per-signal rates. Details in [Scoring](
 ## Voice-Readability Rule
 
 Confirmation codes, flight numbers, and airport codes are the main failure surface in a spoken airline
-call. `VOICE_ALPHANUMERIC_RULE` is a module-level constant in `nemo_voice_agent/utils/voice_prompts.py`;
+call. `VOICE_ALPHANUMERIC_RULE` is a module-level constant in `nemo_voice_agent/utils/voice_prompts.py`.
 `EvaAirlineBaseScenario` imports it into both the agent guidelines and each scenario's user guidelines.
 
 The rule requires spelling each character one at a time. Speak letters as letters and digits as words.
@@ -211,7 +211,7 @@ for the model, not a response template. One exception: proper names such as "Joh
 the model can say the name and then spell it.
 
 The agent guidelines add one airline-specific companion rule — internal journey IDs such as
-`FL_SK621_20260320` are never read aloud; flights are referred to by flight number and date.
+`FL_SK621_20260320` are never read aloud. Flights are referred to by flight number and date.
 
 ## Extending the Domain
 

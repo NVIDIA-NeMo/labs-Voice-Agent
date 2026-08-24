@@ -61,8 +61,8 @@ in the pipeline right after `transport.input()`.
 
 **2. Carry an `RTVIProcessor` with the handlers your consumer expects.** Build the handlers with the
 factories in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py` and install them in one
-shot with `register_client_message_handlers()`. Each factory returns a `(message_type, handler)` pair;
-the registrar installs a single `on_client_message` dispatcher over all of them. An unhandled type
+shot with `register_client_message_handlers()`. Each factory returns a `(message_type, handler)` pair.
+The registrar installs a single `on_client_message` dispatcher over all of them. An unhandled type
 produces an `error-response` rather than a silent hang.
 
 The six factories, keyed by the wire message type they answer:
@@ -89,7 +89,7 @@ pipeline:
 - **The six message types and their response shapes.** The bridge sends and parses these literally.
   Renaming `get_scenario_summary`, or returning something other than the `actions` plus `db_hash`
   pair, silently breaks scoring. The run completes with unusable metrics.
-- **The tool-registry namespace key.** The bridge passes `scenario.domain` as `tool_domain`; your
+- **The tool-registry namespace key.** The bridge passes `scenario.domain` as `tool_domain`. Your
   tool-registration callback must accept the same `tool_factory(name, domain=...)` interface that
   `get_schema_tool_for_eval` implements. Refer to [Custom Tools](../../tools/custom-tools.md).
 
@@ -105,8 +105,8 @@ Everything outside the connection and RTVI contracts can be adapted to the agent
 | Observers | `PipelineWorker` takes an `observers` list; the stock bots attach the repo's `RTVIObserver` subclass, `RTVIAudioLoggerObserver`, and Pipecat's `UserBotLatencyObserver`. |
 | Reasoning, tool parsers, logits processors | Entirely outside the contract. |
 
-Pass your turn-taking service to `build_context_and_aggregators()` if you use it. In Pipecat 1.0+, exactly
-one component may emit user-speaking frames, and that argument determines the component. Omitting it derives
+Pass your turn-taking service to `build_context_and_aggregators()` if you use it. In Pipecat 1.0+, the
+pipeline permits exactly one component to emit user-speaking frames, and that argument determines the component. Omitting it derives
 the answer again from `turn_taking.enabled`, which is incorrect for a bot that builds the service inline.
 
 ## Skeleton

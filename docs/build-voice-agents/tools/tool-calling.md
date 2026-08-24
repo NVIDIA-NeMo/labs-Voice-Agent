@@ -66,7 +66,7 @@ Relevant config keys:
 | `llm.system_prompt_suffix` | model-specific | Appended to the system prompt; the shipped text tells the model when to reach for a tool and when not to. |
 | `llm.vllm_server_params` | model-specific | Must carry `--enable-auto-tool-choice` and a `--tool-call-parser` for the vLLM path. |
 
-Different models need different parsers. `nemotron_nano_v3.yaml` uses vLLM's built-in `qwen3_coder` parser;
+Different models need different parsers. `nemotron_nano_v3.yaml` uses vLLM's built-in `qwen3_coder` parser.
 `nemotron_nano_v2.yaml` loads the repo's streaming parser plugin with `--tool-parser-plugin` and
 `--tool-call-parser nemotron_json` (refer to [vLLM Plugins](../model-serving/vllm-plugins.md)).
 

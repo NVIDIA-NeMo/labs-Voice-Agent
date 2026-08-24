@@ -66,19 +66,19 @@ For each large language model (LLM), text-to-speech (TTS), and speech-to-text (S
 
 Two path-handling details affect resolution:
 
-- **`model_config` is reduced to its basename.** Only the filename is kept; the directory part of the
-  value is discarded and the file is looked up in the component's `*_configs/` directory. So
+- **`model_config` is reduced to its basename.** Only the filename is kept. The directory part of the
+  value is discarded, and the file is looked up in the component's `*_configs/` directory. Therefore,
   `model_config: "./server_configs/llm_configs/qwen3-8B.yaml"` and `model_config: "qwen3-8B.yaml"`
   behave identically, and you cannot point `model_config` at a file outside that directory.
 - **STT keys strip a `.nemo` path.** If `stt.model` ends in `.nemo`, the lookup key is the basename
-  without the extension, so a local checkpoint path can still match a registry entry.
+  without the extension. A local checkpoint path can therefore still match a registry entry.
 
 Whatever sub-config gets loaded, its keys **override** the top-level block — not the other way round.
 For that precedence rule, refer to [Server Config](server-config.md).
 
 ## Reasoning Auto-Swap
 
-An LLM registry entry may declare `reasoning_supported: true`. That is a promise that a sibling file
+An LLM registry entry can declare `reasoning_supported: true`. That is a promise that a sibling file
 with the same name plus a `_think` suffix exists and has been tested — for example `qwen3-8B.yaml`
 and `qwen3-8B_think.yaml`.
 

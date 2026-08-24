@@ -45,7 +45,7 @@ The following table summarizes the dated project milestones documented on this p
 
 NeMo Labs Voice Agent graduated out of
 [NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent), where it had
-lived as a sub-package, and is now developed in its own repository. The Python package name
+lived as a sub-package. Development now occurs in its own repository. The Python package name
 (`nemo_voice_agent`) and every import path are unchanged.
 
 ## 2026-06-13 — Evaluation Harness
@@ -92,7 +92,7 @@ This milestone added the following language and speech model support.
 - Added support for the `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` LLM. The
   `llm_configs/nemotron_nano_v3.yaml` model configuration covers this family. The NVFP4 variant is the
   shipped default and needs a GPU with FP4 support.
-- Added support for the `nvidia/magpie_tts_multilingual_357m` TTS model, using
+- Added support for the `nvidia/magpie_tts_multilingual_357m` TTS model. Its configuration is
   `tts_configs/magpie_tts_multilingual_357m.yaml`.
 
 Learn more: [LLM backends](core-concepts/language-models/llm.md) · [TTS](core-concepts/speech-pipeline/tts.md) ·
@@ -102,8 +102,8 @@ Learn more: [LLM backends](core-concepts/language-models/llm.md) · [TTS](core-c
 
 This milestone expanded tool-calling examples and updated the default diarization model.
 
-- Added tool-calling examples. The Kokoro TTS service registers six direct functions that let the
-  LLM change how the agent sounds mid-conversation: `tool_tts_speak_faster`, `tool_tts_speak_slower`,
+- Added tool-calling examples. The Kokoro TTS service lets the LLM change how the agent sounds
+  mid-conversation. It registers `tool_tts_speak_faster`, `tool_tts_speak_slower`,
   `tool_tts_set_speed`, `tool_tts_reset_speed`, `tool_tts_set_voice` (American or British accent,
   male or female voice), and `tool_tts_reset_voice`. A standalone example function,
   `tool_get_city_weather`, looks up current weather with the `python_weather` package.

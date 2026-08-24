@@ -168,7 +168,7 @@ Judge score, judge pass, action match, and clean exit have no per-domain block.
 
 ## Aggregation on Resume
 
-Scenarios skipped by `--resume` do not re-run; their `metrics.json` is loaded from disk and folded into
+Scenarios skipped by `--resume` do not re-run. Their `metrics.json` is loaded from disk and folded into
 the same buckets using `RunAggregator.add_scenario`. Each signal is appended only when its key is present
 and well-typed, so an older `metrics.json` missing a field simply contributes nothing to that bucket.
 NL-assertion verdicts are re-read from `judge_result.json` on this path, because only the pass *rate*

@@ -23,7 +23,7 @@ client can clear the conversation, swap the system prompt and tool surface, snap
 (LLM) context, or seed scenario fixtures. These operations form the control plane.
 
 The handlers live in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`. Each is produced by a
-`create_*_action` factory that returns a `(wire_name, handler)` pair; the bot installs them all with a single
+`create_*_action` factory that returns a `(wire_name, handler)` pair. The bot installs them all with a single
 call to `register_client_message_handlers`. For the wire envelope (`client-message` /
 `server-response` / `error-response` and the `t` / `d` argument encoding), refer to
 [RTVI Message Reference](../../../reference/runtime/rtvi-messages.md).
@@ -200,7 +200,7 @@ Two rules:
   uses `arguments.get(name, default)`.
 - **Never end the pipeline from a handler.** The WebSocket server lives inside the input transport, so
   tearing down the pipeline also kills the server and nothing can reconnect. `reset` and
-  `update_system_prompt` run at the start of every evaluation scenario; ending the pipeline there would kill
+  `update_system_prompt` run at the start of every evaluation scenario. Ending the pipeline there would kill
   the bot before its first turn.
 
 If you need bot-to-client notifications instead of request/response, push an `RTVI.ServerMessage` with

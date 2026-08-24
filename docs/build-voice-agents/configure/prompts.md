@@ -44,7 +44,7 @@ The final message list the LLM sees at startup is therefore:
 ## Path or Literal
 
 `system_prompt` is checked with `os.path.isfile()` against the raw string. If it names an existing file, the
-file's full contents become the prompt; otherwise, the string is used verbatim. The path resolves against the
+file's full contents become the prompt. Otherwise, the string is used verbatim. The path resolves against the
 **process working directory**, not the config file's directory. Run the server from
 `examples/generic_voice_agent/server/` and use paths relative to that directory, or use an absolute path.
 
@@ -82,9 +82,9 @@ controls. Drop that line if you copy one of these files for a different model.
 ## The Suffix and the Override Gotcha
 
 `system_prompt_suffix` is set by the **model sub-YAML**, not by `default.yaml`. Because the sub-YAML overrides
-the top-level config, as described in [Server configuration](server-config.md), adding `llm.system_prompt_suffix` to
-`default.yaml` has no effect whenever the selected `llm.model_config` also defines it — and every shipped
-`llm_configs/*.yaml` does. Edit the sub-YAML, or point `model_config` at your own copy.
+the top-level config, adding `llm.system_prompt_suffix` to `default.yaml` has no effect when the selected
+`llm.model_config` also defines it. Every shipped `llm_configs/*.yaml` does. Edit the sub-YAML, or point
+`model_config` at your own copy. For the precedence rules, refer to [Server Configuration](server-config.md).
 
 `system_prompt` itself is not set by any shipped sub-YAML, so editing it in `default.yaml` works as expected.
 
@@ -103,8 +103,8 @@ When tools are registered, LLMs show two failure modes that a plain task prompt 
 
 - **Tunnel vision** — after tools are attached, the model refuses anything outside the tool surface, or claims
   it called a tool without emitting a call.
-- **Commitment bias** — after one tool-backed answer, the model keeps routing every later turn through tools
-  (or, after answering from its own knowledge, stops using tools for the rest of the session).
+- **Commitment bias** — after one tool-backed answer, the model keeps routing every later turn through tools.
+  Conversely, after answering from its own knowledge, it can stop using tools for the rest of the session.
 
 The `system_prompt_suffix` in the Nemotron configs gives explicit instructions for both directions. Check
 whether the request matches a tool before answering, and call the tool when it matches. Answer from internal
@@ -126,7 +126,7 @@ The reusable fragments live in `nemo_voice_agent/utils/voice_prompts.py`:
 | `GENERAL_PROMPT` | Plain spoken prose only; no Markdown emphasis, headings, backticks, or line-start list markers; enumerate in prose instead; standard punctuation; no emoji; no fabrication. |
 | `VOICE_ALPHANUMERIC_RULE` | Spell alphanumeric identifiers one character at a time: letters as letters, digits as words, and punctuation as "dash", "at", "dot", or "hash". Speak *only* the spelled form, never the canonical string alongside it. |
 
-Import these into your own prompt builder rather than re-writing the rules; the evaluation harness uses the
+Import these into your own prompt builder rather than re-writing the rules. The evaluation harness uses the
 same constants, so agents stay consistent between the server and eval runs.
 
 If diarization is on, add the speaker-tag handling from `simple_chatbot_diar.txt`. The transcript carries

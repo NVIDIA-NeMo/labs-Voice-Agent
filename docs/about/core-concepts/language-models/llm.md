@@ -103,10 +103,10 @@ refer to [Serving with vLLM](../../../build-voice-agents/model-serving/vllm.md).
 
 ## Parameter Precedence
 
-Generation settings are duplicated on purpose: `llm.temperature`, `llm.top_k`, `llm.top_p`,
-`llm.min_p`, and `llm.max_new_tokens` are the user-facing settings, and the per-backend blocks reference
-them with OmegaConf interpolation so you only edit one place. Only the block matching the active
-backend is read.
+Generation settings are duplicated on purpose. `llm.temperature`, `llm.top_k`, `llm.top_p`,
+`llm.min_p`, and `llm.max_new_tokens` are the user-facing settings. The per-backend blocks reference
+them with OmegaConf interpolation, so you only edit one place. Only the block matching the active backend
+is read.
 
 | Backend | Configuration Keys | Destination |
 | --- | --- | --- |

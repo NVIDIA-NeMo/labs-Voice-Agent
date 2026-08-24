@@ -57,7 +57,7 @@ python run_evaluation.py --scenarios tau2_airline__11 tau2_airline__17
 ```
 
 Two flags matter for a 50-scenario job. `--duration` is unset by default, so each scenario gets its own
-900-second ceiling; pass an integer to cap it globally. `--min-agent-turns` defaults to `3`. Scenarios with
+900-second ceiling. Pass an integer to cap it globally. `--min-agent-turns` defaults to `3`. Scenarios with
 fewer completed agent turns count as failures in the composite rate. The per-signal rates skip them instead
 of dropping them. Refer to the
 [Evaluation Command-Line Interface (CLI)](../../reference/evaluation/eval-cli.md) for all flags.
@@ -111,11 +111,11 @@ bot server reads it to register tools.
 The user side is assembled from the structured `user_scenario` block through the inherited
 `get_user_prompt()`:
 
-- `task_instructions` becomes the persona's `personality`; `reason_for_call` becomes the task goal.
+- `task_instructions` becomes the persona's `personality`. `reason_for_call` becomes the task goal.
 - `known_info` and `unknown_info` render as `Things you know` / `Things you don't know` info sections. Naming
   what the caller does *not* know is what stops the simulator from inventing plausible reservation IDs.
 - `user_persona.name` is deliberately `None`. Identity comes from `known_info` (for example, a user ID like
-  `daiki_muller_1116`); injecting the tau2 `persona_name` would contradict it.
+  `daiki_muller_1116`). Injecting the tau2 `persona_name` would contradict it.
 - The only user-side guideline is `VOICE_ALPHANUMERIC_RULE`. The user simulator gets no tools in this domain.
 
 ## Tools
@@ -141,7 +141,7 @@ scenario also requests `EndConversationTool`, which resolves through the registr
 | `UpdateReservationPassengersTool` | `update_reservation_passengers` | yes |
 | `TransferToHumanAgentsTool` | `transfer_to_human_agents` | yes |
 
-Class names are the registry keys; action names match tau2's method names and are what appear in recorded
+Class names are the registry keys. Action names match tau2's method names and are what appear in recorded
 records. `TAU2_AIRLINE_TOOL_NAME_TO_CLASS` maps between the two. `TransferToHumanAgentsTool` mutates nothing
 but still records, and emits the `<exit>` marker after its result is delivered so the bridge can tear the
 session down cleanly.
@@ -186,7 +186,7 @@ forbids the requested change, correctly produce `{"actions": []}`: the agent pas
 ## Scoring
 
 `success_signals = (DB_STATE_MATCH, CLEAN_EXIT)`. The bot hashes its own `shared_state["db"]` inside the
-`get_scenario_summary` handler and returns only the SHA-256 string; the runner hashes
+`get_scenario_summary` handler and returns only the SHA-256 string. The runner hashes
 `expected_scenario_db` from its in-process replay and compares. Any tool sequence that lands on the correct
 end state passes.
 
@@ -199,7 +199,7 @@ each field is written.
 
 ## Database Seeding and Key Casing
 
-`setup_shared_state` writes `state["db_path"] = "tau2_airline/db.json"` for the agent side only; the bot
+`setup_shared_state` writes `state["db_path"] = "tau2_airline/db.json"` for the agent side only. The bot
 resolves it against `EVAL_DATA_ROOT` in its `apply_initialization` handler. The path is sent instead of the
 DB itself because the airline database exceeds Pipecat's WebSocket frame limit. On disk, it is sharded as
 `db/flights.json`, `db/users.json`, and `db/reservations.json`. `load_db_artifact` probes `<name>.json` and
@@ -220,6 +220,7 @@ order, and certificate payment IDs come from a fixed triple.
 
 ## Related
 
-[tau2_retail](tau2-retail.md) adds NL assertions on the same machinery, [tau2_telecom](tau2-telecom.md) is
-the dual-side variant with cross-side state sync, and [eva_airline](eva-airline.md) is the other airline
-domain. To add scenarios, refer to [Authoring Scenarios](../create-evaluations/authoring-scenarios.md).
+[tau2_retail](tau2-retail.md) adds natural-language (NL) assertions on the same machinery.
+[tau2_telecom](tau2-telecom.md) is the dual-side variant with cross-side state sync.
+[eva_airline](eva-airline.md) is the other airline domain. To add scenarios, refer to
+[Authoring Scenarios](../create-evaluations/authoring-scenarios.md).
