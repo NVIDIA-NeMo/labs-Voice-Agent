@@ -82,8 +82,6 @@ navigation:
             path: ../../build-voice-agents/configure/audio-logging.md
       - section: Model Serving
         contents:
-          - page: Overview
-            path: ../../build-voice-agents/model-serving/index.md
           - page: Serving with vLLM
             path: ../../build-voice-agents/model-serving/vllm.md
           - page: vLLM Plugins
@@ -92,8 +90,6 @@ navigation:
             path: ../../build-voice-agents/model-serving/nvidia-nim.md
       - section: Tools
         contents:
-          - page: Overview
-            path: ../../build-voice-agents/tools/index.md
           - page: Tool Calling
             path: ../../build-voice-agents/tools/tool-calling.md
           - page: Writing Your Own Tools
@@ -104,8 +100,6 @@ navigation:
             path: ../../build-voice-agents/extend/index.md
           - section: Pipelines
             contents:
-              - page: Overview
-                path: ../../build-voice-agents/extend/pipelines/index.md
               - page: The Builder API
                 path: ../../build-voice-agents/extend/pipelines/builders.md
               - page: Custom Frame Processors
@@ -114,8 +108,6 @@ navigation:
                 path: ../../build-voice-agents/extend/pipelines/custom-pipeline.md
           - section: Protocols
             contents:
-              - page: Overview
-                path: ../../build-voice-agents/extend/protocols/index.md
               - page: RTVI Control Plane
                 path: ../../build-voice-agents/extend/protocols/rtvi-actions.md
               - page: Client Protocol
@@ -126,8 +118,6 @@ navigation:
         path: ../../evaluate/index.md
       - section: Run Evaluations
         contents:
-          - page: Overview
-            path: ../../evaluate/run-evaluations/index.md
           - page: Quickstart
             path: ../../evaluate/run-evaluations/quickstart.md
           - page: Reading Results
@@ -138,16 +128,12 @@ navigation:
             path: ../../evaluate/run-evaluations/external-agents.md
       - section: Understand Scoring
         contents:
-          - page: Overview
-            path: ../../evaluate/understand-scoring/index.md
           - page: Benchmarks & Domains
             path: ../../evaluate/understand-scoring/benchmarks.md
           - page: Scoring Model
             path: ../../evaluate/understand-scoring/scoring.md
       - section: Create Evaluations
         contents:
-          - page: Overview
-            path: ../../evaluate/create-evaluations/index.md
           - page: Authoring Scenarios
             path: ../../evaluate/create-evaluations/authoring-scenarios.md
           - page: Authoring Tools
@@ -156,8 +142,6 @@ navigation:
             path: ../../evaluate/create-evaluations/authoring-domains.md
       - section: Domain Guides
         contents:
-          - page: Overview
-            path: ../../evaluate/domain-guides/index.md
           - page: Fixture Data & Provenance
             path: ../../evaluate/domain-guides/data-provenance.md
           - page: eva_airline
@@ -173,8 +157,6 @@ navigation:
     contents:
       - section: Runtime
         contents:
-          - page: Overview
-            path: ../../reference/runtime/index.md
           - page: Server Config Schema
             path: ../../reference/runtime/config-schema.md
           - page: Environment Variables
@@ -183,8 +165,6 @@ navigation:
             path: ../../reference/runtime/rtvi-messages.md
       - section: Evaluation
         contents:
-          - page: Overview
-            path: ../../reference/evaluation/index.md
           - page: Evaluation CLI
             path: ../../reference/evaluation/eval-cli.md
           - page: Metrics Dictionary
@@ -199,8 +179,6 @@ navigation:
         path: ../../troubleshooting/index.md
   - section: Resources
     contents:
-      - page: Overview
-        path: ../../resources/index.md
       - page: Third-Party Notices
         path: ../../resources/third-party-notices.md
       - section: Contribute

@@ -75,7 +75,6 @@
         {
           "title": "Model Serving",
           "pages": [
-            { "title": "Overview", "path": "build-voice-agents/model-serving/index.md" },
             { "title": "Serving with vLLM", "path": "build-voice-agents/model-serving/vllm.md" },
             { "title": "vLLM Plugins", "path": "build-voice-agents/model-serving/vllm-plugins.md" },
             { "title": "NVIDIA NIM & Riva", "path": "build-voice-agents/model-serving/nvidia-nim.md" }
@@ -84,7 +83,6 @@
         {
           "title": "Tools",
           "pages": [
-            { "title": "Overview", "path": "build-voice-agents/tools/index.md" },
             { "title": "Tool Calling", "path": "build-voice-agents/tools/tool-calling.md" },
             { "title": "Writing Your Own Tools", "path": "build-voice-agents/tools/custom-tools.md" }
           ]
@@ -98,7 +96,6 @@
             {
               "title": "Pipelines",
               "pages": [
-                { "title": "Overview", "path": "build-voice-agents/extend/pipelines/index.md" },
                 { "title": "The Builder API", "path": "build-voice-agents/extend/pipelines/builders.md" },
                 { "title": "Custom Frame Processors", "path": "build-voice-agents/extend/pipelines/custom-processor.md" },
                 { "title": "Building Your Own Pipeline", "path": "build-voice-agents/extend/pipelines/custom-pipeline.md" }
@@ -107,7 +104,6 @@
             {
               "title": "Protocols",
               "pages": [
-                { "title": "Overview", "path": "build-voice-agents/extend/protocols/index.md" },
                 { "title": "RTVI Control Plane", "path": "build-voice-agents/extend/protocols/rtvi-actions.md" },
                 { "title": "Client Protocol", "path": "build-voice-agents/extend/protocols/client-protocol.md" }
               ]
@@ -125,7 +121,6 @@
         {
           "title": "Run Evaluations",
           "pages": [
-            { "title": "Overview", "path": "evaluate/run-evaluations/index.md" },
             { "title": "Quickstart", "path": "evaluate/run-evaluations/quickstart.md" },
             { "title": "Reading Results", "path": "evaluate/run-evaluations/results.md" },
             { "title": "Resuming & Long Runs", "path": "evaluate/run-evaluations/resume.md" },
@@ -135,7 +130,6 @@
         {
           "title": "Understand Scoring",
           "pages": [
-            { "title": "Overview", "path": "evaluate/understand-scoring/index.md" },
             { "title": "Benchmarks & Domains", "path": "evaluate/understand-scoring/benchmarks.md" },
             { "title": "Scoring Model", "path": "evaluate/understand-scoring/scoring.md" }
           ]
@@ -143,7 +137,6 @@
         {
           "title": "Create Evaluations",
           "pages": [
-            { "title": "Overview", "path": "evaluate/create-evaluations/index.md" },
             { "title": "Authoring Scenarios", "path": "evaluate/create-evaluations/authoring-scenarios.md" },
             { "title": "Authoring Tools", "path": "evaluate/create-evaluations/authoring-tools.md" },
             { "title": "Adding a Domain", "path": "evaluate/create-evaluations/authoring-domains.md" }
@@ -152,7 +145,6 @@
         {
           "title": "Domain Guides",
           "pages": [
-            { "title": "Overview", "path": "evaluate/domain-guides/index.md" },
             { "title": "Fixture Data & Provenance", "path": "evaluate/domain-guides/data-provenance.md" },
             { "title": "eva_airline", "path": "evaluate/domain-guides/eva-airline.md" },
             { "title": "tau2_airline", "path": "evaluate/domain-guides/tau2-airline.md" },
@@ -169,7 +161,6 @@
         {
           "title": "Runtime",
           "pages": [
-            { "title": "Overview", "path": "reference/runtime/index.md" },
             { "title": "Server Config Schema", "path": "reference/runtime/config-schema.md" },
             { "title": "Environment Variables", "path": "reference/runtime/environment.md" },
             { "title": "RTVI Message Reference", "path": "reference/runtime/rtvi-messages.md" }
@@ -178,7 +169,6 @@
         {
           "title": "Evaluation",
           "pages": [
-            { "title": "Overview", "path": "reference/evaluation/index.md" },
             { "title": "Evaluation CLI", "path": "reference/evaluation/eval-cli.md" },
             { "title": "Metrics Dictionary", "path": "reference/evaluation/metrics.md" }
           ]
@@ -195,7 +185,6 @@
     {
       "title": "Resources",
       "pages": [
-        { "title": "Overview", "path": "resources/index.md" },
         { "title": "Third-Party Notices", "path": "resources/third-party-notices.md" }
       ],
       "subsections": [

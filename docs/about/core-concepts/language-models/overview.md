@@ -32,11 +32,13 @@ The following pages explain how language models generate, reason about, and cons
 | [Multimodal and omni models](multimodal.md) | Direct audio input and the additional user-audio buffer stage. |
 
 Model concepts describe runtime behavior. For deployment and endpoint setup, continue to
-[Model serving](../../../build-voice-agents/model-serving/index.md).
+[Serving with vLLM](../../../build-voice-agents/model-serving/vllm.md),
+[vLLM Plugins](../../../build-voice-agents/model-serving/vllm-plugins.md), or
+[NVIDIA NIM and Riva](../../../build-voice-agents/model-serving/nvidia-nim.md).
 
 ## Related Topics
 
 Use these pages to configure model behavior, serve a backend, or connect models to application tools.
 
 - [System prompts](../../../build-voice-agents/configure/prompts.md) — control assistant behavior.
-- [Tools](../../../build-voice-agents/tools/index.md) — let supported backends call functions.
+- [Tool calling](../../../build-voice-agents/tools/tool-calling.md) — let supported backends call functions.

@@ -30,9 +30,9 @@ Match your goal to its starting page, then follow the related guide for the next
 | --- | --- | --- |
 | Talk to the default agent | [Prerequisites](prerequisites.md) | [Installation](installation.md), then [Quickstart](quickstart.md) |
 | Understand the pipeline first | [Overview](../about/overview.md) | [Architecture](../about/architecture.md) |
-| Change models or behavior | [Configure](../build-voice-agents/configure/index.md) | [Model serving](../build-voice-agents/model-serving/index.md) or [Tools](../build-voice-agents/tools/index.md) |
-| Add pipeline code | [Extend](../build-voice-agents/extend/index.md) | [Pipelines](../build-voice-agents/extend/pipelines/index.md) or [Protocols](../build-voice-agents/extend/protocols/index.md) |
-| Measure an agent | [Evaluation overview](../evaluate/index.md) | [Run evaluations](../evaluate/run-evaluations/index.md) |
+| Change models or behavior | [Configure](../build-voice-agents/configure/index.md) | [Serving with vLLM](../build-voice-agents/model-serving/vllm.md) or [Tool Calling](../build-voice-agents/tools/tool-calling.md) |
+| Add pipeline code | [Extend](../build-voice-agents/extend/index.md) | [Builder API](../build-voice-agents/extend/pipelines/builders.md) or [RTVI Control Plane](../build-voice-agents/extend/protocols/rtvi-actions.md) |
+| Measure an agent | [Evaluation overview](../evaluate/index.md) | [Evaluation Quickstart](../evaluate/run-evaluations/quickstart.md) |
 
 ## First-Run Sequence
 

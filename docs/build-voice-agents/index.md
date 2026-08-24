@@ -27,8 +27,8 @@ Choose the smallest surface that supports the behavior you want to add.
 | Area | Use It to |
 | --- | --- |
 | [Configure](configure/index.md) | Select component configs, prompts, model-registry entries, and audio logging. |
-| [Model serving](model-serving/index.md) | Run a vLLM server, configure plugins, or use hosted NVIDIA endpoints. |
-| [Tools](tools/index.md) | Enable function calling and add direct or component-owned tools. |
+| Model serving | [Serve with vLLM](model-serving/vllm.md), [configure vLLM plugins](model-serving/vllm-plugins.md), or [use NVIDIA NIM and Riva](model-serving/nvidia-nim.md). |
+| Tools | [Enable tool calling](tools/tool-calling.md) or [write direct and component-owned tools](tools/custom-tools.md). |
 | [Extend](extend/index.md) | Add processors, assemble a custom pipeline, or integrate through RTVI. |
 
 ## Recommended Order
