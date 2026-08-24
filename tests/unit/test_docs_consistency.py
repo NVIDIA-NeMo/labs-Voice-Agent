@@ -50,8 +50,9 @@ pytestmark = pytest.mark.unit
 
 
 def _docs_pages() -> list[Path]:
-    """Authored documentation pages, excluding the contributor runbook."""
-    return sorted(p for p in DOCS.rglob("*.md") if p != DOCS / "fern" / "README.md")
+    """Authored documentation pages, excluding contributor and agent runbooks."""
+    excluded = {DOCS / "AGENTS.md", DOCS / "fern" / "README.md"}
+    return sorted(p for p in DOCS.rglob("*.md") if p not in excluded)
 
 
 def _read(path: Path) -> str:
