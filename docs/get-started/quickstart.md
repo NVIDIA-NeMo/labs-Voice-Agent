@@ -32,7 +32,9 @@ Before you begin, prepare the installed project and the terminal sessions used b
 
 Complete these four steps in order to start the services and connect from the browser.
 
-### Step 1: Start vLLM Yourself
+<Steps>
+
+### Start vLLM Yourself
 
 This is the most common first-run failure. The shipped default large language model (LLM) configuration
 (`examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3.yaml`) sets
@@ -59,7 +61,7 @@ The model sub-YAML **overrides** `default.yaml`, not the other way around. This 
 `default.yaml`'s `llm.type: auto` to `vllm` at runtime. For details, refer to
 [Server configuration](../build-voice-agents/configure/server-config.md).
 
-### Step 2: Start the Agent Server
+### Start the Agent Server
 
 In the second terminal:
 
@@ -87,7 +89,7 @@ a `.env` file from the working directory, and its values take precedence over th
 The Hugging Face libraries honor `HF_TOKEN` and `HF_HUB_CACHE` if you need a gated model or a custom cache
 location. For the complete list, refer to [Environment Variables](../reference/runtime/environment.md).
 
-### How the Two Ports Fit Together
+#### How the Two Ports Fit Together
 
 The browser uses two ports. Confusing their roles is the second-most-common first-run problem.
 
@@ -113,7 +115,7 @@ The server supports one client at a time. While a client is connected, the trans
 connection with WebSocket close code `1013` and keeps the active client. A different client can connect
 after the active client disconnects.
 
-### Step 3: Start the Web Client
+### Start the Web Client
 
 In the third terminal, on the server machine:
 
@@ -126,7 +128,7 @@ npm run dev
 Vite prints its listening address. It binds `0.0.0.0:5173` by default. If port 5173 is unavailable, change
 the `port` value in `examples/generic_voice_agent/client/vite.config.js`.
 
-### Step 4: Connect From the Browser
+### Connect From the Browser
 
 Open `http://<your-machine-ip>:5173/` (or whatever Vite printed).
 
@@ -139,6 +141,11 @@ Then press **Connect** and grant microphone permission. The bot speaks first: th
 LLM run when the client reports ready. You hear the greeting from the system prompt in `default.yaml`:
 "Hi, I'm Lisa, your helpful AI assistant..." Start talking after the greeting finishes.
 
+</Steps>
+
+If a service does not start or the browser cannot connect, use
+[Troubleshooting](../troubleshooting/index.md) to diagnose the symptom.
+
 ## Controls
 
 Use the browser controls to manage the active session and inspect its state:
@@ -150,28 +157,6 @@ Use the browser controls to manage the active session and inspect its state:
 | **Reset** | Send the `reset` real-time voice inference (RTVI) client request. The server restores the LLM context to the original system prompt. It also resets the ASR, TTS, diarization, and turn-taking services, so the system learns speaker identities again. |
 | **Microphone Volume** bar | View the local input level from a browser `AnalyserNode`. Use it to confirm that the microphone is active. |
 | **Debug Info** panel | View a timestamped log with user transcripts in blue and bot responses in green. |
-
-## Troubleshooting
-
-The server writes logs to `bot_server.log` in the directory where you launched `server.py`. The log rotates
-daily. For an earlier run, check the newest `bot_server.<timestamp>.log` file. The filename, level, and daily
-rotation are hardcoded. `server.py` calls `setup_logging()` with no arguments, which defaults to
-`bot_server.log` at `DEBUG` with `rotation="1 day"` in `nemo_voice_agent/utils/misc.py`. Editing
-`server.log_file` and `server.log_level` in `default.yaml` does not change these values. Only the evaluation
-bots in `evaluation/bot_server.py` read those keys.
-
-Run these checks when you hear no audio:
-
-```bash
-# Is the LLM endpoint up?
-curl -s http://localhost:8000/v1/models
-
-# Does the handshake return a URL the browser can reach?
-curl -s -X POST http://localhost:7860/connect
-```
-
-If the second command returns `ws://127.0.0.1:8765` but you are browsing from another machine, go back to
-`SERVER_PUBLIC_HOST`. More failure modes are collected in [Troubleshooting](../troubleshooting/index.md).
 
 ## Next Steps
 

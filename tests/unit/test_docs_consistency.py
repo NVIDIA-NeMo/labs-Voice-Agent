@@ -250,7 +250,8 @@ def test_every_docs_page_has_license_header():
 def test_docs_pages_are_mdx_safe():
     """Fern renders .md through MDX: bare braces and angle brackets break the build.
 
-    CI greps only for non-self-closing <img>, so this is the broader guard.
+    CI greps only for non-self-closing <img>, so this is the broader guard. The
+    exact Fern Steps wrapper is allowed for authored sequential tutorials.
     """
     offenders: list[str] = []
     for page in _docs_pages():
@@ -258,6 +259,10 @@ def test_docs_pages_are_mdx_safe():
         body = raw.split("*/}", 1)[1] if "*/}" in raw else raw
         body = re.sub(r"```.*?```", "", body, flags=re.S)
         body = re.sub(r"`[^`\n]*`", "", body)
+        if body.count("<Steps>") != body.count("</Steps>"):
+            offenders.append(str(page.relative_to(REPO)))
+            continue
+        body = re.sub(r"</?Steps>", "", body)
         if re.search(r"[{}]", body) or re.search(r"<[a-zA-Z/!]", body):
             offenders.append(str(page.relative_to(REPO)))
     assert not offenders, f"pages contain MDX-unsafe characters outside code fences: {offenders}"

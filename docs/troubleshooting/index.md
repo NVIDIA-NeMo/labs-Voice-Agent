@@ -122,8 +122,8 @@ path.
 
 **Resolution:** Check the rotating log file that the server writes in addition to stderr. The example server
 hardcodes the file name and level: `examples/generic_voice_agent/server/server.py` calls `setup_logging()` with
-no arguments. This call defaults to `bot_server.log` at `DEBUG` with daily rotation in
-`nemo_voice_agent/utils/misc.py`.
+no arguments. This call defaults to `bot_server.log` at `DEBUG` in `nemo_voice_agent/utils/misc.py`. It sets
+`rotation="1 day"` for daily rotation.
 
 The path is relative to the directory from which the process starts. For the standard Quickstart invocation,
 the path is `examples/generic_voice_agent/server/bot_server.log`. The `server.log_file` and `server.log_level`
@@ -214,8 +214,15 @@ run `huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir <local_path>`
 **Cause:** `/connect` returns a URL built from `SERVER_PUBLIC_HOST`, which defaults to `127.0.0.1`, the loopback
 address of the browser machine.
 
-**Resolution:** Export `SERVER_PUBLIC_HOST` with the server IP address or hostname before starting the server.
-Use `WEBSOCKET_SCHEME=wss` behind Transport Layer Security (TLS) termination.
+**Resolution:** Inspect the WebSocket URL that the handshake advertises:
+
+```bash
+curl -s -X POST http://localhost:7860/connect
+```
+
+If the response contains `ws://127.0.0.1:8765`, export `SERVER_PUBLIC_HOST` with the server IP address or
+hostname before starting the server. Use `WEBSOCKET_SCHEME=wss` behind Transport Layer Security (TLS)
+termination.
 
 ## Second browser tab closes immediately with code 1013
 
