@@ -244,72 +244,48 @@ Suites live in `tests/unit/` and `tests/functional/` — there are no test modul
 uv run pytest tests/unit -m "not gpu"
 ```
 
-## Does your change need a docs update?
+## Documentation
 
-**Ask this before finishing any code change.** `docs/` is user-facing documentation that describes runtime
-behaviour, so a behaviour change that skips it turns the site into a source of false statements — and merging
-to `main` publishes it live. An audit of this repo once found ~40 stale doc claims accumulated exactly this
-way, each one correct when written.
+Before completing a code change, determine whether it affects a user-visible surface. This includes public
+APIs, command-line interfaces, configuration, the browser client, workflows, defaults, errors, and other
+product behavior.
 
-Check the matching page whenever you touch:
+When a change has user-visible impact, start a documentation subagent in parallel. Give it the changed source
+files and the identified user impact, and direct it to read `docs/AGENTS.md`. Require the subagent to update the
+affected documentation and run the documented validation while the primary agent continues the implementation.
+Reconcile the documentation changes and validation evidence before completing the task, and include required
+documentation in the same change.
 
-| You changed | Check |
-|---|---|
-| a config key, default, or `server_configs/**` YAML | `docs/configure/`, `docs/reference/config-schema.md` |
-| a `build_*` function or the pipeline order | `docs/get-started/architecture.md`, `docs/extend/builders.md` |
-| an STT / TTS / diarization / turn-taking service or model | the matching `docs/models/*.md` |
-| LLM backend selection, vLLM flags, reasoning, omni | `docs/models/{llm,vllm,vllm-plugins,reasoning,multimodal}.md` |
-| tool calling or `utils/tool_calling/**` | `docs/features/{tool-calling,custom-tools}.md` |
-| an RTVI action or the `/connect` handshake | `docs/extend/{rtvi-actions,client-protocol}.md`, `docs/reference/rtvi-messages.md` |
-| `run_evaluation.py` flags, defaults, or scoring | `docs/evaluate/{scoring,resume}.md`, `docs/reference/eval-cli.md` |
-| eval scenarios, tools, or fixtures for a domain | `docs/evaluate/domains/*.md`, `docs/evaluate/authoring-*.md` |
-| a metric written to `metrics.json` / `all_summary.txt` | `docs/reference/metrics.md` |
-| an env var | `docs/reference/environment.md` |
-| deps, Python version, test layout, or lint tooling | `docs/contribute/{index,testing}.md` |
+If the current host cannot run subagents, the primary task must read `docs/AGENTS.md`, complete the same
+documentation work, and run the same validation. Do not omit documentation because parallel execution is
+unavailable. The scoped guide contains the Writing Style Guide, optional DORI routing, the source-to-page impact
+map, Fern maintenance rules, and documentation validation commands.
 
-Rules of thumb:
+### Documentation Writer Review Receipt
 
-- **Documentation-in-code counts.** An argparse `help=` string, a config comment, or a docstring is
-  documentation; fix it in the same change. A help string that contradicts its own default is the single most
-  common defect found here.
-- **Verify, don't copy.** Never restate a claim from `README.md` or this file without checking it against
-  source — both have been wrong. Cite the file you actually opened.
-- **`uv run pytest tests/unit/test_docs_consistency.py`** catches the mechanical subset (counts vs enums, CLI
-  defaults vs argparse, referenced paths existing). It cannot catch prose that is simply wrong about
-  behaviour, so it is a backstop, not a substitute for checking.
-- If a change makes a doc page wrong and you cannot fix it in scope, say so explicitly in your summary rather
-  than leaving it silently stale.
+Every pull request that changes code or documentation must include one
+`## Documentation Writer Review` section from
+`.github/PULL_REQUEST_TEMPLATE.md`. Complete the review after the changes and
+applicable validation are finished.
 
-## Documentation site
+- Check the review-completion box and keep exactly one result:
+  `docs-updated`, `no-docs-needed`, or `blocked`.
+- Name the changed documentation in **Evidence**, or explain why documentation
+  is not needed or why the review is blocked.
+- Record the agent product and surface that performed the review.
+- After committing the reviewed changes, fill the hidden head and guidance
+  fields with `git rev-parse --short HEAD` and
+  `git rev-parse --short HEAD:AGENTS.md`.
+- Any later commit makes the receipt stale. Rerun the documentation review and
+  refresh both hidden fields.
 
-`docs/` is a **Fern** site published to `docs.nvidia.com/nemo/labs-voice-agent` (see `docs/fern/docs.yml`).
-**⚠️ Merging any `docs/**` change to `main` publishes it live within about a minute** — `publish-fern-docs.yml`
-triggers on push to `main` (as well as on Release publication and `workflow_dispatch`), gated only on the
-`PUBLISH_FERN` repo variable, which is set. There is no staging channel; review on the PR preview.
+The `CI / Documentation Writer Review` workflow checks the receipt in advisory
+mode. Use the following command to measure adoption. The report also supports
+`json` and `csv` formats.
 
-Three CI workflows carry a `docs/**` path filter: `fern-docs-ci.yml` (the validation gates),
-`fern-docs-preview-build.yml`, and `publish-fern-docs.yml`. `fern-docs-preview-comment.yml` chains off the
-preview build via `workflow_run`.
-
-Four things to know before touching it:
-
-- **Navigation is GENERATED — never hand-edit it.** `docs/fern/versions/nightly.yml` and `docs/index.yml` are
-  both emitted from `docs/fern/nav.json` by `docs/fern/scripts/gen-nav.mjs`. To add, remove, or reorder a page,
-  edit `nav.json` and run `npm --prefix docs/fern run nav:gen`. `fern-docs-ci.yml` runs `nav:check`, which
-  fails if the generated files drift from the manifest.
-  Why it is generated: Fern needs the two files to use *different* path conventions (`nightly.yml` relative to
-  itself, so `../../…`; `index.yml` relative to `docs/`, bare), and only `nightly.yml` is validated by
-  `fern check` — `index.yml` is read solely by `publish-fern-docs.yml` at release time. Hand-maintaining both
-  is how a page silently disappears from the released channel, which had already happened once.
-- **Hard CI gates:** no non-self-closing `<img …>` anywhere under `docs/`; `fern check`; and lychee `--offline`
-  over `docs/**/*.md`, which requires every relative link target to exist on disk (no `.lycheeignore` exists).
-- Author pages as `.md` (`.mdx` is the generated-only format). Fern renders `.md` through MDX, so bare `{`, `}`,
-  `<` outside code fences break the build — that is why `docs/index.md` uses a `{/* … */}` comment header.
-- `docs/fern/product-docs/**` is the generated Python API reference: gitignored and regenerated per build.
-  `fern check` does **not** need it on disk (CI has no generate step and still passes) — `npm run check` alone
-  is enough for a prose change. Only a locally rendered `npm run dev` needs it, via
-  `npm run generate:library:local`, which additionally requires temporarily uncommenting the
-  `nemo-voice-agent-local` block in `docs.yml` and re-commenting it afterwards.
+```bash
+python scripts/docs-review-receipt.py report --since <YYYY-MM-DD> --format summary
+```
 
 ## Gotchas
 
@@ -331,5 +307,5 @@ Four things to know before touching it:
   built-ins for Nemotron-3 and newer: `nano_v3_reasoning_parser.py` by `--reasoning-parser nemotron_v3`, and
   `ReasoningBudgetLogitsProcessor` by the `thinking_token_budget` request parameter (see
   `nemotron_nano_v3_think.yaml`). Neither is loaded by any shipped config; both are kept only for deployments
-  pinned to older vLLM releases. Don't wire them into new configs — see `docs/models/vllm-plugins.md`.
+  pinned to older vLLM releases. Don't wire them into new configs — see `docs/build-voice-agents/model-serving/vllm-plugins.md`.
 - `bot_server.log` saves the logs from the pipecat pipeline, by default it's rotated every day. Recent failures: check the newest `bot_server.<timestamp>.log`, not just `bot_server.log` (which may be from an in-flight run).
