@@ -143,7 +143,8 @@ single-side domains, everything is tagged `"agent"`. For the dual-side telecom d
 calls arrive tagged `"user"`. Refer to [tau2-telecom](../domain-guides/tau2-telecom.md).
 
 `final_scenario_db_hash.txt` records one or two lines, `db_hash: <sha256>` and, when the scenario has
-user-side state, `user_db_hash: <sha256>`. The full database never crosses the WebSocket, so a
+user-side state, `user_db_hash: <sha256>`. The full database never crosses the WebSocket.
+
 To diagnose a `db_state_match` failure, compare this file with `expected_db_hash` or
 `expected_user_db_hash` in `scenario_config/metadata.json`. When the hashes differ, inspect
 `bot_logs_agent/llm_context.json` to find the tool call that diverged from the reference.
