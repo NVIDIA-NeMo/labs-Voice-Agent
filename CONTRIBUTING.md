@@ -153,6 +153,40 @@ uv run pytest tests/unit/test_config_manager.py
 7. **Address feedback**: Respond to review comments
 8. **Squash commits**: Clean up commit history before merging
 
+Use `.github/PULL_REQUEST_TEMPLATE.md` for every pull request and complete the documentation writer review
+receipt after the changes and applicable validation are final.
+
+## Documentation Writer Review Receipt
+
+Pull requests that change code or documentation must record a documentation
+review after the changes and applicable validation are complete. In the pull
+request description:
+
+1. Check **Documentation writer reviewed the completed changes**.
+2. Keep one result: `docs-updated`, `no-docs-needed`, or `blocked`.
+3. Add the changed documentation paths or a concise rationale to **Evidence**.
+4. Record the agent product and surface that performed the review.
+5. After committing the reviewed changes, populate the hidden metadata with:
+
+   ```bash
+   git rev-parse --short HEAD
+   git rev-parse --short HEAD:AGENTS.md
+   ```
+
+Rerun the review and refresh both values after any later commit. The
+`CI / Documentation Writer Review` workflow reports missing, invalid, or stale
+receipts in advisory mode.
+
+Maintainers can measure adoption with the following command. Replace the date
+with the start of the reporting window:
+
+```bash
+python scripts/docs-review-receipt.py report --since <YYYY-MM-DD> --format summary
+```
+
+The report uses the authenticated GitHub CLI session and also supports `json`
+and `csv` output.
+
 ## Adding New Features
 
 ### Commit Message Format

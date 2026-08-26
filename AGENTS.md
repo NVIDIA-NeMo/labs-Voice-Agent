@@ -244,24 +244,48 @@ Suites live in `tests/unit/` and `tests/functional/` — there are no test modul
 uv run pytest tests/unit -m "not gpu"
 ```
 
-## Documentation site
+## Documentation
 
-`docs/` is a **Fern** site published to `docs.nvidia.com/nemo/labs-voice-agent` (see `docs/fern/docs.yml`). Two CI
-workflows have a `docs/**` path filter and fire on a docs PR: `fern-docs-ci.yml` (the validation gates) and
-`fern-docs-preview-build.yml`. `fern-docs-preview-comment.yml` chains off the latter via `workflow_run`, and
-`publish-fern-docs.yml` runs on GitHub **Release** publication / `workflow_dispatch` — never on a docs edit.
-Four things to know before touching it:
+Before completing a code change, determine whether it affects a user-visible surface. This includes public
+APIs, command-line interfaces, configuration, the browser client, workflows, defaults, errors, and other
+product behavior.
 
-- **Navigation is declared twice.** `docs/fern/versions/nightly.yml` (paths relative to itself, so `../../…`;
-  validated by `fern check`) and `docs/index.yml` (paths relative to `docs/`, bare, no `./` or `../`; read only
-  by `publish-fern-docs.yml` at tag time and **not** CI-validated). A page added to one and not the other
-  silently disappears from that channel.
-- **Hard CI gates:** no non-self-closing `<img …>` anywhere under `docs/`; `fern check`; and lychee `--offline`
-  over `docs/**/*.md`, which requires every relative link target to exist on disk (no `.lycheeignore` exists).
-- Author pages as `.md` (`.mdx` is the generated-only format). Fern renders `.md` through MDX, so bare `{`, `}`,
-  `<` outside code fences break the build — that is why `docs/index.md` uses a `{/* … */}` comment header.
-- `docs/fern/product-docs/**` is the generated Python API reference: gitignored, regenerated per build, and
-  required on disk before `fern check` will pass locally (`cd docs/fern && npm run generate:library:local`).
+When a change has user-visible impact, start a documentation subagent in parallel. Give it the changed source
+files and the identified user impact, and direct it to read `docs/AGENTS.md`. Require the subagent to update the
+affected documentation and run the documented validation while the primary agent continues the implementation.
+Reconcile the documentation changes and validation evidence before completing the task, and include required
+documentation in the same change.
+
+If the current host cannot run subagents, the primary task must read `docs/AGENTS.md`, complete the same
+documentation work, and run the same validation. Do not omit documentation because parallel execution is
+unavailable. The scoped guide contains the Writing Style Guide, optional DORI routing, the source-to-page impact
+map, Fern maintenance rules, and documentation validation commands.
+
+### Documentation Writer Review Receipt
+
+Every pull request that changes code or documentation must include one
+`## Documentation Writer Review` section from
+`.github/PULL_REQUEST_TEMPLATE.md`. Complete the review after the changes and
+applicable validation are finished.
+
+- Check the review-completion box and keep exactly one result:
+  `docs-updated`, `no-docs-needed`, or `blocked`.
+- Name the changed documentation in **Evidence**, or explain why documentation
+  is not needed or why the review is blocked.
+- Record the agent product and surface that performed the review.
+- After committing the reviewed changes, fill the hidden head and guidance
+  fields with `git rev-parse --short HEAD` and
+  `git rev-parse --short HEAD:AGENTS.md`.
+- Any later commit makes the receipt stale. Rerun the documentation review and
+  refresh both hidden fields.
+
+The `CI / Documentation Writer Review` workflow checks the receipt in advisory
+mode. Use the following command to measure adoption. The report also supports
+`json` and `csv` formats.
+
+```bash
+python scripts/docs-review-receipt.py report --since <YYYY-MM-DD> --format summary
+```
 
 ## Gotchas
 
@@ -277,8 +301,11 @@ Four things to know before touching it:
 - The egg-info dir (`nemo_voice_agent.egg-info/`), `.venv/`, `nemo_experiments/` (personal scratch + `.env`), `eval_results/`, and `*.log` files are local artifacts — all are gitignored. Don't commit changes to them, and don't copy them around.
 - `examples/generic_voice_agent/server/parsers/*.py` and
   `nemo_voice_agent/vllm/v1/sample/logits_processor/*.py` are vLLM **plugins** — they run inside the vLLM
-  process, so logging/imports there have a different runtime than the rest of the codebase. Only
-  `nemotron_toolcall_parser_streaming.py` is live (loaded by `nemotron_nano_v2.yaml` via `--tool-parser-plugin`);
-  `nano_v3_reasoning_parser.py` is **dead code** — no shipped config loads it; the `nemotron_nano_v3*` configs
-  use vLLM's built-in `--reasoning-parser nemotron_v3` instead.
+  process, so logging/imports there have a different runtime than the rest of the codebase.
+  `nemotron_toolcall_parser_streaming.py` is **current** — Nemotron-Nano-v2 still needs it, loaded by
+  `nemotron_nano_v2.yaml` via `--tool-parser-plugin`. The other two are **deprecated**, superseded by vLLM
+  built-ins for Nemotron-3 and newer: `nano_v3_reasoning_parser.py` by `--reasoning-parser nemotron_v3`, and
+  `ReasoningBudgetLogitsProcessor` by the `thinking_token_budget` request parameter (see
+  `nemotron_nano_v3_think.yaml`). Neither is loaded by any shipped config; both are kept only for deployments
+  pinned to older vLLM releases. Don't wire them into new configs — see `docs/build-voice-agents/model-serving/vllm-plugins.md`.
 - `bot_server.log` saves the logs from the pipecat pipeline, by default it's rotated every day. Recent failures: check the newest `bot_server.<timestamp>.log`, not just `bot_server.log` (which may be from an in-flight run).

@@ -112,6 +112,13 @@ jobs:
             exit 1
           fi
 
+      # Both navigation files are generated from docs/fern/nav.json. `fern check`
+      # validates only versions/nightly.yml, so without this step a stale
+      # docs/index.yml would go unnoticed until a release shipped with pages
+      # missing from the frozen version.
+      - name: Check navigation is in sync
+        run: npm --prefix docs/fern run nav:check
+
       - name: Fern check
         working-directory: ./docs/fern
         run: fern check
