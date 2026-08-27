@@ -18,6 +18,10 @@ name: Approve Test Queue
 on:
   schedule:
     - cron: "*/5 * * * *"
+  # Scheduled events can be delayed, so refill released queue slots immediately.
+  workflow_run:
+    workflows: ["CICD Voice Agent"]
+    types: [completed]
   workflow_dispatch:
 
 jobs:
