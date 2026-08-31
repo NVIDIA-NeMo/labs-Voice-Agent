@@ -438,10 +438,17 @@ class AudioLogger:
             return None
 
         try:
-            # Get counter and generate filenames
-            counter = self._get_next_counter("user")
-            # timestamp_now = datetime.now()
-            base_name = f"{counter:05d}_{timestamp_now.strftime('%H%M%S')}"
+            # A staged entry may be updated multiple times as streaming STT
+            # accumulates a turn. Allocate its identity once and reuse it until
+            # save_user_audio() clears the staged metadata.
+            if self.staged_metadata is None:
+                self.staged_metadata = {}
+            if "counter" not in self.staged_metadata or "base_name" not in self.staged_metadata:
+                counter = self._get_next_counter("user")
+                base_name = f"{counter:05d}_{timestamp_now.strftime('%H%M%S')}"
+            else:
+                counter = self.staged_metadata["counter"]
+                base_name = self.staged_metadata["base_name"]
 
             audio_file = self.user_dir / f"{base_name}.wav"
             metadata_file = self.user_dir / f"{base_name}.json"
@@ -464,9 +471,6 @@ class AudioLogger:
             _end_time = self.get_time_from_start_of_session(timestamp=datetime.now())
             audio_duration_sec = round(_end_time - _start_time, self._round_precision)
 
-            # Prepare metadata (initialize if None to allow update)
-            if self.staged_metadata is None:
-                self.staged_metadata = {}
             self.staged_metadata.update(
                 {
                     "base_name": base_name,
