@@ -31,6 +31,7 @@ The following table summarizes the dated project milestones documented on this p
 
 | Date | Highlights |
 | --- | --- |
+| 2026-08-31 | Declaration-only tau voice-profile selection and provenance |
 | 2026-08-06 | Graduated to a standalone repository |
 | 2026-06-13 | Voice-agent evaluation harness with four benchmark domains |
 | 2026-05-15 | Omni (multimodal) LLM support |
@@ -40,6 +41,20 @@ The following table summarizes the dated project milestones documented on this p
 | 2025-10-10 | Kokoro-82M TTS |
 | 2025-10-03 | vLLM serving with automatic Hugging Face fallback |
 | 2025-09-05 | First release |
+
+## 2026-08-31 — Tau Voice-Profile Provenance
+
+The evaluation CLI can select any of the eight speech-complexity profiles already checked into each tau
+task. The harness strictly parses all audio, channel, speech, persona, interruption, and backchannel fields
+and writes the requested declaration to scenario metadata and metrics.
+
+This initial support is intentionally report-only: `applied` is empty, unsupported runtime controls are
+listed explicitly, and `benchmark_comparable` is false. Selecting a profile does not change audio, bind a
+provider voice, generate interruptions, or alter task-success scoring.
+
+Learn more: [Evaluation CLI](../reference/evaluation/eval-cli.md) ·
+[Metrics dictionary](../reference/evaluation/metrics.md) ·
+[Data provenance](../evaluate/domain-guides/data-provenance.md)
 
 ## 2026-08-06 — Standalone Repository
 

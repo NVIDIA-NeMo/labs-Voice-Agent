@@ -155,16 +155,20 @@ Every scenario's `metrics.json` carries a `success_breakdown` object with four b
 The `excluded` bucket is how you spot "all gating signals passed, but the agent took an unusual path" — for
 telecom, `db_state_match` and `is_action_match` land there on every scenario.
 
+For tau scenarios, `metrics.json` can also contain `runtime_profile`. This report records the requested
+speech-complexity declaration, but it is not a seventh scoring signal. The current report-only mode does not
+apply the declaration to the conversation, and its per-scenario report sets `benchmark_comparable` to `false`.
+
 ## Where the Numbers Land
 
 Use the session and scenario artifacts according to the level of detail you need.
 
 | Artifact | Contents |
 |---|---|
-| `<scenario>/metrics.json` | All six signals, `is_successful`, `is_task_successful`, `success_breakdown`, `stop_reason`, per-predicate `db_state_assertion_verdicts` |
+| `<scenario>/metrics.json` | All six signals, `is_successful`, `is_task_successful`, `success_breakdown`, `stop_reason`, per-predicate `db_state_assertion_verdicts`, and the report-only `runtime_profile` for tau scenarios |
 | `<scenario>/judge_result.json` | Judge score, reason, `nl_assertion_verdicts`, and the verbatim judge input |
 | `<scenario>/final_scenario_db_hash.txt` | Post-run `db_hash` (and `user_db_hash` for dual-side domains) |
-| `<scenario>/scenario_config/metadata.json` | The scenario's `success_signals`, `expected_db_hash`, `db_state_assertions`, `nl_assertions`, `initialization_actions` — so an old run stays interpretable without reloading the scenario class |
+| `<scenario>/scenario_config/metadata.json` | The scenario's `success_signals`, `expected_db_hash`, assertions, initialization actions, and report-only tau `runtime_profile` — so an old run stays interpretable without reloading the scenario class |
 | `all_summary.txt` | Composite headline rate, task success rate, and per-signal pass rates with their own denominators (scenarios, predicates, assertions) |
 
 For the field-by-field schema, refer to [Metrics Reference](../../reference/evaluation/metrics.md). For the

@@ -85,6 +85,7 @@ fields below and logs a warning listing every mismatch. It is a **soft** check â
 | `judge_url`, `judge_model`, `judge_max_tokens`, `judge_temperature`, `judge_top_p`, `judge_seed` | Different judge, different verdicts |
 | `judge_threshold` | Changes the `JUDGE_PASSED` signal |
 | `strict_match` | Changes the action-list comparator |
+| `speech_complexity` | Changes the requested tau voice-profile declaration recorded for each scenario |
 
 Output directory and WebSocket URLs are recorded but not diffed. If you do change a scored field mid-session,
 the aggregate mixes scenarios graded under different settings. Re-run from scratch (omit `--resume`) when you

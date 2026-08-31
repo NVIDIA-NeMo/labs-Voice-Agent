@@ -80,12 +80,18 @@ The harness writes the following keys only when the corresponding scenario signa
 | `judge_passed` | bool | A judge was configured **and** `--judge-threshold` was set. `judge_score >= judge_threshold`. |
 | `insufficient_agent_turns` | bool | `--min-agent-turns` (default 3) fired: the agent produced fewer LLM responses than the floor. Always `true` when present. |
 | `trace_metrics` | object | A `trace_metrics.json` exists in the scenario directory or in `bot_logs_agent/`. Copied verbatim; the runner never interprets it. |
+| `runtime_profile` | object | A tau2 scenario exposes a selected voice profile. Contains `requested`, empty `applied`, explicit `unsupported`, and `benchmark_comparable: false`; parsing is not runtime realization. |
 
 Each `db_state_assertion_verdicts` entry contains `func_name` (registered predicate name) and `side`
 (`"agent"` or `"user"`, which selects the pulled database). It also contains `passed` (bool), `expected`
 (the assertion's `assert_value`), `actual` (the predicate result, or `null` on error), and `message`
 (optional upstream label). The `error` field is `null` or contains the failure reason. If the predicate is
 missing, raises an exception, or cannot access the required database, `passed` is `false`.
+
+The same `runtime_profile` object is written to `scenario_config/metadata.json`. Its `mode` is
+`report_only` in the current implementation. `requested` preserves the full checked-in tau declaration
+and source revision; `applied` stays empty until a runtime component provides evidence that it executed a
+control. The block is provenance only and does not participate in `success_breakdown`.
 
 ### success_breakdown Buckets
 

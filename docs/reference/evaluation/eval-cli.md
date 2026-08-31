@@ -62,6 +62,7 @@ Use these flags to list or select the scenarios included in a run.
 | `--list-domains` | off | Print every domain with its scenario count, and exit. |
 | `--scenarios NAME [NAME ...]` | all registered scenarios | Explicit scenario names. Takes precedence over `--domain`. |
 | `--domain DOMAIN` | `None` | Run every scenario whose name starts with the `DOMAIN__` prefix. Exits with status 1 if nothing matches. |
+| `--speech-complexity PRESET` | `control` | Select the requested tau voice profile written to artifacts. This is report-only: the current runtime does not apply its audio, voice, or behavior controls. |
 
 Domain filtering is a literal prefix match, so `--domain tau2_telecom` selects only the
 `tau2_telecom__…` scenarios. The parallel workflow-policy registration is a separate domain,
@@ -69,6 +70,13 @@ Domain filtering is a literal prefix match, so `--domain tau2_telecom` selects o
 (`tau2_airline`), 114 (`tau2_retail`), and 114 (`tau2_telecom`, mirrored by
 `tau2_telecom_workflow`) scenarios. For domain details, refer to
 [Benchmark Domains](../../evaluate/understand-scoring/benchmarks.md).
+
+`--speech-complexity` accepts `control`, `regular`, `control_audio`, `control_accents`,
+`control_behavior`, `control_audio_accents`, `control_audio_behavior`, and
+`control_accents_behavior`. The option applies only to `tau2_*` scenarios. A non-`control` value with no
+tau scenario selected exits with status 1. Each applicable scenario records the complete requested
+profile plus an empty `applied` object and explicit unsupported controls; selecting a profile does not
+change the live conversation.
 
 ### Connection and Audio
 
@@ -158,7 +166,8 @@ Every run writes `run_args.json` into the session directory with the shape
 - The resolved scenario names and count.
 
 A `--resume` invocation appends a new entry and
-soft-checks it against the previous one on the scoring-relevant fields `domain`, `scenarios`, `duration`,
+soft-checks it against the previous one on the scoring-relevant fields `domain`, `scenarios`,
+`speech_complexity`, `duration`,
 `judge_url`, `judge_model`, `judge_threshold`, `judge_max_tokens`, `judge_temperature`, `judge_top_p`,
 `judge_seed`, and `strict_match`. Mismatches log a warning but do not block the run.
 

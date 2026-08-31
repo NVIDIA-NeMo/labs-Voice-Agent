@@ -62,9 +62,10 @@ that scenarios from different upstream libraries don't collide.
     `annotations`). Used to derive expected_scenario_db + reference_answer
     via the runtime gold-env replay on `Tau2BaseScenario._gold_replay`.
     Source: `data/tau2/domains/airline/tasks.json`.
-  - `tau2_airline/tasks_voice.json` — voice-eligible id list + per-task
-    `persona_name` (control preset). Filtered + joined with `tasks.json`
-    via `_load_tau2_voice_task_index("airline")`. Source:
+  - `tau2_airline/tasks_voice.json` — voice-eligible id list + eight per-task
+    speech-complexity profiles. Filtered + joined with `tasks.json` via
+    `_load_tau2_voice_task_index("airline")`; the selected profile is strictly
+    parsed and reported but not yet applied to the runtime. Source:
     `data/tau2/domains/airline/tasks_voice.json`.
   - `tau2_airline/split_tasks.json` — split membership; `base` (50 ids =
     train ∪ test) is the default eval surface for airline.
@@ -75,8 +76,7 @@ that scenarios from different upstream libraries don't collide.
     tau2's published voice-leaderboard numbers. Source:
     `data/tau2/domains/airline/policy.md`.
   - `tau2_airline/audio_difficulty.json` — kept for traceability;
-    **not consumed** by the eval pipeline (tau2's persona acoustic stack
-    is out of scope — see plan §1 non-goal).
+    **not consumed** by the eval pipeline.
 - **Bound code**: `nemo_voice_agent/evaluation/scenarios/data/tau2_airline/`
   (package: `base.py` holds `Tau2AirlineBaseScenario` + hand-authored seeds;
   `group_Nx.py` modules carry auto-scaffolded scenarios) +
@@ -102,8 +102,9 @@ that scenarios from different upstream libraries don't collide.
     39 carry both `actions` and `nl_assertions`, 1 is nl-only, 1 is a
     chitchat scenario with neither (task 57). Source:
     `data/tau2/domains/retail/tasks.json`.
-  - `tau2_retail/tasks_voice.json` — voice-eligible id list + per-task
-    `persona_name` (control preset). Source:
+  - `tau2_retail/tasks_voice.json` — voice-eligible id list + eight per-task
+    speech-complexity profiles. The selected profile is strictly parsed and
+    reported but not yet applied to the runtime. Source:
     `data/tau2/domains/retail/tasks_voice.json`.
   - `tau2_retail/split_tasks.json` — split membership; `base` (114 ids =
     train 74 ∪ test 40) is the default eval surface for retail. Source:

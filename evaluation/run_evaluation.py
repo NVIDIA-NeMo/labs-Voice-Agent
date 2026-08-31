@@ -35,7 +35,9 @@ import sys
 from datetime import datetime
 
 from nemo_voice_agent.evaluation.runner import run_dynamic_evaluation
+from nemo_voice_agent.evaluation.runtime_profile import SpeechComplexity
 from nemo_voice_agent.evaluation.scenarios import get_eval_scenario, list_eval_scenarios
+from nemo_voice_agent.evaluation.scenarios.data.tau2_common import Tau2BaseScenario
 from nemo_voice_agent.evaluation.utils import LLMJudge, validate_judge_numeric_options
 from nemo_voice_agent.utils import FileLogger
 
@@ -46,6 +48,7 @@ from nemo_voice_agent.utils import FileLogger
 _CONSISTENCY_CHECK_FIELDS = (
     "domain",
     "scenarios",
+    "speech_complexity",
     "duration",
     "judge_url",
     "judge_model",
@@ -73,6 +76,19 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         )
     except ValueError as e:
         parser.error(str(e))
+
+
+def _configure_speech_complexity(scenarios: list, value: str) -> int:
+    """Select the declaration-only tau voice profile on applicable scenarios."""
+    configured = 0
+    for scenario in scenarios:
+        if isinstance(scenario, Tau2BaseScenario):
+            scenario.set_speech_complexity(value)
+            # Parse eagerly so malformed checked-in declarations fail before
+            # the runner creates output or connects to either bot.
+            _ = scenario.runtime_profile
+            configured += 1
+    return configured
 
 
 def _build_invocation_record(args: argparse.Namespace, scenarios: list) -> dict:
@@ -200,6 +216,16 @@ Examples:
         type=str,
         default=None,
         help="Run all scenarios in a domain (e.g., 'restaurant', 'customer_service', 'qa'). Filters by '{domain}__' prefix.",
+    )
+    parser.add_argument(
+        "--speech-complexity",
+        choices=[preset.value for preset in SpeechComplexity],
+        default=SpeechComplexity.CONTROL.value,
+        help=(
+            "Select the requested tau voice profile to preserve in result artifacts. "
+            "Current support is report-only: audio, voice, and behavior controls are not applied "
+            "to the live conversation (default: control)."
+        ),
     )
     parser.add_argument(
         "--list-domains",
@@ -429,6 +455,14 @@ Examples:
             return 1
         scenarios.append(scenario)
 
+    configured_profile_count = _configure_speech_complexity(scenarios, args.speech_complexity)
+    if configured_profile_count == 0 and args.speech_complexity != SpeechComplexity.CONTROL.value:
+        print(
+            "--speech-complexity applies only to tau2_* scenarios; none were selected.",
+            file=sys.stderr,
+        )
+        return 1
+
     # Set up output directory.
     # On resume, reuse the existing session dir; otherwise create a fresh one.
     is_resume = bool(args.resume)
@@ -454,6 +488,11 @@ Examples:
     if is_resume:
         logger.info(f"=== RESUMING run eval_{session_timestamp} ===")
     logger.info(f"Queued {len(scenarios)} scenario(s): {[s.name for s in scenarios]}")
+    if configured_profile_count:
+        logger.info(
+            f"Selected tau speech-complexity profile {args.speech_complexity!r} for "
+            f"{configured_profile_count} scenario(s). Profile controls are recorded only and are not applied."
+        )
 
     # Persist the invocation args so the run dir is self-describing and so resume
     # can soft-check consistency against the original invocation.

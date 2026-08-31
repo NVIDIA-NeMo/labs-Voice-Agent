@@ -76,6 +76,7 @@ class Tau2Retail0(Tau2RetailBaseScenario):
 | --- | --- |
 | `tau2_task` | `tasks.json` entry, joined with `tasks_voice.json` and intersected with `split_tasks.json["base"]` |
 | `persona_name` | `tasks_voice.json` control preset — a metric-slicing label only, never used in a prompt |
+| `runtime_profile` | Strictly parsed `tasks_voice.json` declaration selected by `--speech-complexity`; report-only and not applied to the live conversation |
 | `policy` | `policy.md`, read one time per process |
 | `db` | `db.json` (~2.8 MB — `products`, `users`, `orders`), deep-copied per scenario |
 | `expected_scenario_db` | Gold replay of `evaluation_criteria.actions` against a fresh copy of `db` |

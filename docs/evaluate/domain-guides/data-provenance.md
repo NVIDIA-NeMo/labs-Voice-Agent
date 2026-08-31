@@ -152,7 +152,7 @@ The tau2 airline fixtures separate the policy, task split, and sharded database 
 |---|---|
 | `db/` (3 shards) | The shared airline DB, split per top-level table (`flights`, `reservations`, `users`). |
 | `tasks.json` | 50 task definitions: `description`, `user_scenario`, `initial_state`, `evaluation_criteria`, `annotations`. |
-| `tasks_voice.json` | Voice-eligible ID list plus each task's `persona_name` under the `control` preset. |
+| `tasks_voice.json` | Voice-eligible ID list plus eight per-task speech-complexity profiles. The harness strictly parses and reports the selected declaration; it does not yet apply the declared audio, voice, or behavior controls. |
 | `split_tasks.json` | Split membership — `train` (30), `test` (20), `base` (50). `base` is the eval surface. |
 | `policy.md` | Agent system prompt, copied verbatim from upstream. `get_agent_prompt()` returns it followed by an appended `## Additional Notes to Follow` section of voice-realization guidance. |
 

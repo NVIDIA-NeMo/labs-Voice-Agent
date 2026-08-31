@@ -129,7 +129,7 @@ Per-scenario filesystem state determines what happens to each scenario:
 
 **Invocation history.** Every run writes `<session_dir>/run_args.json` recording the CLI invocation (parsed args, `argv`, resolved scenario list). Resume invocations append a new entry rather than overwrite, so the file shows the full history of the run dir. The LLM judge API key is redacted before writing.
 
-**Consistency soft-check.** On `--resume`, scoring-relevant flags (`--domain` / `--scenarios` / `--duration` / `--judge-*` / `--strict-match`) are compared against the previous invocation; mismatches log a warning but never block — the operator decides whether to proceed. Mixing flags across resumed sessions produces incoherent aggregates (some scenarios scored one way, some another), so for a clean comparison rerun from scratch.
+**Consistency soft-check.** On `--resume`, scoring-relevant flags (`--domain` / `--scenarios` / `--speech-complexity` / `--duration` / `--judge-*` / `--strict-match`) are compared against the previous invocation; mismatches log a warning but never block — the operator decides whether to proceed. Mixing flags across resumed sessions produces incoherent aggregates (some scenarios scored one way, some another), so for a clean comparison rerun from scratch.
 
 **Final aggregates always regenerate.** `all_metrics.json`, `all_summary.txt`, and `all_latencies.csv` are written fresh at the end of the resume session, covering every scenario in `all_results` (both freshly-run and loaded-from-disk).
 
@@ -159,6 +159,7 @@ cd evaluation
 | `--agent-url` | WebSocket URL of the agent bot (default: `ws://localhost:8765`) |
 | `--scenarios <name …>` | Run specific scenarios by name |
 | `--domain <name>` | Run all scenarios in a domain (matches `{domain}__*` prefix) |
+| `--speech-complexity <preset>` | Select the requested tau voice profile recorded in metadata and metrics (default: `control`). Report-only: current audio, voice, and behavior are unchanged. |
 | `--list` | List all registered scenarios and exit |
 | `--list-domains` | List available domains and exit |
 | `--audio-chunk-in-seconds <seconds>` | Audio chunk in seconds for the audio stream (default: 0.016) |
@@ -235,6 +236,7 @@ The `tau2_airline`, `tau2_retail`, `tau2_telecom`, and `tau2_telecom_workflow` d
 - **Policy variants (telecom only).** Each base-split telecom task is registered TWICE: `tau2_telecom__X` (uses `tech_support_manual.md`) and `tau2_telecom_workflow__X` (uses `tech_support_workflow.md`). Same task, same reference actions, same predicates — only the agent's policy text differs. Pure A/B knob over policy prose.
 - **Per-domain agent-prompt addenda (telecom only).** Three blocks appended after the upstream-verbatim policy: a tool-availability disclaimer (so the LLM doesn't hallucinate user-side tool names that the agent's tool surface doesn't include), a stay-on-task guideline, and a home-network/location-probe rule that tells the agent the telecom is US-based and to ask the user's location first when diagnosing connectivity issues. See `nemo_voice_agent/evaluation/scenarios/data/tau2_telecom/base.py` for the constants.
 - **Multi-signal scoring.** Tau2 domains opt into more scoring signals than eva_airline alone — see [Evaluation Metrics](#evaluation-metrics) below for the full signal model and how the composite `is_successful` is derived as a strict conjunction across applicable signals.
+- **Voice-profile provenance.** `--speech-complexity` selects one of the eight checked-in tau declarations. The full profile is strictly parsed and written to scenario metadata and metrics with an empty `applied` object and explicit unsupported controls. This report-only surface does not modify audio, bind a provider voice, generate interruptions, or affect task scoring.
 - **Scaffold generators are committed.** `scripts/prepare_tau2_data/generate_{airline,retail,telecom}_scaffolds.py` regenerate `nemo_voice_agent/evaluation/scenarios/data/tau2_*/group_*x.py` from upstream `tasks.json` + `split_tasks.json[base]`. Run them only when the upstream schema or scaffold template changes. The telecom generator emits paired manual+workflow classes per upstream task.
 - **Data import script.** `scripts/prepare_tau2_data/prepare_telecom.py` does TOML→JSON conversion for the telecom upstream (airline/retail ship as JSON; only telecom needs conversion). See `scripts/prepare_tau2_data/README.md` for details.
 

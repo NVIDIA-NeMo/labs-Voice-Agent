@@ -79,6 +79,7 @@ class Tau2Airline11(Tau2AirlineBaseScenario):
 | --- | --- |
 | `tau2_task` | `tasks.json` entry, joined with the voice-eligible ID list in `tasks_voice.json` and intersected with `split_tasks.json["base"]` |
 | `persona_name` | `tasks_voice.json` control preset — a metric-slicing label only; it never enters a prompt |
+| `runtime_profile` | Strictly parsed `tasks_voice.json` declaration selected by `--speech-complexity`; report-only and not applied to the live conversation |
 | `policy` | `policy.md`, read one time per process |
 | `db` | `db/` fixture, loaded by `load_db_artifact` |
 | `expected_scenario_db` | Post-replay agent database (DB), described in the gold replay section |

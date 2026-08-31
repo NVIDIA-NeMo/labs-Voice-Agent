@@ -654,6 +654,11 @@ class Scenario:
             "disallow_extra_items": self.disallow_extra_items,
             "success_signals": [str(s) for s in (self.success_signals or ())],
         }
+        runtime_profile_report = getattr(self, "runtime_profile_report", None)
+        if runtime_profile_report is not None:
+            # Declaration and support provenance only. A parsed profile is not
+            # evidence that the bridge, bot, or provider applied its controls.
+            metadata["runtime_profile"] = runtime_profile_report
         # Include scenario-defining structured fields when present so the
         # metadata file is self-sufficient for interpreting metrics.json.
         if self.db_state_assertions:

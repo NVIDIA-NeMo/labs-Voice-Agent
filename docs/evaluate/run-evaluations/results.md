@@ -71,6 +71,7 @@ Start with the artifact that most directly answers your investigation question.
 | Did the bridge time out, disconnect, or exit cleanly? | `metrics.json` → `stop_reason`; `bridge_log.txt` |
 | Exactly which prompt and tools were used? | `scenario_config/` |
 | What flags produced this run? | `run_args.json` |
+| Which tau voice profile was requested, and was it applied? | `metrics.json` or `scenario_config/metadata.json` → `runtime_profile` |
 
 ## Session-Level Files
 
@@ -117,7 +118,10 @@ Conditional fields appear only when the corresponding signal applies:
 `db_state_match` plus `db_state_expected_hash` / `db_state_actual_hash`,
 `db_state_assertion_pass_rate` plus per-predicate `db_state_assertion_verdicts`,
 `nl_assertion_pass_rate`, `judge_score` and `judge_passed`, and
-`insufficient_agent_turns` (only when the stall filter fired). A `trace_metrics` block is folded in
+`insufficient_agent_turns` (only when the stall filter fired). Tau2 scenarios also carry a
+`runtime_profile` provenance block. Its current `report_only` mode preserves the complete requested
+profile while keeping `applied` empty and listing unsupported controls; it does not affect scoring or
+claim that the live audio changed. A `trace_metrics` block is folded in
 when a `trace_metrics.json` file exists in the scenario directory or in `bot_logs_agent/`.
 
 The names inside `success_breakdown` are the `SuccessSignal` string values —

@@ -34,6 +34,7 @@ The following table summarizes the two registrations, split state model, tool su
 | User DB | `nemo_voice_agent/evaluation/data/tau2_telecom/user_db.json` (device state + `surroundings`) |
 | Agent policy | `main_policy.md` + `tech_support_manual.md` or `tech_support_workflow.md`, concatenated |
 | Gating signals | `db_state_assertion`, `clean_exit` (plus `nl_assertion` when a task declares any) |
+| Voice profile | Strictly parsed `tasks_voice.json` declaration selected by `--speech-complexity`; report-only and not applied to the live conversation |
 
 Every one of the 114 tasks ships `db_state_assertions` and `initialization_actions`. None currently
 ship `nl_assertions`.
@@ -53,6 +54,10 @@ cd evaluation && WEBSOCKET_PORT=8765 SERVER_CONFIG_PATH=server_configs/agent.yam
 # Terminal 3 — runner
 cd evaluation && python run_evaluation.py --domain tau2_telecom
 ```
+
+All eight checked-in speech-complexity presets are available through `--speech-complexity`. The runner writes
+the selected declaration to scenario metadata and metrics. It does not apply audio, accent, or behavior
+effects, and the per-scenario report sets `benchmark_comparable` to `false`.
 
 `--domain` filters on the `<domain>__` prefix, so `--domain tau2_telecom` selects only the manual
 variant and `--domain tau2_telecom_workflow` only the workflow variant. Single scenarios go through

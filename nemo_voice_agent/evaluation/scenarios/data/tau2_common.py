@@ -27,11 +27,12 @@ Two pieces of machinery live here:
 1. ``_load_tau2_voice_task_index(domain, split="base")`` — module-level @cache'd
    loader. Joins ``tasks.json`` (definitions) with ``tasks_voice.json`` (the
    voice-eligible id list + persona) and intersects with ``split_tasks.json[split]``.
-   Returns ``id → {"task": <tasks.json entry>, "persona_name": <str>}``.
+   Returns ``id → {"task", "persona_name", "voice_profiles"}``.
 
 2. ``Tau2BaseScenario`` — superclass for every tau2 domain's base scenario.
    Provides:
    - ``tau2_task`` / ``persona_name`` cached_properties reading from the index.
+   - Strict, declaration-only parsing of the selected tau voice profile.
    - ``policy`` cached_property loading ``policy.md`` from disk (shared across all
      scenarios in the domain — one read per process).
    - ``_gold_replay`` cached_property that deepcopies the seeded DB, replays
@@ -52,6 +53,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from loguru import logger
 
 from nemo_voice_agent.evaluation import get_eval_data_root, load_db_artifact
+from nemo_voice_agent.evaluation.runtime_profile import (
+    SpeechComplexity,
+    TauVoiceRuntimeProfile,
+    parse_tau_voice_profile,
+)
 from nemo_voice_agent.evaluation.scenarios import END_CONVERSATION_GUIDELINE, EXECUTION_HONESTY_GUIDELINE
 from nemo_voice_agent.evaluation.scenarios.classes import (
     Actions,
@@ -97,7 +103,7 @@ def _normalize_env_record(rec: Dict[str, Any]) -> Dict[str, Any]:
 
 @cache
 def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, Dict[str, Any]]:
-    """Build ``id → {"task", "persona_name"}`` for one tau2 domain + split.
+    """Build ``id → {"task", "persona_name", "voice_profiles"}`` for a tau2 split.
 
     ``domain`` is the registry namespace string (``"tau2_airline"``, ``"tau2_retail"``,
     ``"tau2_telecom"``) — it also serves as the data subdirectory name under
@@ -111,11 +117,9 @@ def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, D
     Banking has no ``split_tasks.json`` — for that domain, step 2 is skipped
     automatically when the file is absent.
 
-    Other fields under ``configs.<id>.configs.<preset>`` (background noise,
-    channel/source/speech effects, interruption flags) are deliberately
-    discarded — see plan §1 non-goal. ``persona_name`` is read from
-    ``configs.<id>.configs.control.persona_name`` and used as a metric-slicing
-    label only (no voice binding).
+    ``voice_profiles`` preserves every checked-in preset declaration without
+    applying it to the runtime. ``persona_name`` remains the control preset's
+    value for backward-compatible metric slicing (no voice binding).
 
     Cached via ``functools.cache`` so the join runs at most once per
     (domain, split) per process. The data dir (``nemo_voice_agent/evaluation/data/tau2_<domain>/``)
@@ -142,8 +146,13 @@ def _load_tau2_voice_task_index(domain: str, split: str = "base") -> Dict[str, D
         if tid not in tasks_by_id:
             logger.warning(f"{domain}: voice-eligible id {tid!r} not in tasks.json; skipping")
             continue
-        persona_name = tasks_voice["configs"][tid].get("configs", {}).get("control", {}).get("persona_name")
-        index[tid] = {"task": tasks_by_id[tid], "persona_name": persona_name}
+        voice_profiles = tasks_voice["configs"][tid].get("configs", {})
+        persona_name = voice_profiles.get("control", {}).get("persona_name")
+        index[tid] = {
+            "task": tasks_by_id[tid],
+            "persona_name": persona_name,
+            "voice_profiles": voice_profiles,
+        }
     return index
 
 
@@ -198,6 +207,9 @@ class Tau2BaseScenario(Scenario):
     # Voice-task scenarios are 10× slower than text. Default 15min ceiling.
     max_duration = 900
 
+    # Declaration-only selection. Runtime audio/voice/behavior remains unchanged.
+    speech_complexity: SpeechComplexity = SpeechComplexity.CONTROL
+
     # ---- task / persona / policy / db ----
 
     @cached_property
@@ -221,6 +233,34 @@ class Tau2BaseScenario(Scenario):
     def persona_name(self) -> Optional[str]:
         """tau2 persona-name label (metric slicing). May be None for some tasks."""
         return self._index_entry["persona_name"]
+
+    def set_speech_complexity(self, value: SpeechComplexity | str) -> None:
+        """Select a tau voice profile before any runtime-profile property is read."""
+        if "runtime_profile" in self.__dict__ or "runtime_profile_report" in self.__dict__:
+            raise RuntimeError("speech complexity cannot change after the runtime profile was resolved")
+        self.speech_complexity = SpeechComplexity(value)
+
+    @cached_property
+    def runtime_profile(self) -> TauVoiceRuntimeProfile:
+        """Return the selected, strictly parsed tau voice profile declaration."""
+        profiles = self._index_entry.get("voice_profiles") or {}
+        selected = self.speech_complexity.value
+        if selected not in profiles:
+            raise KeyError(
+                f"tau2 voice profile {selected!r} is missing for {self.domain}/{self.tau2_id}; "
+                f"available: {sorted(profiles)}"
+            )
+        return parse_tau_voice_profile(
+            profiles[selected],
+            domain=self.domain,
+            task_id=self.tau2_id,
+            expected_complexity=self.speech_complexity,
+        )
+
+    @cached_property
+    def runtime_profile_report(self) -> Dict[str, Any]:
+        """Return honest declaration-only provenance for result artifacts."""
+        return self.runtime_profile.report()
 
     @cached_property
     def policy(self) -> str:

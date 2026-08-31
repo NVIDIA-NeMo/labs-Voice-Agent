@@ -115,6 +115,7 @@ def _bare_args(**overrides) -> argparse.Namespace:
         agent_url="ws://localhost:8765",
         scenarios=None,
         domain="tau2_retail",
+        speech_complexity="control",
         duration=None,
         pause=0.5,
         output_dir="./eval_results",
@@ -310,13 +311,19 @@ def test_run_args_resume_with_mismatch_warns(tmp_path, _run_eval_module):
     logger = _run_eval_module.FileLogger(str(log_path))
     _run_eval_module._write_run_args(str(tmp_path), args1, scens1, is_resume=False, logger=logger)
 
-    # Resume with a different threshold and strict_match toggled.
-    args2 = _bare_args(judge_threshold=0.7, strict_match=True, resume="ts")
+    # Resume with a different profile and threshold, and strict_match toggled.
+    args2 = _bare_args(
+        speech_complexity="control_audio",
+        judge_threshold=0.7,
+        strict_match=True,
+        resume="ts",
+    )
     scens2 = [_StubScenario("tau2_retail__1")]
     _run_eval_module._write_run_args(str(tmp_path), args2, scens2, is_resume=True, logger=logger)
 
     log_content = log_path.read_text()
     assert "WARNING" in log_content
+    assert "speech_complexity" in log_content
     assert "judge_threshold" in log_content
     assert "strict_match" in log_content
 

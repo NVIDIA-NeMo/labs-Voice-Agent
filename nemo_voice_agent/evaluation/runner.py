@@ -485,6 +485,11 @@ async def run_dynamic_evaluation(
         # Collect bridge metrics before judge scoring so the judge can use the
         # transcript even when reference/prediction artifacts are absent.
         metrics = bridge.get_metrics()
+        runtime_profile_report = getattr(scenario, "runtime_profile_report", None)
+        if runtime_profile_report is not None:
+            # Keep result consumers honest: this report distinguishes the
+            # requested declaration from the empty applied set.
+            metrics["runtime_profile"] = runtime_profile_report
 
         # ----- Signal 2: LLM judge (independent of action-list) --------------
         # Runs whenever judge is configured and scores the evidence that exists:

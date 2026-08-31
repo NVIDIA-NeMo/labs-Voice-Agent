@@ -99,6 +99,20 @@ class _DbAndCleanExitScenario(_CleanExitScenario):
     success_signals = (SuccessSignal.DB_STATE_MATCH, SuccessSignal.CLEAN_EXIT)
 
 
+class _RuntimeProfileScenario(_CleanExitScenario):
+    """Scenario carrying declaration-only runtime-profile provenance."""
+
+    name = "fake_domain__runtime_profile"
+    runtime_profile_report = {
+        "schema_version": 1,
+        "mode": "report_only",
+        "requested": {"complexity": "control_audio"},
+        "applied": {},
+        "unsupported": [{"control": "audio_realization", "reason": "profile_parsed_but_not_applied"}],
+        "benchmark_comparable": False,
+    }
+
+
 class _FakeBridge:
     """Deterministic bridge replacement for exercising runner orchestration cheaply."""
 
@@ -230,6 +244,29 @@ def test_run_dynamic_evaluation_scores_matching_db_hash(monkeypatch, tmp_path):
     assert results[0]["is_successful"] is True
     assert "db_state_expected_hash" in results[0]
     assert results[0]["db_state_actual_hash"] == get_dict_hash({"state": "done"})
+
+
+def test_run_dynamic_evaluation_persists_runtime_profile_provenance(monkeypatch, tmp_path):
+    """Requested profile provenance appears in scenario metadata and metrics."""
+    monkeypatch.setattr(runner_module, "VoiceAgentEvaluationBridge", _FakeBridge)
+    scenario = _RuntimeProfileScenario()
+
+    results = asyncio.run(
+        runner_module.run_dynamic_evaluation(
+            user_url="ws://fake-user",
+            agent_url="ws://fake-agent",
+            output_dir=str(tmp_path),
+            scenarios=[scenario],
+            pause_between_scenarios=0.0,
+            duration_per_scenario=1,
+            logger=_FakeLogger(),
+        )
+    )
+
+    metadata = json.loads((tmp_path / scenario.name / "scenario_config" / "metadata.json").read_text())
+    assert metadata["runtime_profile"] == scenario.runtime_profile_report
+    assert results[0]["runtime_profile"] == scenario.runtime_profile_report
+    assert results[0]["runtime_profile"]["applied"] == {}
 
 
 def test_run_dynamic_evaluation_counts_timeout_and_low_turns_as_failure(monkeypatch, tmp_path):
