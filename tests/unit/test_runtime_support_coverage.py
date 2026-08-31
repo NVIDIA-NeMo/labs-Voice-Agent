@@ -110,6 +110,44 @@ def test_audio_logger_full_session(tmp_path, monkeypatch):
     assert logger._stereo_conversation_file.exists()
 
 
+def test_audio_logger_reuses_counter_for_staged_turn_updates(tmp_path):
+    logger = AudioLogger(log_dir=tmp_path, session_id="staged", user_audio_sample_rate=100, pre_roll_time_sec=0)
+    logger.first_audio_timestamp = datetime.now() - timedelta(seconds=1)
+    pcm = np.arange(200, dtype=np.int16).tobytes()
+    logger.append_continuous_user_audio(pcm)
+
+    logger.turn_audio_buffer = [pcm]
+    logger.turn_transcription_buffer = ["hello"]
+    logger.stage_turn_audio_and_transcription(datetime.now())
+    first_base_name = logger.staged_metadata["base_name"]
+
+    logger.turn_audio_buffer.append(pcm)
+    logger.turn_transcription_buffer.append(" world")
+    logger.stage_turn_audio_and_transcription(datetime.now())
+
+    assert logger.staged_metadata["base_name"] == first_base_name
+    assert logger.staged_metadata["counter"] == 1
+    assert logger._user_counter == 1
+    assert logger.staged_metadata["transcription"] == "hello world"
+    assert logger.staged_metadata["num_transcription_chunks"] == 2
+    assert logger.staged_metadata["num_audio_chunks"] == 2
+
+    logger.save_user_audio()
+    assert len(logger.session_metadata["user_entries"]) == 1
+    assert len(list(logger.user_dir.glob("*.wav"))) == 1
+    assert len(list(logger.user_dir.glob("*.json"))) == 1
+
+    logger.turn_audio_buffer = [pcm]
+    logger.turn_transcription_buffer = ["next"]
+    logger.stage_turn_audio_and_transcription(datetime.now())
+    assert logger.staged_metadata["counter"] == 2
+    logger.save_user_audio()
+    logger.finalize_session()
+
+    assert [entry["counter"] for entry in logger.session_metadata["user_entries"]] == [1, 2]
+    assert logger.session_metadata["total_user_entries"] == 2
+
+
 def test_audio_logger_disabled_and_empty(tmp_path):
     disabled = AudioLogger(log_dir=tmp_path, enabled=False)
     assert disabled.append_continuous_user_audio(b"x") is None
