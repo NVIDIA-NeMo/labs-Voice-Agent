@@ -125,6 +125,15 @@ The harness writes `judge_result.json` once per scenario when a judge is configu
 | `nl_assertion_total` | int | Same condition. Equals the number of assertions declared by the scenario. |
 | `nl_assertion_pass_rate` | float | Same condition. `nl_assertion_pass_count / nl_assertion_total`. |
 
+The `user_content` inside `judge_input` is assembled from tagged sections, in this order and only when
+each input is non-empty: `<reference>` (the gold action list), `<prediction>` (the agent's recorded
+actions), `<conversation>` (the transcript turns, included only under `--judge-include-conversation`),
+`<nl_assertions>` (the scenario's assertions rendered as a 1-based numbered list), `<agent_context_history>`
+(the agent bot's LLM context, including its system prompt and every tool call with arguments and results),
+and `<user_context_history>` (the simulated user's LLM context, which carries the user-side tool calls in
+dual-side domains). Scanning for those tags is the quickest way to confirm the judge actually saw the
+evidence a surprising score should have rested on.
+
 Each `nl_assertion_verdicts` entry has `index` (1-based, matching the numbered assertion the judge was
 shown), `assertion` (the assertion text, inlined so the file is self-describing), `passed` (bool), and
 `reason` (string). The list is normalized to exactly one entry per assertion: missing, out-of-range,

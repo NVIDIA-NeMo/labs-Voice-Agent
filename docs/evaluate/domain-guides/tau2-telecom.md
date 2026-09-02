@@ -30,8 +30,8 @@ The following table summarizes the two registrations, split state model, tool su
 | Scenario count | 114 (`tau2_telecom__*`) plus a parallel 114 (`tau2_telecom_workflow__*`) over the same tasks |
 | Registry domain | `tau2_telecom` for both registrations |
 | Scenario base | `Tau2TelecomBaseScenario` / `Tau2TelecomWorkflowBaseScenario` in `nemo_voice_agent/evaluation/scenarios/data/tau2_telecom/base.py` |
-| Agent Database (DB) | `nemo_voice_agent/evaluation/data/tau2_telecom/db.json` (plans, lines, customers, bills, devices) |
-| User DB | `nemo_voice_agent/evaluation/data/tau2_telecom/user_db.json` (device state + `surroundings`) |
+| Agent Database (DB) | `nemo_voice_agent/evaluation/data/tau2_telecom/db.json` (plans, lines, customers, bills, devices), read one time per process by the `Tau2TelecomBaseScenario.db` cached property |
+| User DB | `nemo_voice_agent/evaluation/data/tau2_telecom/user_db.json` (device state + `surroundings`), read one time per process by the `Tau2TelecomBaseScenario.user_db` cached property |
 | Agent policy | `main_policy.md` + `tech_support_manual.md` or `tech_support_workflow.md`, concatenated |
 | Gating signals | `db_state_assertion`, `clean_exit` (plus `nl_assertion` when a task declares any) |
 

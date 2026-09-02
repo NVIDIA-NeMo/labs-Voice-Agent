@@ -19,8 +19,10 @@ limitations under the License.
 
 `eva_airline` is a 50-scenario airline customer-service benchmark ported from
 [ServiceNow/eva](https://github.com/ServiceNow/eva) (v0.1.3, MIT). In each scenario, a simulated passenger
-calls the agent to change a flight, recover from a cancellation, request a refund, or challenge a fabricated
-disruption claim.
+calls the agent for the fictional carrier SkyWay Airlines to change a flight, recover from a cancellation,
+request a refund, or challenge a fabricated disruption claim. The carrier name is the quickest way to
+recognize the domain in a transcript or a fixture: every flight number carries the `SK` prefix, as in
+`SK621`.
 
 Scoring is deterministic. Every scenario ships a gold post-run database from upstream, so the run is scored
 by hashing the agent's final database rather than by a large language model (LLM) judge.
@@ -96,6 +98,12 @@ nothing else. `EvaAirlineBaseScenario` derives the rest lazily through `cached_p
 The dataset index is loaded one time per process by `_load_eva_airline_dataset_index()`, cached with
 `functools.cache`. An `eva_id` with no dataset entry raises `KeyError` when `expected_scenario_db` is first
 touched.
+
+The 900-second cap is sized for voice pacing rather than text. A healthy run spends roughly 30 to 40
+seconds per round trip, and observed live runs of `eva_airline__voluntary_date_change` take 12 to 14 turns
+even when the agent works efficiently. The closing protocol alone — confirm the change, ask whether
+anything else is needed, say goodbye — costs another 3 to 4 turns after the work itself is done, which is
+why 600 seconds leaves no headroom. Pass `--duration` to override the per-scenario value for a whole run.
 
 `setup_shared_state(state, side)` seeds the **agent** side only: it assigns the whole scenario database
 inline to `state["db"]`. The eva fixtures are approximately 10–30 KB each, so they fit in the

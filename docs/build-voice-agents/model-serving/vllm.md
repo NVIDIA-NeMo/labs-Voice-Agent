@@ -96,10 +96,23 @@ Notes on individual flags:
 - `--enable-auto-tool-choice --tool-call-parser qwen3_coder` — required for [tool calling](../tools/tool-calling.md).
   Without them the model's tool calls arrive as plain text. Some models need a parser plugin file instead. Refer to
   [vLLM Plugins](vllm-plugins.md).
-- `--reasoning-parser nemotron_v3` — strips reasoning content out of the response server-side. Refer to
+- `--reasoning-parser nemotron_v3` — strips reasoning content out of the response server-side, and supplies the
+  reasoning delimiters that a thinking budget forces once it runs out. Refer to
   [Reasoning Mode](../../about/core-concepts/language-models/reasoning.md).
 - `--gpu-memory-utilization 0.8` leaves headroom on the same GPU for ASR, diarization, and TTS. Lower it if
   those models fail to allocate.
+
+vLLM derives the reasoning delimiters from the parser, so no shipped config sets them. Override both with
+`--reasoning-config` when a checkpoint closes its reasoning span with a non-standard string:
+
+```bash
+vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
+    --reasoning-parser nemotron_v3 \
+    --reasoning-config '{"reasoning_start_str": "<think>", "reasoning_end_str": "\nI have to finalize the answer now.</think>"}'
+```
+
+The Nemotron-3 model cards do not ask for this flag. Add it only when a manual run leaves reasoning text in the
+spoken response or ignores the thinking budget.
 
 `nemotron_nano_v3_think.yaml` uses the **same** server flags, so one running server serves both configs. The
 differences are all request-side: `enable_thinking: True` under
@@ -154,7 +167,11 @@ accepts connections from outside its machine. For a hosted endpoint rather than 
 The shipped default is NVFP4 and fits one GPU with FP4 support at `--tensor-parallel-size 1`. For rough sizing,
 allow about 21 GB for a 9B LLM and 13 GB for a 4B LLM. Also reserve a few GB for speech models that share the
 GPU. `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` needs more than 60 GB, so raise
-`--tensor-parallel-size` to 2 (and set `--max-model-len 8192` to keep the KV cache in budget).
+`--tensor-parallel-size` to 2 (and set `--max-model-len 8192` to keep the KV cache in budget). On a GPU that
+supports FP8 but not FP4, serve
+[`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8`](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8)
+instead of the BF16 weights: point `llm.model` at that repository, keep the rest of the config as shipped, and the
+VRAM requirement drops well below the BF16 figure.
 
 Tuning order when you hit an out-of-memory error:
 
@@ -186,8 +203,10 @@ vllm serve nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4 \
 ```
 
 Keep `start_vllm_on_init: false` here: the quoted JSON values would not survive the whitespace split
-described above. Set `keep_only_last_audio_turn: false` against a self-hosted vLLM, which accepts multiple
-audio turns. For the remaining omni keys, refer to
+described above. Because you type this command yourself, you can also add `--kv-cache-dtype fp8`, which the
+[model card](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16) lists for the quantized
+checkpoints to shrink the KV cache. Omit that flag for the BF16 checkpoint. Set `keep_only_last_audio_turn: false`
+against a self-hosted vLLM, which accepts multiple audio turns. For the remaining omni keys, refer to
 [Multimodal / Omni](../../about/core-concepts/language-models/multimodal.md).
 
 ## Related Pages

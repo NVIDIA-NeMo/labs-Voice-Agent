@@ -26,7 +26,9 @@ NeMo Labs Voice Agent gives you three ways to expose a Python callable to the la
 | Component-owned tool | Same inference, but the functions are methods on a pipeline component | `ToolCallingMixin` and `register_direct_tools_to_llm(tool_mixins=[...])` | The tool must mutate a service's state (TTS speed, ASR language, turn-taking behavior). |
 | Schema tool | An explicit `FunctionSchema` you declare | `register_schema_tools_to_llm(...)` | You need control over the JSON Schema, or you are writing an eval-domain tool. |
 
-The first two paths both hand Pipecat a `DirectFunction`, so they share one contract.
+The first two paths both hand Pipecat a `DirectFunction` — the
+[direct-functions shorthand](https://docs.pipecat.ai/guides/learn/function-calling#using-direct-functions-shorthand)
+described in Pipecat's function-calling guide — so they share one contract.
 
 ## Prerequisites
 
@@ -57,7 +59,8 @@ Everything the LLM sees is derived automatically:
 | The `params` parameter | Nothing — it is skipped. |
 
 Because the docstring *is* the prompt, write it for the model. State when the tool should be called, when it
-should not be called, and what the agent should do with the result.
+should not be called, and what the agent should do with the result. For the upstream reference behind this
+path, refer to the Pipecat [function-calling guide](https://docs.pipecat.ai/guides/learn/function-calling).
 
 ## 1. Direct Functions
 

@@ -74,7 +74,9 @@ Two database (DB) seeding styles are driven by `Scenario.setup_shared_state(stat
 | Path reference | all `tau2_*` domains | The bridge puts a relative string in `state["db_path"]` (for example `tau2_airline/db.json`); the bot resolves it against its own `get_eval_data_root()`. |
 
 Path seeding exists because Pipecat's default WebSocket frame cap is 1 MB: inlining a multi-megabyte tau2
-DB closes the connection with code `1009` before the payload arrives.
+DB closes the connection with code `1009` before the payload arrives. Airline forces the issue at ~6.8 MB
+upstream, and retail is ~2.8 MB. Telecom's own databases are far smaller (~14 KB agent-side, ~2 KB
+user-side), but it seeds by path as well so that every tau2 domain shares one code path.
 
 The bot-side resolution happens in the `apply_initialization` real-time voice interface (RTVI) client-message handler
 (`create_apply_initialization_action` in `nemo_voice_agent/pipecat/processors/frameworks/rtvi_actions.py`).
@@ -121,8 +123,10 @@ benchmark-derived fixture set.
 | `tau2_retail` | [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) | tag `voice-user-sim-v1.0`, commit `17e07b1` | MIT (Copyright (c) 2025 Sierra Research) |
 | `tau2_telecom` | [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) | tag `voice-user-sim-v1.0`, commit `17e07b1` | MIT (Copyright (c) 2025 Sierra Research) |
 
-`voice-user-sim-v1.0` is an annotated tag, so its object SHA is not a commit SHA. Dereference it with
-`git rev-parse voice-user-sim-v1.0^{commit}` to get `17e07b1`.
+`voice-user-sim-v1.0` is an annotated tag, so its object SHA is not a commit SHA — a plain
+`git rev-parse voice-user-sim-v1.0` returns the tag wrapper `d1eff9e6`. Dereference it with
+`git rev-parse voice-user-sim-v1.0^{commit}` to get `17e07b1`. The tag message anchors the pin as the voice
+user simulator as used in the τ³-bench 1.0.0 release.
 
 Adapted Python modules (tools, param models, scenario bases) each carry an inline `# Adapted from <url>`
 attribution at the top of the file. Data fixtures are verbatim copies except where noted below.
@@ -139,14 +143,16 @@ The EVA airline fixture directory contains the source dataset and its generated 
 |---|---|
 | `<eva_id>.json` (50 files) | Self-contained scenario world state — `reservations`, `journeys`, `disruptions`, and a `_current_date` key. Upstream `data/airline_scenarios/`. |
 | `eva_airline_dataset.jsonl` (50 lines) | Per-scenario metadata: `user_goal`, `decision_tree`, `information_required`, `ground_truth.expected_scenario_db`. Upstream `data/airline_dataset.jsonl`. |
-| `airline_agent.yaml` | Complete upstream agent configuration from `configs/agents/airline_agent.yaml`, with only trailing whitespace normalized. `get_agent_prompt()` uses its `role` and `instructions` verbatim before appending NeMo voice/runtime notes. |
+| `airline_agent.yaml` | Complete upstream agent configuration from `configs/agents/airline_agent.yaml`, with only trailing whitespace normalized. `get_agent_prompt()` uses its `role` and `instructions` verbatim before appending NeMo voice/runtime notes. The file is hash-pinned: `tests/unit/test_eva_airline_stage_b.py` asserts its SHA-256 is `58631672139be47f767c367894919d64091832b0113b099443dcd645609209bd`, so an edit to the shipped policy fails CI. |
 
 The harness reads this data one time per process and indexes it by scenario ID. Refer to
 [eva_airline](eva-airline.md).
 
 ### tau2_airline — 50 Tasks
 
-The tau2 airline fixtures separate the policy, task split, and sharded database artifacts.
+The tau2 airline fixtures separate the policy, task split, and sharded database artifacts. Every file below
+is a verbatim copy of the same-named file under `data/tau2/domains/airline/` in the tau2-bench checkout, with
+one layout change: upstream's single `data/tau2/domains/airline/db.json` is sharded locally into `db/`.
 
 | File | Contents |
 |---|---|
@@ -161,21 +167,24 @@ Refer to [tau2_airline](tau2-airline.md).
 ### tau2_retail — 114 Tasks
 
 Same file shape as airline, with `db.json` unsharded (~2.8 MB) and `split_tasks.json` carrying `train` (74),
-`test` (40), `base` (114). Of the 114 tasks, 73 are actions-only, 39 carry both `actions` and
+`test` (40), `base` (114). All five files — `db.json`, `tasks.json`, `tasks_voice.json`, `split_tasks.json`,
+and `policy.md` — are verbatim copies of their same-named siblings under upstream
+`data/tau2/domains/retail/`. Of the 114 tasks, 73 are actions-only, 39 carry both `actions` and
 `nl_assertions`, 1 is nl-assertion-only, and 1 (task 57) is chitchat with neither.
 Refer to [tau2_retail](tau2-retail.md).
 
 ### tau2_telecom — 114 Tasks
 
-The only domain with an import script, because upstream ships its DBs as TOML.
+The only domain with an import script, because upstream ships its DBs as TOML. Every file below comes from
+`data/tau2/domains/telecom/` in the tau2-bench checkout.
 
 | File | Contents |
 |---|---|
-| `db.json` | Agent-facing DB (plans, devices, lines, customers, bills). Converted from upstream `db.toml`. |
-| `user_db.json` | User-facing DB (mock phone state plus user surroundings). Converted from upstream `user_db.toml`. |
+| `db.json` | Agent-facing DB (plans, devices, lines, customers, bills). Converted from upstream `data/tau2/domains/telecom/db.toml`. |
+| `user_db.json` | User-facing DB (mock phone state plus user surroundings). Converted from upstream `data/tau2/domains/telecom/user_db.toml`. |
 | `tasks.json` | Filtered at import time to the 114 base-split IDs. |
 | `tasks_voice.json` | Filtered at import time to the same 114 IDs. |
-| `split_tasks.json` | Verbatim — `base` (114), `small` (20), `train` (74), `test` (40), `full` (2285). |
+| `split_tasks.json` | Verbatim — `base` (114), `small` (20), `train` (74), `test` (40), `full` (2285). `small` shares no IDs with `base`; it is an upstream debugging split, not a runnable subset of the shipped surface. |
 | `main_policy.md`, `tech_support_manual.md`, `tech_support_workflow.md` | Policy sources; `Tau2TelecomBaseScenario.policy` concatenates `main_policy.md` with one `tech_support_*.md` variant, joined by a `---` rule. |
 
 Re-import from a local tau2-bench checkout:

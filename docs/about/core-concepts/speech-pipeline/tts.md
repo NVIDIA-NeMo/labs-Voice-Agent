@@ -31,8 +31,16 @@ dispatch key — it must be exactly one of the three strings below, or the facto
 | `tts.model` | Sub-Configuration | Weights | Output Sample Rate | Voices |
 | --- | --- | --- | --- | --- |
 | `kokoro` (default) | `kokoro_82M.yaml` | `hexgrad/Kokoro-82M` | 24,000 Hz | `sub_model_id`, such as `af_heart`, `af_bella`, `am_fenrir`, or `am_michael` |
-| `fastpitch-hifigan` | `nemo_fastpitch-hifigan.yaml` | `nvidia/tts_en_fastpitch` + `nvidia/tts_hifigan` | 22,050 Hz | Single voice |
+| `fastpitch-hifigan` | `nemo_fastpitch-hifigan.yaml` | `nvidia/tts_en_fastpitch` + `nvidia/tts_hifigan` | 22,050 Hz | Single voice, English only |
 | `magpie` | `magpie_tts_multilingual_357m.yaml` | `nvidia/magpie_tts_multilingual_357m` | 22,050 Hz | `speaker`: `Sofia`, `Aria`, `John`, `Jason`, or `Leo` |
+
+Language support differs across the three.
+[FastPitch-HiFiGAN](https://huggingface.co/nvidia/tts_en_fastpitch) only supports English output: its
+checkpoint is English-only and its branch in `get_tts_service_from_config` never reads a `language` key.
+[Magpie](https://huggingface.co/nvidia/magpie_tts_multilingual_357m) is multilingual and takes the
+`language` code described in [Magpie-specific keys](#magpie-specific-keys).
+[Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) preloads only its American and British English
+pipelines, and the factory never passes a `lang_code`, so it stays English in practice.
 
 A fourth option, `tts.type: nvidia`, routes to a hosted NVIDIA Riva/NIM endpoint instead of a local
 model. For endpoint configuration, refer to

@@ -17,9 +17,9 @@ limitations under the License.
 
 # Speaker Diarization
 
-NeMo Labs Voice Agent uses streaming Sortformer to identify which speaker is talking during each user
-turn. In a multi-person conversation, the large language model (LLM) receives a speaker identity with
-every utterance.
+NeMo Labs Voice Agent uses [streaming Sortformer](https://arxiv.org/abs/2507.18446) to identify which
+speaker is talking during each user turn. In a multi-person conversation, the large language model (LLM)
+receives a speaker identity with every utterance.
 Diarization is on by default in `server_configs/default.yaml`.
 
 ## How Speaker Diarization Works

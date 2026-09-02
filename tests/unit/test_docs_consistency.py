@@ -296,3 +296,23 @@ def test_nav_manifest_covers_every_page_and_only_real_pages():
     assert not (on_disk - declared), (
         f"pages exist but are absent from nav.json, so they are unreachable: {sorted(on_disk - declared)}"
     )
+
+
+# --------------------------------------------------------------------------
+# AGENTS.md points at docs/ instead of duplicating it; those pointers must resolve.
+# --------------------------------------------------------------------------
+
+
+def test_agents_md_docs_pointers_resolve():
+    """AGENTS.md defers to docs/ for reference material rather than restating it.
+
+    That trade only works while the pointers are live. A moved or renamed page
+    turns agent guidance into a dead end, and nothing else in CI would notice —
+    AGENTS.md is excluded from the docs page checks.
+    """
+    agents = REPO / "AGENTS.md"
+    referenced = {m.group(1) for m in re.finditer(r"`(docs/[\w./-]+)`", _read(agents))}
+    assert referenced, "AGENTS.md no longer references docs/ — did the pointers get inlined again?"
+
+    missing = sorted(p for p in referenced if not (REPO / p.rstrip("/")).exists())
+    assert not missing, f"AGENTS.md points at docs/ paths that do not exist: {missing}"

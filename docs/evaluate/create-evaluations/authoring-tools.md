@@ -67,10 +67,21 @@ constructor that declares `shared_state: Optional[dict]`. The convention is to s
 | `__rtvi__` | `update_system_prompt` handler | `_record_action` (emits `action-applied`), exit-message helpers |
 | `__tool_domain__` | `update_system_prompt` handler | `action-applied` payload routing |
 
+A domain adds its own keys alongside these, and every tool in the scenario sees them. The `default`-domain
+waitlist tools share one such key: `JoinWaitListTool` seeds `shared_state["waitlist"]` from its
+`initial_waitlist` constructor argument and appends each customer to it, `DropWaitListTool` filters an entry
+out of the same list, and the read-only `GetWaitlistTool` returns it. A customer joined through one tool is
+therefore visible when another tool reads the list.
+
 Scenario fixture data arrives through the `shared_state_init` argument of the `apply_initialization` RTVI
 client message, not `update_system_prompt`. Dunder sentinels live on `shared_state`, not inside
 `shared_state["db"]`, so they never reach the database (DB) hash. `get_dict_hash` hashes only the `db` dictionary and
-drops the top-level keys in `HASH_EXCLUDED_KEYS` (currently only `session`). Refer to
+drops the top-level keys in `HASH_EXCLUDED_KEYS` (currently only `session`). It then canonicalizes what
+remains, so cosmetic differences between a tool's write and the gold replay's write do not fail
+`DB_STATE_MATCH`: a finite whole-number float becomes an integer (`1.0` becomes `1`), the strings `"none"` and
+`"null"` become `None` (case-insensitive, after stripping whitespace), and a list stored under a key in
+`ORDER_INDEPENDENT_LIST_FIELDS` (`standby_list`, `notifications`, `bookings`, `system_accounts`,
+`group_memberships`, `asset_recoveries`) is sorted before serialization. Refer to
 [RTVI Messages](../../reference/runtime/rtvi-messages.md).
 
 ## Termination Contracts
@@ -80,7 +91,7 @@ Two patterns coexist. New benchmarks should use the bridge-pull pattern.
 | Pattern | Domains | How the Bridge Captures Results |
 | --- | --- | --- |
 | Bridge-pull (preferred) | `eva_airline`, all `tau2_*` | Write tools call `self._record_action(...)`. At scenario end, the bridge pulls `{actions, db_hash}` from each bot through the `get_scenario_summary` action (with an opt-in `include_db` when the scenario has DB-state assertions). No LLM-callable summary exists. |
-| LLM summary (legacy) | Small in-repository sets: `restaurant` (including its waitlist scenario), `customer_service`, `qa`, `fastbite`, `simple_qa` | A `SendScenarioSummaryTool` subclass wraps the agent's structured result in `<final_response>` tags. The bridge writes it to `final_agent_response.json`. |
+| LLM summary (legacy) | Small in-repository sets: `restaurant` (including its waitlist scenario), `customer_service`, `qa`, `fastbite`, `simple_qa` | A `SendScenarioSummaryTool` subclass wraps the agent's structured result in `<final_response>` tags. The bridge writes it to `final_agent_response.json`. The shipped subclasses are `PlaceOrderTool` and `SaveQuestionAnswerTool` in `basic_tools.py`, `ResolveTicketTool` in `customer_service_tools.py`, and `JoinWaitListTool` and `DropWaitListTool` in `waitlist_tools.py`. |
 
 Both patterns need `EndConversationTool` in the agent's tool list. It emits `<exit>`, which stops the
 scenario early. Without it, the bridge waits out the scenario's `max_duration`. `CLEAN_EXIT` is one of the

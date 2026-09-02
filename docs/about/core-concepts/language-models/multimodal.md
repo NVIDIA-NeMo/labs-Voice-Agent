@@ -39,6 +39,14 @@ Neither file is listed in `server/model_registry.yaml`, so point `llm.model_conf
 occurs only for models resolved through the registry, as implemented in
 `nemo_voice_agent/utils/config_manager.py`.
 
+Both configurations name the NVFP4 checkpoint, which targets a GPU with FP4 support. The same model also
+ships as [`nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16`](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16)
+and [`nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8`](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8).
+The three checkpoints differ only in quantization and use the same serving recipe, so to switch, replace the
+model name in `llm.model` and in the `vllm serve` command. Higher-precision checkpoints need more VRAM.
+Refer to the [model card](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16#vllm) for
+upstream vLLM deployment notes.
+
 ## Enable an Omni Model
 
 To send raw user audio to the LLM with the shipped Omni configuration, complete the following steps.

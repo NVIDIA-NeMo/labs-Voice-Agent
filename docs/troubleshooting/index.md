@@ -246,6 +246,21 @@ data.
 `diar.enabled: false`. For more information, refer to
 [Diarization](../about/core-concepts/speech-pipeline/diarization.md).
 
+## Spelled-out confirmation codes are transcribed wrongly
+
+**Cause:** The shipped STT model, `nvidia/parakeet_realtime_eou_120m-v1`, mis-recognizes spelled-out
+alphanumerics. It confuses homophones such as "four" and "for", and it sometimes collapses a letter sequence
+into a single word. This is the root cause of a whole class of `eva_airline` and tau2 evaluation failures,
+because those domains spell confirmation codes, flight numbers, and order IDs one character at a time.
+
+**Resolution:** Confirm that the voice pipeline, and not the agent's reasoning, is at fault before you change a
+prompt. Compare the user simulator's intended text in `bot_logs_user/llm_context.json` against the agent-side
+transcript in `bot_logs_agent/llm_context.json`. A difference between the two is a voice-pipeline accuracy
+issue rather than a user-simulator prompt-following failure. Keep the voice-readability rule in both prompts so
+that identifiers are always spelled out, and normalize the case of spelled-out identifiers in tool lookups. For
+more information, refer to [eva_airline](../evaluate/domain-guides/eva-airline.md) and
+[Evaluation results](../evaluate/run-evaluations/results.md).
+
 ## Startup reports OSError: [Errno 98] Address already in use
 
 **Cause:** A previous server or another application still holds port 8765 or 7860.

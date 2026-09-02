@@ -50,6 +50,18 @@ unless the scenario sets `disallow_extra_items` or the run passes `--strict-matc
 scenario's `ignore_capitalization`, `ignore_punctuation`, and `clean_text` flags. `"N/A"` when the scenario has
 no reference answer. The result is `False` when the reference exists but the agent produced no prediction file.
 
+Three comparator rules decide the match, and each one can flip a verdict you would otherwise expect:
+
+- **Single reference dictionary against a multi-entry prediction list.** Only the **last** dictionary in the
+  prediction is compared. The agent's earlier `<final_response>` emissions are ignored, so such a scenario is
+  graded on the agent's final payload alone.
+- **Reference list against prediction list.** Matching is order-independent, but each prediction dictionary can
+  satisfy at most one reference dictionary. Two identical reference entries therefore need two matching
+  prediction entries, not one that matches twice.
+- **Numeric values.** Compared with `np.isclose`, not `==`. Values that parse as floats are converted before the
+  comparison, so `1`, `1.0`, and `"1.0"` all match. Anything that fails to parse falls through to the string
+  path and its normalization flags.
+
 **`DB_STATE_MATCH`** — the bot computes `get_dict_hash(shared_state["db"])` inside the `get_scenario_summary`
 real-time voice interface (RTVI) handler and returns only the SHA-256 string. The runner hashes
 `scenario.expected_scenario_db` from its in-process gold replay and compares the values. The database (DB)
@@ -82,6 +94,23 @@ defaults pointing at a local OpenAI-compatible endpoint, so the judge is constru
 to target your own judge. Refer to the
 [Evaluation Command-Line Interface (CLI) Reference](../../reference/evaluation/eval-cli.md).
 
+The judge prompt (`LLMJudge.SCENARIO_PROMPT` in `nemo_voice_agent/evaluation/utils.py`) is **side-aware**, which
+matters for dual-side domains. Each action in the reference and prediction payloads may carry a `side` field:
+
+- `side="agent"` — the judge scores whether the matching tool call appears in the agent's context history with
+  the right arguments.
+- `side="user"` — a tool the simulated user owns, such as the telecom phone controls `toggle_data` and
+  `toggle_airplane_mode`. The agent has no such tool, so the judge scores **guidance quality** instead: did the
+  agent diagnose the problem and clearly instruct the user to perform the action? The prompt forbids deducting
+  on the grounds that the agent never called the tool, and requires the judge to confirm in the user-sim's
+  context history that the action actually happened.
+
+A reference action with no `side` field defaults to `agent`, which preserves scoring for the single-side domains
+`eva_airline`, `tau2_airline`, and `tau2_retail`. The prompt also carries a strict attribution rule: tool calls
+visible in the simulated user's context history were made by the user-sim and must never be attributed to the
+agent. Read telecom judge scores with this in mind. Refer to
+[tau2_telecom](../domain-guides/tau2-telecom.md).
+
 **`CLEAN_EXIT`** — `True` only when `bridge.stop_reason` is `[EXIT]`, meaning the agent voluntarily called
 `EndConversationTool`. `[TIMEOUT]` always fails. The raw reason is saved as `stop_reason`.
 
@@ -92,6 +121,11 @@ to target your own judge. Refer to the
 - the strict **AND** over the whitelist entries whose verdict is not `None`, or
 - the literal string `"N/A"` when no whitelisted signal was applicable (for example, a `qa` run with no
   reachable judge).
+
+You do not have to wait for the summary to discover that second case. When a run starts with no judge configured
+and queued scenarios whitelist `JUDGE_PASSED` or `NL_ASSERTION`, the runner logs a warning naming how many
+scenarios are affected and in which domains, and pointing at `--judge-url`, `--judge-model`, and
+`--judge-api-key`.
 
 Two runner-level overrides sit on top of this:
 

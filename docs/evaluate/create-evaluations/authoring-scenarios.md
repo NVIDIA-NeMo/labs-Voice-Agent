@@ -69,7 +69,7 @@ Use these fields to define the scenario identity, runtime limits, scoring contra
 | `max_duration` | Per-scenario cap in seconds. The command-line interface (CLI) `--duration` defaults to `None`, so this value applies unless you pass the flag. |
 | `success_signals` | **Required on every concrete scenario.** The following section describes the contract. |
 | `reference_answer` | Expected action list, or the structured payload for legacy summary scenarios. Drives `ACTION_MATCH`. |
-| `expected_scenario_db` | Optional `cached_property` holding the gold end-state database (DB). Drives `DB_STATE_MATCH` through SHA-256 comparison. |
+| `expected_scenario_db` | Optional `cached_property` holding the gold end-state database (DB). Drives `DB_STATE_MATCH` through SHA-256 comparison. A scenario that never mutates state opts out by declaring `expected_scenario_db = None`; the plain class attribute shadows any `cached_property` inherited from the domain base, `db_state_match` stays absent from `metrics.json`, and the scenario leaves the DB-state denominator. Pair the opt-out with a whitelist that names another signal, because a `DB_STATE_MATCH`-only scenario with no expected DB scores `"N/A"`. |
 | `expected_user_db` | Optional gold end-state for the user-side DB in dual-side domains. |
 | `db_state_assertions` | Optional list of records shaped `side`, `func_name`, `arguments`, `assert_value`, `message`. Drives `DB_STATE_ASSERTION`. |
 | `nl_assertions` | Optional list of natural-language claims judged per-claim by the large language model (LLM) judge. Drives `NL_ASSERTION`. |

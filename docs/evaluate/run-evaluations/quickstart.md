@@ -26,7 +26,12 @@ bot, the agent under test, and the bridge that connects them over audio and scor
 Before you start, complete these setup requirements.
 
 1. Install the package and activate the virtual environment as described in
-   [Installation](../../get-started/installation.md).
+   [Installation](../../get-started/installation.md). Work from a repository checkout:
+   `nemo_voice_agent` is pip-installable and needs no `PYTHONPATH` setup, but `evaluation/` is excluded
+   from the wheel, so the harness scripts (`bot_server.py`, `run_evaluation.py`) and the YAML files in
+   `evaluation/server_configs/` exist only in the checkout. A package-only install cannot run an
+   evaluation. Fixture data is the exception — it ships inside the package under
+   `nemo_voice_agent/evaluation/data/`.
 2. Start a vLLM server. Both eval configs (`evaluation/server_configs/agent.yaml` and `user.yaml`) set
    `start_vllm_on_init: false` and point `llm.base_url` at `http://localhost:8000/v1`, so nothing launches
    vLLM for you. Use the flags from the `llm.vllm_server_params` field of those configs — that field is the
@@ -40,6 +45,16 @@ Before you start, complete these setup requirements.
 
    Both bots and the default large language model (LLM) judge share this endpoint. Refer to the
    [vLLM Backend](../../build-voice-agents/model-serving/vllm.md).
+
+   Every shipped eval config turns reasoning **on** (`llm.enable_reasoning: true`) and diarization
+   **off** — that holds for `agent.yaml` and `user.yaml` as well as the hosted `agent_nvidia.yaml`,
+   `user_nvidia.yaml`, and `agent_nvidia_omni.yaml`. This inverts the `server_configs/default.yaml`
+   default of `enable_reasoning: false`. Each config interpolates the flag into its generation
+   parameters as `enable_thinking: ${llm.enable_reasoning}` next to a `thinking_token_budget` (3000 for
+   the agent, 5000 for the simulated user), and `--reasoning-parser deepseek_r1` strips the reasoning
+   span before the bots see the response. Copy an eval config as the starting point for your own agent
+   and you inherit reasoning silently, so set it deliberately. Refer to
+   [Reasoning](../../about/core-concepts/language-models/reasoning.md).
 3. Only if you switch to the hosted configs (`agent_nvidia.yaml`, `user_nvidia.yaml`): copy
    `evaluation/.env.example` to `evaluation/.env` and fill in `NVIDIA_API_KEY`.
 

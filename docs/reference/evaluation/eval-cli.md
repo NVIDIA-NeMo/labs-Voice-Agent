@@ -116,7 +116,7 @@ Use these flags to connect and configure the optional LLM judge.
 | `--judge-temperature F` | `1.0` | Sampling temperature. |
 | `--judge-top-p F` | `0.95` | Nucleus sampling `top_p`. |
 | `--judge-seed N` | `42` | Sampling seed, for run-to-run reproducibility. |
-| `--judge-thinking-token-budget N` | `None` | Provider-specific thinking budget; only sent when set. |
+| `--judge-thinking-token-budget N` | `None` | Provider-specific thinking budget. Sent only when you set it, because some hosted OpenAI-compatible endpoints reject unknown request fields. |
 | `--judge-include-conversation` | off | Include the bridge transcript turns in the judge input. |
 | `--judge-compact-context` | off | Compact the LLM context histories before sending them to the judge. |
 | `--judge-context-message-limit N` | `None` | Max context messages, applied when `--judge-compact-context` is on. |
