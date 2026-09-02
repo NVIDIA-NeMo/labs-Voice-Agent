@@ -1977,5 +1977,5 @@ class TransferToAgentTool(WriteAirlineTool):
 # ---------------------------------------------------------------------------
 # Note: actions accumulated in shared_state["actions"] are pulled by the bridge
 # at end-of-scenario via the get_scenario_summary RTVI action, not emitted by
-# any LLM-callable tool. See evaluation/README.md "eva_airline domain notes".
+# any LLM-callable tool. See docs/evaluate/domain-guides/eva-airline.md.
 # ---------------------------------------------------------------------------
