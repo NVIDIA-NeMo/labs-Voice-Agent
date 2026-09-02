@@ -23,7 +23,7 @@ load them, so their logging, imports, and Python environment belong to vLLM — 
 `nemo_voice_agent/pipecat/` can import or configure them at runtime.
 
 **Most deployments need none of them.** Current vLLM releases provide [reasoning parsing](https://docs.vllm.ai/en/latest/features/reasoning_outputs/#quickstart) and [native thinking-budget
-control](https://docs.vllm.ai/en/latest/features/reasoning_outputs/#thinking-budget-control) for Nemotron-3 and newer. The shipped `nemotron_nano_v3*` configs therefore use only built-in
+control](https://docs.vllm.ai/en/latest/features/reasoning_outputs/#thinking-budget-control) for Nemotron-3 and newer. The shipped `nemotron_3.5_lightning*` and `nemotron_nano_v3*` configs therefore use only built-in
 functionality. The custom plugins predate that support and remain for the one model that still needs a plugin
 and for older vLLM releases.
 
@@ -43,7 +43,7 @@ Choose plugins according to the model's output format and whether it exposes rea
 
 | Model | Reasoning | Thinking Budget | Tool Calls |
 | --- | --- | --- | --- |
-| Nemotron-3 and newer (`nemotron_nano_v3*`) | built-in `--reasoning-parser nemotron_v3` | built-in `thinking_token_budget` | built-in `--tool-call-parser qwen3_coder` |
+| Nemotron-3 and newer (`nemotron_3.5_lightning*`, `nemotron_nano_v3*`) | built-in `--reasoning-parser nemotron_v3` | built-in `thinking_token_budget` | built-in `--tool-call-parser qwen3_coder` |
 | Nemotron-Nano-v2 (`nemotron_nano_v2`) | not configured | not configured | **plugin required** — `nemotron_json` |
 
 The two deprecated files are kept, not deleted, so that a deployment pinned to an older vLLM — one without
@@ -105,8 +105,9 @@ vllm serve nvidia/NVIDIA-Nemotron-Nano-9B-v2 \
 
 ## Reasoning Parsers
 
-The shipped Nemotron-3 configs do **not** use a plugin for reasoning. Every `nemotron_nano_v3*.yaml` passes
-`--reasoning-parser nemotron_v3`, which is a parser built into vLLM. The evaluation configs under
+The shipped Nemotron-3 configs do **not** use a plugin for reasoning. Every `nemotron_3.5_lightning*.yaml`
+and `nemotron_nano_v3*.yaml` passes `--reasoning-parser nemotron_v3`, which is a parser built into vLLM. The
+evaluation configs under
 `evaluation/server_configs/` pass `--reasoning-parser deepseek_r1`, also built in. Configs for other models
 set no reasoning parser at all.
 
@@ -133,8 +134,9 @@ out of TTS. Refer to [Reasoning](../../about/core-concepts/language-models/reaso
 ## ReasoningBudgetLogitsProcessor (Deprecated)
 
 > **Use `thinking_token_budget` instead.** Current vLLM releases cap thinking natively for Nemotron-3 and
-> newer, and that is what the shipped configs use. `llm_configs/nemotron_nano_v3_think.yaml` sets a top-level
-> `thinking_budget` and passes it through as a request parameter:
+> newer, and that is what the shipped configs use. `llm_configs/nemotron_3.5_lightning_think.yaml` (and
+> `nemotron_nano_v3_think.yaml`) set a top-level `thinking_budget` and pass it through as a request
+> parameter:
 >
 > ```yaml
 > vllm_generation_params:

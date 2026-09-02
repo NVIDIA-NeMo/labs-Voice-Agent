@@ -45,7 +45,7 @@ Three rules govern the merge:
   `server_configs/stt_configs/`, `server_configs/llm_configs/`, `server_configs/tts_configs/`.
 - **Interpolation in the top-level file is resolved eagerly at load** (`OmegaConf.to_container(..., resolve=True)`),
   while sub-config values are copied over unresolved and resolved lazily against the merged config. That is how
-  `nemotron_nano_v3.yaml` can write `temperature: ${llm.temperature}` — it resolves to the `temperature: 0.6` the
+  `nemotron_3.5_lightning.yaml` can write `temperature: ${llm.temperature}` — it resolves to the `temperature: 0.6` the
   same sub-config contributed, since `default.yaml` defines no `llm.temperature` at all.
 
 If a component omits `model_config` and `server.use_model_registry` is `true`, the model name is looked
@@ -147,14 +147,14 @@ system message. Refer to [Large Language Model Backends](../../about/core-concep
 | Key | Effect |
 | --- | --- |
 | `type` | `auto`, `hf`, `vllm`, or `nvidia`. `auto` probes vLLM support for the model and falls back to Hugging Face. |
-| `model` | Model ID. The shipped default is `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4`. |
-| `model_config` | Sub-config under `llm_configs/`. The default points at `nemotron_nano_v3.yaml`, which overrides `type` to `vllm` and turns on `enable_tool_calling`. |
+| `model` | Model ID. The shipped default is `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4`. |
+| `model_config` | Sub-config under `llm_configs/`. The default points at `nemotron_3.5_lightning.yaml`, which overrides `type` to `vllm` and turns on `enable_tool_calling`. |
 | `device` | Torch device for the `hf` backend. |
 | `enable_reasoning` | Swap to the sibling `*_think.yaml`, but only when the model was resolved through the registry and its entry sets `reasoning_supported: true`. An explicit `model_config` short-circuits the lookup — point `model_config` at the `_think.yaml` yourself. Refer to [Reasoning](../../about/core-concepts/language-models/reasoning.md). |
 | `function_call_timeout_secs` | Seconds to wait for a tool call before giving up. Defaults to 10.0 here; set it to `null` for Pipecat's unbounded behavior. |
 | `system_prompt` | Literal prompt text, or a path to a `.txt` file, which is read if the value names an existing file. Refer to [Prompts](prompts.md). |
 
-Backend-specific keys arrive from the sub-config. `nemotron_nano_v3.yaml` adds `system_role`,
+Backend-specific keys arrive from the sub-config. `nemotron_3.5_lightning.yaml` adds `system_role`,
 `system_prompt_suffix`, `enable_tool_calling`, `inject_dummy_user_message`, sampling knobs
 (`temperature`, `top_k`, `top_p`, `min_p`, `max_new_tokens`), the vLLM endpoint (`api_key`, `base_url`),
 `start_vllm_on_init`, `vllm_server_params`, and the `vllm_generation_params` block sent to the OpenAI
@@ -162,7 +162,7 @@ API. Because `start_vllm_on_init` is `false`, `python server.py` does not work b
 with the flags from `vllm_server_params`:
 
 ```bash
-vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4 \
+vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
   --trust-remote-code --tensor-parallel-size 1 --enable-prefix-caching \
   --max-num-seqs 1 --gpu-memory-utilization 0.8 \
   --enable-auto-tool-choice --tool-call-parser qwen3_coder \

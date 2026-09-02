@@ -188,7 +188,7 @@ known failures and recovery steps.
 After verification succeeds, launch the default agent or learn how to use a different model-serving path.
 
 The default configuration points `llm.model_config` at
-`server_configs/llm_configs/nemotron_nano_v3.yaml`, which sets `start_vllm_on_init: false`. You must start
+`server_configs/llm_configs/nemotron_3.5_lightning.yaml`, which sets `start_vllm_on_init: false`. You must start
 vLLM yourself before launching the server. Continue with:
 
 - [Quickstart](./quickstart.md): Start vLLM, the server, and the browser client.

@@ -31,6 +31,7 @@ The following table summarizes the dated project milestones documented on this p
 
 | Date | Highlights |
 | --- | --- |
+| 2026-09-02 | Nemotron-3.5-Lightning-30B-A3B-NVFP4 is the new shipped default LLM; added Qwen3.6-35B-A3B and Qwen3.8-27B configs |
 | 2026-08-06 | Graduated to a standalone repository |
 | 2026-06-13 | Voice-agent evaluation harness with four benchmark domains |
 | 2026-05-15 | Omni (multimodal) LLM support |
@@ -40,6 +41,26 @@ The following table summarizes the dated project milestones documented on this p
 | 2025-10-10 | Kokoro-82M TTS |
 | 2025-10-03 | vLLM serving with automatic Hugging Face fallback |
 | 2025-09-05 | First release |
+
+## 2026-09-02 — Nemotron-3.5-Lightning Default LLM and New Qwen3.6-35B-A3B / Qwen3.8-27B Configs
+
+The example server's shipped default LLM changed from `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4` to
+`nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4`, a Mamba-2 and MoE hybrid with attention, 30 billion
+total and 3 billion active parameters, NVFP4-quantized, with a context length of up to 1,000,000 tokens.
+`default.yaml` now points `llm.model` and `llm.model_config` at
+`llm_configs/nemotron_3.5_lightning.yaml` (and its `_think.yaml` reasoning sibling), which serve the model
+through vLLM with the same `--tool-call-parser qwen3_coder` and `--reasoning-parser nemotron_v3` flags as
+the previous default. The `nemotron_nano_v3.yaml` and `nemotron_nano_v3_think.yaml` configurations remain
+available and supported; they are no longer the default.
+
+This release also added two new Qwen LLM configs, both served through vLLM with
+`--tool-call-parser qwen3_coder --reasoning-parser qwen3` and tool calling enabled:
+`llm_configs/qwen3.6-35B-A3B.yaml` for `Qwen/Qwen3.6-35B-A3B` (a 35B-total/3B-active MoE model with a
+262,144-token native context) and `llm_configs/qwen3.8-27B.yaml` for `Qwen/Qwen3.8-27B` (a 27B dense hybrid
+Gated DeltaNet and Gated Attention model, also with a 262,144-token native context). Both ship `_think.yaml`
+reasoning siblings and are registered in `model_registry.yaml` with `reasoning_supported: true`.
+
+Learn more: [LLM backends](core-concepts/language-models/llm.md) · [Serving with vLLM](../build-voice-agents/model-serving/vllm.md)
 
 ## 2026-08-06 — Standalone Repository
 
@@ -90,8 +111,8 @@ Learn more: [Multimodal models](core-concepts/language-models/multimodal.md) · 
 This milestone added the following language and speech model support.
 
 - Added support for the `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16` LLM. The
-  `llm_configs/nemotron_nano_v3.yaml` model configuration covers this family. The NVFP4 variant is the
-  shipped default and needs a GPU with FP4 support.
+  `llm_configs/nemotron_nano_v3.yaml` model configuration covers this family. The NVFP4 variant needs a
+  GPU with FP4 support and was the shipped default until the 2026-09-02 change to Nemotron-3.5-Lightning.
 - Added support for the `nvidia/magpie_tts_multilingual_357m` TTS model. Its configuration is
   `tts_configs/magpie_tts_multilingual_357m.yaml`.
 

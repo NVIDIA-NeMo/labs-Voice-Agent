@@ -29,15 +29,22 @@ bash install.sh                        # deps + venv; see the docs for the manua
 source .venv/bin/activate
 
 # The default config expects vLLM to already be running — start it in its own terminal:
-vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4 \
+# Needs ~24GB+ GPU memory. NVFP4 runs natively on Blackwell (GB200, DGX Spark/GB10, RTX 5090);
+# on Hopper (H100/H200) or Ampere it falls back to W4A16 kernels.
+vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
     --trust-remote-code --tensor-parallel-size 1 --enable-prefix-caching \
     --max-num-seqs 1 --gpu-memory-utilization 0.8 \
     --enable-auto-tool-choice --tool-call-parser qwen3_coder \
     --reasoning-parser nemotron_v3
 
-cd examples/generic_voice_agent/server && python server.py     # terminal 2
-cd examples/generic_voice_agent/client && npm install && npm run dev   # terminal 3
+cd examples/generic_voice_agent/server && python server.py     # terminal 1
+cd examples/generic_voice_agent/client && npm install && npm run dev   # terminal 2
 ```
+
+If your GPU has less memory or doesn't support NVFP4, swap in a smaller, unquantized model instead by
+pointing `llm.model` / `llm.model_config` in `default.yaml` at one of the other bundled `llm_configs/`
+(e.g. `nemotron_nano_v2.yaml` at 9B params, or `qwen3-8B.yaml` / `llama3.1-8B-instruct.yaml` /
+`qwen2.5-7B.yaml`, all of which fit comfortably on a single consumer GPU).
 
 Then open the address printed by the client. Full walkthrough:
 [Installation](https://docs.nvidia.com/nemo/labs-voice-agent/get-started/installation) ·
@@ -71,6 +78,11 @@ See [Evaluate](https://docs.nvidia.com/nemo/labs-voice-agent/evaluate-voice-agen
 
 ## 📅 Latest Updates
 
+- **2026-09-02** — Shipped default LLM switched to
+  [Nemotron-3.5-Lightning-30B-A3B-NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4).
+  Added LLM configs for
+  [Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) and
+  [Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B).
 - **2026-08-06** — NeMo Voice Agent graduates from
   [NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent) into its own repo.
 - **2026-06-13** — Evaluation harness shipped: four benchmark domains and per-scenario `success_signals` scoring.

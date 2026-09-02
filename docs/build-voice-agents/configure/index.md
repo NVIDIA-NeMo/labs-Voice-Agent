@@ -66,17 +66,17 @@ For STT, LLM, and TTS, the merge loop copies **every** sub-config key over the c
 top-level block. The sub-config overrides the top-level file.
 
 The shipped default demonstrates it. `default.yaml` declares `llm.type: auto`, but
-`llm_configs/nemotron_nano_v3.yaml` (selected by `llm.model_config:`) declares `type: vllm`, so the effective
+`llm_configs/nemotron_3.5_lightning.yaml` (selected by `llm.model_config:`) declares `type: vllm`, so the effective
 backend is `vllm`. `ConfigManager` logs every such replacement:
 
 ```
-LLM config field `type` is overridden from `auto` to `vllm` by .../llm_configs/nemotron_nano_v3.yaml
+LLM config field `type` is overridden from `auto` to `vllm` by .../llm_configs/nemotron_3.5_lightning.yaml
 ```
 
 Practical consequence: editing a key in `default.yaml` that the sub-config also sets has no effect. Change it in
 the sub-config, or point `model_config:` at a copy you own. Keys the sub-config does not mention (`model`,
 `enable_reasoning`, `function_call_timeout_secs`, `system_prompt`, …) keep their top-level values. `device` is
-*not* one of them — `nemotron_nano_v3.yaml` sets `device: "cuda"` itself, so a `device` you edit in
+*not* one of them — `nemotron_3.5_lightning.yaml` sets `device: "cuda"` itself, so a `device` you edit in
 `default.yaml` is silently replaced by the sub-config's value.
 
 The merge is a shallow, per-key replacement within the block. If a sub-config defines a nested mapping such as
@@ -86,7 +86,7 @@ The merge is a shallow, per-key replacement within the block. If a sub-config de
 
 `ConfigManager` takes `os.path.basename()` of `model_config:` and looks the file up in
 `<base>/server_configs/<component>_configs/`. The directory portion of the shipped values
-(`./server_configs/llm_configs/nemotron_nano_v3.yaml`) is decorative — a sub-config must physically live in the
+(`./server_configs/llm_configs/nemotron_3.5_lightning.yaml`) is decorative — a sub-config must physically live in the
 component's own directory next to the top-level file. A missing file raises `FileNotFoundError` at startup.
 
 ### Registry Auto-Resolution
@@ -112,7 +112,7 @@ difference matters:
   before any sub-config is merged. An interpolation here can only reference keys present in the same file.
   Referencing one that only a sub-config supplies raises `InterpolationKeyError` at startup.
 - **Sub-config: resolved lazily against the merged root.** Sub-config values are copied over verbatim and
-  resolved on access, against the *final merged* server config. That is why `llm_configs/nemotron_nano_v3.yaml`
+  resolved on access, against the *final merged* server config. That is why `llm_configs/nemotron_3.5_lightning.yaml`
   can write the following and get `0.6` and `1024` — the values its own file contributed to `llm.temperature`
   and `llm.max_new_tokens`:
 
@@ -172,7 +172,7 @@ setting appears to be ignored — the override log names the file that won.
 
 Keep these merge and path behaviors in mind when a configuration edit does not take effect:
 
-- The shipped `llm_configs/nemotron_nano_v3.yaml` sets `start_vllm_on_init: false`, so `python server.py` alone
+- The shipped `llm_configs/nemotron_3.5_lightning.yaml` sets `start_vllm_on_init: false`, so `python server.py` alone
   does not work by itself. Start vLLM first, or change that key. Refer to
   [vLLM Backend](../model-serving/vllm.md).
 - `turn_taking.backchannel_phrases_path` is tried against the working directory first, then against the server
