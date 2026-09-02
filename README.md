@@ -1,432 +1,111 @@
 # NeMo Voice Agent
 
-A fully open-source framework to build, deploy and evaluate voice agents with NVIDIA Nemotron and other opensource models. 
+A fully open-source framework to build, deploy and evaluate voice agents with NVIDIA Nemotron and other
+open-source models.
 
 No API keys required to get started. Happy hacking~!
 
-Documentation: https://docs.nvidia.com/nemo/labs-voice-agent/about/overview/
-
-## 📋 Table of Contents
-- [✨ Key Features](#-key-features)
-- [💡 Upcoming Next](#-upcoming-next)
-- [📅 Latest Updates](#-latest-updates)
-- [🚀 Quick Start](#-quick-start)
-- [📑 Supported Models and Features](#-supported-models-and-features)
-  - [🤖 LLM](#-llm)
-  - [🤖 Multi-modal LLMs](#-multi-modal-llms)
-  - [🎤 ASR](#-asr)
-  - [💬 Speaker Diarization](#-speaker-diarization)
-  - [🔉 TTS](#-tts)
-  - [🔄 Turn-taking](#-turn-taking)
-  - [🔧 Tool Calling](#-tool-calling)
-- [📊 Evaluation](#-evaluation)
-- [📝 Notes \& FAQ](#-notes--faq)
-- [☁️ NVIDIA NIM Services](#️-nvidia-nim-services)
-- [Acknowledgments](#acknowledgments)
-- [Contributing](#contributing)
-
+**📖 Documentation: https://docs.nvidia.com/nemo/labs-voice-agent**
 
 ## ✨ Key Features
 
 - Open-source, local deployment, and flexible customization.
-- Talk to most LLMs from vLLM/HuggingFace with configurable prompts. 
+- Talk to most LLMs from vLLM/HuggingFace with configurable prompts.
 - Streaming speech recognition with low latency and end-of-utterance detection.
 - Low latency TTS for fast audio response generation.
 - Speaker diarization up to 4 speakers in different user turns.
 - WebSocket server for easy deployment.
 - Tool calling for LLMs to use external tools and adjust its own behavior.
-- Voice-agent evaluation harness with deterministic + LLM-judged scoring, and 328 scenarios across 4 primary benchmark domains (eva_airline, tau2_airline, tau2_retail, tau2_telecom). See [📊 Evaluation](#-evaluation).
-
-
-## 💡 Upcoming Next
-- Accuracy and robustness ASR model improvements.
-- Combine ASR and speaker diarization model to handle overlapping speech.
-- More evaluation domains and scenarios.
-
-
-## 📅 Latest Updates
-- 2026-08-06: NeMo Voice Agent graduates from [NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent) and published as a separate repo.
-- 2026-06-13: Voice-agent evaluation harness shipped — three primary benchmark domains ported (tau2-bench airline 50 / retail 114 / telecom 114 dual-side), plus eva_airline (50) from ServiceNow/eva. Per-scenario `success_signals` scoring. See [📊 Evaluation](#-evaluation).
-- 2026-05-15: Added support for [Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4). See  [🤖 Multi-modal LLMs](#-multi-modal-llms).
-- 2026-01-26: Added support for [NVIDIA-Nemotron-3-Nano-30B-A3B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16) LLM model, and support for [magpie_tts_multilingual_357m](https://huggingface.co/nvidia/magpie_tts_multilingual_357m) TTS model.
-- 2025-12-31: Added examples for [tool calling](#-tool-calling), such as changing the speaking speed, switching between male/female voices and British/American accents (with [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M)), and getting the current weather of a city (with `python_weather`). Diarization model is updated to [nvidia/diar_streaming_sortformer_4spk-v2.1](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1) with improved performance.
-- 2025-11-14: Added support for joint ASR and EOU detection with [Parakeet-realtime-eou-120m](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1) model.
-- 2025-10-10: Added support for [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) TTS model.
-- 2025-10-03: Add support for serving LLM with vLLM and auto-switch between vLLM and HuggingFace, add [nvidia/NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2) as default LLM.
-- 2025-09-05: First release of NeMo Voice Agent as sub-package in [NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent).
-
-
+- Voice-agent evaluation harness with deterministic + LLM-judged scoring, and 328 scenarios across 4
+  primary benchmark domains (`eva_airline`, `tau2_airline`, `tau2_retail`, `tau2_telecom`).
 
 ## 🚀 Quick Start
 
-### Hardware requirements
-
-- A computer with at least one GPU. The shipped default LLM ([NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4)) runs on a single GPU with FP4 support; see `vllm_server_params` in `server_configs/llm_configs/nemotron_nano_v3.yaml` for the exact serving flags. If you switch models, expect at least 21GB VRAM for 9B LLMs and 13GB VRAM for 4B LLMs, plus a few GB for the ASR/diarization/TTS models.
-- A microphone connected to the computer.
-- A speaker connected to the computer.
-
-### Install dependencies
-
-The simplest path is `bash install.sh`, which does everything below in one go.
-
-To do it manually, first install the system dependencies:
+You need a Linux machine with an NVIDIA GPU, a microphone, and a speaker. The shipped default LLM runs
+on a single GPU with FP4 support.
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y npm nodejs build-essential python3-dev
-```
+bash install.sh                        # deps + venv; see the docs for the manual path
+source .venv/bin/activate
 
-`build-essential` and `python3-dev` are required because some dependencies (e.g. `cdifflib`) ship
-source-only and are compiled during install.
-
-Second, create a venv with `uv`:
-
-```bash
-uv sync
-```
-
-Then you can activate the environment via `source .venv/bin/activate`.
-
-Note that `install.sh` additionally prefetches the NLTK data used by the TTS frontend, so a manual
-install may download it on first run instead.
-
-### Configure the server
-
-If you want to just try the default server config, you can skip this step — but note that the default LLM is
-served by vLLM, which you must start yourself. See [Start the vLLM server](#start-the-vllm-server) below.
-
-Edit the `examples/generic_voice_agent/server/server_configs/default.yaml` file to configure the server as needed, for example:
-- Changing the LLM and system prompt you want to use in `llm.model` and `llm.system_prompt`, by either putting a local path to a text file or the whole prompt string. See `examples/generic_voice_agent/server/example_prompts/` for examples to start with. 
-- Distribute different components to different GPUs if you have more than one.
-- Adjust VAD parameters for sensitivity and end-of-turn detection timeout.
-
-Model-specific settings — temperature, max tokens, the HuggingFace or vLLM backend parameters, and `llm.type`
-itself — live in the model config that `llm.model_config` points at (e.g.
-`server_configs/llm_configs/nemotron_nano_v3.yaml`), not in `default.yaml`. **The model config takes
-precedence:** any `llm.*` key it sets overrides the same key in `default.yaml`, which is why the default
-config's `llm.type: auto` ends up as `vllm`. Refer to the LLM's model page for the recommended parameters.
-
-**To access the server from a different machine, set `SERVER_PUBLIC_HOST` to the server's hostname or IP when
-starting the server (see below).** The client derives its own base URL from the browser address bar, so
-`examples/generic_voice_agent/client/src/app.ts` needs no edit.
-
-
-### Start the vLLM server
-
-The default config (`llm_configs/nemotron_nano_v3.yaml`) sets `start_vllm_on_init: false`, so you start vLLM
-yourself in its own terminal. Use the flags from that file's `vllm_server_params`, which is the authoritative
-source if this snippet drifts:
-
-```bash
+# The default config expects vLLM to already be running — start it in its own terminal:
 vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4 \
     --trust-remote-code --tensor-parallel-size 1 --enable-prefix-caching \
     --max-num-seqs 1 --gpu-memory-utilization 0.8 \
     --enable-auto-tool-choice --tool-call-parser qwen3_coder \
     --reasoning-parser nemotron_v3
+
+cd examples/generic_voice_agent/server && python server.py     # terminal 2
+cd examples/generic_voice_agent/client && npm install && npm run dev   # terminal 3
 ```
 
-Wait until vLLM reports it is serving on `http://localhost:8000` before starting the voice agent. To have the
-voice agent launch vLLM for you instead, set `start_vllm_on_init: true` in the model config.
+Then open the address printed by the client. Full walkthrough:
+[Installation](https://docs.nvidia.com/nemo/labs-voice-agent/get-started/installation) ·
+[Quickstart](https://docs.nvidia.com/nemo/labs-voice-agent/get-started/quickstart)
 
-### Start the server
+## 📚 Documentation
 
-Open a terminal and run the server via:
-
-```bash
-# export HF_TOKEN="hf_..."  # Use your own HuggingFace API token if needed, as some models may require.
-# export HF_HUB_CACHE="/path/to/your/huggingface/cache"  # change where HF cache is stored if you don't want to use the default cache
-# export SERVER_CONFIG_PATH="/path/to/your/server/config.yaml"  # change to the server config you want to use, otherwise it will use the default config in `examples/generic_voice_agent/server/server_configs/default.yaml`
-# export SERVER_PUBLIC_HOST="[YOUR MACHINE IP ADDRESS]"  # hostname or IP the browser will use to reach the WebSocket server; defaults to 127.0.0.1 (local only)
-# export WEBSOCKET_SCHEME="ws"  # set to "wss" if the WebSocket server is behind TLS termination
-cd examples/generic_voice_agent/server/
-python server.py
-```
-
-### Launch the client
-In another terminal on the server machine, start the client via:
-
-```bash
-cd examples/generic_voice_agent/client
-npm install
-npm run dev
-```
-
-There should be a message in terminal showing the address and port of the client.
-
-### Connect to the client via browser
-
-Open the client via browser: `http://[YOUR MACHINE IP ADDRESS]:5173/` (or whatever address and port is shown in the terminal where the client was launched). 
-
-You can mute/unmute your microphone via the "Mute" button, and reset the LLM context history and speaker cache by clicking the "Reset" button. 
-
-**If using chrome browser, you need to add `http://[YOUR MACHINE IP ADDRESS]:5173/` to the allow list via `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.** You may also need to restart the browser for the changes to take effect.
-
-If you want to use a different port for client connection, you can modify `examples/generic_voice_agent/client/vite.config.js` to change the `port` variable.
-
-## 📑 Supported Models and Features
-
-### 🤖 LLM
-
-Most LLMs from HuggingFace are supported. A few examples are:
-- [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4) (default)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3.yaml` in the server config. This is what `default.yaml` ships with. It requires a GPU with FP4 support; `start_vllm_on_init` is `false`, so start vLLM yourself (see [Start the vLLM server](#start-the-vllm-server)).
-    - Tool calling is enabled for this model.
-- [nvidia/NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v2.yaml` in the server config.
-    - Tool calling is enabled for this model.
-- [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3.yaml` in the server config, changing `llm.model` to the BF16 repo. It needs more than 60GB VRAM to host the model, so raise `--tensor-parallel-size` to 2 in `vllm_server_params` (the shipped value is 1, sized for the NVFP4 default). Expect additional 5GB for kv-cache and other components in the voice agent. To better monitor the vllm status, `start_vllm_on_init` is set to `false`, so that you can manually start the vllm server in another terminal via: 
-    ```bash
-        vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
-            --trust-remote-code --max-num-seqs 1 --gpu-memory-utilization 0.8 --max-model-len 8192 \
-            --tensor-parallel-size 2 --enable-auto-tool-choice --tool-call-parser qwen3_coder --enable-prefix-caching \
-            --reasoning-parser nemotron_v3 \
-            --reasoning-config '{"reasoning_start_str": "<think>", "reasoning_end_str": "\nI have to finalize the answer now.</think>"}'
-    ```
-    - If you have a GPU with FP8 support, the VRAM requirement is reduced. You can switch to [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8) or [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4) by modifying the LLM config accordingly.
-    - Tool calling is enabled for this model.
-- [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/qwen2.5-7B.yaml` in the server config.
-- [Qwen/Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/qwen3-8B.yaml` in the server config.
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/qwen3-8B_think.yaml` if you want to enable thinking mode.
-- [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/llama3.1-8B-instruct.yaml` in the server config.
-    - Note that you need to get access to the model first, and specify `export HF_TOKEN="hf_..."` when launching the server.
-- [nvidia/Llama-3.1-Nemotron-Nano-8B-v1](https://huggingface.co/nvidia/Llama-3.1-Nemotron-Nano-8B-v1) 
-- [nvidia/Nemotron-Mini-4B-Instruct](https://huggingface.co/nvidia/Nemotron-Mini-4B-Instruct)
-
-
-### 🤖 Multi-modal LLMs
-- [nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16)
-    - Please use `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3_omni.yaml` in the server config. To better monitor the vllm status, `start_vllm_on_init` is set to `false`, so that you can manually start the vllm server separately via: 
-    ```bash
-        # vllm serve nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16 \
-        # vllm serve nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-FP8 \
-        vllm serve nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4 \
-            --host 0.0.0.0 \
-            --max-model-len 131072 \
-            --tensor-parallel-size 1 \
-            --trust-remote-code \
-            --video-pruning-rate 0.5 \
-            --max-num-seqs 384 \
-            --allowed-local-media-path / \
-            --limit-mm-per-prompt '{"video": 999, "image": 999, "audio": 999}' \
-            --media-io-kwargs '{"video": {"fps": 2, "num_frames": 256}}' \
-            --reasoning-parser nemotron_v3 \
-            --reasoning-config '{"reasoning_start_str": "<think>", "reasoning_end_str": "\nI have to finalize the answer now.</think>"}' \
-            --enable-auto-tool-choice \
-            --tool-call-parser qwen3_coder \
-            --kv-cache-dtype fp8 # Omit this for BF16
-    ```
-    - Tool calling is enabled for this model.
-    - See [here](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16#vllm) for more details on the vllm deployment.
-
-
-Please refer to the homepage of each model to configure the model parameters:
-- If `llm.type=hf`, please set `llm.generation_kwargs` and `llm.apply_chat_template_kwargs` in the server config as needed.
-- If `llm.type=vllm`, please set `llm.vllm_server_params` and `llm.vllm_generation_params`in the server config as needed.
-- If `llm.type=auto`, the server will first try to use vLLM, and if it fails, it will try to use HuggingFace. In this case, you need to make sure parameters for both backends are set properly.
-
-You can change the `llm.system_prompt` in `examples/generic_voice_agent/server/server_configs/default.yaml` to configure the behavior of the LLM, by either putting a local path to a text file or the whole prompt string. See `examples/generic_voice_agent/server/example_prompts/` for examples to start with.
-
-#### Thinking/reasoning Mode for LLMs
-
-A lot of LLMs support thinking/reasoning mode, which is useful for complex tasks, but it will create a long latency for the final answer. By default, we turn off the thinking/reasoning mode for all models for best latency.
-
-Different models may have different ways to support thinking/reasoning mode, please refer to the model's homepage for details on their thinking/reasoning mode support. Meanwhile, in many cases, they support enabling thinking/reasoning can be achieved by adding `/think` or `/no_think` to the end of the system prompt, and the thinking/reasoning content is wrapped by the tokens `["<think>", "</think>"]`. Some models may also support enabling thinking/reasoning by setting `llm.apply_chat_template_kwargs.enable_thinking=true/false` in the server config when `llm.type=hf`.
-
-If thinking/reasoning mode is enabled (e.g., in `examples/generic_voice_agent/server/server_configs/llm_configs/qwen3-8B_think.yaml`), the voice agent server will print out the thinking/reasoning content so that you can see the process of the LLM thinking and still have a smooth conversation experience. The thinking/reasoning content will not go through the TTS process, so you will only hear the final answer, and this is achieved by specifying the pair of thinking tokens `tts.think_tokens=["<think>", "</think>"]` in the server config.
-
-For vLLM server, if you specify `--reasoning_parser` in `vllm_server_params`, the thinking/reasoning content will be filtered out and does not show up in the output.
-
-### 🎤 ASR 
-
-We use [cache-aware streaming FastConformer](https://arxiv.org/abs/2312.17279) to transcribe the user's speech into text. While new models will be released soon, we use the existing English models for now:
-- [nvidia/parakeet_realtime_eou_120m-v1](https://huggingface.co/nvidia/parakeet_realtime_eou_120m-v1) (default)
-  - This model supports EOU prediction and optimized for lowest latency, but does not support punctuation and capitalization.
-- [nvidia/nemotron-speech-streaming-en-0.6b](https://huggingface.co/nvidia/nemotron-speech-streaming-en-0.6b)
-  - This model has better ASR accuracy and supports punctuation and capitalization, but does not predict EOU.
-- [stt_en_fastconformer_hybrid_large_streaming_80ms](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/stt_en_fastconformer_hybrid_large_streaming_80ms)
-- [nvidia/stt_en_fastconformer_hybrid_large_streaming_multi](https://huggingface.co/nvidia/stt_en_fastconformer_hybrid_large_streaming_multi)
-
-
-### 💬 Speaker Diarization
-
-Speaker diarization aims to distinguish different speakers in the input speech audio. We use [streaming Sortformer](http://arxiv.org/abs/2507.18446) to detect the speaker for each user turn. 
-
-As of now, we only support detecting 1 speaker per user turn, but different turns come from different speakers, with a maximum of 4 speakers in the whole conversation. 
-
-Currently supported models are:
- - [nvidia/diar_streaming_sortformer_4spk-v2.1](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2.1) (default)
- - [nvidia/diar_streaming_sortformer_4spk-v2](https://huggingface.co/nvidia/diar_streaming_sortformer_4spk-v2)
-
-Please note that in some circumstances, the diarization model might not work well in noisy environments, or it may confuse the speakers. In this case, you can disable the diarization by setting `diar.enabled` to `false` in `examples/generic_voice_agent/server/server_configs/default.yaml`.
-
-### 🔉 TTS
-
-Here are the supported TTS models:
-- [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) is a lightweight TTS model. This model is the default speech generation backend.
-    - Please use `examples/generic_voice_agent/server/server_configs/tts_configs/kokoro_82M.yaml` in the server config.
-- [FastPitch-HiFiGAN](https://huggingface.co/nvidia/tts_en_fastpitch) is an NVIDIA-NeMo TTS model. It only supports English output. 
-    - Please use `examples/generic_voice_agent/server/server_configs/tts_configs/nemo_fastpitch-hifigan.yaml` in the server config.
-- [magpie_tts_multilingual_357m](https://huggingface.co/nvidia/magpie_tts_multilingual_357m) is a multilingual TTS model.
-    - Please use `examples/generic_voice_agent/server/server_configs/tts_configs/magpie_tts_multilingual_357m.yaml` in the server config.
-We will support more TTS models in the future.
-
-
-### 🔄 Turn-taking
-
-As the new turn-taking prediction model is not yet released, we use the VAD-based turn-taking prediction for now. You can set the `vad.stop_secs` to the desired value in `examples/generic_voice_agent/server/server_configs/default.yaml` to control the amount of silence needed to indicate the end of a user's turn.
-
-Additionally, the voice agent supports ignoring back-channel phrases while the bot is talking, which means phrases such as "uh-huh", "yeah", "okay"  will not interrupt the bot while it's talking. To control the backchannel phrases to be used, you can set the `turn_taking.backchannel_phrases_path` in the server config to the desired list of phrases or a file path to a yaml file containing the list of phrases. By default, it will use the phrases in `examples/generic_voice_agent/server/backchannel_phrases.yaml`. Setting it to `null` will disable detecting backchannel phrases, and that the VAD will interrupt the bot immediately when the user starts speaking.
-
-
-### 🔧 Tool Calling
-
-We support tool calling for LLMs to use external tools (e.g., getting the current weather of a city) or adjust its own behavior (e.g., changing the speaking speed). Some example queries to try with the default server config:
-
-1. Getting the current weather of a city:
-   - "What's the weather in New York city?"
-   - "What's the weather in Paris?"
-   - "What's the weather in Paris, Texas, USA?"
-
-2. Changing the speaking speed of the voice agent:
-   - "Can you speak faster?"
-   - "Can you speak slower?"
-   - "Reset to the original speaking speed."
-   - "Speak twice as fast."
-   - "Speak half as slow."
-  
-3. Switching between British and American accents, and changing the gender of the voice:
-   - "Speak in British accent."
-   - "Switch to a male voice."
-   - "Switch to a female voice."
-   - "Reset to the original language and voice."
-
-Tool calling requires either the vLLM backend (`llm.type: vllm`) with one of the LLM models below, or the
-hosted NVIDIA NIM backend (`llm.type: nvidia`, see [NVIDIA NIM Services](#️-nvidia-nim-services)). Either way
-it is gated on `llm.enable_tool_calling`. Supported models with vLLM:
-- [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4) (default, recommended)
-- [nvidia/NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2)
-- [nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16)
-- [nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4) (recommended)
-- [nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-BF16)
-- [nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4)
-
-More LLMs can be supported by referring to their documentation on how to enable tool calling in vLLM. Note that the system prompt may need to be tuned accordingly.
-
-More tools will be added later. However, if you cannot wait to hack and add your own tools, please read the following section.
-
-#### Adding new tools
-
-Additional tools can be added in two ways:
-- Adding a new [direct function](https://docs.pipecat.ai/guides/learn/function-calling#using-direct-functions-shorthand) such as the `tool_get_city_weather` function in `nemo_voice_agent/utils/tool_calling/basic_tools.py`. Note that Pipecat exposes the Python function name to the LLM, so the name you choose is the tool name.
-- Adding new tools to adjust the behavior of each of the STT/TTS/Diar/LLM/TurnTaking components, by adding the `ToolCallingMixin` to the component and implementing the `setup_tool_calling` method as the `KokoroTTSService` class in `nemo_voice_agent/pipecat/services/nemo/tts.py`.
-
-The tools are then registered to the LLM via the `register_direct_tools_to_llm` function in `nemo_voice_agent/utils/tool_calling/mixins.py`, as shown in the example in `examples/generic_voice_agent/server/server.py`.
-
-More details on tool calling with Pipecat can be found in the [Pipecat documentation](https://docs.pipecat.ai/guides/learn/function-calling).
-
-#### Notes on tool calling issues
-
-We notice that sometimes the LLM cannot do anything that's not related to the provided tools, or it might not actually use the tools even though it says it's using them. To alleviate this issue, we insert additional instructions to the system prompt to regulate its behavior (e.g., in `examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v2.yaml`).
-
-Sometimes, after answering a question related to the tools, the LLM might refuse to answer questions that are not related to the tools, or vice versa. This phenomenon can be called "commitment bias" or "tunnel vision". To alleviate this issue, we can insert additional instructions to the system prompt and explicitly asking the LLM to use or not use the tools in the user's query.
-
+| | |
+| --- | --- |
+| [Get Started](https://docs.nvidia.com/nemo/labs-voice-agent/get-started/quickstart) | Install, run your first agent, and understand the pipeline |
+| [Core Concepts](https://docs.nvidia.com/nemo/labs-voice-agent/about/architecture) | Architecture, ASR, diarization, TTS, turn-taking, and LLM backends |
+| [Build Voice Agents](https://docs.nvidia.com/nemo/labs-voice-agent/build-voice-agents/overview) | Configuration, model serving, tool calling, and extending the pipeline |
+| [Evaluate](https://docs.nvidia.com/nemo/labs-voice-agent/evaluate-voice-agents/overview) | The two-bot harness, scoring model, and authoring your own scenarios |
+| [Reference](https://docs.nvidia.com/nemo/labs-voice-agent/reference/runtime/server-config-schema) | Config schema, environment variables, CLI flags, and metrics |
+| [Troubleshooting](https://docs.nvidia.com/nemo/labs-voice-agent/troubleshooting/troubleshooting) | Common failures and how to diagnose them |
 
 ## 📊 Evaluation
 
-The repo ships a full evaluation harness for voice agents under [`evaluation/`](evaluation/). It runs your agent against a **simulated user** (a second voice agent that role-plays the customer), routes audio between the two bots over WebSocket, and scores each scenario along up to six orthogonal signals — action-list match, DB-state hash match, per-predicate DB-state assertions, LLM-judged NL claims, overall LLM judge score, and clean-exit discipline — combined into a per-scenario `is_successful` composite via a scenario-declared `success_signals` whitelist.
-
-**Benchmark coverage** — 328 scenarios across four primary domains:
+The repo ships a full evaluation harness under [`evaluation/`](evaluation/). It runs your agent against a
+**simulated user** — a second voice agent — routes audio between the two over WebSocket, and scores each
+scenario on up to six orthogonal signals.
 
 | Domain | Scenarios | Source |
-|---|---|---|
-| `eva_airline` | 50 | Airline customer service flows ported from [ServiceNow/eva](https://github.com/ServiceNow/eva/tree/0.1.3) (MIT). |
-| `tau2_airline` | 50 | Airline reservation flows from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0) (MIT). |
-| `tau2_retail` | 114 | Online retail customer service from the same tau2-bench source. |
-| `tau2_telecom` | 114 | Telecom tech support — first **dual-side** domain with cross-side state sync between user-sim and agent. The companion `tau2_telecom_workflow` registration pairs each task with an alternate policy variant for A/B comparison (not counted in the totals above). |
+| --- | --- | --- |
+| `eva_airline` | 50 | Airline customer service, from [ServiceNow/eva](https://github.com/ServiceNow/eva) (MIT) |
+| `tau2_airline` | 50 | Airline reservations, from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) (MIT) |
+| `tau2_retail` | 114 | Online retail customer service, same source |
+| `tau2_telecom` | 114 | Telecom tech support — dual-side, with cross-side state sync |
 
-Plus in-repo smoke sets (`restaurant` 11, `customer_service` 10, `qa` 10) and a handful of legacy scenarios (`fastbite`, `simple_qa_1..3`) kept for backward compatibility.
+See [Evaluate](https://docs.nvidia.com/nemo/labs-voice-agent/evaluate-voice-agents/overview).
 
-**Minimal run** (three terminals):
+## 📅 Latest Updates
 
-```bash
-# Terminal 1 — user-sim bot
-cd evaluation && WEBSOCKET_PORT=8766 SERVER_CONFIG_PATH=server_configs/user.yaml python bot_server.py
+- **2026-08-06** — NeMo Voice Agent graduates from
+  [NVIDIA-NeMo/Speech](https://github.com/NVIDIA-NeMo/Speech/tree/main/examples/voice_agent) into its own repo.
+- **2026-06-13** — Evaluation harness shipped: four benchmark domains and per-scenario `success_signals` scoring.
+- **2026-05-15** — Support for
+  [Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4](https://huggingface.co/nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4).
 
-# Terminal 2 — agent under test
-cd evaluation && WEBSOCKET_PORT=8765 SERVER_CONFIG_PATH=server_configs/agent.yaml python bot_server.py
+Full history: [Release Notes](https://docs.nvidia.com/nemo/labs-voice-agent/about/release-notes)
 
-# Terminal 3 — bridge
-cd evaluation && python run_evaluation.py --domain tau2_retail \
-    --judge-url <openai-compat-endpoint> --judge-model <model-name>
-```
+## 💡 Upcoming Next
 
-The bridge writes per-scenario artifacts (`metrics.json`, `judge_result.json`, `bot_logs_*/llm_context.json`, `bridge_log.txt`, `conversation_log.{txt,wav}`) plus a run-level `all_summary.txt` aggregate. Kill the run mid-flight and resume with `--resume <timestamp>` — the runner skips already-completed scenarios and re-runs in-flight ones.
-
-**Documentation:**
-
-- 📖 [`evaluation/README.md`](evaluation/README.md) — operator's guide. Install, run, read results, the six-signal scoring model, resumable runs.
-- 📖 [`evaluation/EXTENDING_DATA.md`](evaluation/EXTENDING_DATA.md) — author's guide for new scenarios, tools, and domains (the data layer).
-- 📖 [`evaluation/EXTENDING_PIPELINE.md`](evaluation/EXTENDING_PIPELINE.md) — three-tier customization guide for the bot pipeline (YAML swap / custom processor / whole new pipecat pipeline).
-
-
-## 📝 Notes & FAQ
-- Only one connection to the server is supported at a time. While a client is connected, any new connection is **rejected** (WebSocket close code 1013) and the existing client keeps the session; the server accepts a new client once the current one disconnects. LLM context is preserved across reconnects.
-- If directly loading from HuggingFace and got I/O errors, you can set `llm.model=<local_path>`, where the model is downloaded using a command like `huggingface-cli download Qwen/Qwen2.5-7B-Instruct --local-dir <local_path>`. Same for TTS models.
-- The current ASR and diarization models are not noise-robust, you might need to use a noise-cancelling microphone or a quiet environment. But we will release better models soon.
-- The diarization model works best with speakers that have much more different voices from each other, while it might not work well on some accents due to the limited training data.
-- If you see errors like `SyntaxError: Unexpected reserved word` when running `npm run dev`, please update the Node.js version.
-- If you see the error `Error connecting: Cannot read properties of undefined (reading 'enumerateDevices')`, it usually means the browser is not allowed to access the microphone. Please check the browser settings and add `http://[YOUR MACHINE IP ADDRESS]:5173/` to the allow list, e.g., via `chrome://flags/#unsafely-treat-insecure-origin-as-secure` for chrome browser.
-- If you see something like `node:internal/errors:496` when running `npm run dev`, remove the `examples/generic_voice_agent/client/node_modules` folder and run `npm install` again, then run `npm run dev` again.
-
-
-
-## ☁️ NVIDIA NIM Services
-
-NVIDIA also provides a variety of [NIM](https://developer.nvidia.com/nim?sortBy=developer_learning_library%2Fsort%2Ffeatured_in.nim%3Adesc%2Ctitle%3Aasc&hitsPerPage=12) services for better ASR, TTS and LLM performance with more efficient deployment on either cloud or local servers.
-
-NIM and Riva are supported as **first-class config backends** — no code changes are needed. Set
-`SERVER_CONFIG_PATH` to the ready-made `examples/generic_voice_agent/server/server_configs/default_nvidia.yaml`,
-which selects `stt.type: nvidia`, `llm.type: nvidia` and `tts.type: nvidia`, and export your API key:
-
-```bash
-export NVIDIA_API_KEY="nvapi-..."
-export SERVER_CONFIG_PATH="server_configs/default_nvidia.yaml"
-cd examples/generic_voice_agent/server/
-python server.py
-```
-
-Edit `default_nvidia.yaml` to point at your own NIM endpoints (`base_url`) or Riva function IDs
-(`stt.function_id`, `tts.function_id`) and voice. Tool calling is supported on this backend too
-(`llm.enable_tool_calling: true`). The underlying Pipecat services live in
-[`pipecat/services/nvidia/`](https://github.com/pipecat-ai/pipecat/tree/main/src/pipecat/services/nvidia).
-
-For more NIM integration examples, see the [Nemotron Voice Agent](https://github.com/NVIDIA-AI-Blueprints/nemotron-voice-agent).
-
-For details of available NVIDIA NIM services, please refer to:
-- [NVIDIA NIM LLM Service](https://docs.nvidia.com/nim/large-language-models/latest/introduction.html)
-- [NVIDIA Riva ASR NIM Service](https://docs.nvidia.com/nim/riva/asr/latest/overview.html)
-- [NVIDIA Riva TTS NIM Service](https://docs.nvidia.com/nim/riva/tts/latest/overview.html)
-
+- Accuracy and robustness ASR model improvements.
+- Combine ASR and speaker diarization model to handle overlapping speech.
+- More evaluation domains and scenarios.
 
 ## Acknowledgments
 
-- This example uses the [Pipecat](https://github.com/pipecat-ai/pipecat) orchestrator framework.
-- The `eva_airline` evaluation domain (50 airline customer-service scenarios) is adapted from [ServiceNow/eva](https://github.com/ServiceNow/eva) (MIT-licensed, version `0.1.3`). Per-scenario fixtures and tool function bodies carry inline `# Adapted from ...` attribution; see [`nemo_voice_agent/evaluation/data/README.md`](nemo_voice_agent/evaluation/data/README.md) for the full source/license inventory.
-- The `tau2_airline`, `tau2_retail`, and `tau2_telecom` evaluation domains (278 scenarios total) are ported from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) (MIT-licensed) at the `voice-user-sim-v1.0` tag (commit `17e07b1`). Upstream tasks, DBs, and policies are imported via the scripts under [`scripts/prepare_tau2_data/`](scripts/prepare_tau2_data/); generated scenario classes carry inline attribution headers. The companion `tau2_telecom_workflow` registration pairs each telecom task with an alternate policy variant for A/B comparison; it shares the underlying 114 tasks with `tau2_telecom` and is not counted separately.
-
-
+- This project uses the [Pipecat](https://github.com/pipecat-ai/pipecat) orchestrator framework.
+- The `eva_airline` evaluation domain (50 airline customer-service scenarios) is adapted from
+  [ServiceNow/eva](https://github.com/ServiceNow/eva) (MIT-licensed, version `0.1.3`). Per-scenario fixtures
+  and tool function bodies carry inline `# Adapted from ...` attribution; see
+  [`nemo_voice_agent/evaluation/data/README.md`](nemo_voice_agent/evaluation/data/README.md) for the full
+  source/license inventory.
+- The `tau2_airline`, `tau2_retail`, and `tau2_telecom` evaluation domains (278 scenarios total) are ported
+  from [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) (MIT-licensed) at the
+  `voice-user-sim-v1.0` tag (commit `17e07b1`). Upstream tasks, DBs, and policies are imported via the
+  scripts under [`scripts/prepare_tau2_data/`](scripts/prepare_tau2_data/); generated scenario classes carry
+  inline attribution headers. The companion `tau2_telecom_workflow` registration pairs each telecom task with
+  an alternate policy variant for A/B comparison; it shares the underlying 114 tasks with `tau2_telecom` and
+  is not counted separately.
 
 ## Contributing
 
-We welcome contributions to this project. Please feel free to submit a pull request or open an issue.
-
-Before opening a PR, read [`CONTRIBUTING.md`](CONTRIBUTING.md) — it covers the dev environment, the `ruff`
-formatting and lint gates, the test layout, the conventional-commit format, and the DCO `Signed-off-by`
-requirement that CI enforces on every commit.
+We welcome contributions. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) — it covers the dev environment,
+the `ruff` formatting and lint gates, the test layout, conventional commits, and the DCO `Signed-off-by`
+requirement that CI enforces.
 
 See also [`SECURITY.md`](SECURITY.md) for reporting security issues and
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for third-party licenses.
