@@ -101,7 +101,7 @@ Everything outside the connection and RTVI contracts can be adapted to the agent
 |---|---|
 | Services | Any speech-to-text (STT), large language model (LLM), text-to-speech (TTS), or voice activity detection (VAD) service that emits and consumes Pipecat frames. Wrap a non-Pipecat service in a `FrameProcessor` subclass. |
 | Pipeline shape | Extra processors, reordered stages, parallel branches. Only `transport.input()`, `transport.output()`, and the `RTVIProcessor` have fixed roles. |
-| Context | `build_context_and_aggregators()` returns `(context, user_agg, assistant_agg, original_messages)`. Substitute your own as long as the aggregators honor Pipecat's frame protocol. |
+| Context | `build_context_and_aggregators()` returns `(context, user_agg, assistant_agg, original_messages)`. Substitute your own as long as the aggregators honor Pipecat's frame protocol. Build the pair with `LLMContextAggregatorPair(context, ...)` from `pipecat.processors.aggregators.llm_response_universal` and take `.user()` and `.assistant()` off it, or pass duck-typed equivalents of Pipecat's `LLMUserAggregator` and `LLMAssistantAggregator`. To alter the context shape, subclass the universal `LLMContext` from `pipecat.processors.aggregators.llm_context`, which the stock builder constructs as `LLMContext(messages=messages)`. |
 | Observers | `PipelineWorker` takes an `observers` list; the stock bots attach the repo's `RTVIObserver` subclass, `RTVIAudioLoggerObserver`, and Pipecat's `UserBotLatencyObserver`. |
 | Reasoning, tool parsers, logits processors | Entirely outside the contract. |
 

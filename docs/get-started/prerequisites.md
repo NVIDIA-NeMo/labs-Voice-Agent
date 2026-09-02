@@ -17,7 +17,7 @@ limitations under the License.
 
 # Prerequisites
 
-Verify the requirements for the workflow you plan to run before installing NeMo Voice Agent.
+Verify the requirements for the workflow you plan to run before installing NeMo Labs Voice Agent.
 
 ## Hardware Requirements
 
@@ -38,6 +38,7 @@ Install or make available the software required by the workflow you plan to run:
 | Operating system | Linux. `install.sh` installs system packages with `apt-get`. With another package manager, install the equivalent packages yourself. |
 | Python | Python 3.12 or 3.13. The project configures `uv` to download and manage a compatible interpreter. |
 | Node.js and npm | Required for the browser client. `install.sh` installs both on systems that provide `apt-get`. |
+| Pipecat | The install pins `pipecat-ai` to version 1.6.0 exactly. Custom processors, services, and bot-control code must target that release. |
 
 ## Pre-Installation Checklist
 

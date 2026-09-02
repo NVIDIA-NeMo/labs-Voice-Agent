@@ -91,7 +91,7 @@ The repository records attribution at the following levels:
 | --- | --- |
 | Full upstream license text | `THIRD_PARTY_NOTICES.md` (repository root) |
 | Per-artifact provenance: upstream URL, version, file-by-file mapping, whether verbatim or adapted | `nemo_voice_agent/evaluation/data/README.md` |
-| Inline `# Adapted from <upstream-url>` comment near the top of each ported module | Every adapted Python file (47 files today) |
+| Inline `# Adapted from <upstream-url>` comment near the top of each ported module, with the URL pinned to the upstream tree rather than the repository root | Every adapted Python file (47 files today) |
 | Original upstream copyright header preserved in place | Adapted files that were copied largely intact, such as the browser client |
 
 For the reader-facing version of the provenance table, refer to
@@ -124,7 +124,10 @@ following in the same change:
 2. Add a matching section to `nemo_voice_agent/evaluation/data/README.md` describing each
    imported file and whether it is verbatim, filtered, or format-converted.
 3. Add an inline `# Adapted from <upstream-url>` attribution to the top of every ported
-   source file, below the SPDX header.
+   source file, below the SPDX header. Pin the URL to the upstream tag or commit tree, not
+   the repository root, so the comment identifies the exact source revision. The existing
+   modules use `# Adapted from https://github.com/ServiceNow/eva/tree/0.1.3` and
+   `# Adapted from https://github.com/sierra-research/tau2-bench/tree/voice-user-sim-v1.0`.
 
 Refer to [Importing Evaluation Data](contribute/data-import.md) for the full import workflow, including the
 scaffold generators under `scripts/`.

@@ -111,6 +111,36 @@ llm:
 For endpoint configuration, refer to
 [NVIDIA NIM Endpoints](../../../build-voice-agents/model-serving/nvidia-nim.md).
 
+### Route 4 — Set the Chat-Template Flag on the Hugging Face Backend
+
+With `llm.type: hf` there is no OpenAI request body to interpolate into and no `--reasoning-parser`,
+so whether the model reasons is decided entirely by the prompt the chat template renders. Two settings
+reach it:
+
+- **`llm.system_prompt_suffix`** — a string appended to the system prompt by `ConfigManager`, so it
+  applies on every backend. Many models switch on `/think` or `/no_think` here, and this is the
+  mechanism the shipped `qwen3-8B.yaml` and `qwen3-8B_think.yaml` pair uses.
+- **`llm.apply_chat_template_kwargs.enable_thinking`** — set it to `true` or `false` for models whose
+  chat template reads that keyword. The dictionary is forwarded verbatim into
+  `tokenizer.apply_chat_template()` by `HuggingFaceLLMLocalService`, so any keyword the template
+  accepts works the same way. Only `tokenize` is special-cased: it is forced to `False`, and a `True`
+  value is dropped with a warning.
+
+```yaml
+llm:
+  type: hf
+  model: "Qwen/Qwen3-8B"
+  apply_chat_template_kwargs:
+    add_generation_prompt: true
+    tokenize: false
+    enable_thinking: true
+```
+
+Which of the two a model honors is model-specific — check its model card, for example
+[Qwen/Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B). No shipped configuration sets `enable_thinking`
+in the Hugging Face block, so you add it yourself. Because this route has no server-side parser,
+`tts.think_tokens` is the only thing keeping the reasoning span out of the audio.
+
 ## How Think Configuration Variants Work
 
 Each `_think.yaml` variant changes only the settings listed below.

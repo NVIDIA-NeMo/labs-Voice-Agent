@@ -40,6 +40,14 @@ to the model, but nothing ever fires them. The shipped model sub-YAMLs handle th
 `server_configs/llm_configs/nemotron_nano_v3.yaml`. The model sub-YAML *overrides*
 `default.yaml`, so flipping `llm.type` in `default.yaml` has no effect.
 
+Tool calling is verified with the shipped Nemotron model sub-YAMLs and with the larger, also-recommended
+[`nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4`](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4).
+That model has no sub-YAML under `llm_configs/` and no `model_registry.yaml` entry, so its `llm:` block has to
+be self-contained — `evaluation/server_configs/agent.yaml` is the shipped example, and it is the model the
+[evaluation harness](../../evaluate/run-evaluations/quickstart.md) runs both bots and the judge on. Other
+models work as long as vLLM has a tool-call parser for them; consult the model's own vLLM documentation for
+which parser to pass, and expect to retune `llm.system_prompt_suffix`.
+
 ## Enabling It
 
 The default config (`llm_configs/nemotron_nano_v3.yaml` for

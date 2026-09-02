@@ -120,11 +120,16 @@ variant, which isolates the effect of the two policy phrasings.
 These hand-authored domains require no external fixtures. Use them to verify a pipeline end to end before
 running a ported benchmark.
 
-| Domain | Scenarios | `max_duration` | What It Exercises |
-| --- | --- | --- | --- |
-| `restaurant` | 11 | 180 s (one at 120 s) | Menu-driven ordering with 3 agent tools; adds white noise at -20 dB to the audio |
-| `customer_service` | 10 | 120 s | Ticket lookup and resolution with 4 agent tools |
-| `qa` | 10 | 60 s | Single-question knowledge answers, 2 agent tools, judge-only scoring |
+| Domain | Scenarios | `max_duration` | Summary Tool | What It Exercises |
+| --- | --- | --- | --- | --- |
+| `restaurant` | 11 | 180 s (one at 120 s) | `PlaceOrderTool`, and `JoinWaitListTool` / `DropWaitListTool` in the waitlist scenario | Menu-driven ordering with 3 agent tools; adds white noise at -20 dB to the audio |
+| `customer_service` | 10 | 120 s | `ResolveTicketTool` | Ticket lookup and resolution with 4 agent tools |
+| `qa` | 10 | 60 s | `SaveQuestionAnswerTool` | Single-question knowledge answers, 2 agent tools, judge-only scoring; the two weather scenarios add `GetCityWeatherTool` |
+
+Every tool in the Summary Tool column is a `SendScenarioSummaryTool` subclass, so these domains still use the
+legacy LLM-callable summary path: the agent wraps its structured result in `<final_response>` tags instead of
+the bridge pulling action records. The ported benchmarks use the bridge-pull path and register no summary tool
+at all. Refer to [Authoring Tools](../create-evaluations/authoring-tools.md) for both termination contracts.
 
 Because `qa` and the `simple_qa_*` legacy scenarios gate on `JUDGE_PASSED`, they need a reachable judge.
 `--judge-url` defaults to `http://localhost:8000/v1/chat/completions`, so every run constructs a judge. If

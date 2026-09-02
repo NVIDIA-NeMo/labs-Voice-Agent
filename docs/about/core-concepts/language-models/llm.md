@@ -82,6 +82,22 @@ All paths are relative to `examples/generic_voice_agent/server/server_configs/ll
 The omni configurations also set `is_omni_model: true`, which inserts the audio-buffer stage. For details,
 refer to [Multimodal Models](multimodal.md). `llama3.1-8B-instruct.yaml` requires `HF_TOKEN` for gated access.
 
+### Other Tested Models
+
+Two further models are tested but ship no sub-configuration of their own and are absent from
+`model_registry.yaml`:
+[`nvidia/Llama-3.1-Nemotron-Nano-8B-v1`](https://huggingface.co/nvidia/Llama-3.1-Nemotron-Nano-8B-v1) and
+[`nvidia/Nemotron-Mini-4B-Instruct`](https://huggingface.co/nvidia/Nemotron-Mini-4B-Instruct). Run either one
+by setting `llm.model` to the checkpoint and pointing `model_config` at `llm_configs/hf_llm_generic.yaml`,
+then reconcile that file's generation settings and `vllm_server_params` against the model card. Both inherit
+the generic file's `auto` backend and its `enable_tool_calling: False` default.
+
+`Llama-3.1-Nemotron-Nano-8B-v1` also needs a user turn immediately after the system prompt and rejects
+consecutive user turns. The `hf` and `vllm` services recover from both cases without configuration:
+`LLMUtilsMixin` in `nemo_voice_agent/pipecat/services/nemo/llm.py` inserts a placeholder user turn and merges
+adjacent user turns, then retries. This runs only as a repair after the first attempt fails — a chat-template
+error on the `hf` path, or a `BadRequestError` from the server on the `vllm` path.
+
 ### The Shipped Default
 
 `default.yaml` ships `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4` with

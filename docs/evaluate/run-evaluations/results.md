@@ -55,6 +55,14 @@ eval_results/eval_YYYYMMDD_HHMMSS/
         └── user_tools.json
 ```
 
+`scenario_config/` is a self-sufficient snapshot, so an old run stays interpretable without reloading
+the scenario class. Alongside the verbatim prompts and tool schemas handed to each bot,
+`metadata.json` records the scenario identity (`name`, `domain`, `description`), its `max_duration`
+and `noise_config`, the action-matching flags (`ignore_capitalization`, `ignore_punctuation`,
+`clean_text`, `disallow_extra_items`), and the `success_signals` whitelist. Scoring fields are added
+only when the scenario defines them: `expected_db_hash` and `expected_user_db_hash`,
+`db_state_assertions`, `nl_assertions`, and `initialization_actions`.
+
 ## Which File Answers Which Question
 
 Start with the artifact that most directly answers your investigation question.
@@ -175,6 +183,17 @@ read both files: the user-sim's phone-tool calls exist only on the user side.
 `bridge_log.txt` covers audio routing, real-time voice interface (RTVI) events, scenario initialization, cross-side sync
 dispatches, and the end-of-scenario summary pull. Start here when a scenario produced no
 `metrics.json` at all — the bridge log records the connection or initialization failure.
+
+It is written at `DEBUG` level, so two greps confirm the handshake quickly:
+
+- `update_system_prompt` — the bot's `server-response` acknowledging the per-scenario prompt and tool
+  registration, one line per side. Seeing it is the positive confirmation that your bot received the
+  scenario's prompt; its absence means the prompt never landed, which usually shows up as a generic
+  agent that ignores the domain policy.
+- `[AGENT METRICS] ttfb` (and `[USER METRICS] ttfb`) — per-processor time-to-first-byte events, for
+  example `processor=NvidiaLLMService#0 value=0.819s`. Use them to confirm your LLM service is
+  emitting TTFB at all; they are informational, and the scored response latency comes from
+  `metrics.json` instead.
 
 ## Triage Recipes
 

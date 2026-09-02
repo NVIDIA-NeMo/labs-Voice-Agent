@@ -20,7 +20,9 @@ limitations under the License.
 NeMo Labs Voice Agent can run automatic speech recognition (ASR), the large language model (LLM), and
 text-to-speech (TTS) against hosted NVIDIA endpoints instead of local GPU models. This configuration-only
 change sets `stt.type`, `llm.type`, and `tts.type` to `nvidia`. The builders in
-`nemo_voice_agent/pipecat/services/nemo/` construct Pipecat's NVIDIA services from the same YAML blocks.
+`nemo_voice_agent/pipecat/services/nemo/` construct Pipecat's
+[NVIDIA services](https://github.com/pipecat-ai/pipecat/tree/main/src/pipecat/services/nvidia) from the same
+YAML blocks.
 
 ## Prerequisites
 
@@ -187,3 +189,16 @@ Continue with the concept or configuration reference that matches the backend yo
 - [ASR](../../about/core-concepts/speech-pipeline/asr.md) and [TTS](../../about/core-concepts/speech-pipeline/tts.md) — the local counterparts of these blocks.
 - [Server Configuration](../configure/server-config.md) — every top-level block.
 - [Troubleshooting](../../troubleshooting/index.md).
+
+For the hosted services themselves, browse the [NIM catalog](https://developer.nvidia.com/nim) and then the
+documentation for the service behind each block:
+
+- [NVIDIA NIM LLM Service](https://docs.nvidia.com/nim/large-language-models/latest/introduction.html) — the
+  models reached through `llm.base_url`.
+- [NVIDIA Riva ASR NIM Service](https://docs.nvidia.com/nim/riva/asr/latest/overview.html) — the models
+  addressed by `stt.model` and `stt.function_id`.
+- [NVIDIA Riva TTS NIM Service](https://docs.nvidia.com/nim/riva/tts/latest/overview.html) — the models and
+  voices addressed by `tts.model`, `tts.function_id`, and `tts.voice_id`.
+
+For a larger worked example that wires several NIM endpoints together, refer to the
+[Nemotron Voice Agent blueprint](https://github.com/NVIDIA-AI-Blueprints/nemotron-voice-agent).

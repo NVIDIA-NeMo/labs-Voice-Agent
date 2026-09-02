@@ -17,10 +17,11 @@ limitations under the License.
 
 # Speech Recognition
 
-NeMo Labs Voice Agent transcribes the user with a **cache-aware streaming FastConformer** automatic speech
-recognition (ASR) model that runs locally on the GPU. Audio arrives from the WebSocket transport in 16 ms
-frames and is buffered into 80 ms chunks. The model decodes each chunk incrementally against a persistent
-encoder cache, so partial text is available before the user stops speaking.
+NeMo Labs Voice Agent transcribes the user with a
+**[cache-aware streaming FastConformer](https://arxiv.org/abs/2312.17279)** automatic speech recognition (ASR)
+model that runs locally on the GPU. Audio arrives from the WebSocket transport in 16 ms frames and is buffered
+into 80 ms chunks. The model decodes each chunk incrementally against a persistent encoder cache, so partial
+text is available before the user stops speaking.
 
 The service lives in `nemo_voice_agent/pipecat/services/nemo/stt.py` (`NemoSTTService`), which wraps the model
 loading and cache management in `nemo_voice_agent/pipecat/services/nemo/streaming_asr.py`
