@@ -92,7 +92,7 @@ What each family puts in the suffix:
 
 | Config | Suffix Content |
 | --- | --- |
-| `nemotron_nano_v3.yaml` (default), `nemotron_nano_v3_think.yaml`, the `_omni` variants, `nemotron_nano_v2.yaml` | The tool-use policy paragraph described below. |
+| `nemotron_3.5_lightning.yaml` (default), `nemotron_3.5_lightning_think.yaml`, `nemotron_nano_v3.yaml`, `nemotron_nano_v3_think.yaml`, the `_omni` variants, `nemotron_nano_v2.yaml` | The tool-use policy paragraph described below. |
 | `qwen3-8B.yaml` / `qwen3-8B_think.yaml` | `/no_think` / `/think`. |
 | `hf_llm_generic.yaml` | `/no_think`. |
 | `qwen2.5-7B.yaml`, `llama3.1-8B-instruct.yaml` | `null`. |

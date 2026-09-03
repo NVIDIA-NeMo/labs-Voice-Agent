@@ -37,7 +37,7 @@ Tool calls are produced by the LLM backend, so only backends that parse tool-cal
 there is **no backend check**. Setting the flag under `llm.type: hf` registers the tools and advertises them
 to the model, but nothing ever fires them. The shipped model sub-YAMLs handle this for you by forcing
 `type: vllm` alongside `enable_tool_calling: true`, as configured in
-`server_configs/llm_configs/nemotron_nano_v3.yaml`. The model sub-YAML *overrides*
+`server_configs/llm_configs/nemotron_3.5_lightning.yaml`. The model sub-YAML *overrides*
 `default.yaml`, so flipping `llm.type` in `default.yaml` has no effect.
 
 Tool calling is verified with the shipped Nemotron model sub-YAMLs and with the larger, also-recommended
@@ -50,12 +50,12 @@ which parser to pass, and expect to retune `llm.system_prompt_suffix`.
 
 ## Enabling It
 
-The default config (`llm_configs/nemotron_nano_v3.yaml` for
-`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4`) already has tool calling on. Because that file sets
+The default config (`llm_configs/nemotron_3.5_lightning.yaml` for
+`nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4`) already has tool calling on. Because that file sets
 `start_vllm_on_init: false`, you start vLLM yourself with the tool-parser flags:
 
 ```bash
-vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4 \
+vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
     --trust-remote-code --tensor-parallel-size 1 --enable-prefix-caching \
     --max-num-seqs 1 --gpu-memory-utilization 0.8 \
     --enable-auto-tool-choice --tool-call-parser qwen3_coder \
@@ -74,7 +74,7 @@ Relevant config keys:
 | `llm.system_prompt_suffix` | model-specific | Appended to the system prompt; the shipped text tells the model when to reach for a tool and when not to. |
 | `llm.vllm_server_params` | model-specific | Must carry `--enable-auto-tool-choice` and a `--tool-call-parser` for the vLLM path. |
 
-Different models need different parsers. `nemotron_nano_v3.yaml` uses vLLM's built-in `qwen3_coder` parser.
+Different models need different parsers. `nemotron_3.5_lightning.yaml` uses vLLM's built-in `qwen3_coder` parser.
 `nemotron_nano_v2.yaml` loads the repo's streaming parser plugin with `--tool-parser-plugin` and
 `--tool-call-parser nemotron_json` (refer to [vLLM Plugins](../model-serving/vllm-plugins.md)).
 

@@ -51,7 +51,7 @@ Two configuration precedence rules affect these files. For more context, refer t
 [Configuration Model](../../../build-voice-agents/configure/index.md):
 
 - **The sub-YAML wins.** Keys from the model configuration overwrite the top-level `llm:` block, not the
-  reverse. `default.yaml` sets `type: auto`, but `nemotron_nano_v3.yaml` sets `type: vllm`, so the
+  reverse. `default.yaml` sets `type: auto`, but `nemotron_3.5_lightning.yaml` sets `type: vllm`, so the
   shipped default is vLLM. Editing `type` in `default.yaml` alone has no effect.
 - **`model_config` short-circuits the registry.** When `llm.model_config` is set, only its basename is
   used and the file is loaded from `server_configs/llm_configs/`. Registry lookup (and with it the
@@ -69,7 +69,9 @@ All paths are relative to `examples/generic_voice_agent/server/server_configs/ll
 
 | Configuration File | `llm.model` | Backend | Tool Calling | Starts vLLM for You |
 | --- | --- | --- | --- | --- |
-| `nemotron_nano_v3.yaml` (default) | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4` | `vllm` | Yes | No |
+| `nemotron_3.5_lightning.yaml` (default) | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` | `vllm` | Yes | No |
+| `nemotron_3.5_lightning_think.yaml` | Same model, reasoning enabled | `vllm` | Yes | No |
+| `nemotron_nano_v3.yaml` | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4` | `vllm` | Yes | No |
 | `nemotron_nano_v3_think.yaml` | Same model, reasoning enabled | `vllm` | Yes | No |
 | `nemotron_nano_v3_omni.yaml` | `nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4` | `vllm` | Yes | No |
 | `nemotron_nano_v3_omni_think.yaml` | Same model, reasoning enabled | `vllm` | Yes | No |
@@ -100,13 +102,13 @@ error on the `hf` path, or a `BadRequestError` from the server on the `vllm` pat
 
 ### The Shipped Default
 
-`default.yaml` ships `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4` with
-`model_config: ./server_configs/llm_configs/nemotron_nano_v3.yaml`. That file sets
+`default.yaml` ships `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` with
+`model_config: ./server_configs/llm_configs/nemotron_3.5_lightning.yaml`. That file sets
 `start_vllm_on_init: false`, so `python server.py` cannot reach an LLM on its own. Start vLLM first in a
 separate terminal with the flags from that file's `vllm_server_params`:
 
 ```bash
-vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4 \
+vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
     --trust-remote-code --tensor-parallel-size 1 --enable-prefix-caching \
     --max-num-seqs 1 --gpu-memory-utilization 0.8 \
     --enable-auto-tool-choice --tool-call-parser qwen3_coder \

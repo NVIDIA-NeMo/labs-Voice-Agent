@@ -103,9 +103,9 @@ aggregator emits those frames directly from the VAD frames. Only one component e
 `model_config:` field. This order has two important consequences:
 
 - **The model sub-YAML overrides the top-level configuration.** `default.yaml` sets
-  `llm.type: auto`, but `llm_configs/nemotron_nano_v3.yaml` sets `type: vllm`, so the effective value
+  `llm.type: auto`, but `llm_configs/nemotron_3.5_lightning.yaml` sets `type: vllm`, so the effective value
   is `vllm`. A key in `default.yaml` has no effect when the sub-YAML also defines it.
-- The shipped default LLM, `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4`, sets
+- The shipped default LLM, `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4`, sets
   `start_vllm_on_init: false` — the server does **not** launch vLLM for you. Start it in a separate
   terminal first, as shown in the [Quickstart](../get-started/quickstart.md).
 

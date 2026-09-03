@@ -56,7 +56,7 @@ running server reports.
 
 ## Bot never greets and the log reports a connection error for http://localhost:8000/v1
 
-**Cause:** The shipped default, `server_configs/llm_configs/nemotron_nano_v3.yaml`, sets
+**Cause:** The shipped default, `server_configs/llm_configs/nemotron_3.5_lightning.yaml`, sets
 `start_vllm_on_init: false`, so the voice agent does not launch vLLM. It also does not probe the endpoint at
 startup. The server starts successfully, and the failure appears only on the first large language model (LLM)
 turn after a browser connects.

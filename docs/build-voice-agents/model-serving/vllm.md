@@ -35,7 +35,7 @@ Before you start a vLLM deployment, complete the following preparation:
 Serving flags live in the model config that `llm.model_config` points at — not in `default.yaml`, and not in
 this page. The sub-YAML **overrides** `default.yaml` for every `llm.*` key it sets, which is why the shipped
 `llm.type: auto` ends up as `vllm`. Read
-`examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3.yaml` before copying any
+`examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_3.5_lightning.yaml` before copying any
 command from here. If the two disagree, the YAML wins.
 
 Keys that matter for vLLM:
@@ -58,7 +58,7 @@ The `start_vllm_on_init` setting determines whether the voice-agent process owns
 
 | `start_vllm_on_init` | Behavior | Ships with |
 | --- | --- | --- |
-| `false` | You run `vllm serve` in a separate terminal. The agent connects to `base_url`. | `nemotron_nano_v3.yaml`, `nemotron_nano_v3_think.yaml`, both `*_omni*.yaml`, and the eval configs under `evaluation/server_configs/` |
+| `false` | You run `vllm serve` in a separate terminal. The agent connects to `base_url`. | `nemotron_3.5_lightning.yaml`, `nemotron_3.5_lightning_think.yaml`, `nemotron_nano_v3.yaml`, `nemotron_nano_v3_think.yaml`, both `*_omni*.yaml`, and the eval configs under `evaluation/server_configs/` |
 | `true` | `VLLMService.__init__` spawns `vllm serve` and blocks until the server reports the model. | `nemotron_nano_v2.yaml`, `qwen3-8B.yaml`, `qwen2.5-7B.yaml`, `llama3.1-8B-instruct.yaml`, `hf_llm_generic.yaml` |
 
 Because the shipped default sets `false`, running `python server.py` by itself does not produce a working
@@ -66,11 +66,11 @@ agent. Start vLLM first.
 
 ## Start vLLM Yourself (Shipped Default)
 
-These flags are the `vllm_server_params` string from `nemotron_nano_v3.yaml`, one flag per line:
+These flags are the `vllm_server_params` string from `nemotron_3.5_lightning.yaml`, one flag per line:
 
 ```bash
 source .venv/bin/activate
-vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4 \
+vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
     --trust-remote-code \
     --tensor-parallel-size 1 \
     --enable-prefix-caching \
@@ -114,10 +114,11 @@ vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16 \
 The Nemotron-3 model cards do not ask for this flag. Add it only when a manual run leaves reasoning text in the
 spoken response or ignores the thinking budget.
 
-`nemotron_nano_v3_think.yaml` uses the **same** server flags, so one running server serves both configs. The
-differences are all request-side: `enable_thinking: True` under
-`vllm_generation_params.extra.extra_body.chat_template_kwargs`, `max_new_tokens` raised from 1024 to 4096, and a
-new `thinking_budget: 2048` forwarded as `thinking_token_budget`.
+`nemotron_3.5_lightning_think.yaml` (and, for the older model family, `nemotron_nano_v3_think.yaml`) uses the
+**same** server flags, so one running server serves both configs. The differences are all request-side:
+`enable_thinking: True` under `vllm_generation_params.extra.extra_body.chat_template_kwargs`,
+`max_new_tokens` raised from 1024 to 4096, and a new `thinking_budget: 2048` forwarded as
+`thinking_token_budget`.
 
 ## Let the Agent Start vLLM
 

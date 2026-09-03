@@ -37,7 +37,7 @@ Complete these four steps in order to start the services and connect from the br
 ### Start vLLM Yourself
 
 This is the most common first-run failure. The shipped default large language model (LLM) configuration
-(`examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_nano_v3.yaml`) sets
+(`examples/generic_voice_agent/server/server_configs/llm_configs/nemotron_3.5_lightning.yaml`) sets
 `start_vllm_on_init: false`. As a result, `python server.py` does not start a model. The agent server starts
 and then fails to reach the OpenAI-compatible endpoint at `http://localhost:8000/v1`.
 
@@ -46,7 +46,7 @@ YAML file is the authoritative source if this example differs from the current c
 
 ```bash
 source .venv/bin/activate
-vllm serve nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4 \
+vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
     --trust-remote-code --tensor-parallel-size 1 --enable-prefix-caching \
     --max-num-seqs 1 --gpu-memory-utilization 0.8 \
     --enable-auto-tool-choice --tool-call-parser qwen3_coder \

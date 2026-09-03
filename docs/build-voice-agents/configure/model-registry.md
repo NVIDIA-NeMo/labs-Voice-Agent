@@ -91,7 +91,8 @@ The swap fires only when **all three** are true:
 Then `ConfigManager` rewrites the `.yaml` suffix to `_think.yaml` before loading. If the `_think`
 file is missing, startup fails with a `FileNotFoundError` naming the path it tried.
 
-Today `Qwen/Qwen3-8B` is the only registry entry with `reasoning_supported: true`.
+`nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4`, `Qwen/Qwen3-8B`, `Qwen/Qwen3.6-35B-A3B`, and
+`Qwen/Qwen3.8-27B` are the registry entries with `reasoning_supported: true`.
 
 ### The Swap Does Not Fire for the Shipped Default
 
@@ -99,19 +100,20 @@ Today `Qwen/Qwen3-8B` is the only registry entry with `reasoning_supported: true
 
 ```yaml
 llm:
-  model: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4"
-  model_config: "./server_configs/llm_configs/nemotron_nano_v3.yaml"
+  model: "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+  model_config: "./server_configs/llm_configs/nemotron_3.5_lightning.yaml"
   enable_reasoning: false
 ```
 
 Because `model_config` is set, the lookup short-circuits at step 1 above. Setting
-`enable_reasoning: true` alone does **not** load `nemotron_nano_v3_think.yaml` — that model is not in
-the registry at all. Point `model_config` at the thinking config by hand:
+`enable_reasoning: true` alone does **not** load `nemotron_3.5_lightning_think.yaml` — the model
+*is* a registry entry with `reasoning_supported: true`, but the explicit `model_config:` in `default.yaml`
+means the registry is never consulted for it. Point `model_config` at the thinking config by hand:
 
 ```yaml
 llm:
-  model: "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4"
-  model_config: "./server_configs/llm_configs/nemotron_nano_v3_think.yaml"
+  model: "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+  model_config: "./server_configs/llm_configs/nemotron_3.5_lightning_think.yaml"
   enable_reasoning: true
 ```
 
@@ -123,18 +125,20 @@ you still start vLLM yourself. For runtime behavior, refer to
 ## The Registry Does Not Cover Every Shipped Model
 
 The registry is a partial, hand-maintained list. Several configs under `server_configs/` have no
-entry, and the models named in `default.yaml` are among them:
+entry. The STT and TTS models named in `default.yaml` are among them, but the default LLM is now a
+registry entry too — it is reached through `model_config` rather than the registry only because
+`default.yaml` sets `model_config` explicitly:
 
 | Component | `default.yaml` Value | In Registry? |
 | --- | --- | --- |
-| LLM | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4` | No |
+| LLM | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` | Yes — but `model_config` in `default.yaml` bypasses the lookup |
 | STT | `nvidia/parakeet_realtime_eou_120m-v1` | No |
 | TTS | `kokoro` | No — the registry key is `hexgrad/Kokoro-82M` |
 
 All three work because `default.yaml` sets an explicit `model_config` for each. Config files with no
-registry entry include `nemotron_nano_v3.yaml`, `nemotron_nano_v3_think.yaml`,
-`nemotron_nano_v3_omni.yaml`, `nemotron_nano_v3_omni_think.yaml`, and
-`tts_configs/magpie_tts_multilingual_357m.yaml` — reach them with `model_config`.
+registry entry include `nemotron_nano_v3.yaml`, `nemotron_nano_v3_think.yaml`, `nemotron_nano_v3_omni.yaml`,
+`nemotron_nano_v3_omni_think.yaml`, and `tts_configs/magpie_tts_multilingual_357m.yaml` — reach them with
+`model_config`.
 
 `server_configs/default_nvidia.yaml` leaves `use_model_registry: true` but sets no `model_config`
 anywhere. Its hosted model IDs miss the registry, so every component falls to step 4 and uses only the
