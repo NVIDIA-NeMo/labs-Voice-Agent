@@ -115,8 +115,8 @@ class MyDomainBaseScenario(Scenario):
 
 `success_signals` is validated at class-definition time: any concrete scenario (one that declares
 `name`) must resolve a non-empty tuple of `SuccessSignal` members from itself or an ancestor. Declare it on
-the base class. When it depends on per-task opt-ins, use a `cached_property`. `tau2_retail` and
-`tau2_telecom` use this pattern to add `NL_ASSERTION` only when the task carries assertions. Refer to
+the base class. When it depends on per-task opt-ins, use a `cached_property`. `tau2_airline`, `tau2_retail`,
+and `tau2_telecom` use this pattern to add `NL_ASSERTION` only when the task carries assertions. Refer to
 [Scoring](../understand-scoring/scoring.md) for what each signal means.
 
 `setup_shared_state(state, side)` is called one time per side. Use one of these seeding styles:

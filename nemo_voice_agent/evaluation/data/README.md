@@ -77,6 +77,30 @@ that scenarios from different upstream libraries don't collide.
   - `tau2_airline/audio_difficulty.json` — kept for traceability;
     **not consumed** by the eval pipeline (tau2's persona acoustic stack
     is out of scope — see plan §1 non-goal).
+- **Local corrections live in code, not in these files.** The fixture above is
+  still a verbatim copy, but two of airline's scoring inputs are overridden in
+  `nemo_voice_agent/evaluation/scenarios/data/tau2_airline/base.py` so that a
+  re-import of `tasks.json` can never clobber them:
+  - `GOLD_ACTION_DROPS` drops gold `evaluation_criteria.actions` entries that
+    upstream's own `policy.md` forbids, before `_gold_replay` runs. It currently
+    holds one entry — task `39`, action `39_10` (`cancel_reservation` on the
+    economy, insurance-covered, non-airline-cancelled reservation `MSJ4OA`).
+    This changes `expected_scenario_db` for task 39, so that task's score is
+    **intentionally not comparable** to tau2's published leaderboard; every other
+    task is unaffected. Empty the dict to restore bit-exact upstream behavior.
+  - `ADOPTED_NL_ASSERTIONS` is a **curated subset** — 72 assertions across the
+    24 tasks that have no DB-mutating gold action — read by
+    `Tau2AirlineBaseScenario.nl_assertions` *instead of* the upstream
+    `evaluation_criteria.nl_assertions` (which is what `tau2_retail` reads).
+    Upstream never scores its own 123 strings: all 50 airline tasks set
+    `reward_basis` to `["DB", "COMMUNICATE"]`, and an audit found some of them
+    contradict the policy or the DB. Adopted assertions gate `NL_ASSERTION`;
+    the other 26 tasks keep `(DB_STATE_MATCH, CLEAN_EXIT)`. Task 39 is *not*
+    in the adopted set, which is what stops its upstream string
+    `Agent cancels reservation MSJ4OA.` from contradicting `GOLD_ACTION_DROPS`.
+
+  Both corrections are pinned by `tests/unit/test_tau2_airline_scenarios.py`.
+  See `docs/evaluate/domain-guides/tau2-airline.md` for the full rationale.
 - **Bound code**: `nemo_voice_agent/evaluation/scenarios/data/tau2_airline/`
   (package: `base.py` holds `Tau2AirlineBaseScenario` + hand-authored seeds;
   `group_Nx.py` modules carry auto-scaffolded scenarios) +

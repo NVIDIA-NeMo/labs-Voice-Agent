@@ -162,6 +162,18 @@ one layout change: upstream's single `data/tau2/domains/airline/db.json` is shar
 | `split_tasks.json` | Split membership — `train` (30), `test` (20), `base` (50). `base` is the eval surface. |
 | `policy.md` | Agent system prompt, copied verbatim from upstream. `get_agent_prompt()` returns it followed by an appended `## Additional Notes to Follow` section of voice-realization guidance. |
 
+Airline is the one domain that corrects its upstream scoring inputs, and it does so in code so that the
+fixture stays byte-identical and a re-import cannot clobber the change. Two corrections live in
+`nemo_voice_agent/evaluation/scenarios/data/tau2_airline/base.py`:
+
+- `GOLD_ACTION_DROPS` removes one gold action that the upstream `policy.md` forbids, which changes
+  `expected_scenario_db` for task `39`. That single task is therefore not comparable to tau2's published
+  leaderboard. Emptying the mapping restores bit-exact upstream behavior.
+- `ADOPTED_NL_ASSERTIONS` supplies 72 curated assertions across 24 tasks instead of the 123 upstream strings,
+  and `nl_assertions` reads that constant rather than `evaluation_criteria.nl_assertions`. Upstream does not
+  score its own strings at all, because every airline task declares `reward_basis` as
+  `["DB", "COMMUNICATE"]`. `tests/unit/test_tau2_airline_scenarios.py` pins both corrections.
+
 Refer to [tau2_airline](tau2-airline.md).
 
 ### tau2_retail — 114 Tasks
