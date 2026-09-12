@@ -819,8 +819,10 @@ async def run_dynamic_evaluation(
     # None when no scenario in the run opted into DB-state scoring.
     db_state_success_rate = sum(db_state_results) / len(db_state_results) if db_state_results else None
     # Denominator is "assertions emitted in this run", not scenarios. None when no
-    # scenario carried nl_assertions (eva / tau2_airline / tau2_telecom only have
-    # action/DB-state signal).
+    # scenario in the run carried nl_assertions. Opt-in is per scenario, not per
+    # domain: tau2_retail takes the upstream list as-is, tau2_airline ships a
+    # curated in-code subset, and tau2_telecom would pick them up automatically
+    # if upstream ever populated the field (today it never does).
     nl_assertion_success_rate = sum(nl_assertion_results) / len(nl_assertion_results) if nl_assertion_results else None
     # Denominator is "db_state_assertions emitted in this run", not scenarios.
     # None when no scenario carried db_state_assertions (currently only

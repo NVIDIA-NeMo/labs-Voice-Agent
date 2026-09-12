@@ -78,6 +78,9 @@ See [Evaluate](https://docs.nvidia.com/nemo/labs-voice-agent/evaluate-voice-agen
 
 ## 📅 Latest Updates
 
+- **2026-09-09** — `tau2_airline` evaluation now scores natural-language assertions on the 24 scenarios
+  whose expected database is unchanged, so an agent that does nothing no longer passes them. One upstream
+  reference action that the domain's own policy forbids is dropped from gold replay.
 - **2026-09-02** — Shipped default LLM switched to
   [Nemotron-3.5-Lightning-30B-A3B-NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4).
   Added LLM configs for

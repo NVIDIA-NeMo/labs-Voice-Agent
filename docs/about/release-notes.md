@@ -31,6 +31,7 @@ The following table summarizes the dated project milestones documented on this p
 
 | Date | Highlights |
 | --- | --- |
+| 2026-09-09 | `tau2_airline` scores NL assertions on 24 scenarios; task 39 gold-action correction |
 | 2026-09-02 | Nemotron-3.5-Lightning-30B-A3B-NVFP4 is the new shipped default LLM; added Qwen3.6-35B-A3B and Qwen3.8-27B configs |
 | 2026-08-06 | Graduated to a standalone repository |
 | 2026-06-13 | Voice-agent evaluation harness with four benchmark domains |
@@ -41,6 +42,33 @@ The following table summarizes the dated project milestones documented on this p
 | 2025-10-10 | Kokoro-82M TTS |
 | 2025-10-03 | vLLM serving with automatic Hugging Face fallback |
 | 2025-09-05 | First release |
+
+## 2026-09-09 — tau2_airline NL-Assertion Scoring and Task 39 Gold-Action Correction
+
+The `tau2_airline` evaluation domain now scores an `NL_ASSERTION` signal on 24 of its 50 scenarios. Those
+24 have no database-mutating reference action, so their expected database equals the seeded one and
+`DB_STATE_MATCH` passed any agent that changed nothing — including one that greeted the caller and
+immediately ended the call. Each now carries curated natural-language assertions, 84 in total and two to
+nine per scenario, which the large language model (LLM) judge scores one verdict at a time. A scenario
+passes only when the agent actually states the refusal or the fact under test. The remaining 26 scenarios
+keep `(DB_STATE_MATCH, CLEAN_EXIT)` and are unaffected.
+
+Unlike `tau2_retail`, which reads `evaluation_criteria.nl_assertions` from the upstream task file, airline
+adopts a curated subset declared in `ADOPTED_NL_ASSERTIONS`. Upstream never scores its own airline
+assertions, because all 50 tasks carry a `reward_basis` of `DB` and `COMMUNICATE` that excludes
+`NL_ASSERTION`. An audit of all 123 upstream assertions found several that contradict the domain policy or
+database, alongside many that only restate the reference actions.
+
+Task 39's reference action `39_10` is also dropped before gold replay. It cancels a reservation that the
+domain's own policy does not permit cancelling, which made the expected database reward a policy-violating
+agent and penalize a correct one. That task's score is therefore intentionally no longer comparable to the
+upstream published number; emptying the `GOLD_ACTION_DROPS` constant restores the previous behavior. Both
+fixture files stay byte-identical to upstream, so the corrections live in code and re-imports cannot
+overwrite them.
+
+Learn more: [tau2_airline](../evaluate/domain-guides/tau2-airline.md) ·
+[Scoring](../evaluate/understand-scoring/scoring.md) ·
+[Benchmarks](../evaluate/understand-scoring/benchmarks.md)
 
 ## 2026-09-02 — Nemotron-3.5-Lightning Default LLM and New Qwen3.6-35B-A3B / Qwen3.8-27B Configs
 

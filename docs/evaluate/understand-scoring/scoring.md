@@ -34,7 +34,7 @@ The following matrix maps each supported signal to its persisted field, value ty
 | `ACTION_MATCH` | `is_action_match` | `is_action_match` | `bool` or `"N/A"` | Yes — compares the action list | `restaurant`, `customer_service`, `fastbite` (computed for any scenario with a `reference_answer`) |
 | `DB_STATE_MATCH` | `db_state_match` | `db_state_match` | `bool` (absent when not applicable) | No — end state only | `eva_airline`, `tau2_airline`, `tau2_retail` (computed for any scenario with `expected_scenario_db`) |
 | `DB_STATE_ASSERTION` | `db_state_assertion` | `db_state_assertion_pass_rate` | float in 0–1 | No | `tau2_telecom` (per-task) |
-| `NL_ASSERTION` | `nl_assertion` | `nl_assertion_pass_rate` | float in 0–1 | No — judged on context/transcript | `tau2_retail`, `tau2_telecom` (per-task) |
+| `NL_ASSERTION` | `nl_assertion` | `nl_assertion_pass_rate` | float in 0–1 | No — judged on context/transcript | `tau2_airline`, `tau2_retail`, `tau2_telecom` (per-task) |
 | `JUDGE_PASSED` | `judge_passed` | `judge_passed` | `bool` | — | `qa` and other free-form domains |
 | `CLEAN_EXIT` | `clean_exit` | `clean_exit` | `bool` | No | **Every domain** |
 
@@ -145,8 +145,8 @@ when it depends on a per-task opt-in such as `nl_assertions`.
 | Domain | Scenarios | Gating Signals | Why |
 |---|---|---|---|
 | `eva_airline` | 50 | `DB_STATE_MATCH`, `CLEAN_EXIT` | Gold expected DB ships per scenario; path-independent |
-| `tau2_airline` | 50 | `DB_STATE_MATCH`, `CLEAN_EXIT` | Expected DB derived from the upstream task; no judge dependency |
-| `tau2_retail` | 114 | `DB_STATE_MATCH`, `CLEAN_EXIT`, plus `NL_ASSERTION` when the task declares assertions | 40 of 114 tasks carry NL claims |
+| `tau2_airline` | 50 | `DB_STATE_MATCH`, `CLEAN_EXIT`, plus `NL_ASSERTION` on the 24 tasks with adopted assertions | Expected DB derived from the upstream task; those 24 tasks mutate no DB rows, so 84 curated assertions carry their outcome |
+| `tau2_retail` | 114 | `DB_STATE_MATCH`, `CLEAN_EXIT`, plus `NL_ASSERTION` when the task declares assertions | 40 of 114 tasks carry NL claims, adopted from upstream as shipped |
 | `tau2_telecom` | 114 | `DB_STATE_ASSERTION`, `CLEAN_EXIT`, plus `NL_ASSERTION` when declared | Open solution space — whole-DB hash and action match are informational only |
 | `tau2_telecom_workflow` | 114 | Same as `tau2_telecom` | Parallel registration over the same tasks with the workflow policy file |
 | `restaurant`, `customer_service` | 11, 10 | `ACTION_MATCH`, `CLEAN_EXIT` | Single canonical structured `reference_answer` |

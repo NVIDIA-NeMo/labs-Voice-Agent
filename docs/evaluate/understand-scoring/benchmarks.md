@@ -28,7 +28,7 @@ The catalog distinguishes benchmark-derived domains from smaller in-repository v
 | Domain | Scenarios | Upstream | License | Gating Signals |
 | --- | --- | --- | --- | --- |
 | `eva_airline` | 50 | [ServiceNow/eva](https://github.com/ServiceNow/eva) 0.1.3 | MIT | `DB_STATE_MATCH`, `CLEAN_EXIT` |
-| `tau2_airline` | 50 | [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) | MIT | `DB_STATE_MATCH`, `CLEAN_EXIT` |
+| `tau2_airline` | 50 | [sierra-research/tau2-bench](https://github.com/sierra-research/tau2-bench) | MIT | `DB_STATE_MATCH`, `CLEAN_EXIT`, plus `NL_ASSERTION` on the 24 tasks with adopted assertions |
 | `tau2_retail` | 114 | tau2-bench | MIT | `DB_STATE_MATCH`, `CLEAN_EXIT`, plus `NL_ASSERTION` on the 40 tasks that carry one |
 | `tau2_telecom` | 114 | tau2-bench | MIT | `DB_STATE_ASSERTION`, `CLEAN_EXIT` |
 | `tau2_telecom_workflow` | 114 | tau2-bench | MIT | same as `tau2_telecom` |
@@ -88,10 +88,13 @@ Each domain has its own page with the task shape, tool surface, and known caveat
   `EndConversationTool`.
 - [tau2_airline](../domain-guides/tau2-airline.md) — the 50 IDs in tau2-bench's `base` split. The agent prompt is
   the upstream `policy.md` verbatim plus a short voice-realization appendix, which keeps scores comparable to
-  the published tau2 voice numbers. Agent tool surface: 14 tools plus `EndConversationTool`.
+  the published tau2 voice numbers. Agent tool surface: 14 tools plus `EndConversationTool`. Airline scores 84
+  curated NL assertions across 24 tasks, defined in code rather than read from the fixture, and drops one
+  upstream gold action that its own policy forbids, which makes task `39` intentionally non-comparable to the
+  published leaderboard.
 - [tau2_retail](../domain-guides/tau2-retail.md) — the 114 IDs in the retail `base` split. 40 of them carry
-  `nl_assertions` (natural-language claims judged by the LLM judge). The rest are action/DB-only. Agent tool
-  surface: 16 tools plus `EndConversationTool`.
+  `nl_assertions` (natural-language claims judged by the LLM judge), adopted from upstream as shipped. The
+  rest are action/DB-only. Agent tool surface: 16 tools plus `EndConversationTool`.
 - [tau2_telecom](../domain-guides/tau2-telecom.md) — the 114 IDs in the telecom `base` split and the only
   dual-side domain. The simulated user gets 30 phone-control tools and its own user-side database. The agent
   gets 13 tools plus `EndConversationTool`. All 114 tasks carry `db_state_assertions`, so per-predicate scoring
