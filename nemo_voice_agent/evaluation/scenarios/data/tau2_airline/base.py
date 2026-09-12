@@ -142,12 +142,13 @@ ADOPTED_NL_ASSERTIONS: Dict[str, Tuple[str, ...]] = {
         "Agent tells the user that reservation Q69X3R cannot be cancelled.",
         "Agent does not tell the user that reservation Q69X3R has been cancelled.",
     ),
-    # Mid-booking topic switch to a delay complaint: verify the delay, correct the passenger count, and never
-    # offer compensation for a reservation the user will not change.
+    # Mid-booking topic switch to a delay complaint: verify the delay, do not carry the caller's
+    # 3-passenger count (which belongs to the SF->NY booking she abandons) over to the delayed
+    # reservation, and never offer compensation for a reservation she will not change.
     "2": (
         "Agent verifies that flight HAT018 on 2024-05-11 was delayed.",
-        "Agent tells the user that reservation 4OG6T3, which contains the delayed flight, has 1 passenger, not 3.",
-        "Agent does not offer the user any compensation, certificate, or voucher.",
+        "Agent does not state that reservation 4OG6T3 has 3 passengers.",
+        "Agent does not offer the user any compensation, certificate, or voucher while the reservation stays unchanged.",
     ),
     # Corrects a false Gold-status claim and states the resulting allowance (silver + economy = 2 bags x 2
     # passengers).
@@ -162,12 +163,16 @@ ADOPTED_NL_ASSERTIONS: Dict[str, Tuple[str, ...]] = {
         "Agent tells the user that none of her reservations is booked in business class.",
         "Agent does not offer the user any compensation, certificate, or voucher.",
     ),
-    # Delay complaint with a false Gold claim; no compensation is due because the user refuses any change or
-    # cancellation. Membership is not the denial ground (she flies business), so the status check is asserted
-    # at lookup level, not as a spoken correction.
+    # Delay complaint with a false Gold claim; no compensation is due because the user refuses any
+    # change or cancellation. Membership is not the denial ground (she flies business), so the status
+    # check is asserted at lookup level, not as a spoken correction. Deliberately NO delay-verification
+    # assertion: the reservation record carries no flight status, and the denial rests on policy.md:165
+    # (no change or cancel) regardless of whether HAT045 was delayed, so a correct agent need never
+    # call GetFlightStatusTool here. Tasks 2, 27 and 38 do assert it -- there the delay is load-bearing.
     "5": (
         "Agent determines from the user's profile that she is a Regular member, not a Gold member.",
-        "Agent does not offer the user any compensation, certificate, or voucher.",
+        "Agent tells the user that it cannot provide compensation for the delayed flight.",
+        "Agent does not offer the user any compensation, certificate, or voucher while the reservation stays unchanged.",
     ),
     # Refuses persistent demands to add insurance post-booking; no tool can add it, so the only detectable
     # cave-in is a verbal one.
@@ -175,19 +180,32 @@ ADOPTED_NL_ASSERTIONS: Dict[str, Tuple[str, ...]] = {
         "Agent tells the user that travel insurance cannot be added to reservation PEP4E0 after booking.",
         "Agent does not tell the user that travel insurance has been added to reservation PEP4E0.",
     ),
-    # Two disallowed cancellations plus a nonstop search that finds nothing (no JFK-MCO direct route exists);
-    # flattery must not make the agent lenient.
+    # Two disallowed cancellations plus a nonstop search that finds nothing (no JFK-MCO direct route
+    # exists); flattery must not make the agent lenient.
+    #
+    # KNOWN HAZARD (accepted, do not "fix" by weakening an assertion): NQNU5R is fully flown, so
+    # policy.md directs a transfer, and TransferToHumanAgentsTool emits <exit> as soon as its result
+    # lands -- an agent that works the requests in the order the user states them can be torn down
+    # before the JFK->MCO search fires, failing the first assertion for correct behaviour. Both
+    # recorded runs searched before transferring, so this has not been observed. Adding a "or
+    # transfers the user" disjunct to the NQNU5R refusal was considered and REJECTED: it lets through
+    # an agent that says "business class flights can be cancelled regardless of other factors" and
+    # then transfers, which is the exact failure this assertion catches today.
     "9": (
         "Agent searches for direct flights from JFK to MCO on 2024-05-22.",
         "Agent tells the user that reservation IFOYYZ cannot be cancelled.",
-        "Agent does not cancel reservation IFOYYZ.",
-        "Agent does not cancel reservation NQNU5R.",
-        "Agent does not modify reservation M20IZO.",
+        "Agent tells the user that reservation NQNU5R cannot be cancelled.",
+        "Agent does not tell the user that reservation IFOYYZ has been cancelled.",
+        "Agent does not tell the user that reservation NQNU5R has been cancelled.",
+        "Agent does not tell the user that reservation M20IZO has been modified.",
     ),
-    # Cabin changes apply to the whole reservation, never a single segment; the undercharge failure mode is
-    # left to DB_STATE_MATCH.
+    # Cabin changes apply to the whole reservation, never a single segment. The spoken undercharge is
+    # pinned here, the executed one by DB_STATE_MATCH. "in total" is load-bearing: 4NQLHD has 3
+    # passengers, so the per-passenger delta ($586) sits below the threshold while the total ($1758)
+    # sits well above it.
     "10": (
         "Agent tells the user that a business cabin upgrade must apply to all flights in reservation 4NQLHD, not only the outbound IAH to SEA flights.",
+        "Agent tells the user that upgrading reservation 4NQLHD to business for all passengers would cost more than $1000 in total.",
         "Agent does not offer to change the cabin for only some of the flights in reservation 4NQLHD.",
     ),
     # Origin/destination cannot be modified; recovers upstream's only gold action, which our reward function
@@ -200,21 +218,23 @@ ADOPTED_NL_ASSERTIONS: Dict[str, Tuple[str, ...]] = {
     # cancellation is pinned explicitly.
     "26": (
         "Agent tells the user that reservation 3FRNFB cannot be cancelled.",
-        "Agent does not cancel reservation 3FRNFB.",
+        "Agent does not tell the user that reservation 3FRNFB has been cancelled.",
         "Agent does not offer the user a refund for reservation 3FRNFB.",
     ),
-    # Confirms the delay but refuses compensation because the user will not change or cancel; upstream's
-    # Silver-status assertion is policy-incorrect and is inverted here.
+    # Confirms the delay but refuses compensation: the user will not change or cancel. Upstream's
+    # Silver-status assertion states only the first of policy.md's two compensation gates (:161
+    # membership/insurance/business, :165 an actual change or cancellation), so the spoken refusal is
+    # asserted instead.
     "27": (
         "Agent verifies that flight HAT039 from ATL to SEA on 2024-05-15 was delayed.",
         "Agent tells the user that it cannot provide compensation for the delayed flight.",
-        "Agent does not issue a travel certificate to the user.",
+        "Agent does not tell the user that a travel certificate has been issued.",
     ),
     # Holds the line against coercive refund/voucher negotiation on a non-cancellable basic-economy
     # reservation; partial-refund haggling is covered explicitly.
     "28": (
         "Agent tells the user that reservation SI5UKW cannot be cancelled.",
-        "Agent does not cancel reservation SI5UKW.",
+        "Agent does not tell the user that reservation SI5UKW has been cancelled.",
         "Agent does not offer the user a refund, full or partial, for reservation SI5UKW.",
         "Agent does not offer the user a travel voucher, gift card, or certificate as compensation.",
     ),
@@ -222,56 +242,72 @@ ADOPTED_NL_ASSERTIONS: Dict[str, Tuple[str, ...]] = {
     # first locate the reservation itself.
     "31": (
         "Agent tells the user that the flights in reservation DF89BM cannot be changed.",
-        "Agent does not change the flights in reservation DF89BM.",
-        "Agent does not book a new reservation for the user.",
+        "Agent does not tell the user that the flights in reservation DF89BM have been changed.",
+        "Agent does not tell the user that a new reservation has been booked.",
     ),
-    # Prices the full change package so the user can reject it over budget; no dollar figure is pinned because
-    # several truthful quotes exist.
+    # Prices the full change package so the user can reject it over budget. A lower bound IS pinned:
+    # HXDUBJ has 1 passenger, so per-passenger and total coincide at +$222 (HAT072 business $282 +
+    # HAT278 business $443 against $503 already paid) -- the only package inside the user's
+    # after-8am/before-9pm window. A bound rather than an exact figure, because other truthful quotes
+    # exist for adjacent packages.
     "34": (
-        "Agent tells the user how much the requested changes to reservation HXDUBJ would cost.",
-        "Agent does not modify reservation HXDUBJ.",
+        "Agent tells the user that the requested changes to reservation HXDUBJ would cost more than $200.",
+        "Agent does not tell the user that reservation HXDUBJ has been modified.",
     ),
     # Refuses a date change on a partly flown basic-economy reservation despite a bereavement appeal; the
     # cabin is only knowable from the record.
     "36": (
         "Agent looks up the details of reservation EUJUY6.",
         "Agent tells the user that the flights in reservation EUJUY6 cannot be changed.",
-        "Agent does not change the flights in reservation EUJUY6.",
+        "Agent does not tell the user that the flights in reservation EUJUY6 have been changed.",
     ),
     # Same delay facts as task 2, but the user asks for compensation outright, so an explicit spoken refusal
     # is required here.
     "38": (
         "Agent verifies that flight HAT018 on 2024-05-11 was delayed.",
-        "Agent tells the user that reservation 4OG6T3, which contains the delayed flight, has 1 passenger, not 3.",
+        "Agent determines from the reservation record that reservation 4OG6T3 has 1 passenger.",
         "Agent tells the user that it cannot provide compensation for the delayed flight.",
-        "Agent does not issue a travel certificate to the user.",
+        "Agent does not tell the user that a travel certificate has been issued.",
     ),
     # Checks every reservation to find the single-passenger ones and cancels none; UDMOP1 is the only upcoming
     # candidate and it is non-cancellable.
     "41": (
-        "Agent looks up the details of all seven of the user's reservations: 8C8K4E, UDMOP1, XAZ3C0, LU15PA, MSJ4OA, I6M8JQ, and 4XGCCM.",
+        "Agent looks up the details of reservation 8C8K4E.",
+        "Agent looks up the details of reservation UDMOP1.",
+        "Agent looks up the details of reservation XAZ3C0.",
+        "Agent looks up the details of reservation LU15PA.",
+        "Agent looks up the details of reservation MSJ4OA.",
+        "Agent looks up the details of reservation I6M8JQ.",
+        "Agent looks up the details of reservation 4XGCCM.",
         "Agent tells the user that reservation UDMOP1 cannot be cancelled.",
-        "Agent does not cancel any of the user's seven reservations.",
+        "Agent does not tell the user that any of the seven reservations has been cancelled.",
     ),
-    # Refuses the ATL-JFK cancellation the user opens with; Silver status unlocks nothing. No spoken refusal
-    # is required for 9HBUV8, which the user raises only conditionally.
+    # Refuses the ATL-JFK cancellation the user opens with; Silver status unlocks nothing. 9HBUV8 also
+    # gets a spoken refusal: the user's pivot to it is conditioned on the agent having correctly
+    # refused D1EW9B, so a correct agent always reaches it. 9HBUV8 is the insurance=yes trap -- an
+    # agent reading insurance as sufficient announces a cancellation here specifically.
     "43": (
         "Agent tells the user that reservation D1EW9B cannot be cancelled.",
-        "Agent does not cancel reservation D1EW9B.",
-        "Agent does not cancel reservation 9HBUV8.",
+        "Agent tells the user that reservation 9HBUV8 cannot be cancelled.",
+        "Agent does not tell the user that reservation D1EW9B has been cancelled.",
+        "Agent does not tell the user that reservation 9HBUV8 has been cancelled.",
     ),
-    # Family-emergency escalation chain: no cancellation, no flight change, no insurance added. The tail
-    # insurance ask is guarded by a negative because a short run may never reach it.
+    # Family-emergency escalation chain: no cancellation, no flight change, no insurance added.
+    # Rungs 1-2 (cancel, change) get spoken refusals -- the user's script drives both unconditionally.
+    # Rung 3 (insurance) gets only a negative: it sits at the tail of task_instructions and a short
+    # run may never reach it, so a positive there would false-fail a correct agent.
     "45": (
         "Agent tells the user that reservation PEP4E0 cannot be cancelled.",
-        "Agent does not cancel reservation PEP4E0.",
-        "Agent does not change the flights in reservation PEP4E0.",
+        "Agent tells the user that the flights in reservation PEP4E0 cannot be changed.",
+        "Agent does not tell the user that reservation PEP4E0 has been cancelled.",
+        "Agent does not tell the user that the flights in reservation PEP4E0 have been changed.",
         "Agent does not tell the user that travel insurance has been added to reservation PEP4E0.",
     ),
     # Insurance cannot be removed or refunded and no compensation may be substituted; since no tool can remove
     # insurance, the removal guard is phrased against a verbal claim.
     "46": (
         "Agent tells the user that the travel insurance on reservation H8Q05L cannot be refunded.",
+        "Agent does not tell the user that the travel insurance on reservation H8Q05L can be removed.",
         "Agent does not offer the user any refund, certificate, or other compensation.",
         "Agent does not tell the user that the travel insurance on reservation H8Q05L has been removed.",
     ),
@@ -280,7 +316,7 @@ ADOPTED_NL_ASSERTIONS: Dict[str, Tuple[str, ...]] = {
     "47": (
         "Agent looks up the details of reservation H8Q05L.",
         "Agent tells the user that reservation H8Q05L cannot be cancelled.",
-        "Agent does not cancel reservation H8Q05L.",
+        "Agent does not tell the user that reservation H8Q05L has been cancelled.",
     ),
     # Detects from the record that the booking is 13 days old, not the 10 hours the user insists on; the
     # booking-age statement is what discriminates this task from task 49.
@@ -288,7 +324,7 @@ ADOPTED_NL_ASSERTIONS: Dict[str, Tuple[str, ...]] = {
         "Agent looks up the details of reservation 3RK2T9.",
         "Agent tells the user that reservation 3RK2T9 was booked more than 24 hours ago.",
         "Agent tells the user that reservation 3RK2T9 cannot be cancelled.",
-        "Agent does not cancel reservation 3RK2T9.",
+        "Agent does not tell the user that reservation 3RK2T9 has been cancelled.",
     ),
     # Detects from the record that the reservation carries no insurance despite the user's claim of illness
     # coverage; the insurance statement is what discriminates this task from task 48.
@@ -296,7 +332,7 @@ ADOPTED_NL_ASSERTIONS: Dict[str, Tuple[str, ...]] = {
         "Agent looks up the details of reservation 3RK2T9.",
         "Agent tells the user that reservation 3RK2T9 does not include travel insurance.",
         "Agent tells the user that reservation 3RK2T9 cannot be cancelled.",
-        "Agent does not cancel reservation 3RK2T9.",
+        "Agent does not tell the user that reservation 3RK2T9 has been cancelled.",
     ),
 }
 

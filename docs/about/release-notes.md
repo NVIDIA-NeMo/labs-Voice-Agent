@@ -48,8 +48,8 @@ The following table summarizes the dated project milestones documented on this p
 The `tau2_airline` evaluation domain now scores an `NL_ASSERTION` signal on 24 of its 50 scenarios. Those
 24 have no database-mutating reference action, so their expected database equals the seeded one and
 `DB_STATE_MATCH` passed any agent that changed nothing — including one that greeted the caller and
-immediately ended the call. Each now carries curated natural-language assertions, 72 in total and two to
-five per scenario, which the large language model (LLM) judge scores one verdict at a time. A scenario
+immediately ended the call. Each now carries curated natural-language assertions, 84 in total and two to
+nine per scenario, which the large language model (LLM) judge scores one verdict at a time. A scenario
 passes only when the agent actually states the refusal or the fact under test. The remaining 26 scenarios
 keep `(DB_STATE_MATCH, CLEAN_EXIT)` and are unaffected.
 

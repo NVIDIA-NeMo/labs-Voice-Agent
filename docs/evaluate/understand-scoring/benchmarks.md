@@ -88,7 +88,7 @@ Each domain has its own page with the task shape, tool surface, and known caveat
   `EndConversationTool`.
 - [tau2_airline](../domain-guides/tau2-airline.md) — the 50 IDs in tau2-bench's `base` split. The agent prompt is
   the upstream `policy.md` verbatim plus a short voice-realization appendix, which keeps scores comparable to
-  the published tau2 voice numbers. Agent tool surface: 14 tools plus `EndConversationTool`. Airline scores 72
+  the published tau2 voice numbers. Agent tool surface: 14 tools plus `EndConversationTool`. Airline scores 84
   curated NL assertions across 24 tasks, defined in code rather than read from the fixture, and drops one
   upstream gold action that its own policy forbids, which makes task `39` intentionally non-comparable to the
   published leaderboard.

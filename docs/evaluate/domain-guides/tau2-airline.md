@@ -20,7 +20,7 @@ limitations under the License.
 `tau2_airline` provides 50 airline customer-support scenarios ported from
 [tau2-bench](https://github.com/sierra-research/tau2-bench) as full voice conversations. Tasks include
 cancellations, rebooking, upgrades, baggage changes, and compensation. The agent receives tau2's
-`policy.md` unchanged. Scoring combines a path-independent hash of the end-state database with 72 curated
+`policy.md` unchanged. Scoring combines a path-independent hash of the end-state database with 84 curated
 natural-language assertions judged one claim at a time.
 
 ## At a Glance
@@ -280,13 +280,13 @@ Only assertions that survive the audit are adopted. The rest stay in the fixture
 ### The Adopted Set
 
 `ADOPTED_NL_ASSERTIONS` in `nemo_voice_agent/evaluation/scenarios/data/tau2_airline/base.py` holds the
-authoritative list: **72 assertions across 24 tasks**, keyed by `tau2_id`. Those 24 tasks are exactly the
+authoritative list: **84 assertions across 24 tasks**, keyed by `tau2_id`. Those 24 tasks are exactly the
 tasks with no DB-mutating gold action, so the curated set covers the gap and nothing else. The other 26 tasks
 have `nl_assertions is None` and keep `DB_STATE_MATCH` and `CLEAN_EXIT`. Read the constant for the current
 strings — the counts here are pinned by `tests/unit/test_tau2_airline_scenarios.py`, and each entry carries a
 comment explaining what its task probes.
 
-Per-task counts range from two to five. Every task pairs a required spoken act — a refusal said out loud, or
+Per-task counts range from two to nine. Every task pairs a required spoken act — a refusal said out loud, or
 a fact the agent must surface — with the prohibitions that constrain it. That pairing is the point. A pure
 prohibition such as "Agent does not cancel reservation X" is satisfied by an agent that says nothing and does
 nothing, which is the exact failure this change exists to catch. Two examples show what curation buys:

@@ -88,7 +88,7 @@ that scenarios from different upstream libraries don't collide.
     This changes `expected_scenario_db` for task 39, so that task's score is
     **intentionally not comparable** to tau2's published leaderboard; every other
     task is unaffected. Empty the dict to restore bit-exact upstream behavior.
-  - `ADOPTED_NL_ASSERTIONS` is a **curated subset** — 72 assertions across the
+  - `ADOPTED_NL_ASSERTIONS` is a **curated subset** — 84 assertions across the
     24 tasks that have no DB-mutating gold action — read by
     `Tau2AirlineBaseScenario.nl_assertions` *instead of* the upstream
     `evaluation_criteria.nl_assertions` (which is what `tau2_retail` reads).

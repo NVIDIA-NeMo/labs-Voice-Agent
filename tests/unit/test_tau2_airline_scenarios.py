@@ -140,9 +140,9 @@ def test_clean_exit_in_every_success_signal_set():
 
 
 def test_adopted_assertion_totals():
-    """24 tasks, 72 assertions. Pins the curated set against accidental edits."""
+    """24 tasks, 84 assertions. Pins the curated set against accidental edits."""
     assert len(ADOPTED_NL_ASSERTIONS) == 24
-    assert sum(len(v) for v in ADOPTED_NL_ASSERTIONS.values()) == 72
+    assert sum(len(v) for v in ADOPTED_NL_ASSERTIONS.values()) == 84
 
 
 def test_adopted_tasks_are_exactly_the_no_write_tasks():
@@ -199,6 +199,44 @@ def test_adopted_assertions_follow_the_authoring_rules():
             # Raw payment ids are unspeakable in a voice run.
             for banned in ("gift_card_", "credit_card_", "certificate_"):
                 assert banned not in a, f"{where} names a raw payment id"
+
+
+def test_every_task_has_a_positive_assertion():
+    """The invariant the whole change rests on: a silent agent must fail every task.
+
+    A pure "Agent does not ..." string is satisfied for free by an agent that
+    greets the caller and hangs up — exactly the failure mode these assertions
+    exist to catch. Each task therefore needs at least one claim requiring an
+    observable act: a spoken refusal, a stated fact, or a tool call.
+    """
+    for tau2_id, assertions in ADOPTED_NL_ASSERTIONS.items():
+        positives = [a for a in assertions if not a.startswith("Agent does not")]
+        assert positives, f"task {tau2_id}: every assertion is a negative; a silent agent passes"
+
+
+def test_no_assertion_duplicates_db_state_match():
+    """Absence-of-mutation claims are redundant and must be phrased verbally.
+
+    Every DB write reachable by the agent (cancel / change / modify / book /
+    issue a certificate) already fails ``DB_STATE_MATCH`` on these tasks, whose
+    gold DB is the seeded DB. "Agent does not cancel X" therefore cannot change
+    a verdict, while a silent agent satisfies it for free.
+
+    The verbal form ("Agent does not tell the user that X has been cancelled")
+    keeps that coverage — the real mutation is still caught by DB_STATE_MATCH —
+    and additionally catches the agent that *claims* to have acted without
+    calling any tool, which no other signal sees.
+    """
+    mutating_verbs = {"cancel", "change", "modify", "book", "issue", "remove", "add"}
+    for tau2_id, assertions in ADOPTED_NL_ASSERTIONS.items():
+        for a in assertions:
+            if not a.startswith("Agent does not "):
+                continue
+            verb = a[len("Agent does not ") :].split()[0].rstrip(".")
+            assert verb not in mutating_verbs, (
+                f"task {tau2_id}: {a!r} restates DB_STATE_MATCH; "
+                f'phrase it as "Agent does not tell the user that ... has been {verb}ed."'
+            )
 
 
 def test_task_39_assertions_are_not_adopted():
