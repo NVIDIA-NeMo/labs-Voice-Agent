@@ -16,6 +16,7 @@
 import json
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import cached_property
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Sequence, Union
 
@@ -303,10 +304,13 @@ class Scenario:
         if "name" not in cls.__dict__:
             return
         signals = cls.success_signals
-        # ``success_signals`` may be a ``cached_property`` — skip the empty
-        # check in that case (we can't evaluate it without an instance, and
-        # the property body is the explicit declaration).
-        if isinstance(getattr(cls, "success_signals", None), property):
+        # ``success_signals`` may be a ``property`` or ``cached_property`` — skip
+        # the empty check in that case (we can't evaluate it without an
+        # instance, and the descriptor body is the explicit declaration).
+        # ``cached_property`` is NOT a ``property`` subclass, so it must be named
+        # explicitly; without it this guard falls through and only passes
+        # because a class-level descriptor access returns the truthy descriptor.
+        if isinstance(getattr(cls, "success_signals", None), (property, cached_property)):
             return
         if not signals:
             raise TypeError(

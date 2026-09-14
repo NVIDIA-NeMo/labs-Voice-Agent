@@ -187,8 +187,9 @@ uv run pytest tests/unit -m "not gpu"
 ```
 
 `tests/unit/test_tau2_telecom_scenarios.py` asserts 114 manual plus 114 workflow registrations,
-`tests/unit/test_tau2_retail_scenarios.py` asserts 114 retail registrations, and the eva suites cover the
-airline tools and scenario metadata. A scaffolding regression shows up there first. Generated modules carry
+`tests/unit/test_tau2_retail_scenarios.py` asserts 114 retail registrations,
+`tests/unit/test_tau2_airline_scenarios.py` asserts 50 airline registrations and pins the domain's in-code
+gold-action and assertion corrections, and the eva suites cover the airline tools and scenario metadata. A scaffolding regression shows up there first. Generated modules carry
 the SPDX header their templates emit, which keeps the `copyright-check.yml` gate green.
 
 ## Related Pages

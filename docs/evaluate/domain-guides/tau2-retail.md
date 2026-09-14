@@ -21,9 +21,10 @@ limitations under the License.
 user asks the agent to cancel an order, change an address or payment method, or exchange or return items.
 The agent follows the upstream retail `policy.md` against a shared products, users, and orders database.
 
-Retail is single-side, so only the agent holds a database. Unlike [tau2_airline](tau2-airline.md), 40 of its
-114 tasks carry `nl_assertions`. The large language model (LLM) judge scores these natural-language claims
-one at a time.
+Retail is single-side, so only the agent holds a database. 40 of its 114 tasks carry `nl_assertions`, and the
+large language model (LLM) judge scores these natural-language claims one at a time. Retail adopts the
+upstream assertions as they ship, which is where it differs from [tau2_airline](tau2-airline.md): airline
+scores a curated subset defined in code.
 
 ## At a Glance
 
@@ -182,7 +183,7 @@ Use these pages to interpret retail results or compare the domain with the other
 
 - [Scoring model](../understand-scoring/scoring.md) — how the six signals combine into `is_successful`.
 - [Benchmarks and Domains](../understand-scoring/benchmarks.md) — the full catalog and naming conventions.
-- [tau2_airline](tau2-airline.md) — same base machinery, no NL assertions.
+- [tau2_airline](tau2-airline.md) — same base machinery, with a curated in-code subset of NL assertions.
 - [tau2_telecom](tau2-telecom.md) — dual-side domain that adds `db_state_assertions`.
 - [Data provenance](data-provenance.md) — upstream pin and license for the retail fixtures.
 - [Metrics reference](../../reference/evaluation/metrics.md) — field-by-field schema for `metrics.json` and
