@@ -31,6 +31,7 @@ The following table summarizes the dated project milestones documented on this p
 
 | Date | Highlights |
 | --- | --- |
+| 2026-09-14 | Diarization speaker cache update period reaches the model; 144 frames on the default path |
 | 2026-09-09 | `tau2_airline` scores NL assertions on 24 scenarios; task 39 gold-action correction |
 | 2026-09-02 | Nemotron-3.5-Lightning-30B-A3B-NVFP4 is the new shipped default LLM; added Qwen3.6-35B-A3B and Qwen3.8-27B configs |
 | 2026-08-06 | Graduated to a standalone repository |
@@ -42,6 +43,21 @@ The following table summarizes the dated project milestones documented on this p
 | 2025-10-10 | Kokoro-82M TTS |
 | 2025-10-03 | vLLM serving with automatic Hugging Face fallback |
 | 2025-09-05 | First release |
+
+## 2026-09-14 — Diarization Speaker Cache Update Period Fix
+
+The streaming Sortformer diarizer now applies its configured speaker cache update period. NVIDIA NeMo
+renamed that parameter from `spkcache_refresh_rate` to `spkcache_update_period` in `nemo-toolkit` 2.5, and
+the old name wrote to an attribute the model never reads, so the checkpoint's own value of 188 frames
+stayed in force. With diarization enabled, which is the shipped default, the period is now 144 frames
+against a 188-frame first-in, first-out (FIFO) queue, matching NeMo's reference default. The speaker cache
+therefore updates more often and keeps recent uncompressed frames in the queue after each update. The chunk
+of audio the model consumes per step is unchanged, so only the cache update cadence differs. The service
+also resolves each streaming
+parameter name against the loaded model and raises an error when none of the accepted names exists, so a
+future rename fails loudly instead of silently.
+
+Learn more: [Diarization](core-concepts/speech-pipeline/diarization.md)
 
 ## 2026-09-09 — tau2_airline NL-Assertion Scoring and Task 39 Gold-Action Correction
 

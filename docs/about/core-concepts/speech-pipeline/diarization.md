@@ -46,6 +46,19 @@ The stock system prompt in `default.yaml` tells the LLM to use speaker tags for 
 without echoing them. If you replace the system prompt, retain that instruction. For prompt configuration,
 refer to [Prompts](../../../build-voice-agents/configure/prompts.md).
 
+## Speaker Cache Updates
+
+Streaming Sortformer carries two buffers of past audio between chunks: a first-in, first-out (FIFO)
+queue of recent uncompressed frames, and a compressed speaker cache that holds the long-term profile of
+each speaker. Every time the FIFO queue overflows, the model migrates `spkcache_update_period` frames out
+of the queue and into the speaker cache. The service sets that period to 144 frames against a 188-frame
+FIFO queue, which matches NVIDIA NeMo's reference default and leaves the most recent frames in the queue
+uncompressed after each update.
+
+These streaming parameters are internal. They live in `DiarizationConfig` in
+`nemo_voice_agent/pipecat/services/nemo/streaming_diar.py`, and the service overrides only `device` when
+it loads the model, so you cannot change them from `default.yaml`.
+
 ## Supported Models
 
 The following models are available for local and hosted speaker diarization.

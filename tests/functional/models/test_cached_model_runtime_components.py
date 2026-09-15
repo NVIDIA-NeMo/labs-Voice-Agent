@@ -152,6 +152,14 @@ def test_streaming_diarization_model_returns_speaker_probabilities_from_cache():
 
         assert diar_result.shape == (service.chunk_size, service.max_num_speakers)
         assert np.isfinite(diar_result).all()
+
+        # Pin the streaming overrides end-to-end: a parameter NeMo has renamed would otherwise be
+        # written to a dead attribute and leave the checkpoint's value silently in force.
+        modules = service.diarizer.sortformer_modules
+        assert modules.chunk_len == service.cfg.chunk_len
+        assert modules.fifo_len == service.cfg.fifo_len
+        assert modules.chunk_right_context == service.cfg.chunk_right_context
+        assert modules.spkcache_update_period == service.cfg.spkcache_update_period
     finally:
         del service
         _cleanup_cuda()

@@ -15,7 +15,7 @@
 # NOTE: This file will be deprecated in the future, as the new inference pipeline will replace it.
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -35,15 +35,21 @@ class DiarizationConfig:
 
     log: bool = False  # If True, log will be printed
     max_num_speakers: int = 4
-    spkcache_len: int = 188
-    spkcache_refresh_rate: int = 144
+    # ``None`` leaves the checkpoint's own value in place.
+    spkcache_len: Optional[int] = None
+    spkcache_update_period: int = 144
     fifo_len: int = 188
     chunk_len: int = 6
-    chunk_left_context: int = 1
+    chunk_left_context: Optional[int] = None
     chunk_right_context: int = 7
 
 
 class NeMoStreamingDiarService:
+    """Provide stateful streaming Sortformer diarization for Pipecat audio frames.
+
+    Buffers incoming features and maintains Sortformer streaming state across calls.
+    """
+
     def __init__(
         self,
         cfg: DiarizationConfig,
@@ -84,31 +90,101 @@ class NeMoStreamingDiarService:
         print(f"NeMoStreamingDiarService initialized with model `{model}` on device `{self.device}`")
 
     def build_diarizer(self):
+        """Load and configure the Sortformer diarization model.
+
+        Loads a local ``.nemo`` checkpoint or a pretrained model, applies the configured streaming overrides,
+        validates the resulting streaming parameters, and switches the model to evaluation mode.
+
+        Returns:
+            SortformerEncLabelModel: The configured Sortformer diarization model.
+        """
         if self.cfg.model_path.endswith(".nemo"):
             diar_model = SortformerEncLabelModel.restore_from(self.cfg.model_path, map_location=self.cfg.device)
         else:
             diar_model = SortformerEncLabelModel.from_pretrained(self.cfg.model_path, map_location=self.cfg.device)
 
-        # Steaming mode setup
-        diar_model.sortformer_modules.chunk_len = self.cfg.chunk_len
-        diar_model.sortformer_modules.spkcache_len = self.cfg.spkcache_len
-        diar_model.sortformer_modules.chunk_left_context = self.cfg.chunk_left_context
-        diar_model.sortformer_modules.chunk_right_context = self.cfg.chunk_right_context
-        diar_model.sortformer_modules.fifo_len = self.cfg.fifo_len
-        diar_model.sortformer_modules.log = self.cfg.log
-        diar_model.sortformer_modules.spkcache_refresh_rate = self.cfg.spkcache_refresh_rate
+        self.apply_streaming_config(diar_model)
         diar_model.eval()
 
         return diar_model
 
+    def apply_streaming_config(self, diar_model) -> None:
+        """Push the configured streaming overrides onto a loaded Sortformer model, then validate them.
+
+        Args:
+            diar_model: A loaded ``SortformerEncLabelModel``.
+        """
+        modules = diar_model.sortformer_modules
+
+        self._set_streaming_param(modules, ("chunk_len",), self.cfg.chunk_len)
+        if self.cfg.spkcache_len is not None:
+            self._set_streaming_param(modules, ("spkcache_len",), self.cfg.spkcache_len)
+        if self.cfg.chunk_left_context is not None:
+            self._set_streaming_param(modules, ("chunk_left_context",), self.cfg.chunk_left_context)
+        self._set_streaming_param(modules, ("chunk_right_context",), self.cfg.chunk_right_context)
+        self._set_streaming_param(modules, ("fifo_len",), self.cfg.fifo_len)
+        self._set_streaming_param(modules, ("log",), self.cfg.log)
+        # NeMo renamed this knob from ``spkcache_refresh_rate`` to ``spkcache_update_period``; accept either.
+        self._set_streaming_param(
+            modules, ("spkcache_update_period", "spkcache_refresh_rate"), self.cfg.spkcache_update_period
+        )
+
+        # The model validates its streaming parameters at load time, which is before the overrides above,
+        # so re-run the check afterwards. NeMo exposes it on the model in newer releases and only on the
+        # sortformer module in 2.7.x -- take whichever this install provides.
+        for owner in (diar_model, modules):
+            check = getattr(owner, "_check_streaming_parameters", None)
+            if check is not None:
+                check()
+                break
+
+    @staticmethod
+    def _set_streaming_param(modules, names: Tuple[str, ...], value) -> None:
+        """Assign a Sortformer streaming parameter, tolerating NeMo's attribute renames.
+
+        ``nn.Module.__setattr__`` accepts any name, so writing a parameter that NeMo has since renamed
+        fails silently and leaves the checkpoint value in force. Resolve the name against the loaded
+        module instead, and raise if none of ``names`` exists.
+
+        Args:
+            modules: The model's ``sortformer_modules``.
+            names: Accepted attribute names, most current first.
+            value: The value to assign.
+
+        Raises:
+            AttributeError: If the installed NeMo release exposes none of ``names``.
+        """
+        for name in names:
+            if hasattr(modules, name):
+                setattr(modules, name, value)
+                return
+        raise AttributeError(
+            f"None of {names} exist on {type(modules).__name__}. The installed NeMo release may have "
+            "renamed this streaming parameter; update DiarizationConfig to match."
+        )
+
     def print_diar_result(self, diar_result: np.ndarray):
+        """Print one row of frame-level speaker probabilities per frame.
+
+        Args:
+            diar_result: Array of shape ``(frames, speakers)`` holding frame-level speaker probabilities.
+        """
         for t in range(diar_result.shape[0]):
             spk_probs = ""
             for s in range(diar_result.shape[1]):
                 spk_probs += f"{diar_result[t, s]:.2f} "
             print(f"Time {t}: {spk_probs}")
 
-    def diarize(self, audio: bytes, stream_id: str = "default") -> str:
+    def diarize(self, audio: bytes, stream_id: str = "default") -> np.ndarray:
+        """Diarize the latest chunk of streaming audio.
+
+        Args:
+            audio: Mono signed 16-bit PCM audio bytes.
+            stream_id: Identifier retained by the service interface.
+
+        Returns:
+            np.ndarray: Frame-level speaker probabilities for the latest chunk, shape ``(frames, speakers)``.
+        """
         audio_array = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
 
         self.feature_bufferer.update(audio_array)
@@ -127,9 +203,14 @@ class NeMoStreamingDiarService:
         )
         self.total_preds = chunk_preds
         diar_result = chunk_preds[:, -self.chunk_size :, :].clone().cpu().numpy()
-        return diar_result[0]  # tensor of shape [6, 4]
+        return diar_result[0]  # array of shape [chunk_len, max_num_speakers]
 
     def reset_state(self, stream_id: str = "default"):
+        """Reset the feature buffer, Sortformer streaming state, and accumulated predictions.
+
+        Args:
+            stream_id: Identifier retained by the service interface.
+        """
         self.feature_bufferer.reset()
         self.streaming_state = self.init_streaming_state(batch_size=1)
         self.total_preds = torch.zeros((1, 0, self.max_num_speakers), device=self.diarizer.device)
