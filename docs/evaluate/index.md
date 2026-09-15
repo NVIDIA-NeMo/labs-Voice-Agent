@@ -85,9 +85,12 @@ The bridge is responsible for the following runtime coordination and evidence-ca
   resolves `db_path` to a loaded DB, applies init-function mutations). Both bots always receive
   `apply_initialization`, because the DB-load step runs even when a scenario declares no init mutations.
 - **Termination detection.** The agent ends a conversation by calling its end-conversation tool, which emits
-  an `<exit>` tag. The bridge records stop reason `[EXIT]`. Hitting the time limit records `[TIMEOUT]`. With
-  `--conversation-end-policy valid-terminal-state`, a simulated-user `<exit>...</exit>` message stops the run
-  and records `[SIMULATOR_EXIT]`.
+  an `<exit>` tag. The bridge records stop reason `[EXIT]`. The bridge also stops after 30 seconds without
+  meaningful activity by default and records `[INACTIVITY_TIMEOUT]`. Speaking lifecycle events, text-to-speech
+  events, and relevant server messages or actions from either bot reset this timer. Silent audio frames do not.
+  Use `--inactivity-timeout` to change the interval. This timer is distinct from the overall scenario time limit,
+  which records `[TIMEOUT]`. With `--conversation-end-policy valid-terminal-state`, a simulated-user
+  `<exit>...</exit>` message stops the run and records `[SIMULATOR_EXIT]`.
 - **Cross-side state sync.** For dual-side domains, each write tool emits an `action-applied` event. The
   bridge replays it onto shadow DBs and calls the scenario's `sync_state`. It pushes the resulting delta to
   the other bot through `apply_sync_delta`. Single-side domains skip this step. Refer to
@@ -118,8 +121,8 @@ the composite `is_successful` verdict. The rest are still computed and saved as 
 
 `CLEAN_EXIT` is in every domain's whitelist. The default `tool-only` policy requires the agent's
 end-conversation tool. The opt-in `valid-terminal-state` policy also accepts a simulator-reported successful
-end or an inactivity timeout after a final user turn. Full semantics, the per-domain whitelist matrix, and the
-strict-conjunction rule are
+end or a bridge inactivity timeout after a final user turn. An overall scenario timeout does not pass. Full
+semantics, the per-domain whitelist matrix, and the strict-conjunction rule are
 in [Scoring model](understand-scoring/scoring.md).
 
 A run writes session artifacts to `eval_results/eval_<TIMESTAMP>/`. These include `all_metrics.json`,
@@ -161,6 +164,8 @@ Two defaults to know before you compare runs:
   warning line in `all_summary.txt` before reading the numbers. Pass `0` to disable.
 - `--duration` defaults to unset, in which case each scenario's own `max_duration` applies. Passing a value
   overrides every scenario.
+- `--inactivity-timeout` defaults to `30.0` seconds. Meaningful activity from either bot resets it. This limit
+  can end a scenario before its overall duration expires.
 
 The full flag list is in the [eval CLI reference](../reference/evaluation/eval-cli.md). Interrupted runs are picked up
 with `--resume`, described in [Resuming a run](run-evaluations/resume.md).

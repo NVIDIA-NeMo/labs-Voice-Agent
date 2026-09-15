@@ -50,7 +50,8 @@ scenario that completes a bridge run.
 | `scenario_duration` | float | Runner-measured wall clock around `bridge.run_scenario`. Slightly larger than `duration_seconds`. |
 | `latency_stats` | object | Aggregate over this scenario's `latencies`, with fields defined after this table. |
 | `latencies` | list | One entry per measurement: `user_transcript`, `agent_transcript`, `latency_ms`. |
-| `stop_reason` | string | Lower-level bridge stop reason, such as `"[EXIT]"` or `"[TIMEOUT]"`. |
+| `stop_reason` | string | Lower-level bridge stop reason, such as `"[EXIT]"`, `"[SIMULATOR_EXIT]"`, `"[INACTIVITY_TIMEOUT]"`, or `"[TIMEOUT]"`. |
+| `inactivity_timeout_seconds` | float | Configured inactivity interval for the bridge. The default is `30.0` seconds. |
 | `clean_exit` | bool | Compatibility success signal evaluated under `conversation_end_policy`. Under the default `tool-only` policy, only an agent `EndConversationTool` exit passes. |
 | `end_conversation_tool_called` | bool | Whether the agent called `EndConversationTool`, independent of the selected policy verdict. |
 | `simulator_end_reported` | bool | Whether the simulated user emitted an `<exit>...</exit>` real-time voice interface (RTVI) server message. |
@@ -70,9 +71,14 @@ therefore includes automatic speech recognition (ASR), LLM, and text-to-speech (
 only LLM latency.
 
 With `conversation_end_policy: "valid-terminal-state"`, `clean_exit` is also `true` when the simulator reports
-a successful end or an inactivity timeout occurs after a final user turn. A timeout after a final agent turn remains
-`false`. The `--min-agent-turns` check remains authoritative and forces stalled scenarios to fail regardless of
-their conversation-end evidence.
+a successful end or `[INACTIVITY_TIMEOUT]` occurs after a final user turn. An inactivity timeout after a final
+agent turn and the overall `[TIMEOUT]` both remain `false`. The `--min-agent-turns` check remains authoritative
+and forces stalled scenarios to fail regardless of their conversation-end evidence.
+
+The inactivity timer resets on meaningful activity from either bot, including speaking lifecycle events,
+text-to-speech events, and relevant server messages or actions. It does not reset on raw audio frames because
+the bridge streams silence continuously. `inactivity_timeout_seconds` records the configured interval, while
+`duration_seconds` records actual elapsed runtime and `scenario_duration` includes runner overhead.
 
 The `conversation_end_reason` value identifies the evidence used for the verdict:
 
@@ -80,7 +86,7 @@ The `conversation_end_reason` value identifies the evidence used for the verdict
 |---|---|
 | `agent_end_conversation_tool` | The agent called `EndConversationTool`; both policies pass. |
 | `simulator_reported_end` | The simulator emitted `<exit>...</exit>`; `valid-terminal-state` passes. The bridge records `stop_reason: "[SIMULATOR_EXIT]"` when this policy is enabled. |
-| `timeout_after_user_final_turn` | The bridge timed out and `last_speaker` is `"user"`; `valid-terminal-state` passes. |
+| `inactivity_timeout_after_user_final_turn` | The bridge recorded `[INACTIVITY_TIMEOUT]` and `last_speaker` is `"user"`; `valid-terminal-state` passes. An overall `[TIMEOUT]` does not qualify. |
 | `agent_end_conversation_tool_missing` | The `tool-only` policy failed because the agent did not call `EndConversationTool`. |
 | `no_valid_terminal_evidence` | The `valid-terminal-state` policy found no accepted terminal evidence. |
 

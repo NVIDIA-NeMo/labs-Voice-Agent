@@ -33,7 +33,12 @@ from typing import Optional
 
 import pytest
 
-from nemo_voice_agent.evaluation.bridge import STOP_REASON_EXIT, STOP_REASON_SIMULATOR_EXIT, STOP_REASON_TIMEOUT
+from nemo_voice_agent.evaluation.bridge import (
+    STOP_REASON_EXIT,
+    STOP_REASON_INACTIVITY_TIMEOUT,
+    STOP_REASON_SIMULATOR_EXIT,
+    STOP_REASON_TIMEOUT,
+)
 from nemo_voice_agent.evaluation.runner import ConversationEndPolicy, evaluate_conversation_end
 from nemo_voice_agent.evaluation.scenarios.classes import (
     Actions,
@@ -92,14 +97,21 @@ def _make_minimal_scenario(success_signals, name="test__minimal", nl_assertions=
         ),
         (
             ConversationEndPolicy.VALID_TERMINAL_STATE,
-            STOP_REASON_TIMEOUT,
+            STOP_REASON_INACTIVITY_TIMEOUT,
             [{"role": "agent"}, {"role": "user"}],
             False,
-            (True, "timeout_after_user_final_turn"),
+            (True, "inactivity_timeout_after_user_final_turn"),
         ),
         (
             ConversationEndPolicy.VALID_TERMINAL_STATE,
             STOP_REASON_TIMEOUT,
+            [{"role": "agent"}, {"role": "user"}],
+            False,
+            (False, "no_valid_terminal_evidence"),
+        ),
+        (
+            ConversationEndPolicy.VALID_TERMINAL_STATE,
+            STOP_REASON_INACTIVITY_TIMEOUT,
             [{"role": "user"}, {"role": "agent"}],
             False,
             (False, "no_valid_terminal_evidence"),

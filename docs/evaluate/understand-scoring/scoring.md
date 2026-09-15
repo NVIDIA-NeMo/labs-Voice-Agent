@@ -114,12 +114,13 @@ agent. Read telecom judge scores with this in mind. Refer to
 **`CLEAN_EXIT`** — a compatibility signal whose verdict depends on `--conversation-end-policy`:
 
 - `tool-only` (default) passes only when the agent calls `EndConversationTool` and emits `[EXIT]`.
-- `valid-terminal-state` also passes when the simulator reports a successful end, or when an inactivity timeout occurs
-  after the user produced the final recorded turn.
+- `valid-terminal-state` also passes when the simulator reports a successful end, or when the bridge records
+  `[INACTIVITY_TIMEOUT]` after the user produced the final recorded turn.
 
 The opt-in policy prevents tool-call accuracy from being the only evidence of a valid ending. It does not make
-every timeout successful: an agent-final timeout still fails, and the `--min-agent-turns` stall filter continues
-to override the composite verdict. Use `end_conversation_tool_called` to measure explicit tool compliance.
+every timeout successful: an inactivity timeout after an agent-final turn fails, and an overall `[TIMEOUT]`
+always fails. The `--min-agent-turns` stall filter continues to override the composite verdict. Use
+`end_conversation_tool_called` to measure explicit tool compliance.
 `conversation_end_reason` records why the policy passed or failed, and `conversation_end_policy` records the
 policy used. The lower-level bridge reason remains available as `stop_reason`.
 

@@ -23,12 +23,14 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from nemo_voice_agent.evaluation.bridge import (
     RTVI_BOT_SERVER_MESSAGE,
     RTVI_BOT_STARTED_SPEAKING,
     RTVI_BOT_STOPPED_SPEAKING,
     RTVI_BOT_TTS_TEXT,
+    STOP_REASON_INACTIVITY_TIMEOUT,
     STOP_REASON_SIMULATOR_EXIT,
     EvaluationMetrics,
     ResponseLatency,
@@ -307,6 +309,44 @@ def test_monitor_user_message_records_but_ignores_simulator_exit_by_default(tmp_
     assert bridge.simulator_end_reported is True
     assert bridge.stop_reason == "[TIMEOUT]"
     assert not bridge.stop_event.is_set()
+
+
+def test_bridge_inactivity_timeout_defaults_to_thirty_seconds(tmp_path):
+    """The bridge stops after 30 seconds without meaningful activity by default."""
+    bridge = _bridge(tmp_path)
+    bridge.last_activity_monotonic = 100.0
+
+    assert bridge._stop_if_inactive(now=129.9) is False
+    assert bridge._stop_if_inactive(now=130.0) is True
+    assert bridge.stop_reason == STOP_REASON_INACTIVITY_TIMEOUT
+    assert bridge.stop_event.is_set()
+
+
+def test_bridge_activity_resets_configurable_inactivity_timeout(tmp_path):
+    """Conversational events reset a custom inactivity window while raw silence audio does not."""
+    bridge = _bridge(tmp_path, inactivity_timeout=5.0)
+    bridge.last_activity_monotonic = 10.0
+
+    asyncio.run(bridge._monitor_user_message(SimpleNamespace(message={"type": RTVI_BOT_STARTED_SPEAKING, "data": {}})))
+    activity_time = bridge.last_activity_monotonic
+    assert activity_time > 10.0
+    assert bridge._stop_if_inactive(now=activity_time + 4.9) is False
+
+    asyncio.run(bridge._monitor_agent_message(SimpleNamespace(audio=b"\x00\x00")))
+    assert bridge.last_activity_monotonic == activity_time
+
+    bridge.last_activity_monotonic = 0.0
+    asyncio.run(bridge._monitor_agent_message(SimpleNamespace(message={"type": "action", "data": {}})))
+    activity_time = bridge.last_activity_monotonic
+    assert activity_time > 0.0
+    assert bridge._stop_if_inactive(now=activity_time + 5.0) is True
+
+
+@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan")])
+def test_bridge_rejects_invalid_inactivity_timeout(tmp_path, value):
+    """Nonpositive and non-finite inactivity windows fail at bridge construction."""
+    with pytest.raises(ValueError, match="inactivity_timeout must be greater than 0"):
+        _bridge(tmp_path, inactivity_timeout=value)
 
 
 def test_monitor_user_and_agent_messages_build_turns_and_latency(tmp_path):

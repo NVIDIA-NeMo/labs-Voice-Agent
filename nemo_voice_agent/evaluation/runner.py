@@ -30,8 +30,8 @@ from typing import Dict, List, Optional
 
 from nemo_voice_agent.evaluation.bridge import (
     STOP_REASON_EXIT,
+    STOP_REASON_INACTIVITY_TIMEOUT,
     STOP_REASON_SIMULATOR_EXIT,
-    STOP_REASON_TIMEOUT,
     VoiceAgentEvaluationBridge,
 )
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
@@ -70,8 +70,8 @@ def evaluate_conversation_end(
         return True, "simulator_reported_end"
 
     last_speaker = next((turn.get("role") for turn in reversed(turns) if turn.get("role")), None)
-    if stop_reason == STOP_REASON_TIMEOUT and last_speaker == "user":
-        return True, "timeout_after_user_final_turn"
+    if stop_reason == STOP_REASON_INACTIVITY_TIMEOUT and last_speaker == "user":
+        return True, "inactivity_timeout_after_user_final_turn"
     return False, "no_valid_terminal_evidence"
 
 
@@ -277,6 +277,7 @@ async def run_dynamic_evaluation(
     strict_match: bool = False,
     min_agent_turns: int = 0,
     conversation_end_policy: ConversationEndPolicy | str = ConversationEndPolicy.TOOL_ONLY,
+    inactivity_timeout: Optional[float] = 30.0,
 ):
     """
     Run evaluation with dynamic scenario switching and latency measurement.
@@ -304,8 +305,9 @@ async def run_dynamic_evaluation(
             overriding each scenario's own setting. Default False respects per-scenario flags.
         min_agent_turns: scenarios with agent turns less than this number will be treated as incomplete
         conversation_end_policy: Policy for the CLEAN_EXIT gate. ``tool-only`` requires the agent's
-            EndConversationTool. ``valid-terminal-state`` also accepts a simulator-reported end or a timeout
-            after the user's final turn.
+            EndConversationTool. ``valid-terminal-state`` also accepts a simulator-reported end or an inactivity
+            timeout after the user's final turn.
+        inactivity_timeout: Seconds without conversational activity before the bridge stops the scenario.
     """
 
     if not logger:
@@ -346,6 +348,7 @@ async def run_dynamic_evaluation(
         output_sample_rate=output_sample_rate,
         audio_chunk_in_seconds=audio_chunk_in_seconds,
         accept_simulator_exit=conversation_end_policy == ConversationEndPolicy.VALID_TERMINAL_STATE,
+        inactivity_timeout=inactivity_timeout,
     )
 
     all_results = []
@@ -624,6 +627,7 @@ async def run_dynamic_evaluation(
         # as the backward-compatible field consumed by SuccessSignal.CLEAN_EXIT.
         metrics["stop_reason"] = bridge.stop_reason
         metrics["conversation_end_policy"] = conversation_end_policy.value
+        metrics["inactivity_timeout_seconds"] = inactivity_timeout
         metrics["end_conversation_tool_called"] = bridge.stop_reason == STOP_REASON_EXIT
         metrics["simulator_end_reported"] = bool(getattr(bridge, "simulator_end_reported", False))
         metrics["last_speaker"] = next(

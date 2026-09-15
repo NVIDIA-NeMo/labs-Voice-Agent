@@ -125,6 +125,7 @@ def _bare_args(**overrides) -> argparse.Namespace:
         judge_api_key=None,
         judge_threshold=0.9,
         strict_match=False,
+        inactivity_timeout=30.0,
         resume=None,
         list=False,
         list_domains=False,

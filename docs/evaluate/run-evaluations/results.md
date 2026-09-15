@@ -113,7 +113,8 @@ The per-scenario source of truth. Fields always present:
 | `duration_seconds`, `scenario_duration` | Bridge-measured and runner-measured wall clock |
 | `latency_stats` | `count`, `mean_ms`, `p50_ms`, `p95_ms`, `min_ms`, `max_ms` |
 | `latencies` | Per-measurement `user_transcript` / `agent_transcript` / `latency_ms` |
-| `stop_reason` | `[EXIT]` (agent ended the call), `[SIMULATOR_EXIT]` (simulator ended it under the opt-in policy), or `[TIMEOUT]` |
+| `stop_reason` | `[EXIT]` (agent ended the call), `[SIMULATOR_EXIT]` (simulator ended it under the opt-in policy), `[INACTIVITY_TIMEOUT]` (the activity timer expired), or `[TIMEOUT]` (the overall scenario limit expired) |
+| `inactivity_timeout_seconds` | Configured inactivity interval; `30.0` seconds by default |
 | `clean_exit` | Conversation-end verdict under the selected policy |
 | `end_conversation_tool_called` | Whether the agent explicitly called `EndConversationTool` |
 | `simulator_end_reported`, `last_speaker` | Whether the simulator reported success and the role of the final recorded turn |
