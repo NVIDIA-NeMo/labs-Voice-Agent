@@ -55,6 +55,7 @@ _CONSISTENCY_CHECK_FIELDS = (
     "judge_top_p",
     "judge_seed",
     "strict_match",
+    "conversation_end_policy",
 )
 
 
@@ -355,6 +356,16 @@ Examples:
             "re-run. Default: 3. Pass 0 to disable the filter."
         ),
     )
+    parser.add_argument(
+        "--conversation-end-policy",
+        choices=("tool-only", "valid-terminal-state"),
+        default="tool-only",
+        help=(
+            "Policy for the clean-exit success gate. 'tool-only' requires the agent to call "
+            "EndConversationTool. 'valid-terminal-state' also accepts a simulator-reported end or an "
+            "inactivity timeout when the user was the final speaker. Default: tool-only."
+        ),
+    )
 
     args = parser.parse_args()
     _validate_args(parser, args)
@@ -508,6 +519,7 @@ Examples:
                 judge_include_conversation=args.judge_include_conversation,
                 strict_match=args.strict_match,
                 min_agent_turns=args.min_agent_turns,
+                conversation_end_policy=args.conversation_end_policy,
             )
         )
         return 0

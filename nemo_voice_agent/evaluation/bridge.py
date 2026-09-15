@@ -71,6 +71,7 @@ _RTVI_TYPES_ALREADY_TAGGED = frozenset({RTVI_BOT_STARTED_SPEAKING, RTVI_BOT_TTS_
 
 STOP_REASON_TIMEOUT = "[TIMEOUT]"
 STOP_REASON_EXIT = "[EXIT]"
+STOP_REASON_SIMULATOR_EXIT = "[SIMULATOR_EXIT]"
 
 
 @dataclass
@@ -212,6 +213,7 @@ class VoiceAgentEvaluationBridge:
         turn_end_offset_secs: float = -0.3,
         noise_config: Optional[NoiseConfig] = None,
         log_level: str = "DEBUG",
+        accept_simulator_exit: bool = False,
     ):
         """
         Args:
@@ -238,6 +240,7 @@ class VoiceAgentEvaluationBridge:
                 so that the latency by BOT_STOPPED_SPEAKING event is mitigated. This is a workaround to the fact
                 that the BOT_STOPPED_SPEAKING event is sent after 0.35s silence in Pipecat output transport.
             noise_config: Noise configuration, used to configure the noise for the audio stream
+            accept_simulator_exit: Whether a simulator-side ``<exit>`` message stops the scenario.
         """
         self.user_url = user_url
         self.agent_url = agent_url
@@ -253,6 +256,7 @@ class VoiceAgentEvaluationBridge:
         self.output_sample_rate = output_sample_rate
         self.audio_chunk_in_seconds = audio_chunk_in_seconds
         self.log_level = log_level
+        self.accept_simulator_exit = accept_simulator_exit
 
         # Random burst mode configuration (simulates browser's irregular sending pattern)
         self.use_burst_mode = use_burst_mode  # Disable burst mode by default
@@ -314,6 +318,7 @@ class VoiceAgentEvaluationBridge:
         self.stop_event = threading.Event()
         self.threads = []
         self.stop_reason = STOP_REASON_TIMEOUT
+        self.simulator_end_reported = False
 
         # Bridge resamples at source (like browser client) for better quality
         # This avoids STT having to resample small chunks
@@ -1864,6 +1869,7 @@ class VoiceAgentEvaluationBridge:
         # Clear state for this run
         self.stop_event.clear()
         self.stop_reason = STOP_REASON_TIMEOUT
+        self.simulator_end_reported = False
         self.sent_to_agent_chunks = []
         self.sent_to_user_chunks = []
         self.user_context_history = None
@@ -2244,6 +2250,16 @@ class VoiceAgentEvaluationBridge:
             if isinstance(inner, dict) and inner.get("type") == "action-applied":
                 action_record = inner.get("action") or {}
                 await self._propagate_cross_side_sync(action_record, source_side="user")
+                return
+            text = str(inner.get("text", "")) if isinstance(inner, dict) else ""
+            if text.startswith(EXIT_MESSAGE_START_TAG) and text.endswith(EXIT_MESSAGE_END_TAG):
+                self.simulator_end_reported = True
+                logger.info("[USER] Simulator reported a successful conversation end")
+                if self.accept_simulator_exit:
+                    self.stop_reason = STOP_REASON_SIMULATOR_EXIT
+                    await asyncio.sleep(self.exit_settle_delay)
+                    self.stop_event.set()
+                    self.metrics.end_time = datetime.now()
 
     async def _monitor_agent_message(self, frame):
         """

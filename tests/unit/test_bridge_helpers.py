@@ -29,6 +29,7 @@ from nemo_voice_agent.evaluation.bridge import (
     RTVI_BOT_STARTED_SPEAKING,
     RTVI_BOT_STOPPED_SPEAKING,
     RTVI_BOT_TTS_TEXT,
+    STOP_REASON_SIMULATOR_EXIT,
     EvaluationMetrics,
     ResponseLatency,
     SegmentEntry,
@@ -36,7 +37,7 @@ from nemo_voice_agent.evaluation.bridge import (
 )
 
 
-def _bridge(tmp_path):
+def _bridge(tmp_path, **kwargs):
     """Build a bridge configured for local helper tests without connecting sockets."""
     return VoiceAgentEvaluationBridge(
         "ws://user.invalid",
@@ -47,6 +48,7 @@ def _bridge(tmp_path):
         agent_input_sample_rate=16000,
         output_sample_rate=16000,
         log_level="ERROR",
+        **kwargs,
     )
 
 
@@ -274,6 +276,37 @@ def test_monitor_agent_message_captures_final_response_and_exit(tmp_path):
     assert bridge.metrics.agent_final_response == ["{}"]
     assert bridge.stop_reason == "[EXIT]"
     assert bridge.stop_event.is_set()
+
+
+def test_monitor_user_message_accepts_simulator_exit_when_enabled(tmp_path):
+    """An opted-in simulator exit records evidence and stops the scenario."""
+    bridge = _bridge(tmp_path, accept_simulator_exit=True)
+    bridge.exit_settle_delay = 0.0
+
+    asyncio.run(
+        bridge._monitor_user_message(
+            SimpleNamespace(message={"type": RTVI_BOT_SERVER_MESSAGE, "data": {"text": "<exit>done</exit>"}})
+        )
+    )
+
+    assert bridge.simulator_end_reported is True
+    assert bridge.stop_reason == STOP_REASON_SIMULATOR_EXIT
+    assert bridge.stop_event.is_set()
+
+
+def test_monitor_user_message_records_but_ignores_simulator_exit_by_default(tmp_path):
+    """Strict tool-only runs retain the simulator evidence without stopping."""
+    bridge = _bridge(tmp_path)
+
+    asyncio.run(
+        bridge._monitor_user_message(
+            SimpleNamespace(message={"type": RTVI_BOT_SERVER_MESSAGE, "data": {"text": "<exit>done</exit>"}})
+        )
+    )
+
+    assert bridge.simulator_end_reported is True
+    assert bridge.stop_reason == "[TIMEOUT]"
+    assert not bridge.stop_event.is_set()
 
 
 def test_monitor_user_and_agent_messages_build_turns_and_latency(tmp_path):

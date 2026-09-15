@@ -119,7 +119,7 @@ Beyond the six handlers, the bridge relies on several behaviors that the referen
 | Accept the `send-text` kickoff | An RTVI `send-text` message with `run_immediately` starts the agent bot 1 s into the scenario. Pipecat's `RTVIProcessor` handles this natively. |
 | Emit `bot-started-speaking`, `bot-tts-text`, `bot-stopped-speaking` | The bridge builds `conversation_log.txt`, the segLST file, and per-turn latency from these events. |
 | Emit `metrics` messages carrying token usage | `token_usage.agent.n_calls` is the turn counter behind `--min-agent-turns` (default 3). A bot that never reports usage counts 0 turns and every scenario is scored a **failure**. Set `enable_metrics=True` and `enable_usage_metrics=True` on `PipelineParams`. |
-| Push `<exit>` as an RTVI server message when the agent ends the call | This is the `CLEAN_EXIT` signal, which is in every domain's whitelist. `EndConversationTool` in `nemo_voice_agent/evaluation/tools/basic_tools.py` does it; without it every scenario terminates on timeout and fails. |
+| Push `<exit>` as an RTVI server message when the agent ends the call | This is the default `tool-only` evidence for the `CLEAN_EXIT` signal, which is in every domain's whitelist. `EndConversationTool` in `nemo_voice_agent/evaluation/tools/basic_tools.py` emits it. If your integration cannot do so reliably, run with `--conversation-end-policy valid-terminal-state` to allow simulator success or an inactivity timeout after a final user turn. |
 | Push `action-applied` server messages from write tools | Only needed for dual-side domains such as `tau2_telecom`, where the bridge uses them to drive cross-side sync. |
 
 Scoring reads two pieces of bot-owned state, both keyed off `shared_state`:

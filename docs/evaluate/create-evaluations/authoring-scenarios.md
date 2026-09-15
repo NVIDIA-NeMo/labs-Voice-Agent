@@ -91,7 +91,7 @@ resolve to a non-empty sequence of `SuccessSignal` members. `Scenario.__init_sub
 | `DB_STATE_ASSERTION` | `db_state_assertion` | The solution space is open — several valid end states satisfy the same outcome predicates. |
 | `NL_ASSERTION` | `nl_assertion` | The scenario carries `nl_assertions`. Requires the judge to be enabled. |
 | `JUDGE_PASSED` | `judge_passed` | No deterministic check applies at all (free-form QA). |
-| `CLEAN_EXIT` | `clean_exit` | Always. Every shipped domain includes it. The value is `True` only when the agent voluntarily emitted the `<exit>` signal by calling `EndConversationTool` or a terminal transfer tool (`TransferToAgentTool` or `TransferToHumanAgentsTool`). This requirement prevents a timed-out conversation from scoring as a win by inaction. |
+| `CLEAN_EXIT` | `clean_exit` | Always. Every shipped domain includes it. The default `tool-only` policy requires the agent to emit `<exit>` by calling `EndConversationTool` or a terminal transfer tool (`TransferToAgentTool` or `TransferToHumanAgentsTool`). The opt-in `valid-terminal-state` policy also accepts a simulator-reported successful end or an inactivity timeout after a final user turn. The minimum-turn filter still prevents a stalled conversation from scoring as a win by inaction. |
 
 Pass-rate signals (`db_state_assertion_pass_rate`, `nl_assertion_pass_rate`) are binarized at a
 threshold of `1.0`, so every assertion must pass. The default verdict is a strict AND over whitelisted

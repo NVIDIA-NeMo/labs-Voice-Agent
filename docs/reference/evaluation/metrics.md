@@ -50,8 +50,13 @@ scenario that completes a bridge run.
 | `scenario_duration` | float | Runner-measured wall clock around `bridge.run_scenario`. Slightly larger than `duration_seconds`. |
 | `latency_stats` | object | Aggregate over this scenario's `latencies`, with fields defined after this table. |
 | `latencies` | list | One entry per measurement: `user_transcript`, `agent_transcript`, `latency_ms`. |
-| `stop_reason` | string | `"[EXIT]"` when the agent called `EndConversationTool`, `"[TIMEOUT]"` otherwise. |
-| `clean_exit` | bool | `true` when and only when `stop_reason` is `"[EXIT]"`. Backs the `clean_exit` success signal. |
+| `stop_reason` | string | Lower-level bridge stop reason, such as `"[EXIT]"` or `"[TIMEOUT]"`. |
+| `clean_exit` | bool | Compatibility success signal evaluated under `conversation_end_policy`. Under the default `tool-only` policy, only an agent `EndConversationTool` exit passes. |
+| `end_conversation_tool_called` | bool | Whether the agent called `EndConversationTool`, independent of the selected policy verdict. |
+| `simulator_end_reported` | bool | Whether the simulated user emitted an `<exit>...</exit>` real-time voice interface (RTVI) server message. |
+| `last_speaker` | string or `null` | Role of the final recorded turn: `"user"`, `"agent"`, or `null` when no turn has a role. |
+| `conversation_end_policy` | string | Policy used to evaluate `clean_exit`: `"tool-only"` or `"valid-terminal-state"`. |
+| `conversation_end_reason` | string | Diagnostic reason that explains why the selected conversation-end policy passed or failed. Values are defined after this table. |
 | `is_action_match` | bool or `"N/A"` | Deterministic reference-vs-prediction action-list comparison. `false` when the prediction file is missing; `"N/A"` when the reference file is missing. |
 | `token_usage` | object | `agent` and `user` sub-objects, each with `n_calls`, `prompt`, `completion`. Accumulated from RTVI `metrics` events during the run. |
 | `success_breakdown` | object | Signal names bucketed into `passed` / `failed` / `not_applicable` / `excluded`. |
@@ -63,6 +68,21 @@ The `latency_stats` object contains `count` (int), plus `mean_ms`, `p50_ms`, `p9
 wall-clock gap from the user bot's last audio frame to the agent's first subsequent audio frame. The value
 therefore includes automatic speech recognition (ASR), LLM, and text-to-speech (TTS) time-to-first-byte, not
 only LLM latency.
+
+With `conversation_end_policy: "valid-terminal-state"`, `clean_exit` is also `true` when the simulator reports
+a successful end or an inactivity timeout occurs after a final user turn. A timeout after a final agent turn remains
+`false`. The `--min-agent-turns` check remains authoritative and forces stalled scenarios to fail regardless of
+their conversation-end evidence.
+
+The `conversation_end_reason` value identifies the evidence used for the verdict:
+
+| Value | Meaning |
+|---|---|
+| `agent_end_conversation_tool` | The agent called `EndConversationTool`; both policies pass. |
+| `simulator_reported_end` | The simulator emitted `<exit>...</exit>`; `valid-terminal-state` passes. The bridge records `stop_reason: "[SIMULATOR_EXIT]"` when this policy is enabled. |
+| `timeout_after_user_final_turn` | The bridge timed out and `last_speaker` is `"user"`; `valid-terminal-state` passes. |
+| `agent_end_conversation_tool_missing` | The `tool-only` policy failed because the agent did not call `EndConversationTool`. |
+| `no_valid_terminal_evidence` | The `valid-terminal-state` policy found no accepted terminal evidence. |
 
 ## metrics.json — Conditional
 
@@ -154,7 +174,7 @@ variable names, and the second contains the labels in the file. A rate is omitte
 | `nl_assertion_success_rate` | `NL-Assertion pass` | **Assertions** emitted in the run, not scenarios. |
 | `judge_score_mean` | `Judge score mean` | Mean of `judge_score` over scenarios that were judged. |
 | `judge_pass_rate` | `Judge passed (>= threshold)` | Scenarios with a `judge_passed` bool. |
-| `clean_exit_rate` | `Clean exit` | Scenarios that completed a bridge run. |
+| `clean_exit_rate` | `Clean exit` | Scenarios that completed a bridge run, evaluated under each run's conversation-end policy. |
 
 The two assertion rates use assertions rather than scenarios as the denominator so that they remain
 comparable across domains where scenarios carry different assertion counts.

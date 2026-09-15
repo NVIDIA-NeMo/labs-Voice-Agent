@@ -85,7 +85,9 @@ The bridge is responsible for the following runtime coordination and evidence-ca
   resolves `db_path` to a loaded DB, applies init-function mutations). Both bots always receive
   `apply_initialization`, because the DB-load step runs even when a scenario declares no init mutations.
 - **Termination detection.** The agent ends a conversation by calling its end-conversation tool, which emits
-  an `<exit>` tag. The bridge records stop reason `[EXIT]`. Hitting the time limit records `[TIMEOUT]`.
+  an `<exit>` tag. The bridge records stop reason `[EXIT]`. Hitting the time limit records `[TIMEOUT]`. With
+  `--conversation-end-policy valid-terminal-state`, a simulated-user `<exit>...</exit>` message stops the run
+  and records `[SIMULATOR_EXIT]`.
 - **Cross-side state sync.** For dual-side domains, each write tool emits an `action-applied` event. The
   bridge replays it onto shadow DBs and calls the scenario's `sync_state`. It pushes the resulting delta to
   the other bot through `apply_sync_delta`. Single-side domains skip this step. Refer to
@@ -112,10 +114,12 @@ the composite `is_successful` verdict. The rest are still computed and saved as 
 | `DB_STATE_ASSERTION` | `db_state_assertion_pass_rate` | Deterministic per-predicate checks over the pulled DB |
 | `NL_ASSERTION` | `nl_assertion_pass_rate` | LLM-judged natural-language claims about the conversation |
 | `JUDGE_PASSED` | `judge_passed` | LLM judge score compared against `--judge-threshold` |
-| `CLEAN_EXIT` | `clean_exit` | Agent ended the call itself (`[EXIT]`), rather than timing out |
+| `CLEAN_EXIT` | `clean_exit` | Conversation satisfied the selected end policy; the default requires an agent `[EXIT]` |
 
-`CLEAN_EXIT` is in every domain's whitelist: an agent that does the right work but never stops talking is
-not a successful agent. Full semantics, the per-domain whitelist matrix, and the strict-conjunction rule are
+`CLEAN_EXIT` is in every domain's whitelist. The default `tool-only` policy requires the agent's
+end-conversation tool. The opt-in `valid-terminal-state` policy also accepts a simulator-reported successful
+end or an inactivity timeout after a final user turn. Full semantics, the per-domain whitelist matrix, and the
+strict-conjunction rule are
 in [Scoring model](understand-scoring/scoring.md).
 
 A run writes session artifacts to `eval_results/eval_<TIMESTAMP>/`. These include `all_metrics.json`,

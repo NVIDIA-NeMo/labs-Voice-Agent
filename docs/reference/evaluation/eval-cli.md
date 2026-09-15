@@ -93,12 +93,18 @@ Use these flags to set scenario limits, resume runs, and control matching behavi
 | `--min-agent-turns N` | `3` | Minimum agent large language model (LLM) responses for a scenario to be scored on its own merits. Pass `0` to disable. |
 | `--resume TIMESTAMP` | `None` | Reuse the existing `eval_<TIMESTAMP>/` session directory under `--output-dir`. Exits with status 1 if that directory does not exist. |
 | `--strict-match` | off | Force `disallow_extra_items=True` on every scenario, overriding each scenario's own setting, so the action-list comparator requires exact-length matches. |
+| `--conversation-end-policy POLICY` | `tool-only` | Select `tool-only` or `valid-terminal-state` for the `clean_exit` signal. The opt-in policy also accepts a simulator-reported successful end or an inactivity timeout after a final user turn. |
 
 `--min-agent-turns` is a stall filter for runs where the LLM backend hung. Scenarios below the threshold
 are **counted as failures** in the composite success rate and **skipped** in the per-signal rates
 (action-match, DB-state, NL-assertion) — they are not dropped from the run. Under `--resume` they are
 additionally treated as in-flight and re-run. The turn count comes from the live-recorded
 `token_usage.agent.n_calls` in `metrics.json`, falling back to the saved agent LLM context for older runs.
+
+The default `tool-only` conversation-end policy preserves existing behavior: the agent must call
+`EndConversationTool`. Select `valid-terminal-state` when the agent integration cannot reliably emit the tool
+call but the simulator or final-speaker evidence can establish a valid ending. The runner still records whether
+the agent called the tool, independently of the selected policy.
 
 ### LLM Judge
 
@@ -160,7 +166,7 @@ Every run writes `run_args.json` into the session directory with the shape
 A `--resume` invocation appends a new entry and
 soft-checks it against the previous one on the scoring-relevant fields `domain`, `scenarios`, `duration`,
 `judge_url`, `judge_model`, `judge_threshold`, `judge_max_tokens`, `judge_temperature`, `judge_top_p`,
-`judge_seed`, and `strict_match`. Mismatches log a warning but do not block the run.
+`judge_seed`, `strict_match`, and `conversation_end_policy`. Mismatches log a warning but do not block the run.
 
 For result artifacts (`all_metrics.json`, `all_summary.txt`, and per-scenario `metrics.json`), refer to
 [Reading Results](../../evaluate/run-evaluations/results.md) and the [Metrics Dictionary](metrics.md). For the
