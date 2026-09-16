@@ -14,12 +14,14 @@
 # limitations under the License.
 
 import asyncio
+import base64
 import os
 from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 
 from loguru import logger
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+from openai import AsyncOpenAI
 from pipecat.frames.frames import (
     AudioRawFrame,
     CancelFrame,
@@ -35,7 +37,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.nvidia.stt import NvidiaSTTService
 from pipecat.services.settings import STTSettings
-from pipecat.services.stt_service import STTService
+from pipecat.services.stt_service import SegmentedSTTService, STTService
 from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
 from pydantic import BaseModel
@@ -411,10 +413,131 @@ class NemoSTTService(STTService):
         await super().process_frame(frame, direction)
 
 
+class NemoSpeechLMSTTService(SegmentedSTTService):
+    """NeMo Offline Speech-to-Text service for Pipecat integration."""
+
+    def __init__(
+        self,
+        *,
+        model: str,
+        api_key: Optional[str] = None,
+        api_key_env_var: Optional[str] = None,
+        base_url: str = "http://localhost:8000/v1",
+        sample_rate: int = 16000,
+        generation_kwargs: Optional[dict] = None,
+        system_prompt: Optional[str] = "You are a helpful assistant. /no_think",
+        user_prompt: Optional[
+            str
+        ] = "Produce a verbatim transcript of the audio. Preserve named entities, abbreviations, numbers, dates, measurements, acronyms, and technical terms as clearly as possible. Keep the same language as spoken and do not translate. Omit accidental repetitions.",
+        **kwargs,
+    ):
+        """
+        Args:
+            model: The model to use for speech-to-text.
+            api_key: The API key to use for the service.
+            api_key_env_var: The environment variable to use for the API key.
+            base_url: The base URL to use for the service.
+            sample_rate: The sample rate to use for the service.
+            generation_kwargs: The generation kwargs to use for the service. For example, {max_tokens: 256, temperature: 0.0, top_p: 1.0, chat_template_kwargs: {"enable_thinking": false}}.
+            system_prompt: The system prompt to use for the service.
+            user_prompt: The user prompt to use for the service.
+        """
+        super().__init__(model=model, sample_rate=sample_rate, **kwargs)
+        self._api_key = api_key
+        self._base_url = base_url
+        if api_key_env_var is not None and api_key is None:
+            self._api_key = os.getenv(api_key_env_var)
+        # The model reasons by default and answers the prompt as a chatbot instead of
+        # transcribing. The "/no_think" in the system prompt does not suppress that; only
+        # this chat template flag does. Callers passing their own chat_template_kwargs
+        # replace it wholesale and take responsibility for the flag themselves.
+        self._generation_kwargs = {
+            "chat_template_kwargs": {"enable_thinking": False},
+            **(generation_kwargs or {}),
+        }
+        self._original_user_prompt = user_prompt
+        self._system_prompt = system_prompt
+        self._user_prompt = user_prompt
+        self._model_name = model
+        self._client = AsyncOpenAI(api_key=self._api_key or "None", base_url=self._base_url)
+
+    def set_user_prompt(self, user_prompt: str, append_to_original: bool = False):
+        """Update the user prompt.
+        Args:
+            user_prompt: The user prompt to set.
+            append_to_original: Whether to append the new user prompt to the original user prompt.
+              If False, the new user prompt will replace the original user prompt.
+        """
+        if append_to_original:
+            self._user_prompt = self._original_user_prompt + "\n" + user_prompt
+        else:
+            self._user_prompt = user_prompt
+        logger.info(f"Updating user prompt to: `{self._user_prompt}`")
+
+    def reset_user_prompt(self):
+        """Reset the user prompt to the original."""
+        self._user_prompt = self._original_user_prompt
+        logger.info(f"Resetting user prompt to the original: `{self._original_user_prompt}`")
+
+    def reset(self):
+        """Reset the service."""
+        self.reset_user_prompt()
+        logger.info("Resetting NemoSpeechLMSTTService")
+
+    async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
+        """Process audio data and generate transcription frames."""
+        try:
+            await self.start_processing_metrics()
+
+            # `wants_wav_segments` is left at its default, so the segment already carries a
+            # WAV header and can go inline as a data URL. The server also accepts file://
+            # URLs, but those require the audio to exist on the server's filesystem.
+            audio_url = f"data:audio/wav;base64,{base64.b64encode(audio).decode('ascii')}"
+            messages = []
+            if self._system_prompt:
+                messages.append({"role": "system", "content": self._system_prompt})
+            messages.append(
+                {
+                    "role": "user",
+                    # The audio part must come before the text prompt.
+                    "content": [
+                        {"type": "audio_url", "audio_url": {"url": audio_url}},
+                        {"type": "text", "text": self._user_prompt},
+                    ],
+                }
+            )
+
+            # Everything goes through extra_body so vLLM-only keys such as
+            # chat_template_kwargs reach the server untouched alongside the sampling params.
+            response = await self._client.chat.completions.create(
+                model=self._model_name,
+                messages=messages,
+                extra_body=self._generation_kwargs,
+            )
+
+            await self.stop_processing_metrics()
+
+            text = (response.choices[0].message.content or "").strip()
+            if text:
+                logger.debug(f"Transcription: [{text}]")
+                yield TranscriptionFrame(
+                    text,
+                    self._user_id,
+                    time_now_iso8601(),
+                    result=response,
+                )
+            else:
+                logger.warning("Received empty transcription from SALM server")
+
+        except Exception as e:
+            logger.error(f"Error in NeMo offline SALM STT processing: {e}")
+            yield ErrorFrame(error=str(e), exception=e)
+
+
 def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[AudioLogger] = None) -> STTService:
     """Get the STT service from the config."""
     backend = config.type
-    available_backends = ["nemo", "nvidia"]
+    available_backends = ["nemo", "nemo_speechlm", "nvidia"]
     assert backend in available_backends, f"Invalid STT backend: {backend}, only {available_backends} are supported"
 
     if backend == "nemo":
@@ -440,6 +563,22 @@ def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[Audio
             audio_logger=audio_logger,
             ignore_eou_eob=config.get("ignore_eou_eob", False),
             ttfs_p99_latency=config.get("ttfs_p99_latency", None),
+        )
+    elif backend == "nemo_speechlm":
+        # Served by an external vLLM SpeechLM endpoint, so there is no local model to load
+        # and no device to pick. `model` must match the server's --served-model-name.
+        kwargs = {}
+        for key in ("api_key", "api_key_env_var", "generation_kwargs", "system_prompt", "user_prompt"):
+            if key in config:
+                kwargs[key] = config[key]
+        if "generation_kwargs" in kwargs:
+            kwargs["generation_kwargs"] = OmegaConf.to_container(kwargs["generation_kwargs"], resolve=True)
+        return NemoSpeechLMSTTService(
+            model=config.model,
+            base_url=config.get("base_url", "http://localhost:8000/v1"),
+            sample_rate=config.get("sample_rate", 16000),
+            audio_passthrough=True,
+            **kwargs,
         )
     elif backend == "nvidia":
         api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
