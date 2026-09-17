@@ -416,24 +416,29 @@ class NemoSTTService(STTService):
 class NemoSpeechLMSTTService(SegmentedSTTService):
     """NeMo Offline Speech-to-Text service for Pipecat integration."""
 
+    DEFAULT_USER_PROMPT = """Produce a verbatim transcript of the audio. Preserve named entities, abbreviations, 
+numbers, dates, measurements, acronyms, and technical terms as clearly as possible. Keep the same language as 
+spoken and do not translate. Omit accidental repetitions."""
+
     def __init__(
         self,
         *,
         model: str,
+        language: Optional[str] = "en-US",
         api_key: Optional[str] = None,
         api_key_env_var: Optional[str] = None,
         base_url: str = "http://localhost:8000/v1",
         sample_rate: int = 16000,
         generation_kwargs: Optional[dict] = None,
         system_prompt: Optional[str] = "You are a helpful assistant. /no_think",
-        user_prompt: Optional[
-            str
-        ] = "Produce a verbatim transcript of the audio. Preserve named entities, abbreviations, numbers, dates, measurements, acronyms, and technical terms as clearly as possible. Keep the same language as spoken and do not translate. Omit accidental repetitions.",
+        user_prompt: Optional[str] = None,
+        ttfs_p99_latency: Optional[float] = None,
         **kwargs,
     ):
         """
         Args:
             model: The model to use for speech-to-text.
+            language: The language to use for the service.
             api_key: The API key to use for the service.
             api_key_env_var: The environment variable to use for the API key.
             base_url: The base URL to use for the service.
@@ -441,8 +446,25 @@ class NemoSpeechLMSTTService(SegmentedSTTService):
             generation_kwargs: The generation kwargs to use for the service. For example, {max_tokens: 256, temperature: 0.0, top_p: 1.0, chat_template_kwargs: {"enable_thinking": false}}.
             system_prompt: The system prompt to use for the service.
             user_prompt: The user prompt to use for the service.
+            ttfs_p99_latency: ttfs_p99_latency: P99 seconds from end of speech to final transcript,
+                broadcast to downstream turn-stop strategies. Leave as None to
+                take pipecat's conservative fallback; set a value measured for
+                your deployment (model, device, VAD ``stop_secs``) to tighten
+                end-of-turn timing. We ship no default because the figure is
+                hardware-dependent and guessing it low would cut users off.
+                See https://github.com/pipecat-ai/stt-benchmark
+            (other args documented on the attributes they set)
         """
-        super().__init__(model=model, sample_rate=sample_rate, **kwargs)
+        super().__init__(
+            settings=STTSettings(
+                model=model,
+                language=language,
+            ),
+            sample_rate=sample_rate,
+            language=language,
+            ttfs_p99_latency=ttfs_p99_latency,
+            **kwargs,
+        )
         self._api_key = api_key
         self._base_url = base_url
         if api_key_env_var is not None and api_key is None:
@@ -457,9 +479,15 @@ class NemoSpeechLMSTTService(SegmentedSTTService):
         }
         self._original_user_prompt = user_prompt
         self._system_prompt = system_prompt
-        self._user_prompt = user_prompt
+        self._user_prompt = user_prompt if user_prompt else self.DEFAULT_USER_PROMPT
         self._model_name = model
         self._client = AsyncOpenAI(api_key=self._api_key or "None", base_url=self._base_url)
+
+    def can_generate_metrics(self) -> bool:
+        """
+        Set to True to enable metrics generation.
+        """
+        return True
 
     def set_user_prompt(self, user_prompt: str, append_to_original: bool = False):
         """Update the user prompt.
@@ -488,6 +516,7 @@ class NemoSpeechLMSTTService(SegmentedSTTService):
         """Process audio data and generate transcription frames."""
         try:
             await self.start_processing_metrics()
+            t0 = asyncio.get_event_loop().time()
 
             # `wants_wav_segments` is left at its default, so the segment already carries a
             # WAV header and can go inline as a data URL. The server also accepts file://
@@ -514,7 +543,8 @@ class NemoSpeechLMSTTService(SegmentedSTTService):
                 messages=messages,
                 extra_body=self._generation_kwargs,
             )
-
+            t1 = asyncio.get_event_loop().time()
+            logger.debug(f"SALM inference time: {t1 - t0} seconds")
             await self.stop_processing_metrics()
 
             text = (response.choices[0].message.content or "").strip()
