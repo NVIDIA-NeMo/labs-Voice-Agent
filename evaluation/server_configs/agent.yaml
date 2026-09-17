@@ -20,8 +20,7 @@ vad:
   type: silero
   confidence: 0.6  # VAD threshold for detecting speech versus non-speech
   start_secs: 0.1  # min amount of speech to trigger UserStartSpeaking
-  stop_secs: 0.6  # min amount of silence to trigger VADUserStoppedSpeakingFrame
-  # default turn-taking strategy adds additional 0.6s to the stop_secs before triggering UserStopSpeaking
+  stop_secs: 1.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame
   min_volume: 0.2  # Microphone volumn threshold for VAD
 
 stt:
@@ -43,6 +42,7 @@ diar:
   frame_len_in_secs: 0.08  # default for Sortformer, do not change unless using other architechtures
 
 turn_taking:
+  type: nemo  # choices in ['nemo', 'speech_timeout'], `speech_timeout` drops the NeMo turn-taking model and ends the turn from VAD alone
   backchannel_phrases_path: null
   max_buffer_size: 0  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
   bot_stop_delay: 0.0  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output

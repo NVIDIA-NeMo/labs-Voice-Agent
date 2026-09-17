@@ -48,10 +48,16 @@ running server reports.
 
 ## Bot interrupts too eagerly or waits too long before replying
 
-**Cause:** Voice activity detection (VAD) end-of-turn timing controls when the bot responds.
+**Cause:** End-of-turn timing depends on `turn_taking.type`. Under `type: speech_timeout`, two waits are
+additive: voice activity detection (VAD) reports the end of speech after `vad.stop_secs` of silence, and only
+then does Pipecat's `SpeechTimeoutUserTurnStopStrategy` wait a further `turn_taking.user_speech_timeout`,
+which defaults to 0.6 seconds. A `vad.stop_secs` of 0.8 seconds therefore ends the turn 1.4 seconds after the
+user stops speaking. Under `type: nemo`, only `vad.stop_secs` applies, because `NeMoTurnTakingService` emits
+the user-turn frames itself.
 
-**Resolution:** Tune `vad.stop_secs`, which controls the silence required to end a turn, along with
-`vad.confidence` and `vad.min_volume`. For more information, refer to
+**Resolution:** Tune both keys under `type: speech_timeout`. Lower `turn_taking.user_speech_timeout` to cut
+the trailing wait, and raise it when the bot cuts in during mid-sentence pauses. Tune `vad.stop_secs`,
+`vad.confidence`, and `vad.min_volume` for the silence window itself. For more information, refer to
 [Turn taking](../about/core-concepts/speech-pipeline/turn-taking.md).
 
 ## Bot never greets and the log reports a connection error for http://localhost:8000/v1
@@ -233,9 +239,11 @@ session.
 
 ## Short acknowledgements such as "uh-huh" interrupt the bot
 
-**Cause:** Backchannel filtering is disabled.
+**Cause:** Backchannel filtering is disabled, or the configuration runs `turn_taking.type: speech_timeout`,
+which has no backchannel stage at all.
 
-**Resolution:** Set `turn_taking.backchannel_phrases_path` to a phrase list instead of `null`.
+**Resolution:** Set `turn_taking.type: nemo`, and set `turn_taking.backchannel_phrases_path` to a phrase list
+instead of `null`.
 
 ## Speaker labels flip between turns or remain the same for every turn
 
@@ -267,6 +275,16 @@ more information, refer to [eva_airline](../evaluate/domain-guides/eva-airline.m
 
 **Resolution:** Run `lsof -i :8765` and `lsof -i :7860`, and then kill the stale process or export different
 `WEBSOCKET_PORT` and `FASTAPI_PORT` values.
+
+## Startup warns that turn_taking.enabled is ignored
+
+**Cause:** The boolean `turn_taking.enabled` key was replaced by `turn_taking.type`. `ConfigManager` no longer
+reads the old key: it warns and applies the `nemo` default. A config that used `enabled: false` therefore runs
+the NeMo turn-taking service instead of the VAD-driven strategies it asked for.
+
+**Resolution:** Replace `enabled: true` with `type: nemo`, and `enabled: false` with `type: speech_timeout`.
+For more information, refer to
+[Turn taking](../about/core-concepts/speech-pipeline/turn-taking.md).
 
 ## tau2 scenario disconnects with WebSocket close code 1009
 

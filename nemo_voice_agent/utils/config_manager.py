@@ -235,12 +235,27 @@ class ConfigManager:
 
     def _configure_turn_taking(self):
         """Configure turn taking parameters."""
-        if self.server_config.turn_taking.get("enabled", True):
-            self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = self._resolve_backchannel_phrases(
-                self.server_config.turn_taking.backchannel_phrases_path
+        turn_taking = self.server_config.turn_taking
+        if "enabled" in turn_taking:
+            logger.warning(
+                "turn_taking.enabled is ignored, it was replaced by turn_taking.type: use `type: nemo` in "
+                "place of `enabled: true`, and `type: speech_timeout` in place of `enabled: false`."
             )
-            self.TURN_TAKING_MAX_BUFFER_SIZE = self.server_config.turn_taking.max_buffer_size
-            self.TURN_TAKING_BOT_STOP_DELAY = self.server_config.turn_taking.bot_stop_delay
+
+        self.TURN_TAKING_TYPE = turn_taking.get("type", "nemo")
+        available_types = ["nemo", "speech_timeout"]
+        assert self.TURN_TAKING_TYPE in available_types, (
+            f"Invalid turn taking type: {self.TURN_TAKING_TYPE}, only {available_types} are supported"
+        )
+
+        self.TURN_TAKING_USER_SPEECH_TIMEOUT = turn_taking.get("user_speech_timeout", 0.6)
+
+        if self.TURN_TAKING_TYPE == "nemo":
+            self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = self._resolve_backchannel_phrases(
+                turn_taking.backchannel_phrases_path
+            )
+            self.TURN_TAKING_MAX_BUFFER_SIZE = turn_taking.max_buffer_size
+            self.TURN_TAKING_BOT_STOP_DELAY = turn_taking.bot_stop_delay
         else:
             self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = ""
             self.TURN_TAKING_MAX_BUFFER_SIZE = 0

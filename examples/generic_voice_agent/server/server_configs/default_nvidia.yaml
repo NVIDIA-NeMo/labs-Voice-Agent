@@ -16,10 +16,16 @@ vad:
   type: silero
   confidence: 0.6  # VAD threshold for detecting speech versus non-speech
   start_secs: 0.1  # min amount of speech to trigger UserStartSpeaking
-  stop_secs: 0.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame, set to 0.2 if turn_taking is disabled
-  # default turn-taking strategy adds additional 0.6s to the stop_secs before triggering UserStopSpeaking
+  stop_secs: 0.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame, set to 0.2 if turn_taking.type is speech_timeout
   min_volume: 0.2  # Microphone volumn threshold for VAD
 
+turn_taking:
+  type: speech_timeout  # choices in ['nemo', 'speech_timeout'], `speech_timeout` lets VAD handle the user start and stop speaking
+  user_speech_timeout: 0.6  # extra silence waited after vad.stop_secs before the user turn ends, so the two add up into the end-of-turn latency
+  # the keys below are only used when type is `nemo`
+  backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
+  max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
+  bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
 
 stt:
   type: nvidia
@@ -36,13 +42,6 @@ diar:
   device: "cuda"
   threshold: 0.5  # threshold value used to determine if a speaker exists or not, setting it to a lower value will increaset the sensitivity of the model
   frame_len_in_secs: 0.08  # default for Sortformer, do not change unless using other architechtures
-
-turn_taking:
-  enabled: false # disable to let VAD handle the user start and stop speaking
-  backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
-  max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
-  bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
-
 
 llm:
   type: nvidia
@@ -82,7 +81,6 @@ llm:
         chat_template_kwargs:
           enable_thinking: ${llm.enable_reasoning} 
         reasoning_budget: 3000
-
 
 tts:
   type: nvidia

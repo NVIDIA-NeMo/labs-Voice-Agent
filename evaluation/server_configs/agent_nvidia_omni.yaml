@@ -19,9 +19,11 @@ vad:
   confidence: 0.6  # VAD threshold for detecting speech versus non-speech
   start_secs: 0.1  # min amount of speech to trigger UserStartSpeaking
   stop_secs: 0.4  # min amount of silence to trigger VADUserStoppedSpeakingFrame
-  # default turn-taking strategy adds additional 0.6s to the stop_secs before triggering UserStopSpeaking
   min_volume: 0.2  # Microphone volumn threshold for VAD
 
+turn_taking:
+  type: speech_timeout  # choices in ['nemo', 'speech_timeout'], `speech_timeout` lets VAD alone end the user turn
+  user_speech_timeout: 0.6  # extra silence waited after vad.stop_secs before the user turn ends, so the two add up into the end-of-turn latency
 
 stt:
   type: nvidia
@@ -91,7 +93,6 @@ llm:
           enable_thinking: ${llm.enable_reasoning}
         thinking_token_budget: 3000
 
-
 tts:
   type: nvidia
   server: "grpc.nvcf.nvidia.com:443"
@@ -110,9 +111,6 @@ tts:
   ignore_strings:  # strings/characters to ignore in TTS
     - "*"
     - "<unk>"
-
-turn_taking:
-  enabled: false # set to false to disable
 
 diar:
   enabled: false # set to false to disable

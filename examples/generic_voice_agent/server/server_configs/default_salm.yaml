@@ -18,8 +18,16 @@ vad:
   type: silero
   confidence: 0.6  # VAD threshold for detecting speech versus non-speech
   start_secs: 0.1  # min amount of speech to trigger UserStartSpeaking
-  stop_secs: 1.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame, set to 0.2 if turn_taking is disabled
+  stop_secs: 1.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame; kept long because the offline SpeechLM only transcribes once this fires
   min_volume: 0.4  # Microphone volumn threshold for VAD
+
+turn_taking:
+  type: speech_timeout  # choices in ['nemo', 'speech_timeout'], `speech_timeout` lets VAD alone end the user turn
+  user_speech_timeout: 0.6  # extra silence waited after vad.stop_secs before the user turn ends, so the two add up into the end-of-turn latency
+  # the keys below are only used when type is `nemo`
+  backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
+  max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
+  bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
 
 stt:
   # Offline SpeechLM transcription served by an external vLLM endpoint, so the whole
@@ -45,12 +53,6 @@ diar:
   device: "cuda"
   threshold: 0.5  # threshold value used to determine if a speaker exists or not, setting it to a lower value will increaset the sensitivity of the model
   frame_len_in_secs: 0.08  # default for Sortformer, do not change unless using other architechtures
-
-turn_taking:
-  enabled: false
-  backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
-  max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
-  bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
 
 llm:
   type: auto  # choices in ['auto', 'hf', 'vllm'], if `auto`, it will try to use vllm and fall back to hf if vllm not available
