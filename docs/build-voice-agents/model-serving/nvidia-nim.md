@@ -110,7 +110,7 @@ Pipecat's `NvidiaLLMService` (an OpenAI-compatible client).
 | Key | Value in `default_nvidia.yaml` | Notes |
 | --- | --- | --- |
 | `type` | `nvidia` | One of `auto`, `hf`, `vllm`, `nvidia`. |
-| `model` | `nvidia/nemotron-3-nano-30b-a3b` | Hosted model id, not a local checkpoint path. |
+| `model` | `nvidia/nemotron-3.5-lightning-30b-a3b` | Hosted model id, not a local checkpoint path. |
 | `base_url` | `https://integrate.api.nvidia.com/v1` | Also selects which API-key variable is required, as described above. |
 | `default_headers` | unset | Optional dict of extra HTTP headers. |
 | `nvidia_generation_params` | inline block | Cast into Pipecat's OpenAI settings object. Holds `temperature`, `top_p`, `max_completion_tokens`, `frequency_penalty`, `presence_penalty`, `seed`, and an `extra` dict for model-specific fields. |

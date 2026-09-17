@@ -800,7 +800,7 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
             function_call_timeout_secs=function_call_timeout_secs,
         )
     elif backend == "nvidia":
-        llm_model = config.get("model", "nvidia/nemotron-3-nano-30b-a3b")
+        llm_model = config.get("model", "nvidia/nemotron-3.5-lightning-30b-a3b")
         llm_api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
         llm_base_url = config.get("base_url", "https://integrate.api.nvidia.com/v1")
         llm_params = config.get("nvidia_generation_params", None)
