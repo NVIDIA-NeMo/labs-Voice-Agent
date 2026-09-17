@@ -33,6 +33,13 @@ from typing import Optional
 
 import pytest
 
+from nemo_voice_agent.evaluation.bridge import (
+    STOP_REASON_EXIT,
+    STOP_REASON_INACTIVITY_TIMEOUT,
+    STOP_REASON_SIMULATOR_EXIT,
+    STOP_REASON_TIMEOUT,
+)
+from nemo_voice_agent.evaluation.runner import ConversationEndPolicy, evaluate_conversation_end
 from nemo_voice_agent.evaluation.scenarios.classes import (
     Actions,
     Persona,
@@ -68,6 +75,60 @@ def _make_minimal_scenario(success_signals, name="test__minimal", nl_assertions=
     _T.agent_resources = property(lambda self: Resources())
 
     return _T()
+
+
+@pytest.mark.parametrize(
+    ("policy", "stop_reason", "turns", "simulator_end_reported", "expected"),
+    [
+        (ConversationEndPolicy.TOOL_ONLY, STOP_REASON_EXIT, [], False, (True, "agent_end_conversation_tool")),
+        (
+            ConversationEndPolicy.TOOL_ONLY,
+            STOP_REASON_TIMEOUT,
+            [{"role": "user"}],
+            False,
+            (False, "agent_end_conversation_tool_missing"),
+        ),
+        (
+            ConversationEndPolicy.VALID_TERMINAL_STATE,
+            STOP_REASON_SIMULATOR_EXIT,
+            [],
+            True,
+            (True, "simulator_reported_end"),
+        ),
+        (
+            ConversationEndPolicy.VALID_TERMINAL_STATE,
+            STOP_REASON_INACTIVITY_TIMEOUT,
+            [{"role": "agent"}, {"role": "user"}],
+            False,
+            (True, "inactivity_timeout_after_user_final_turn"),
+        ),
+        (
+            ConversationEndPolicy.VALID_TERMINAL_STATE,
+            STOP_REASON_TIMEOUT,
+            [{"role": "agent"}, {"role": "user"}],
+            False,
+            (False, "no_valid_terminal_evidence"),
+        ),
+        (
+            ConversationEndPolicy.VALID_TERMINAL_STATE,
+            STOP_REASON_INACTIVITY_TIMEOUT,
+            [{"role": "user"}, {"role": "agent"}],
+            False,
+            (False, "no_valid_terminal_evidence"),
+        ),
+    ],
+)
+def test_evaluate_conversation_end(policy, stop_reason, turns, simulator_end_reported, expected):
+    """Conversation-end policy uses explicit deterministic terminal evidence."""
+    assert (
+        evaluate_conversation_end(
+            policy=policy,
+            stop_reason=stop_reason,
+            turns=turns,
+            simulator_end_reported=simulator_end_reported,
+        )
+        == expected
+    )
 
 
 def test_concrete_scenario_without_success_signals_raises():

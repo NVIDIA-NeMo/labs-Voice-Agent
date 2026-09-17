@@ -26,9 +26,11 @@ Connects two voice agents via WebSocket and provides:
 import asyncio
 import copy
 import json
+import math
 import queue
 import random
 import threading
+import time
 import wave
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -70,7 +72,9 @@ RTVI_BOT_SERVER_MESSAGE = RTVI.ServerMessage(data=RTVI.TextMessageData(text=""))
 _RTVI_TYPES_ALREADY_TAGGED = frozenset({RTVI_BOT_STARTED_SPEAKING, RTVI_BOT_TTS_TEXT, RTVI_BOT_STOPPED_SPEAKING})
 
 STOP_REASON_TIMEOUT = "[TIMEOUT]"
+STOP_REASON_INACTIVITY_TIMEOUT = "[INACTIVITY_TIMEOUT]"
 STOP_REASON_EXIT = "[EXIT]"
+STOP_REASON_SIMULATOR_EXIT = "[SIMULATOR_EXIT]"
 
 
 @dataclass
@@ -212,6 +216,8 @@ class VoiceAgentEvaluationBridge:
         turn_end_offset_secs: float = -0.3,
         noise_config: Optional[NoiseConfig] = None,
         log_level: str = "DEBUG",
+        accept_simulator_exit: bool = False,
+        inactivity_timeout: Optional[float] = 30.0,
     ):
         """
         Args:
@@ -238,6 +244,9 @@ class VoiceAgentEvaluationBridge:
                 so that the latency by BOT_STOPPED_SPEAKING event is mitigated. This is a workaround to the fact
                 that the BOT_STOPPED_SPEAKING event is sent after 0.35s silence in Pipecat output transport.
             noise_config: Noise configuration, used to configure the noise for the audio stream
+            accept_simulator_exit: Whether a simulator-side ``<exit>`` message stops the scenario.
+            inactivity_timeout: Seconds without conversational activity before stopping the scenario.
+                Set to ``None`` to disable the inactivity timeout.
         """
         self.user_url = user_url
         self.agent_url = agent_url
@@ -253,6 +262,10 @@ class VoiceAgentEvaluationBridge:
         self.output_sample_rate = output_sample_rate
         self.audio_chunk_in_seconds = audio_chunk_in_seconds
         self.log_level = log_level
+        self.accept_simulator_exit = accept_simulator_exit
+        if inactivity_timeout is not None and (not math.isfinite(inactivity_timeout) or inactivity_timeout <= 0):
+            raise ValueError(f"inactivity_timeout must be greater than 0 or None, got {inactivity_timeout}")
+        self.inactivity_timeout = inactivity_timeout
 
         # Random burst mode configuration (simulates browser's irregular sending pattern)
         self.use_burst_mode = use_burst_mode  # Disable burst mode by default
@@ -314,6 +327,8 @@ class VoiceAgentEvaluationBridge:
         self.stop_event = threading.Event()
         self.threads = []
         self.stop_reason = STOP_REASON_TIMEOUT
+        self.simulator_end_reported = False
+        self.last_activity_monotonic = time.monotonic()
 
         # Bridge resamples at source (like browser client) for better quality
         # This avoids STT having to resample small chunks
@@ -972,6 +987,29 @@ class VoiceAgentEvaluationBridge:
         except Exception as e:
             logger.error(f"[{direction}] Receive error: {e}", exc_info=True)
 
+    def _record_activity(self, timestamp: Optional[float] = None) -> None:
+        """Reset the inactivity clock after meaningful conversational activity."""
+        self.last_activity_monotonic = timestamp if timestamp is not None else time.monotonic()
+
+    def _stop_if_inactive(self, now: Optional[float] = None) -> bool:
+        """Stop the bridge when no meaningful activity occurred within the configured window."""
+        if self.inactivity_timeout is None or self.stop_event.is_set():
+            return False
+
+        now = now if now is not None else time.monotonic()
+        inactive_for = now - self.last_activity_monotonic
+        if inactive_for < self.inactivity_timeout:
+            return False
+
+        self.stop_reason = STOP_REASON_INACTIVITY_TIMEOUT
+        self.stop_event.set()
+        self.metrics.end_time = datetime.now()
+        logger.info(
+            f"[BRIDGE] Inactivity timeout reached after {inactive_for:.1f}s "
+            f"(configured: {self.inactivity_timeout:.1f}s)"
+        )
+        return True
+
     async def _send_audio_stream(
         self,
         audio_stream: AudioStream,
@@ -1001,6 +1039,8 @@ class VoiceAgentEvaluationBridge:
         try:
             while not self.stop_event.is_set():
                 current_time = loop.time()
+                if self._stop_if_inactive():
+                    break
                 elapsed = current_time - start_time
                 in_grace_period = elapsed > duration
                 if elapsed > (duration + self.grace_period):
@@ -1864,6 +1904,8 @@ class VoiceAgentEvaluationBridge:
         # Clear state for this run
         self.stop_event.clear()
         self.stop_reason = STOP_REASON_TIMEOUT
+        self.simulator_end_reported = False
+        self._record_activity()
         self.sent_to_agent_chunks = []
         self.sent_to_user_chunks = []
         self.user_context_history = None
@@ -2198,6 +2240,9 @@ class VoiceAgentEvaluationBridge:
         message_type = data.get("type", "")
         self._log_rtvi_event("USER", message_type, data)
 
+        if message_type in _RTVI_TYPES_ALREADY_TAGGED or message_type in {RTVI_BOT_SERVER_MESSAGE, "action"}:
+            self._record_activity()
+
         if message_type == RTVI_BOT_STARTED_SPEAKING:
             # Defensive: close previous turn if it wasn't properly stopped
             self._finalize_speaker_turn("user", timestamp)
@@ -2244,6 +2289,16 @@ class VoiceAgentEvaluationBridge:
             if isinstance(inner, dict) and inner.get("type") == "action-applied":
                 action_record = inner.get("action") or {}
                 await self._propagate_cross_side_sync(action_record, source_side="user")
+                return
+            text = str(inner.get("text", "")) if isinstance(inner, dict) else ""
+            if text.startswith(EXIT_MESSAGE_START_TAG) and text.endswith(EXIT_MESSAGE_END_TAG):
+                self.simulator_end_reported = True
+                logger.info("[USER] Simulator reported a successful conversation end")
+                if self.accept_simulator_exit:
+                    self.stop_reason = STOP_REASON_SIMULATOR_EXIT
+                    await asyncio.sleep(self.exit_settle_delay)
+                    self.stop_event.set()
+                    self.metrics.end_time = datetime.now()
 
     async def _monitor_agent_message(self, frame):
         """
@@ -2283,6 +2338,9 @@ class VoiceAgentEvaluationBridge:
         data = json.loads(frame.message) if isinstance(frame.message, str) else frame.message
         message_type = data.get("type", "")
         self._log_rtvi_event("AGENT", message_type, data)
+
+        if message_type in _RTVI_TYPES_ALREADY_TAGGED or message_type in {RTVI_BOT_SERVER_MESSAGE, "action"}:
+            self._record_activity()
 
         if message_type == RTVI_BOT_STARTED_SPEAKING:
             logger.debug("[AGENT STARTED SPEAKING]")

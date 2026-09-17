@@ -25,9 +25,15 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
 from typing import Dict, List, Optional
 
-from nemo_voice_agent.evaluation.bridge import STOP_REASON_EXIT, VoiceAgentEvaluationBridge
+from nemo_voice_agent.evaluation.bridge import (
+    STOP_REASON_EXIT,
+    STOP_REASON_INACTIVITY_TIMEOUT,
+    STOP_REASON_SIMULATOR_EXIT,
+    VoiceAgentEvaluationBridge,
+)
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 from nemo_voice_agent.evaluation.db_state_predicates import evaluate_db_state_assertion
 from nemo_voice_agent.evaluation.resume import (
@@ -38,6 +44,35 @@ from nemo_voice_agent.evaluation.resume import (
 from nemo_voice_agent.evaluation.scenarios.classes import Scenario, SuccessSignal
 from nemo_voice_agent.evaluation.utils import LLMJudge, check_if_task_success, normalize_scenario_payload
 from nemo_voice_agent.utils import FileLogger
+
+
+class ConversationEndPolicy(StrEnum):
+    """Policies used to decide whether a scenario reached a valid end state."""
+
+    TOOL_ONLY = "tool-only"
+    VALID_TERMINAL_STATE = "valid-terminal-state"
+
+
+def evaluate_conversation_end(
+    *,
+    policy: ConversationEndPolicy | str,
+    stop_reason: str,
+    turns: list[dict],
+    simulator_end_reported: bool = False,
+) -> tuple[bool, str]:
+    """Return the policy verdict and the concrete evidence that produced it."""
+    policy = ConversationEndPolicy(policy)
+    if stop_reason == STOP_REASON_EXIT:
+        return True, "agent_end_conversation_tool"
+    if policy == ConversationEndPolicy.TOOL_ONLY:
+        return False, "agent_end_conversation_tool_missing"
+    if simulator_end_reported or stop_reason == STOP_REASON_SIMULATOR_EXIT:
+        return True, "simulator_reported_end"
+
+    last_speaker = next((turn.get("role") for turn in reversed(turns) if turn.get("role")), None)
+    if stop_reason == STOP_REASON_INACTIVITY_TIMEOUT and last_speaker == "user":
+        return True, "inactivity_timeout_after_user_final_turn"
+    return False, "no_valid_terminal_evidence"
 
 
 @dataclass
@@ -241,6 +276,8 @@ async def run_dynamic_evaluation(
     judge_include_conversation: bool = False,
     strict_match: bool = False,
     min_agent_turns: int = 0,
+    conversation_end_policy: ConversationEndPolicy | str = ConversationEndPolicy.TOOL_ONLY,
+    inactivity_timeout: Optional[float] = 30.0,
 ):
     """
     Run evaluation with dynamic scenario switching and latency measurement.
@@ -267,6 +304,10 @@ async def run_dynamic_evaluation(
         strict_match: If True, force ``disallow_extra_items=True`` on every scenario for this run,
             overriding each scenario's own setting. Default False respects per-scenario flags.
         min_agent_turns: scenarios with agent turns less than this number will be treated as incomplete
+        conversation_end_policy: Policy for the CLEAN_EXIT gate. ``tool-only`` requires the agent's
+            EndConversationTool. ``valid-terminal-state`` also accepts a simulator-reported end or an inactivity
+            timeout after the user's final turn.
+        inactivity_timeout: Seconds without conversational activity before the bridge stops the scenario.
     """
 
     if not logger:
@@ -295,6 +336,7 @@ async def run_dynamic_evaluation(
                 f"is applicable. Pass --judge-url / --judge-model / --judge-api-key to enable."
             )
 
+    conversation_end_policy = ConversationEndPolicy(conversation_end_policy)
     bridge = VoiceAgentEvaluationBridge(
         user_url=user_url,
         agent_url=agent_url,
@@ -305,6 +347,8 @@ async def run_dynamic_evaluation(
         agent_input_sample_rate=agent_input_sample_rate,
         output_sample_rate=output_sample_rate,
         audio_chunk_in_seconds=audio_chunk_in_seconds,
+        accept_simulator_exit=conversation_end_policy == ConversationEndPolicy.VALID_TERMINAL_STATE,
+        inactivity_timeout=inactivity_timeout,
     )
 
     all_results = []
@@ -579,11 +623,22 @@ async def run_dynamic_evaluation(
         metrics["scenario_name"] = scenario.name
         metrics["scenario_directory"] = scenario_dir
         metrics["scenario_duration"] = (scenario_end - scenario_start).total_seconds()
-        # Closure-discipline signal: True iff the agent called EndConversationTool
-        # voluntarily (stop_reason == [EXIT]). False on TIMEOUT or any other
-        # non-clean termination. Drives the optional CLEAN_EXIT gating signal.
+        # Preserve the exact termination evidence while keeping ``clean_exit``
+        # as the backward-compatible field consumed by SuccessSignal.CLEAN_EXIT.
         metrics["stop_reason"] = bridge.stop_reason
-        metrics["clean_exit"] = bridge.stop_reason == STOP_REASON_EXIT
+        metrics["conversation_end_policy"] = conversation_end_policy.value
+        metrics["inactivity_timeout_seconds"] = inactivity_timeout
+        metrics["end_conversation_tool_called"] = bridge.stop_reason == STOP_REASON_EXIT
+        metrics["simulator_end_reported"] = bool(getattr(bridge, "simulator_end_reported", False))
+        metrics["last_speaker"] = next(
+            (turn.get("role") for turn in reversed(metrics.get("turns") or []) if turn.get("role")), None
+        )
+        metrics["clean_exit"], metrics["conversation_end_reason"] = evaluate_conversation_end(
+            policy=conversation_end_policy,
+            stop_reason=bridge.stop_reason,
+            turns=metrics.get("turns") or [],
+            simulator_end_reported=metrics["simulator_end_reported"],
+        )
         if insufficient_turns:
             metrics["insufficient_agent_turns"] = True
         if not insufficient_turns:

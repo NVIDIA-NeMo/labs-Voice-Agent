@@ -30,6 +30,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import math
 import os
 import sys
 from datetime import datetime
@@ -55,11 +56,15 @@ _CONSISTENCY_CHECK_FIELDS = (
     "judge_top_p",
     "judge_seed",
     "strict_match",
+    "conversation_end_policy",
+    "inactivity_timeout",
 )
 
 
 def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     """Validate numeric scoring options after argparse has parsed their types."""
+    if not math.isfinite(args.inactivity_timeout) or args.inactivity_timeout <= 0:
+        parser.error(f"--inactivity-timeout must be greater than 0, got {args.inactivity_timeout}")
     try:
         validate_judge_numeric_options(
             judge_threshold=args.judge_threshold,
@@ -355,6 +360,26 @@ Examples:
             "re-run. Default: 3. Pass 0 to disable the filter."
         ),
     )
+    parser.add_argument(
+        "--conversation-end-policy",
+        choices=("tool-only", "valid-terminal-state"),
+        default="tool-only",
+        help=(
+            "Policy for the clean-exit success gate. 'tool-only' requires the agent to call "
+            "EndConversationTool. 'valid-terminal-state' also accepts a simulator-reported end or an "
+            "inactivity timeout when the user was the final speaker. Default: tool-only."
+        ),
+    )
+    parser.add_argument(
+        "--inactivity-timeout",
+        type=float,
+        default=30.0,
+        metavar="SECONDS",
+        help=(
+            "Stop a scenario after this many seconds without conversational activity from either side. "
+            "This is independent of the overall --duration limit. Default: 30.0."
+        ),
+    )
 
     args = parser.parse_args()
     _validate_args(parser, args)
@@ -508,6 +533,8 @@ Examples:
                 judge_include_conversation=args.judge_include_conversation,
                 strict_match=args.strict_match,
                 min_agent_turns=args.min_agent_turns,
+                conversation_end_policy=args.conversation_end_policy,
+                inactivity_timeout=args.inactivity_timeout,
             )
         )
         return 0
