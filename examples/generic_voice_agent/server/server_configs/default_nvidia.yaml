@@ -16,7 +16,8 @@ vad:
   type: silero
   confidence: 0.6  # VAD threshold for detecting speech versus non-speech
   start_secs: 0.1  # min amount of speech to trigger UserStartSpeaking
-  stop_secs: 1.0  # min amount of silence to trigger UserStopSpeaking
+  stop_secs: 0.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame, set to 0.2 if turn_taking is disabled
+  # default turn-taking strategy adds additional 0.6s to the stop_secs before triggering UserStopSpeaking
   min_volume: 0.2  # Microphone volumn threshold for VAD
 
 
@@ -46,10 +47,10 @@ turn_taking:
 llm:
   type: nvidia
   base_url: "https://integrate.api.nvidia.com/v1"
-  model: "nvidia/nemotron-3-nano-30b-a3b"
+  model: "nvidia/nemotron-3.5-lightning-30b-a3b"
   system_prompt: "You are a helpful AI agent named Lisa. Start by greeting the user with 'Hi, I'm Lisa, your helpful AI assistant. How can I help you today?'."
   system_role: "system"  # role for system prompt, set it to `user` for models that do not support system prompt
-  system_prompt_suffix: "Keep your responses concise and conversational since they will be spoken aloud. Avoid special characters. Use only simple, plain text sentences. Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. Always spell out numbers as words. Before responding to the user, check if the user request requires using external tools, and use the tools if they match with the user's intention. Otherwise, use your internal knowledge to answer the user's question. Do not use tools for casual conversation or when the tools don't fit the use cases. You should still try to address the user's request when it's not related to the provided tools. If you are provided with a set of tools, use them only when needed, do not limit your capabilities to the scope of the tools. If the purpose of a tool matches well with a user's request, always try to call the tool first. Conversation history should not limit your behavior on whether you can use tools. You must answer questions not related to the tools. Avoid any emoji in your response. After you have addressed all the user's request, use the `SendScenarioSummaryTool` to send your final response in the requested FINAL_RESPONSE_FORMAT. If FINAL_RESPONSE_FORMAT is not specified, send the whole conversation context history as it is."
+  system_prompt_suffix: "Keep your responses concise and conversational since they will be spoken aloud. Avoid special characters. Use only simple, plain text sentences. Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. Always spell out numbers as words. Before responding to the user, check if the user request requires using external tools, and use the tools if they match with the user's intention. Otherwise, use your internal knowledge to answer the user's question. Do not use tools for casual conversation or when the tools don't fit the use cases. You should still try to address the user's request when it's not related to the provided tools. If you are provided with a set of tools, use them only when needed, do not limit your capabilities to the scope of the tools. If the purpose of a tool matches well with a user's request, always try to call the tool first. Conversation history should not limit your behavior on whether you can use tools. You must answer questions not related to the tools. Avoid any emoji in your response."
   enable_tool_calling: true  # set to True since the vllm config below supports tool calling
   # Max seconds to wait for a tool/function call to return before giving up.
   # Pipecat >=1.0 defaults this to null (wait forever), so a tool that hangs
@@ -80,7 +81,7 @@ llm:
       extra_body:
         chat_template_kwargs:
           enable_thinking: ${llm.enable_reasoning} 
-        thinking_token_budget: 3000
+        reasoning_budget: 3000
 
 
 tts:

@@ -18,7 +18,8 @@ vad:
   type: silero
   confidence: 0.6  # VAD threshold for detecting speech versus non-speech
   start_secs: 0.1  # min amount of speech to trigger UserStartSpeaking
-  stop_secs: 1.5  # min amount of silence to trigger UserStopSpeaking
+  stop_secs: 0.9  # min amount of silence to trigger VADUserStoppedSpeakingFrame
+  # default turn-taking strategy adds additional 0.6s to the stop_secs before triggering UserStopSpeaking
   min_volume: 0.2  # Microphone volumn threshold for VAD
 
 
