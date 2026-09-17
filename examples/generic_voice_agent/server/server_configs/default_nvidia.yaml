@@ -80,7 +80,7 @@ llm:
       extra_body:
         chat_template_kwargs:
           enable_thinking: ${llm.enable_reasoning} 
-        thinking_token_budget: 3000
+        reasoning_budget: 3000
 
 
 tts:
