@@ -109,7 +109,7 @@ class HuggingFaceLLMLocalService(LLMUtilsMixin):
     def __init__(
         self,
         model: str = "meta-llama/Meta-Llama-3-8B-Instruct",
-        device: str = "cuda:0",
+        device: str = "cuda",
         dtype: str = "bfloat16",
         reasoning_budget: int = 0,
         generation_kwargs: dict = None,

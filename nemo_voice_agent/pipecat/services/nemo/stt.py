@@ -79,8 +79,8 @@ class NemoSTTService(STTService):
     def __init__(
         self,
         *,
-        model: Optional[str] = "nnvidia/parakeet_realtime_eou_120m-v1",
-        device: Optional[str] = "cuda:0",
+        model: Optional[str] = "nvidia/parakeet_realtime_eou_120m-v1",
+        device: Optional[str] = "cuda",
         sample_rate: Optional[int] = 16000,
         params: Optional[NeMoSTTInputParams] = None,
         has_turn_taking: Optional[bool] = None,  # if None, it will be set by the model name
