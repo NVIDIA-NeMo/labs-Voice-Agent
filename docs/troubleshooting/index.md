@@ -93,6 +93,10 @@ The defaults in `examples/generic_voice_agent/server/server.py` are `SERVER_HOST
 `WEBSOCKET_PORT=8765`, `FASTAPI_PORT=7860`, `SERVER_PUBLIC_HOST=127.0.0.1`, and `WEBSOCKET_SCHEME=ws`. For more
 information, refer to [Environment variables](../reference/runtime/environment.md).
 
+If you browse from a different machine than the one running the server, refer to
+[Access the Agent From Another Machine](../get-started/quickstart.md#access-the-agent-from-another-machine).
+The `SERVER_PUBLIC_HOST` default of `127.0.0.1` resolves to the browser's own machine.
+
 ## Error connecting: Cannot read properties of undefined (reading 'enumerateDevices') appears
 
 **Cause:** `navigator.mediaDevices` is unavailable because the page is not a secure context, such as plain
@@ -298,6 +302,37 @@ For more information, refer to
 
 **Resolution:** Use a noise-canceling microphone or a quieter environment. For more information, refer to
 [ASR](../about/core-concepts/speech-pipeline/asr.md).
+
+## vLLM fails to build a CUDA extension because nvcc or the CUDA runtime is not found
+
+**Cause:** Something is building a CUDA C++ extension from source, and `nvcc` cannot compile or link it.
+This applies only to extension builds, such as installing `flash-attn` from a source distribution or
+building vLLM itself instead of using the prebuilt wheel. It does not apply to the `torch.compile` work
+that vLLM logs at startup, which Triton compiles with the `ptxas` binary bundled in
+`triton/backends/nvidia/bin/` and needs no CUDA compiler. Two conditions cause the failure. First, `nvcc`
+is absent, or the `nvcc` on `PATH` belongs to a different CUDA release than the `nvidia-cuda-runtime`
+wheel in the virtual environment. Second, the CUDA wheels install only versioned library names such as
+`libcudart.so.13`, while the linker resolves the unversioned `libcudart.so` that `-lcudart` names, so the
+link step fails even though the runtime is present. A system CUDA installation under `/usr/local/cuda`
+supplies both the compiler and those unversioned names, which is why machines that have one never hit
+this.
+
+**Resolution:** Source `scripts/setup_cuda_toolchain.sh` in the shell that starts vLLM. The script installs
+the `cuda-toolkit` compiler components that match the installed runtime series, creates the missing
+unversioned linker symlinks in a cache directory, installs Ninja, and exports `CUDA_HOME`, `PATH`,
+`LIBRARY_PATH`, and `LD_LIBRARY_PATH`. It then compiles and links a minimal CUDA program, so a failure
+surfaces before you load a model.
+
+```bash
+source scripts/setup_cuda_toolchain.sh
+vllm serve ...
+```
+
+Source the script rather than running it, because a subprocess cannot export variables to the shell that
+starts vLLM. Run it only after an extension build fails. An installation that uses the prebuilt wheels
+needs no CUDA compiler, and the script is not a no-op on a working machine: it ignores any system CUDA and
+prepends its own toolchain to `PATH`, `LIBRARY_PATH`, and `LD_LIBRARY_PATH`, so the compiler matches the
+runtime wheel that PyTorch was built against.
 
 ## vLLM is running but the agent still reports errors
 
