@@ -83,7 +83,7 @@ ignores other keys in the block.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `type` | — | `nemo` (local model) or `nvidia` (hosted NIM). Any other value raises an assertion at startup. |
+| `type` | — | `nemo` (local streaming model), `nemo_speechlm` (offline SpeechLM behind a vLLM endpoint, used by `default_salm.yaml`), or `nvidia` (hosted NIM). Any other value raises an assertion at startup. |
 | `model` | — | Hugging Face or NGC model ID, or a path to a local `.nemo` file. |
 | `device` | — | Torch device string, such as `cuda` or `cuda:1`. Put ASR on its own GPU if you have available capacity. |
 | `att_context_size` | `[70, 1]` | Left and right attention context of the streaming encoder. Larger right context means more lookahead: better accuracy, higher latency. The encoder must support switchable lookaheads, otherwise model load fails with `Model does not support multiple lookaheads`. Check the model card for the pairs a given checkpoint was trained with. |
@@ -93,7 +93,7 @@ ignores other keys in the block.
 | `frame_len_in_secs` | `0.08` | Carried on the params object for bookkeeping. The audio actually fed per inference step is `buffer_size × raw_audio_frame_len_in_secs`, so change those two if you need a different cadence. |
 | `sample_rate` | `16000` | Input sample rate. The shipped models are 16 kHz. |
 | `ignore_eou_eob` | `false` | Strip `EOU` and `EOB` tokens from the hypothesis and fall back to VAD for turn ends. |
-| `ttfs_p99_latency` | `null` | P99 seconds from end of speech to final transcript, broadcast to downstream turn-stop strategies. The default is unset because the figure is hardware-dependent. Measure it for your deployment before setting it. |
+| `ttfs_p99_latency` | `null` | P99 seconds from end of speech to final transcript, broadcast to downstream turn-stop strategies. The default is unset because the figure is hardware-dependent. Pipecat then substitutes 1.0 seconds and logs `ttfs_p99_latency not set, using default 1.0s`. Measure it for your deployment before setting it. |
 
 Two constructor arguments are fixed by the builder and are not configurable from YAML: the decoding backend
 (`legacy`) and `decoder_type` (`rnnt`, which selects the transducer branch on hybrid checkpoints). Audio
@@ -111,7 +111,9 @@ The behavior difference is visible in the frames that the service emits:
   downstream watches for the `EOU` / `EOB` suffix, strips it, and promotes the buffered text to a final
   `TranscriptionFrame`. For downstream behavior, refer to [Turn taking](turn-taking.md).
 - **Non-EOU model.** The service uses the model's own `is_final` flag to choose between
-  `InterimTranscriptionFrame` and `TranscriptionFrame`, and turn ends come from VAD `stop_secs`.
+  `InterimTranscriptionFrame` and `TranscriptionFrame`, and turn ends come from VAD `stop_secs`. Under
+  `turn_taking.type: speech_timeout`, `turn_taking.user_speech_timeout` is added on top of that silence
+  window. Refer to [Turn taking](turn-taking.md).
 
 If VAD reports the user stopped speaking while the ASR still considers the utterance incomplete, the service
 logs `[EOU missing]` and resets the encoder cache. Occasional lines are normal. Frequent lines indicate that

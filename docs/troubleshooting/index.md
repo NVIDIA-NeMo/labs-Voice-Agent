@@ -48,10 +48,16 @@ running server reports.
 
 ## Bot interrupts too eagerly or waits too long before replying
 
-**Cause:** Voice activity detection (VAD) end-of-turn timing controls when the bot responds.
+**Cause:** End-of-turn timing depends on `turn_taking.type`. Under `type: speech_timeout`, two waits are
+additive: voice activity detection (VAD) reports the end of speech after `vad.stop_secs` of silence, and only
+then does Pipecat's `SpeechTimeoutUserTurnStopStrategy` wait a further `turn_taking.user_speech_timeout`,
+which defaults to 0.6 seconds. A `vad.stop_secs` of 0.8 seconds therefore ends the turn 1.4 seconds after the
+user stops speaking. Under `type: nemo`, only `vad.stop_secs` applies, because `NeMoTurnTakingService` emits
+the user-turn frames itself.
 
-**Resolution:** Tune `vad.stop_secs`, which controls the silence required to end a turn, along with
-`vad.confidence` and `vad.min_volume`. For more information, refer to
+**Resolution:** Tune both keys under `type: speech_timeout`. Lower `turn_taking.user_speech_timeout` to cut
+the trailing wait, and raise it when the bot cuts in during mid-sentence pauses. Tune `vad.stop_secs`,
+`vad.confidence`, and `vad.min_volume` for the silence window itself. For more information, refer to
 [Turn taking](../about/core-concepts/speech-pipeline/turn-taking.md).
 
 ## Bot never greets and the log reports a connection error for http://localhost:8000/v1
@@ -86,6 +92,10 @@ page.
 The defaults in `examples/generic_voice_agent/server/server.py` are `SERVER_HOST=0.0.0.0`,
 `WEBSOCKET_PORT=8765`, `FASTAPI_PORT=7860`, `SERVER_PUBLIC_HOST=127.0.0.1`, and `WEBSOCKET_SCHEME=ws`. For more
 information, refer to [Environment variables](../reference/runtime/environment.md).
+
+If you browse from a different machine than the one running the server, refer to
+[Access the Agent From Another Machine](../get-started/quickstart.md#access-the-agent-from-another-machine).
+The `SERVER_PUBLIC_HOST` default of `127.0.0.1` resolves to the browser's own machine.
 
 ## Error connecting: Cannot read properties of undefined (reading 'enumerateDevices') appears
 
@@ -233,9 +243,11 @@ session.
 
 ## Short acknowledgements such as "uh-huh" interrupt the bot
 
-**Cause:** Backchannel filtering is disabled.
+**Cause:** Backchannel filtering is disabled, or the configuration runs `turn_taking.type: speech_timeout`,
+which has no backchannel stage at all.
 
-**Resolution:** Set `turn_taking.backchannel_phrases_path` to a phrase list instead of `null`.
+**Resolution:** Set `turn_taking.type: nemo`, and set `turn_taking.backchannel_phrases_path` to a phrase list
+instead of `null`.
 
 ## Speaker labels flip between turns or remain the same for every turn
 
@@ -268,6 +280,16 @@ more information, refer to [eva_airline](../evaluate/domain-guides/eva-airline.m
 **Resolution:** Run `lsof -i :8765` and `lsof -i :7860`, and then kill the stale process or export different
 `WEBSOCKET_PORT` and `FASTAPI_PORT` values.
 
+## Startup warns that turn_taking.enabled is ignored
+
+**Cause:** The boolean `turn_taking.enabled` key was replaced by `turn_taking.type`. `ConfigManager` no longer
+reads the old key: it warns and applies the `nemo` default. A config that used `enabled: false` therefore runs
+the NeMo turn-taking service instead of the VAD-driven strategies it asked for.
+
+**Resolution:** Replace `enabled: true` with `type: nemo`, and `enabled: false` with `type: speech_timeout`.
+For more information, refer to
+[Turn taking](../about/core-concepts/speech-pipeline/turn-taking.md).
+
 ## tau2 scenario disconnects with WebSocket close code 1009
 
 **Cause:** A database (DB) payload is inlined into a frame larger than the transport message cap.
@@ -280,6 +302,37 @@ more information, refer to [eva_airline](../evaluate/domain-guides/eva-airline.m
 
 **Resolution:** Use a noise-canceling microphone or a quieter environment. For more information, refer to
 [ASR](../about/core-concepts/speech-pipeline/asr.md).
+
+## vLLM fails to build a CUDA extension because nvcc or the CUDA runtime is not found
+
+**Cause:** Something is building a CUDA C++ extension from source, and `nvcc` cannot compile or link it.
+This applies only to extension builds, such as installing `flash-attn` from a source distribution or
+building vLLM itself instead of using the prebuilt wheel. It does not apply to the `torch.compile` work
+that vLLM logs at startup, which Triton compiles with the `ptxas` binary bundled in
+`triton/backends/nvidia/bin/` and needs no CUDA compiler. Two conditions cause the failure. First, `nvcc`
+is absent, or the `nvcc` on `PATH` belongs to a different CUDA release than the `nvidia-cuda-runtime`
+wheel in the virtual environment. Second, the CUDA wheels install only versioned library names such as
+`libcudart.so.13`, while the linker resolves the unversioned `libcudart.so` that `-lcudart` names, so the
+link step fails even though the runtime is present. A system CUDA installation under `/usr/local/cuda`
+supplies both the compiler and those unversioned names, which is why machines that have one never hit
+this.
+
+**Resolution:** Source `scripts/setup_cuda_toolchain.sh` in the shell that starts vLLM. The script installs
+the `cuda-toolkit` compiler components that match the installed runtime series, creates the missing
+unversioned linker symlinks in a cache directory, installs Ninja, and exports `CUDA_HOME`, `PATH`,
+`LIBRARY_PATH`, and `LD_LIBRARY_PATH`. It then compiles and links a minimal CUDA program, so a failure
+surfaces before you load a model.
+
+```bash
+source scripts/setup_cuda_toolchain.sh
+vllm serve ...
+```
+
+Source the script rather than running it, because a subprocess cannot export variables to the shell that
+starts vLLM. Run it only after an extension build fails. An installation that uses the prebuilt wheels
+needs no CUDA compiler, and the script is not a no-op on a working machine: it ignores any system CUDA and
+prepends its own toolchain to `PATH`, `LIBRARY_PATH`, and `LD_LIBRARY_PATH`, so the compiler matches the
+runtime wheel that PyTorch was built against.
 
 ## vLLM is running but the agent still reports errors
 

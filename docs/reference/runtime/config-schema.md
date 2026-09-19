@@ -90,8 +90,24 @@ The code reads all four voice activity detection (VAD) keys without a fallback a
 | --- | --- | --- | --- |
 | `confidence` | float | `0.6` | speech-vs-nonspeech threshold |
 | `start_secs` | float | `0.1` | minimum speech before user-start |
-| `stop_secs` | float | `1.2` | minimum silence before user-stop |
-| `min_volume` | float | `0.4` | microphone volume gate |
+| `stop_secs` | float | `1.2` | minimum silence before the VAD reports the user stopped speaking |
+| `min_volume` | float | `0.2` | microphone volume gate |
+
+`stop_secs` is not the whole end-of-turn latency, and what it leaves out depends on `turn_taking.type`:
+
+- With `turn_taking.type: nemo`, `NeMoTurnTakingService` acts on the VAD stop frame, so the user turn ends
+  `vad.stop_secs` after the last speech.
+- With `turn_taking.type: speech_timeout`, Pipecat's `SpeechTimeoutUserTurnStopStrategy` starts two timers
+  when that frame arrives and ends the turn only once both have elapsed and at least one transcript has
+  arrived. The wait after the VAD frame is therefore
+  `max(user_speech_timeout, max(0, stt.ttfs_p99_latency - vad.stop_secs))`, and the user turn ends
+  `vad.stop_secs` plus that wait after the last speech. For `default_nvidia.yaml`, which pairs
+  `stop_secs: 0.2` with `user_speech_timeout: 0.6` and an unset `ttfs_p99_latency` that Pipecat substitutes
+  with 1.0, the wait is between 0.6 and 0.8 seconds, so the turn ends 0.8 to 1.0 seconds after the last
+  speech. Refer to
+  [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md) for the worked cases.
+
+Tune `stop_secs` and `user_speech_timeout` together when you chase end-of-turn latency.
 
 `vad.type` appears in the shipped configs but is not read by any code — Silero is always used.
 
@@ -101,11 +117,11 @@ The `stt` block selects and configures the local or hosted speech-to-text (STT) 
 
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
-| `type` | `nemo` \| `nvidia` | required | `get_stt_service_from_config` (asserted) |
-| `model` | string | required | both backends |
+| `type` | `nemo` \| `nemo_speechlm` \| `nvidia` | required | `get_stt_service_from_config` (asserted) |
+| `model` | string | required | all three backends |
 | `model_config` | path | none | `ConfigManager` — basename selects the file under `stt_configs/` |
 | `device` | string | required for `nemo` | `NemoSTTService` |
-| `sample_rate` | int | `16000` | both backends |
+| `sample_rate` | int | `16000` | all three backends |
 | `att_context_size` | list | `[70, 1]` | `NeMoSTTInputParams` — left/right streaming context |
 | `frame_len_in_secs` | float | `0.08` | `NeMoSTTInputParams` |
 | `audio_chunk_size_in_secs` | float | `0.08` | derives `buffer_size` when it is unset |
@@ -136,17 +152,27 @@ The `diar` block enables speaker diarization and sets its model and detection pa
 
 ## turn_taking
 
-The `turn_taking` block controls backchannel handling and interruption timing.
+The `turn_taking` block selects the turn-detection strategy, then tunes the one you select.
 
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
-| `enabled` | bool | `true` | `ConfigManager`, `build_turn_taking` — returns `None` when false |
-| `backchannel_phrases_path` | path, list, or null | required when enabled | `NeMoTurnTakingService`; a relative path is tried against the CWD then the server base dir, and a missing file raises |
-| `max_buffer_size` | int | required when enabled (shipped: `2`) | word count above which a non-backchannel utterance interrupts immediately |
-| `bot_stop_delay` | float | required when enabled (shipped: `0.5`) | seconds of server and client audio slack before bot-stop is honored |
+| `type` | `nemo` \| `speech_timeout` | `nemo` | `ConfigManager` (asserted), `build_turn_taking` — returns `None` for `speech_timeout` |
+| `backchannel_phrases_path` | path, list, or null | required for `nemo` | `NeMoTurnTakingService`; a relative path is tried against the CWD then the server base dir, and a missing file raises |
+| `max_buffer_size` | int | required for `nemo` (shipped: `2`) | word count above which a non-backchannel utterance interrupts immediately |
+| `bot_stop_delay` | float | required for `nemo` (shipped: `0.5`) | seconds of server and client audio slack before bot-stop is honored |
+| `user_speech_timeout` | float | `0.6` | `build_context_and_aggregators` — silence `SpeechTimeoutUserTurnStopStrategy` waits on top of `vad.stop_secs`; applies to `speech_timeout` only |
 
-Disabling turn-taking also changes turn detection ownership: `build_context_and_aggregators` falls back to
-VAD-driven strategies in the user aggregator. For more detail, refer to
+`type` also decides which component owns turn detection, because exactly one of them may emit the user-turn
+frames:
+
+- `nemo` — `build_turn_taking` returns a `NeMoTurnTakingService` that emits the frames, and
+  `build_context_and_aggregators` gives the user aggregator `ExternalUserTurnStrategies` so it stays quiet.
+- `speech_timeout` — the pipeline has no turn-taking stage, and the user aggregator derives the turn from VAD
+  with `VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy`.
+
+The boolean `enabled` key that this block used before is gone. `ConfigManager` ignores it and logs a warning
+naming the mapping when a config still sets it, so a stale config silently falls back to the `nemo` default.
+Replace `enabled: true` with `type: nemo`, and `enabled: false` with `type: speech_timeout`. For more detail, refer to
 [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md).
 
 ## llm

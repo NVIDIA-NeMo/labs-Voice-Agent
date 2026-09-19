@@ -37,8 +37,10 @@ vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
     --enable-auto-tool-choice --tool-call-parser qwen3_coder \
     --reasoning-parser nemotron_v3
 
-cd examples/generic_voice_agent/server && python server.py     # terminal 1
-cd examples/generic_voice_agent/client && npm install && npm run dev   # terminal 2
+# terminal 1:
+cd examples/generic_voice_agent/server && python server.py    
+# terminal 2: 
+cd examples/generic_voice_agent/client && npm install && npm run dev   
 ```
 
 If your GPU has less memory or doesn't support NVFP4, swap in a smaller, unquantized model instead by
@@ -46,9 +48,23 @@ pointing `llm.model` / `llm.model_config` in `default.yaml` at one of the other 
 (e.g. `nemotron_nano_v2.yaml` at 9B params, or `qwen3-8B.yaml` / `llama3.1-8B-instruct.yaml` /
 `qwen2.5-7B.yaml`, all of which fit comfortably on a single consumer GPU).
 
-Then open the address printed by the client. Full walkthrough:
-[Installation](https://docs.nvidia.com/nemo/labs-voice-agent/get-started/installation) ·
-[Quickstart](https://docs.nvidia.com/nemo/labs-voice-agent/get-started/quickstart)
+Then open the address printed by the client.
+
+**Browsing from another machine?** Export the address the browser can
+actually reach *before* starting the server:
+
+```bash
+export SERVER_PUBLIC_HOST="10.0.0.5"   # hostname or IP the browser dials
+# If you terminate TLS in front, you also need:
+# export WEBSOCKET_SCHEME="wss"          
+```
+
+And Chrome blocks the microphone on a plain-HTTP origin, so allowlist the client URL under
+`chrome://flags/#unsafely-treat-insecure-origin-as-secure` and restart the browser.
+
+Full walkthrough:
+[Quickstart](https://docs.nvidia.com/nemo/labs-voice-agent/get-started/quickstart) ·
+[Installation](https://docs.nvidia.com/nemo/labs-voice-agent/get-started/installation)
 
 ## 📚 Documentation
 

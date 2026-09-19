@@ -148,7 +148,7 @@ reads one block of the merged config:
 | `vad` | — | `build_vad_analyzer` (Silero `VADParams`) |
 | `stt` | `stt_configs/` | `build_stt` |
 | `diar` | — | `build_diar`; returns `None` when `diar.enabled` is false |
-| `turn_taking` | — | `build_turn_taking`; returns `None` when `turn_taking.enabled` is false |
+| `turn_taking` | — | `build_turn_taking`; `turn_taking.type` selects `nemo` or `speech_timeout`, and returns `None` for `speech_timeout` |
 | `llm` | `llm_configs/` | `build_llm`; `llm.type` selects `auto`, `hf`, `vllm`, or `nvidia` |
 | `tts` | `tts_configs/` | `build_tts` and `build_llm_text_processor` |
 
@@ -175,9 +175,12 @@ Keep these merge and path behaviors in mind when a configuration edit does not t
 - The shipped `llm_configs/nemotron_3.5_lightning.yaml` sets `start_vllm_on_init: false`, so `python server.py` alone
   does not work by itself. Start vLLM first, or change that key. Refer to
   [vLLM Backend](../model-serving/vllm.md).
+- `turn_taking.type` replaced the boolean `turn_taking.enabled`. A config that still sets `enabled` gets a
+  startup warning naming the mapping and falls back to the `nemo` default: use `type: nemo` in place of
+  `enabled: true`, and `type: speech_timeout` in place of `enabled: false`.
 - `turn_taking.backchannel_phrases_path` is tried against the working directory first, then against the server
   base path, and raises `FileNotFoundError` naming both if neither exists. An inline list or `null` is also
-  accepted — `null` lets any speech interrupt the bot.
+  accepted — `null` lets any speech interrupt the bot. It applies to `type: nemo` only.
 - Only one client can be connected at a time. A second connection is rejected with WebSocket close code 1013,
   and the incumbent is kept. No config key changes this.
 
