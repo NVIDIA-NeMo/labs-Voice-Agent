@@ -358,6 +358,22 @@ class NemoSTTService(STTService):
                     # otherwise, we use the is_final flag to determine the frame type
                     frame_type = TranscriptionFrame if is_final else InterimTranscriptionFrame
 
+                # ``finalized`` is pipecat's "STT has nothing more to send for this
+                # utterance" signal -- a stronger claim than the frame class, which only
+                # says the text will not be revised. ``SpeechTimeoutUserTurnStopStrategy``
+                # uses it to cancel its stt_timeout safety net, and ``STTService.push_frame``
+                # uses it to report TTFB immediately instead of on a timeout.
+                #
+                # Only ``TranscriptionFrame`` carries the field -- ``InterimTranscriptionFrame``
+                # has no such attribute, so passing it there is a TypeError.
+                #
+                # Safe to derive from ``is_final`` because this service emits exactly one
+                # ``is_final=True`` per utterance: ``NemoStreamingASRService`` sets it only
+                # when an EOU/EOB token appears in the decoded text, then resets stream state
+                # (streaming_asr.py). Under ``ignore_eou_eob`` those tokens are stripped
+                # before that check, so ``is_final`` stays False and this branch never runs.
+                extra = {"finalized": is_final} if frame_type is TranscriptionFrame else {}
+
                 # Yield the frame instead of pushing it to avoid blocking
                 yield frame_type(
                     transcription,
@@ -365,6 +381,7 @@ class NemoSTTService(STTService):
                     time_now_iso8601(),
                     language,
                     result={"text": transcription},
+                    **extra,
                 )
 
         except Exception as e:
