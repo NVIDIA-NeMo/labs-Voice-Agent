@@ -97,6 +97,19 @@ If you browse from a different machine than the one running the server, refer to
 [Access the Agent From Another Machine](../get-started/quickstart.md#access-the-agent-from-another-machine).
 The `SERVER_PUBLIC_HOST` default of `127.0.0.1` resolves to the browser's own machine.
 
+## Enormous or fabricated transcripts reach the agent
+
+**Cause:** With `stt.type: nemo_speechlm`, the offline speech language model (SpeechLM) can fall into a
+repetition hallucination and decode thousands of tokens of invented prose from a few seconds of audio. The
+fabricated text enters the agent's context as a user turn, which derails the reply and inflates latency and
+token cost. A flat `stt.generation_kwargs.max_tokens` cannot separate this from a genuinely long utterance.
+
+**Resolution:** Bound the decode budget by audio duration. Set `stt.max_tokens_per_sec` to a value between 20
+and 25, which leaves a wide margin over the 3 to 4 tokens per second that real English speech needs. Each
+request then carries `min(max_tokens, audio_duration_seconds * max_tokens_per_sec)`. The key is unset by
+default, and it only lowers the configured budget. For more information, refer to
+[ASR](../about/core-concepts/speech-pipeline/asr.md#limit-the-decode-budget-by-audio-duration).
+
 ## Error connecting: Cannot read properties of undefined (reading 'enumerateDevices') appears
 
 **Cause:** `navigator.mediaDevices` is unavailable because the page is not a secure context, such as plain

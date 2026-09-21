@@ -15,7 +15,10 @@
 
 import asyncio
 import base64
+import contextlib
+import io
 import os
+import wave
 from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 
@@ -433,6 +436,11 @@ class NemoSTTService(STTService):
 class NemoSpeechLMSTTService(SegmentedSTTService):
     """NeMo Offline Speech-to-Text service for Pipecat integration."""
 
+    #: Floor for the duration-derived budget, so a sub-second "yes" is never clipped.
+    #: Does not raise an explicitly configured ``max_tokens`` below this value — the
+    #: effective budget is always ``min(configured, max(MIN_TOKEN_BUDGET, derived))``.
+    MIN_TOKEN_BUDGET = 16
+
     DEFAULT_USER_PROMPT = """Produce a verbatim transcript of the audio. Preserve named entities, abbreviations, 
 numbers, dates, measurements, acronyms, and technical terms as clearly as possible. Keep the same language as 
 spoken and do not translate. Omit accidental repetitions."""
@@ -447,6 +455,7 @@ spoken and do not translate. Omit accidental repetitions."""
         base_url: str = "http://localhost:8000/v1",
         sample_rate: int = 16000,
         generation_kwargs: Optional[dict] = None,
+        max_tokens_per_sec: Optional[float] = None,
         system_prompt: Optional[str] = "You are a helpful assistant. /no_think",
         user_prompt: Optional[str] = None,
         ttfs_p99_latency: Optional[float] = None,
@@ -461,6 +470,22 @@ spoken and do not translate. Omit accidental repetitions."""
             base_url: The base URL to use for the service.
             sample_rate: The sample rate to use for the service.
             generation_kwargs: The generation kwargs to use for the service. For example, {max_tokens: 256, temperature: 0.0, top_p: 1.0, chat_template_kwargs: {"enable_thinking": false}}.
+            max_tokens_per_sec: Duration-proportional ceiling on the decode budget. When set,
+                each request sends ``min(generation_kwargs["max_tokens"], duration * rate)``
+                instead of the flat configured value, floored at
+                :attr:`MIN_TOKEN_BUDGET` so short utterances keep a usable budget.
+                ``None`` (default) keeps the flat value and changes nothing.
+
+                This guards the repetition-hallucination failure mode: a SpeechLM can
+                decode thousands of tokens of fabricated prose from a few seconds of
+                audio, and a flat ``max_tokens`` cannot tell that apart from a genuinely
+                long utterance. A duration-proportional bound can. Observed in practice:
+                two 40-word utterances that decoded into 9,370 and 9,252 words.
+
+                Sizing: English runs roughly 2.5 words/s, and tokens outnumber words by
+                about 1.3x, so real speech needs ~3-4 tokens/s. A value of 20-25 leaves a
+                5-8x margin over natural speech while cutting a 10s hallucination from
+                thousands of tokens to a few hundred.
             system_prompt: The system prompt to use for the service.
             user_prompt: The user prompt to use for the service.
             ttfs_p99_latency: ttfs_p99_latency: P99 seconds from end of speech to final transcript,
@@ -494,6 +519,7 @@ spoken and do not translate. Omit accidental repetitions."""
             "chat_template_kwargs": {"enable_thinking": False},
             **(generation_kwargs or {}),
         }
+        self._max_tokens_per_sec = max_tokens_per_sec
         self._original_user_prompt = user_prompt
         self._system_prompt = system_prompt
         self._user_prompt = user_prompt if user_prompt else self.DEFAULT_USER_PROMPT
@@ -529,6 +555,46 @@ spoken and do not translate. Omit accidental repetitions."""
         self.reset_user_prompt()
         logger.info("Resetting NemoSpeechLMSTTService")
 
+    @staticmethod
+    def _audio_duration_seconds(audio: bytes) -> Optional[float]:
+        """Seconds of speech in a WAV segment, or ``None`` if it cannot be parsed.
+
+        ``SegmentedSTTService`` hands us a complete WAV (16-bit mono at the service
+        sample rate), so the frame count is authoritative — more so than deriving it
+        from ``len(audio)``, which would have to assume the header size.
+        """
+        try:
+            with contextlib.closing(wave.open(io.BytesIO(audio), "rb")) as wav:
+                rate = wav.getframerate()
+                return wav.getnframes() / float(rate) if rate else None
+        except (wave.Error, EOFError, ValueError):
+            return None
+
+    def _generation_kwargs_for(self, audio: bytes) -> dict:
+        """Per-request generation kwargs, with the duration-proportional cap applied.
+
+        Returns the shared dict unchanged when ``max_tokens_per_sec`` is unset or the
+        cap does not bite, so the common path allocates nothing. Never mutates
+        ``self._generation_kwargs`` — it is shared across concurrent requests.
+        """
+        if self._max_tokens_per_sec is None:
+            return self._generation_kwargs
+        duration = self._audio_duration_seconds(audio)
+        if duration is None:
+            # Unparseable segment: fall back to the flat budget rather than guess a
+            # cap from a length we cannot trust.
+            return self._generation_kwargs
+        derived = max(self.MIN_TOKEN_BUDGET, int(duration * self._max_tokens_per_sec))
+        configured = self._generation_kwargs.get("max_tokens")
+        capped = derived if configured is None else min(configured, derived)
+        if capped == configured:
+            return self._generation_kwargs
+        logger.debug(
+            f"Capping max_tokens {configured} -> {capped} for {duration:.2f}s of audio "
+            f"(max_tokens_per_sec={self._max_tokens_per_sec})"
+        )
+        return {**self._generation_kwargs, "max_tokens": capped}
+
     async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
         """Process audio data and generate transcription frames."""
         try:
@@ -558,7 +624,7 @@ spoken and do not translate. Omit accidental repetitions."""
             response = await self._client.chat.completions.create(
                 model=self._model_name,
                 messages=messages,
-                extra_body=self._generation_kwargs,
+                extra_body=self._generation_kwargs_for(audio),
             )
             t1 = asyncio.get_event_loop().time()
             logger.debug(f"SALM inference time: {t1 - t0} seconds")
@@ -615,7 +681,14 @@ def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[Audio
         # Served by an external vLLM SpeechLM endpoint, so there is no local model to load
         # and no device to pick. `model` must match the server's --served-model-name.
         kwargs = {}
-        for key in ("api_key", "api_key_env_var", "generation_kwargs", "system_prompt", "user_prompt"):
+        for key in (
+            "api_key",
+            "api_key_env_var",
+            "generation_kwargs",
+            "max_tokens_per_sec",
+            "system_prompt",
+            "user_prompt",
+        ):
             if key in config:
                 kwargs[key] = config[key]
         if "generation_kwargs" in kwargs:

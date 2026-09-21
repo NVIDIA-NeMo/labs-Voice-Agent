@@ -106,10 +106,16 @@ value raises. For details, refer to [ASR](../../about/core-concepts/speech-pipel
 
 | Key | Effect |
 | --- | --- |
-| `type` | `nemo` for a local NeMo streaming model, `nvidia` for a hosted Riva/NVCF endpoint. |
+| `type` | `nemo` for a local NeMo streaming model, `nemo_speechlm` for an offline SpeechLM behind a vLLM endpoint, `nvidia` for a hosted Riva/NVCF endpoint. |
 | `model` | Model identifier, for example `nvidia/parakeet_realtime_eou_120m-v1`. |
 | `model_config` | Sub-config under `stt_configs/`, for example `nemo_cache_aware_streaming.yaml`, which supplies `att_context_size`, `frame_len_in_secs`, and `audio_chunk_size_in_secs`. |
 | `device` | Torch device for the local model. Also used for diarization, as described below. |
+
+For `type: nemo_speechlm`, the block instead points at a vLLM endpoint with `base_url`, `generation_kwargs`,
+`system_prompt`, and `user_prompt`, as `server_configs/default_salm.yaml` shows. Add `max_tokens_per_sec` there
+to cap the decode budget by audio duration, which contains the repetition hallucinations that a flat
+`generation_kwargs.max_tokens` cannot. It is unset by default. Refer to
+[ASR](../../about/core-concepts/speech-pipeline/asr.md#offline-speechlm-transcription).
 
 For `type: nvidia`, the relevant keys are `language`, `model`, and `function_id` — the model name and
 function id address one specific NVCF deployment and must be changed together. `NVIDIA_API_KEY` from the

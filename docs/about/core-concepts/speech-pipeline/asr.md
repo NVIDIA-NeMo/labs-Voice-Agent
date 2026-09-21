@@ -83,7 +83,7 @@ ignores other keys in the block.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `type` | — | `nemo` (local streaming model), `nemo_speechlm` (offline SpeechLM behind a vLLM endpoint, used by `default_salm.yaml`), or `nvidia` (hosted NIM). Any other value raises an assertion at startup. |
+| `type` | — | `nemo` (local streaming model), `nemo_speechlm` (offline speech language model, or SpeechLM, behind a vLLM endpoint, used by `default_salm.yaml`), or `nvidia` (hosted NIM). Any other value raises an assertion at startup. For the SpeechLM keys, refer to [Offline SpeechLM transcription](#offline-speechlm-transcription). |
 | `model` | — | Hugging Face or NGC model ID, or a path to a local `.nemo` file. |
 | `device` | — | Torch device string, such as `cuda` or `cuda:1`. Put ASR on its own GPU if you have available capacity. |
 | `att_context_size` | `[70, 1]` | Left and right attention context of the streaming encoder. Larger right context means more lookahead: better accuracy, higher latency. The encoder must support switchable lookaheads, otherwise model load fails with `Model does not support multiple lookaheads`. Check the model card for the pairs a given checkpoint was trained with. |
@@ -133,6 +133,74 @@ stt:
   buffer_size: 5
   ignore_eou_eob: true
 ```
+
+## Offline SpeechLM Transcription
+
+Set `type: nemo_speechlm` to transcribe with an offline SpeechLM that an external vLLM
+endpoint serves, instead of a local streaming checkpoint. `NemoSpeechLMSTTService` extends Pipecat's
+`SegmentedSTTService`, so it transcribes a complete utterance after VAD reports the end of speech rather than
+decoding incrementally. Start the endpoint yourself, and set `model` to the server's `--served-model-name`. An
+example ships as `server_configs/default_salm.yaml`, which pairs the backend with
+`turn_taking.type: speech_timeout` and a longer `vad.stop_secs` of 1.2 seconds.
+
+The following table lists the keys that `get_stt_service_from_config` reads for `type: nemo_speechlm`. None of
+the streaming keys in the previous table apply, and `device` is not read because no model loads locally.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `model` | — | Served model name. It must match the `--served-model-name` of the vLLM endpoint. |
+| `base_url` | `http://localhost:8000/v1` | OpenAI-compatible endpoint of the SpeechLM server. `default_salm.yaml` uses port 5002. |
+| `sample_rate` | `16000` | Input sample rate of the audio segment sent for transcription. |
+| `generation_kwargs` | `{"chat_template_kwargs": {"enable_thinking": false}}` | Sampling parameters, such as `max_tokens`, `temperature`, and `top_p`. Your values merge over the default and travel to the endpoint in `extra_body`, so vLLM-only keys arrive untouched. Setting your own `chat_template_kwargs` replaces the default wholesale, so repeat `enable_thinking: false`. Without that flag the model answers the prompt as a chatbot instead of transcribing. |
+| `max_tokens_per_sec` | `null` | Ceiling on the decode budget, proportional to the duration of the audio. Refer to [Limit the decode budget by audio duration](#limit-the-decode-budget-by-audio-duration). |
+| `system_prompt` | `You are a helpful assistant. /no_think` | System message sent with every request. |
+| `user_prompt` | `NemoSpeechLMSTTService.DEFAULT_USER_PROMPT` | Instruction sent after the audio. The default asks for a verbatim transcript that preserves named entities, numbers, and acronyms, and that omits accidental repetitions. |
+| `api_key` | none | API key for the endpoint. |
+| `api_key_env_var` | none | Name of an environment variable to read the API key from when `api_key` is unset. |
+
+### Limit the Decode Budget by Audio Duration
+
+A SpeechLM can fall into a repetition hallucination: from a few seconds of audio it decodes thousands of tokens
+of fabricated prose that has nothing to do with what the user said. That text then lands in the agent's context
+as a user turn. In one evaluation run, two user turns of roughly 40 words each were transcribed as 9,370 and
+9,252 words, while no turn in the equivalent streaming FastConformer runs exceeded about 300 words.
+
+A flat `generation_kwargs.max_tokens` cannot separate that failure from a genuinely long utterance, because
+both ask for many tokens. A bound proportional to the duration of the audio can. Set `max_tokens_per_sec` to a
+token rate, and each request carries `min(max_tokens, audio_duration_seconds * max_tokens_per_sec)` in place of
+the flat value:
+
+```yaml
+stt:
+  type: nemo_speechlm
+  model: "nemotron-transcribe"
+  generation_kwargs:
+    max_tokens: 2048
+  max_tokens_per_sec: 20
+```
+
+With that configuration, 3 seconds of audio gets a budget of 60 tokens and 10 seconds gets 200 tokens, while
+the configured 2,048 still bounds anything longer than about 102 seconds.
+
+Size the rate against real speech. English runs at roughly 2.5 words per second, and tokens outnumber words by
+about 1.3 times, so genuine speech needs only 3 to 4 tokens per second. A value of 20 to 25 leaves a margin of
+five to eight times over natural speech, and it cuts a 10-second hallucination from thousands of tokens to a
+few hundred.
+
+Four properties of the cap are worth knowing before you set it:
+
+- **The default is off.** `max_tokens_per_sec` is unset in every shipped configuration. An unset value
+  preserves the flat `max_tokens` behavior exactly.
+- **It only lowers the budget.** The derived value is capped by the configured `max_tokens`, so it never raises
+  the budget above the value you set. When `generation_kwargs` omits `max_tokens`, the derived value is sent on
+  its own.
+- **Short utterances keep a floor.** The derived budget never falls below
+  `NemoSpeechLMSTTService.MIN_TOKEN_BUDGET`, which is 16 tokens, so a one-word reply is not clipped.
+- **Unparseable audio falls back.** When a segment cannot be read as WAV, the service sends the flat budget
+  rather than guess a cap from a length it cannot trust.
+
+With `server.log_level: DEBUG`, the service logs one line each time the cap binds, such as
+`Capping max_tokens 2048 -> 200 for 10.00s of audio (max_tokens_per_sec=20)`.
 
 ## Hosted ASR
 

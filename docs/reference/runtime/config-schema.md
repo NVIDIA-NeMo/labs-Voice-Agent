@@ -128,10 +128,16 @@ The `stt` block selects and configures the local or hosted speech-to-text (STT) 
 | `buffer_size` | int | `audio_chunk_size_in_secs // transport.audio_in_frame_len_secs` | `NeMoSTTInputParams` |
 | `ignore_eou_eob` | bool | `false` | `NemoSTTService` — ignore end-of-utterance/barge-in tokens |
 | `ttfs_p99_latency` | float or null | `null` | `NemoSTTService` |
+| `base_url` | string | `"http://localhost:8000/v1"` | `nemo_speechlm` backend — OpenAI-compatible SpeechLM endpoint |
+| `generation_kwargs` | dict | `{"chat_template_kwargs": {"enable_thinking": false}}` | `nemo_speechlm` backend — merged over the default and forwarded as `extra_body` |
+| `max_tokens_per_sec` | float or null | `null` | `NemoSpeechLMSTTService` — caps `max_tokens` at `audio_duration_seconds * max_tokens_per_sec`, floored at 16 tokens; unset keeps the flat budget |
+| `system_prompt` | string | `"You are a helpful assistant. /no_think"` | `nemo_speechlm` backend |
+| `user_prompt` | string | `NemoSpeechLMSTTService.DEFAULT_USER_PROMPT` | `nemo_speechlm` backend — the verbatim-transcript instruction sent after the audio |
+| `api_key_env_var` | string | none | `nemo_speechlm` backend — environment variable holding the API key when `api_key` is unset |
 | `server` | string | `"grpc.nvcf.nvidia.com:443"` | `nvidia` backend only |
 | `function_id` | string | value in `default_nvidia.yaml` | `nvidia` backend — paired with `model`; change both together |
 | `language` | string | `"en-US"` | `nvidia` backend |
-| `api_key` | string | `"None"`, overridden by `NVIDIA_API_KEY` | `nvidia` backend |
+| `api_key` | string | `"None"`, overridden by `NVIDIA_API_KEY` | `nvidia` backend; also read by `nemo_speechlm`, which falls back to `api_key_env_var` |
 
 For more detail, refer to [ASR](../../about/core-concepts/speech-pipeline/asr.md).
 
