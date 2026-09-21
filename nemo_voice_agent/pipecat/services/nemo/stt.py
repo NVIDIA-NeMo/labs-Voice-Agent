@@ -476,6 +476,11 @@ spoken and do not translate. Omit accidental repetitions."""
                 :attr:`MIN_TOKEN_BUDGET` so short utterances keep a usable budget.
                 ``None`` (default) keeps the flat value and changes nothing.
 
+                Note the qualifier: this is a ceiling *relative to a configured*
+                ``max_tokens``. When ``generation_kwargs`` omits ``max_tokens``, the
+                derived bound is sent on its own, which replaces — and may exceed — the
+                server's own default budget.
+
                 This guards the repetition-hallucination failure mode: a SpeechLM can
                 decode thousands of tokens of fabricated prose from a few seconds of
                 audio, and a flat ``max_tokens`` cannot tell that apart from a genuinely
@@ -590,8 +595,8 @@ spoken and do not translate. Omit accidental repetitions."""
         if capped == configured:
             return self._generation_kwargs
         logger.debug(
-            f"Capping max_tokens {configured} -> {capped} for {duration:.2f}s of audio "
-            f"(max_tokens_per_sec={self._max_tokens_per_sec})"
+            f"max_tokens {configured if configured is not None else '<server default>'} -> {capped} "
+            f"for {duration:.2f}s of audio (max_tokens_per_sec={self._max_tokens_per_sec})"
         )
         return {**self._generation_kwargs, "max_tokens": capped}
 
