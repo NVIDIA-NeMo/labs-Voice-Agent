@@ -130,9 +130,9 @@ The `stt` block selects and configures the local or hosted speech-to-text (STT) 
 | `ttfs_p99_latency` | float or null | `null` | `NemoSTTService` |
 | `base_url` | string | `"http://localhost:8000/v1"` | `nemo_speechlm` backend — OpenAI-compatible SpeechLM endpoint |
 | `generation_kwargs` | dict | `{"chat_template_kwargs": {"enable_thinking": false}}` | `nemo_speechlm` backend — merged over the default and forwarded as `extra_body` |
-| `max_tokens_per_sec` | float or null | `null` | `NemoSpeechLMSTTService` — caps `max_tokens` at `audio_duration_seconds * max_tokens_per_sec`, floored at 16 tokens; unset keeps the flat budget |
-| `system_prompt` | string | `"You are a helpful assistant. /no_think"` | `nemo_speechlm` backend |
-| `user_prompt` | string | `NemoSpeechLMSTTService.DEFAULT_USER_PROMPT` | `nemo_speechlm` backend — the verbatim-transcript instruction sent after the audio |
+| `max_tokens_per_sec` | float or null | `null` | `NemoSpeechLMSTTService` — caps `max_tokens` at `audio_duration_seconds * max_tokens_per_sec`, floored at 16 tokens. Unset keeps the flat budget. With no configured `max_tokens`, the derived value is sent on its own |
+| `system_prompt` | string | `"You are a helpful assistant. /no_think"` | `nemo_speechlm` backend — path-or-literal, resolved by `resolve_prompt` |
+| `user_prompt` | string | `NemoSpeechLMSTTService.DEFAULT_USER_PROMPT` | `nemo_speechlm` backend — the verbatim-transcript instruction sent after the audio; path-or-literal, resolved by `resolve_prompt` |
 | `api_key_env_var` | string | none | `nemo_speechlm` backend — environment variable holding the API key when `api_key` is unset |
 | `server` | string | `"grpc.nvcf.nvidia.com:443"` | `nvidia` backend only |
 | `function_id` | string | value in `default_nvidia.yaml` | `nvidia` backend — paired with `model`; change both together |

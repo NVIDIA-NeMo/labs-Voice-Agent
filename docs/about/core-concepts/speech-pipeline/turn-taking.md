@@ -34,8 +34,15 @@ and any other value raises an assertion that lists the two it accepts.
 | `speech_timeout` | Pipecat's `VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy` run inside the user aggregator. `build_turn_taking` returns `None`, so the pipeline has no turn-taking stage. | Your ASR model emits no `EOU` token, such as the hosted `nvidia` path, or you want plain silence-based endpointing. |
 
 The default is `nemo` when the key is absent. The boolean `turn_taking.enabled` key that earlier releases used
-is gone, and `ConfigManager` raises a `ValueError` naming the replacement if a config still sets it, rather
-than guessing. Migrate `enabled: true` to `type: nemo` and `enabled: false` to `type: speech_timeout`.
+is gone. `ConfigManager` logs a warning that names the replacement and then ignores the old key, so a config
+that relied on `enabled: false` runs NeMo turn taking until you migrate it. Migrate `enabled: true` to
+`type: nemo` and `enabled: false` to `type: speech_timeout`.
+
+No shipped configuration pairs `stt.type: nemo` with `type: speech_timeout`. The stop strategy ends a turn
+only after at least one final transcript arrives, and `NemoSTTService` pushes interim transcripts whenever it
+defers finalization to `NeMoTurnTakingService`, which the shipped `nvidia/parakeet_realtime_eou_120m-v1` model
+selects. Pair `speech_timeout` with an ASR backend that emits final transcripts itself, such as `nvidia` or
+`nemo_speechlm`.
 
 ## How Turn Detection Works
 
@@ -133,9 +140,13 @@ max(turn_taking.user_speech_timeout, max(0, stt.ttfs_p99_latency - vad.stop_secs
 ```
 
 A transcript marked finalized cancels the second timer, so the turn ends as soon as that transcript has
-arrived and `turn_taking.user_speech_timeout` has elapsed. Only Pipecat's hosted `NvidiaSTTService` marks
-transcripts that way. `NemoSTTService` and `NemoSpeechLMSTTService` never do, so the full expression always
-applies to them. Two shipped configurations show both ends of the range:
+arrived and `turn_taking.user_speech_timeout` has elapsed. `NemoSpeechLMSTTService` always marks its
+transcripts that way, because Pipecat's `SegmentedSTTService` returns one transcript per segment and sets the
+flag in `push_frame`. `NemoSTTService` sets the flag on a final transcript that it emits itself. It emits one
+only when it is not deferring finalization to `NeMoTurnTakingService`, and the shipped
+`nvidia/parakeet_realtime_eou_120m-v1` model always defers, so the flag does not reach this strategy. Pipecat's
+hosted `NvidiaSTTService` sets the flag directly on the final transcripts that it returns. Two shipped
+configurations show both ends of the range:
 
 | Configuration | `vad.stop_secs` | Post-VAD wait | End-of-turn latency |
 | --- | --- | --- | --- |

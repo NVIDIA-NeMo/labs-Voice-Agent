@@ -22,6 +22,7 @@ from pipecat.audio.vad.silero import VADParams
 
 from nemo_voice_agent.pipecat.services.nemo.diar import NeMoDiarInputParams
 from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams
+from nemo_voice_agent.utils.misc import resolve_prompt
 
 
 class ConfigManager:
@@ -312,11 +313,7 @@ class ConfigManager:
         # Configure system prompt
         self.SYSTEM_ROLE = self.server_config.llm.get("system_role", "system")
         if self.server_config.llm.get("system_prompt", None) is not None:
-            system_prompt = self.server_config.llm.system_prompt
-            if os.path.isfile(system_prompt):
-                with open(system_prompt, "r") as f:
-                    system_prompt = f.read()
-            self.SYSTEM_PROMPT = system_prompt
+            self.SYSTEM_PROMPT = resolve_prompt(self.server_config.llm.system_prompt)
         else:
             logger.info(f"No system prompt provided, using default system prompt: {self.SYSTEM_PROMPT}")
 

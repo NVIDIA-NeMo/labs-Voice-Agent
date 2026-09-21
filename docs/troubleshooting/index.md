@@ -107,7 +107,7 @@ token cost. A flat `stt.generation_kwargs.max_tokens` cannot separate this from 
 **Resolution:** Bound the decode budget by audio duration. Set `stt.max_tokens_per_sec` to a value between 20
 and 25, which leaves a wide margin over the 3 to 4 tokens per second that real English speech needs. Each
 request then carries `min(max_tokens, audio_duration_seconds * max_tokens_per_sec)`. The key is unset by
-default, and it only lowers the configured budget. For more information, refer to
+default, and it only lowers a `max_tokens` that you configure. For more information, refer to
 [ASR](../about/core-concepts/speech-pipeline/asr.md#limit-the-decode-budget-by-audio-duration).
 
 ## Error connecting: Cannot read properties of undefined (reading 'enumerateDevices') appears

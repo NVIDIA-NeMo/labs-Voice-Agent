@@ -45,7 +45,7 @@ Three rules govern the merge:
   `server_configs/stt_configs/`, `server_configs/llm_configs/`, `server_configs/tts_configs/`.
 - **Interpolation in the top-level file is resolved eagerly at load** (`OmegaConf.to_container(..., resolve=True)`),
   while sub-config values are copied over unresolved and resolved lazily against the merged config. That is how
-  `nemotron_3.5_lightning.yaml` can write `temperature: ${llm.temperature}` — it resolves to the `temperature: 0.6` the
+  `nemotron_3.5_lightning.yaml` can write `temperature: ${llm.temperature}` — it resolves to the `temperature: 1.0` the
   same sub-config contributed, since `default.yaml` defines no `llm.temperature` at all.
 
 If a component omits `model_config` and `server.use_model_registry` is `true`, the model name is looked

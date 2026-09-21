@@ -153,10 +153,40 @@ the streaming keys in the previous table apply, and `device` is not read because
 | `sample_rate` | `16000` | Input sample rate of the audio segment sent for transcription. |
 | `generation_kwargs` | `{"chat_template_kwargs": {"enable_thinking": false}}` | Sampling parameters, such as `max_tokens`, `temperature`, and `top_p`. Your values merge over the default and travel to the endpoint in `extra_body`, so vLLM-only keys arrive untouched. Setting your own `chat_template_kwargs` replaces the default wholesale, so repeat `enable_thinking: false`. Without that flag the model answers the prompt as a chatbot instead of transcribing. |
 | `max_tokens_per_sec` | `null` | Ceiling on the decode budget, proportional to the duration of the audio. Refer to [Limit the decode budget by audio duration](#limit-the-decode-budget-by-audio-duration). |
-| `system_prompt` | `You are a helpful assistant. /no_think` | System message sent with every request. |
-| `user_prompt` | `NemoSpeechLMSTTService.DEFAULT_USER_PROMPT` | Instruction sent after the audio. The default asks for a verbatim transcript that preserves named entities, numbers, and acronyms, and that omits accidental repetitions. |
+| `system_prompt` | `You are a helpful assistant. /no_think` | System message sent with every request. Path or literal, as described in [Prompt Files](#prompt-files). |
+| `user_prompt` | `NemoSpeechLMSTTService.DEFAULT_USER_PROMPT` | Instruction sent after the audio. Path or literal, as described in [Prompt Files](#prompt-files). The default asks for a verbatim transcript that preserves named entities, numbers, and acronyms, and that omits accidental repetitions. |
 | `api_key` | none | API key for the endpoint. |
 | `api_key_env_var` | none | Name of an environment variable to read the API key from when `api_key` is unset. |
+
+### Prompt Files
+
+`system_prompt` and `user_prompt` are **path-or-literal**, the same rule that `llm.system_prompt` follows.
+`NemoSpeechLMSTTService` runs `os.path.isfile()` on each value and reads the file when one exists, otherwise
+it uses the string as the prompt. The rule lives in `resolve_prompt` in `nemo_voice_agent/utils/misc.py` and
+mirrors the handling of `llm.system_prompt` in `ConfigManager`, so a prompt file works unchanged in either the
+`llm` or the `stt` block.
+
+Prefer an absolute path. An absolute path resolves the same way no matter which directory you start the server
+from, as shown in the following example:
+
+```yaml
+stt:
+  type: nemo_speechlm
+  system_prompt: "You are a helpful assistant. /no_think"  # literal
+  user_prompt: "/opt/prompts/transcription_prompt.txt"    # absolute path
+```
+
+A relative path also works, but it resolves against the working directory of the process, not the server base
+path. For example, `"example_prompts/fast-bite.txt"` resolves only when you run the server from
+`examples/generic_voice_agent/server/`.
+
+A value that names no existing file becomes the prompt text itself, so a mistyped path or an unexpected working
+directory produces no error. To confirm that a file was read, look for the `Loading prompt from file:` line in
+`bot_server.log`.
+
+Resolution happens when the service is constructed, so `reset_user_prompt` restores the contents of the file
+rather than its path. For the rule itself, refer to
+[System Prompts](../../../build-voice-agents/configure/prompts.md#path-or-literal).
 
 ### Limit the Decode Budget by Audio Duration
 
@@ -191,16 +221,19 @@ Four properties of the cap are worth knowing before you set it:
 
 - **The default is off.** `max_tokens_per_sec` is unset in every shipped configuration. An unset value
   preserves the flat `max_tokens` behavior exactly.
-- **It only lowers the budget.** The derived value is capped by the configured `max_tokens`, so it never raises
-  the budget above the value you set. When `generation_kwargs` omits `max_tokens`, the derived value is sent on
-  its own.
+- **It only lowers a budget that you set.** The derived value is capped by the configured `max_tokens`, so it
+  never raises the budget above the value in `generation_kwargs`. The qualifier matters. When
+  `generation_kwargs` omits `max_tokens`, the derived value travels on its own and replaces the default budget
+  of the server, which a long utterance can exceed. Set `max_tokens` as well when you need an absolute
+  ceiling.
 - **Short utterances keep a floor.** The derived budget never falls below
   `NemoSpeechLMSTTService.MIN_TOKEN_BUDGET`, which is 16 tokens, so a one-word reply is not clipped.
 - **Unparseable audio falls back.** When a segment cannot be read as WAV, the service sends the flat budget
   rather than guess a cap from a length it cannot trust.
 
 With `server.log_level: DEBUG`, the service logs one line each time the cap binds, such as
-`Capping max_tokens 2048 -> 200 for 10.00s of audio (max_tokens_per_sec=20)`.
+`max_tokens 2048 -> 200 for 10.00s of audio (max_tokens_per_sec=20)`. When `generation_kwargs` sets no
+`max_tokens`, the line names the replaced value as `<server default>`.
 
 ## Hosted ASR
 

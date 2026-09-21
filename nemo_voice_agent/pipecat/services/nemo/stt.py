@@ -491,8 +491,10 @@ spoken and do not translate. Omit accidental repetitions."""
                 about 1.3x, so real speech needs ~3-4 tokens/s. A value of 20-25 leaves a
                 5-8x margin over natural speech while cutting a 10s hallucination from
                 thousands of tokens to a few hundred.
-            system_prompt: The system prompt to use for the service.
-            user_prompt: The user prompt to use for the service.
+            system_prompt: The system prompt to use for the service. Either the prompt text
+                itself or a path to a file containing it, following the same path-or-literal
+                rule as ``llm.system_prompt``.
+            user_prompt: The user prompt to use for the service. Path-or-literal, as above.
             ttfs_p99_latency: ttfs_p99_latency: P99 seconds from end of speech to final transcript,
                 broadcast to downstream turn-stop strategies. Leave as None to
                 take pipecat's conservative fallback; set a value measured for
@@ -525,6 +527,18 @@ spoken and do not translate. Omit accidental repetitions."""
             **(generation_kwargs or {}),
         }
         self._max_tokens_per_sec = max_tokens_per_sec
+        # Resolve here rather than in the config factory so programmatic callers get the
+        # same path-or-literal behaviour, and so ``reset_user_prompt`` restores the resolved
+        # text rather than the path.
+        #
+        # Imported inside the constructor, not at module scope: ``nemo_voice_agent.utils``
+        # eagerly imports ``ConfigManager``, which imports ``NeMoSTTInputParams`` from this
+        # module. A top-level import would close that cycle. Deferring keeps one shared
+        # implementation of the path-or-literal rule instead of forking a second copy here.
+        from nemo_voice_agent.utils.misc import resolve_prompt
+
+        system_prompt = resolve_prompt(system_prompt)
+        user_prompt = resolve_prompt(user_prompt)
         self._original_user_prompt = user_prompt
         self._system_prompt = system_prompt
         self._user_prompt = user_prompt if user_prompt else self.DEFAULT_USER_PROMPT

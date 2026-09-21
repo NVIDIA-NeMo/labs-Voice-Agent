@@ -24,6 +24,7 @@ from pipecat.audio.vad.silero import VADParams
 from nemo_voice_agent.pipecat.services.nemo.diar import NeMoDiarInputParams
 from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams
 from nemo_voice_agent.utils.config_manager import ConfigManager
+from nemo_voice_agent.utils.misc import resolve_prompt
 
 
 @pytest.fixture
@@ -136,9 +137,52 @@ class TestDefaultConfigs:
         assert hasattr(config_manager, "SYSTEM_PROMPT") and isinstance(config_manager.SYSTEM_PROMPT, str)
 
     @pytest.mark.unit
-    def test_configure_llm_with_file_system_prompt(self, voice_agent_server_base_path):
+    def test_configure_llm_with_file_system_prompt(self, voice_agent_server_base_path, tmp_path):
+        """A ``system_prompt`` naming an existing file is read from disk."""
+        prompt_file = tmp_path / "prompt.txt"
+        prompt_file.write_text("You are a helpful agent.\nSpeak briefly.", encoding="utf-8")
+
         config_manager = ConfigManager(voice_agent_server_base_path)
-        assert hasattr(config_manager, "SYSTEM_PROMPT") and isinstance(config_manager.SYSTEM_PROMPT, str)
+        config_manager.server_config.llm.system_prompt = str(prompt_file)
+        config_manager.server_config.llm.system_prompt_suffix = None
+        config_manager._configure_llm()
+
+        # ``_configure_llm`` may append tool-calling instructions, so anchor on the head.
+        assert config_manager.SYSTEM_PROMPT.startswith("You are a helpful agent.\nSpeak briefly.")
+
+    @pytest.mark.unit
+    def test_configure_llm_with_literal_system_prompt(self, voice_agent_server_base_path):
+        """A ``system_prompt`` that names no file is taken literally."""
+        config_manager = ConfigManager(voice_agent_server_base_path)
+        config_manager.server_config.llm.system_prompt = "You are a helpful agent."
+        config_manager.server_config.llm.system_prompt_suffix = None
+        config_manager._configure_llm()
+
+        assert config_manager.SYSTEM_PROMPT.startswith("You are a helpful agent.")
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("literal", ["You are a helpful agent.", "multi\nline\nprompt", ""])
+    def test_llm_and_stt_prompts_share_one_rule(self, voice_agent_server_base_path, tmp_path, literal):
+        """``ConfigManager`` resolves ``system_prompt`` through the same helper the STT
+        service uses, so a prompt can move between the ``llm`` and ``stt`` blocks
+        without changing form. This test is what stops the two from drifting apart.
+        """
+        config_manager = ConfigManager(voice_agent_server_base_path)
+
+        for value in (literal, str(tmp_path / "absent.txt")):
+            config_manager.server_config.llm.system_prompt = value
+            config_manager.server_config.llm.system_prompt_suffix = None
+            config_manager._configure_llm()
+            if value:
+                assert config_manager.SYSTEM_PROMPT.startswith(resolve_prompt(value))
+
+        prompt_file = tmp_path / "shared.txt"
+        prompt_file.write_text(literal or "fallback", encoding="utf-8")
+        config_manager.server_config.llm.system_prompt = str(prompt_file)
+        config_manager.server_config.llm.system_prompt_suffix = None
+        config_manager._configure_llm()
+
+        assert config_manager.SYSTEM_PROMPT.startswith(resolve_prompt(str(prompt_file)))
 
     @pytest.mark.unit
     def test_configure_llm_reasoning_model(self, voice_agent_server_base_path):

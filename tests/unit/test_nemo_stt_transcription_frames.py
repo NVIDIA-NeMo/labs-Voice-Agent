@@ -154,3 +154,56 @@ def test_would_have_bounded_the_observed_hallucination():
     """
     svc = _svc(generation_kwargs={"max_tokens": 10000}, max_tokens_per_sec=20)
     assert svc._generation_kwargs_for(_wav(16.0))["max_tokens"] == 320
+
+
+# ---------------------------------------------------------------------------
+# system_prompt / user_prompt path-or-literal resolution
+# ---------------------------------------------------------------------------
+
+
+def test_prompts_read_from_file(tmp_path):
+    """A value naming an existing file is read; both prompts honour it."""
+    f = tmp_path / "asr_prompt.txt"
+    f.write_text("Transcribe verbatim.\nPreserve identifiers.\n")
+    svc = _svc(system_prompt=str(f), user_prompt=str(f))
+    assert svc._system_prompt == "Transcribe verbatim.\nPreserve identifiers.\n"
+    assert svc._user_prompt == "Transcribe verbatim.\nPreserve identifiers.\n"
+
+
+def test_literal_prompts_pass_through(tmp_path):
+    """Anything that is not an existing file is taken literally."""
+    svc = _svc(system_prompt="You are a helpful assistant. /no_think", user_prompt="Transcribe this.")
+    assert svc._system_prompt == "You are a helpful assistant. /no_think"
+    assert svc._user_prompt == "Transcribe this."
+
+
+def test_multiline_literal_is_never_mistaken_for_a_path():
+    """The rule is unambiguous for real prompts: they are not valid file paths."""
+    prompt = "Line one.\nLine two.\nLine three."
+    assert _svc(user_prompt=prompt)._user_prompt == prompt
+
+
+def test_reset_user_prompt_restores_file_contents_not_the_path(tmp_path):
+    """Resolution happens once, in the constructor.
+
+    ``_original_user_prompt`` must hold the resolved text, otherwise a runtime
+    ``set_user_prompt`` followed by ``reset_user_prompt`` would restore the
+    literal path string and send it to the model as the transcription prompt.
+    """
+    f = tmp_path / "asr_prompt.txt"
+    f.write_text("Transcribe verbatim.")
+    svc = _svc(user_prompt=str(f))
+    svc.set_user_prompt("override")
+    svc.reset_user_prompt()
+    assert svc._user_prompt == "Transcribe verbatim."
+
+
+def test_default_user_prompt_still_applies_when_unset():
+    assert _svc()._user_prompt == nemo_stt.NemoSpeechLMSTTService.DEFAULT_USER_PROMPT
+
+
+def test_resolve_prompt_handles_none_and_empty():
+    from nemo_voice_agent.utils.misc import resolve_prompt
+
+    assert resolve_prompt(None) is None
+    assert resolve_prompt("") == ""

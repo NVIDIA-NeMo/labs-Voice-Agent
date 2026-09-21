@@ -113,7 +113,7 @@ difference matters:
   Referencing one that only a sub-config supplies raises `InterpolationKeyError` at startup.
 - **Sub-config: resolved lazily against the merged root.** Sub-config values are copied over verbatim and
   resolved on access, against the *final merged* server config. That is why `llm_configs/nemotron_3.5_lightning.yaml`
-  can write the following and get `0.6` and `1024` — the values its own file contributed to `llm.temperature`
+  can write the following and get `1.0` and `1024` — the values its own file contributed to `llm.temperature`
   and `llm.max_new_tokens`:
 
 ```yaml
@@ -130,7 +130,9 @@ Paths in interpolations are absolute from the config root (`llm.temperature`), n
 `llm.system_prompt` is **path-or-literal**: `ConfigManager` runs `os.path.isfile()` on the value and reads the
 file when it exists, otherwise treats the string as the prompt itself. Relative paths resolve against the
 current working directory, not the server base path. Reusable prompts ship in
-`examples/generic_voice_agent/server/example_prompts/`.
+`examples/generic_voice_agent/server/example_prompts/`. The `stt.system_prompt` and `stt.user_prompt` keys of
+the `nemo_speechlm` backend follow the same rule, so a prompt file works unchanged in either block. Refer to
+[ASR](../../about/core-concepts/speech-pipeline/asr.md#prompt-files).
 
 `llm.system_prompt_suffix` is appended to whichever prompt was chosen, separated by a newline. The shipped
 default combines a literal prompt from `default.yaml` with a tool-usage suffix from the LLM sub-config. Omit
