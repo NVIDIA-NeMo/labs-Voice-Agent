@@ -45,7 +45,7 @@ Three rules govern the merge:
   `server_configs/stt_configs/`, `server_configs/llm_configs/`, `server_configs/tts_configs/`.
 - **Interpolation in the top-level file is resolved eagerly at load** (`OmegaConf.to_container(..., resolve=True)`),
   while sub-config values are copied over unresolved and resolved lazily against the merged config. That is how
-  `nemotron_3.5_lightning.yaml` can write `temperature: ${llm.temperature}` — it resolves to the `temperature: 0.6` the
+  `nemotron_3.5_lightning.yaml` can write `temperature: ${llm.temperature}` — it resolves to the `temperature: 1.0` the
   same sub-config contributed, since `default.yaml` defines no `llm.temperature` at all.
 
 If a component omits `model_config` and `server.use_model_registry` is `true`, the model name is looked
@@ -92,17 +92,30 @@ the processor placed right after `transport.input()`.
 
 All four are read as direct attributes and passed to Pipecat's `VADParams`, so all four must be present.
 
+`stop_secs` is only part of the end-of-turn latency. With `turn_taking.type: speech_timeout`, the Pipecat stop
+strategy starts its own timers when the VAD frame arrives, so the user turn ends at least
+`vad.stop_secs + turn_taking.user_speech_timeout` after the last speech and can take longer while it waits
+for a transcript. With `turn_taking.type: nemo`, only `stop_secs` applies. Change the two keys together, and
+refer to [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md) for the exact expression.
+
 ## stt
 
-Consumed by `build_stt` using `get_stt_service_from_config`. `type` accepts `nemo` or `nvidia`. Any other
+Consumed by `build_stt` using `get_stt_service_from_config`. `type` accepts `nemo`, `nemo_speechlm`, or
+`nvidia`. Any other
 value raises. For details, refer to [ASR](../../about/core-concepts/speech-pipeline/asr.md).
 
 | Key | Effect |
 | --- | --- |
-| `type` | `nemo` for a local NeMo streaming model, `nvidia` for a hosted Riva/NVCF endpoint. |
+| `type` | `nemo` for a local NeMo streaming model, `nemo_speechlm` for an offline SpeechLM behind a vLLM endpoint, `nvidia` for a hosted Riva/NVCF endpoint. |
 | `model` | Model identifier, for example `nvidia/parakeet_realtime_eou_120m-v1`. |
 | `model_config` | Sub-config under `stt_configs/`, for example `nemo_cache_aware_streaming.yaml`, which supplies `att_context_size`, `frame_len_in_secs`, and `audio_chunk_size_in_secs`. |
 | `device` | Torch device for the local model. Also used for diarization, as described below. |
+
+For `type: nemo_speechlm`, the block instead points at a vLLM endpoint with `base_url`, `generation_kwargs`,
+`system_prompt`, and `user_prompt`, as `server_configs/default_salm.yaml` shows. Add `max_tokens_per_sec` there
+to cap the decode budget by audio duration, which contains the repetition hallucinations that a flat
+`generation_kwargs.max_tokens` cannot. It is unset by default. Refer to
+[ASR](../../about/core-concepts/speech-pipeline/asr.md#offline-speechlm-transcription).
 
 For `type: nvidia`, the relevant keys are `language`, `model`, and `function_id` — the model name and
 function id address one specific NVCF deployment and must be changed together. `NVIDIA_API_KEY` from the
@@ -126,18 +139,23 @@ Two keys in the shipped file are inert: `diar.device` is not read — `build_dia
 
 ## turn_taking
 
-Consumed by `build_turn_taking`, which returns `None` when `enabled` is false (the key is absent from
-`default.yaml` and defaults to true). Whether this service exists also decides who emits user-turn
-frames. With turn-taking on, `build_context_and_aggregators` selects `ExternalUserTurnStrategies`.
-With it off, the aggregator drives turns from VAD. Refer to
+Consumed by `build_turn_taking`, which builds a `NeMoTurnTakingService` for `type: nemo` and returns `None`
+for `type: speech_timeout`. The type also decides who emits user-turn frames. With `nemo`, the service emits
+them and `build_context_and_aggregators` selects `ExternalUserTurnStrategies` for the aggregator. With
+`speech_timeout`, the aggregator drives turns from VAD itself. Refer to
 [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md).
 
 | Key | Effect |
 | --- | --- |
-| `enabled` | Optional; omit to keep turn-taking on. |
-| `backchannel_phrases_path` | Path to a YAML list (the server ships `backchannel_phrases.yaml`), an inline list of phrases, or `null` to let any speech interrupt. A relative path is tried against the working directory, then the server directory, and raises `FileNotFoundError` naming both if neither exists. |
-| `max_buffer_size` | Word count above which speech interrupts the bot immediately, regardless of backchannel matching. |
-| `bot_stop_delay` | Seconds of slack between server-side and client-side audio end. |
+| `type` | `nemo` for the `NeMoTurnTakingService`, or `speech_timeout` for Pipecat's VAD-driven strategies. Optional; omit to keep `nemo`. Any other value raises. |
+| `backchannel_phrases_path` | For `nemo`. Path to a YAML list (the server ships `backchannel_phrases.yaml`), an inline list of phrases, or `null` to let any speech interrupt. A relative path is tried against the working directory, then the server directory, and raises `FileNotFoundError` naming both if neither exists. |
+| `max_buffer_size` | For `nemo`. Word count above which speech interrupts the bot immediately, regardless of backchannel matching. |
+| `bot_stop_delay` | For `nemo`. Seconds of slack between server-side and client-side audio end. |
+| `user_speech_timeout` | For `speech_timeout`. Seconds the stop strategy waits after the VAD reports silence, on top of `vad.stop_secs`. Defaults to 0.6. |
+
+This block used a boolean `enabled` key before. A config that still sets it gets a startup warning naming the
+mapping and falls back to the `nemo` default: use `type: nemo` in place of `enabled: true`, and
+`type: speech_timeout` in place of `enabled: false`.
 
 ## llm
 
@@ -194,8 +212,11 @@ are `kokoro`, `fastpitch-hifigan`, and `magpie`. Refer to
 ## The NIM Variant
 
 `server_configs/default_nvidia.yaml` runs the same pipeline against hosted NVIDIA endpoints. The `stt.type`,
-`llm.type`, and `tts.type` keys are all `nvidia`, and `NVIDIA_API_KEY` must be set. Both `diar.enabled` and
-`turn_taking.enabled` are `false`, so the pipeline has no diarization stage and VAD alone drives turns. The
+`llm.type`, and `tts.type` keys are all `nvidia`, and `NVIDIA_API_KEY` must be set. `diar.enabled` is
+`false` and `turn_taking.type` is `speech_timeout`, so the pipeline has neither a diarization nor a
+turn-taking stage and VAD alone drives turns. Its `vad.stop_secs: 0.2` and `user_speech_timeout: 0.6`
+end a user turn 0.8 to 1.0 seconds after the last speech, the spread coming from the strategy's transcript
+timer. Refer to [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md). The
 `llm` block carries `base_url`, `system_role`, `system_prompt_suffix`, and a
 `nvidia_generation_params` block instead of the vLLM ones. Because none of its models appear in
 `model_registry.yaml` and none set `model_config`, `ConfigManager` logs a not-in-registry warning per

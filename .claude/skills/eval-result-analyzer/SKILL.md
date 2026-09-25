@@ -31,6 +31,20 @@ The input path can be either:
 
 Detect mode by checking whether the path contains scenario subdirectories with `judge_result.json` (run-level) or has `judge_result.json` directly (scenario-level). Distinguish **Full** vs **Partial** at the run level by whether `all_summary.txt` exists in the input directory — `all_summary.txt` and `all_metrics.json` are written only at the end of the run loop (`runner.py`'s final block), so their absence means the run either didn't complete OR is still actively running. The mtime of `evaluation_log.txt` disambiguates those two cases (see Partial-run handling step 1). Per-scenario `metrics.json` is written incrementally so each completed scenario has full per-scenario artifacts regardless.
 
+### Skip abandoned attempt directories
+
+**Never analyze a subdirectory whose name contains `.killed.` or that holds a `__KILLED__` marker file, and never count it in any rate.** These are preserved-but-superseded attempts, not scenarios:
+
+- `<scenario>.killed.<timestamp>/` — moved aside by `--resume` because the subdir was in-flight.
+- `<scenario>.killed.autoretry<N>.<timestamp>/` — an attempt the runner automatically re-ran (`auto_resume_on_stale`, on by default, fires when a scenario records zero conversation turns).
+
+The real scenario lives at the un-suffixed path and is the only one to analyze. Counting these inflates the scenario total and pollutes every aggregate — a 50-scenario run with 4 retries otherwise reads as 54. When a `<scenario>.killed.autoretry*/` directory exists, the surviving `metrics.json` records `auto_retry_count` and `auto_retry_reasons`; cite those instead of the directory names, and note the retry in the report since it means the first attempt hit an infrastructure failure.
+
+```bash
+# enumerate real scenario subdirs only
+ls -d "$RUN"/*/ | grep -v '\.killed\.'
+```
+
 ### Partial-run handling
 
 When `all_summary.txt` is absent:

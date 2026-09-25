@@ -130,6 +130,13 @@ Verify the selected build:
 uv run python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
+The wheels carry the CUDA runtime but no CUDA compiler, which is all the prebuilt PyTorch and vLLM builds
+need. Compilation becomes a problem only when something builds a CUDA extension from source later, such as
+`flash-attn` from a source distribution. In that case, source `scripts/setup_cuda_toolchain.sh` in the shell
+that runs the build. The script installs the compiler components that match the installed runtime and exports
+the paths that the build needs. Refer to
+[Troubleshooting](../troubleshooting/index.md#vllm-fails-to-build-a-cuda-extension-because-nvcc-or-the-cuda-runtime-is-not-found).
+
 ### Configure Hugging Face Credentials and Cache
 
 The repository code does not read either variable directly. The `huggingface_hub` library consumes both,

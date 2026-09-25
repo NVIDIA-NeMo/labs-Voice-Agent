@@ -89,7 +89,7 @@ rates, token usage, and per-domain breakdowns when the run spans multiple domain
 
 Two lines deserve special attention:
 
-- `WARNING: N scenario(s) had fewer than 3 agent turn(s) ... and were counted as failures.` — the
+- `WARNING: N scenario(s) had fewer than 2 agent turn(s) ... and were counted as failures.` — the
   `--min-agent-turns` filter fired. Those scenarios are hard failures in the composite rate and are
   skipped in the per-signal rates, so they depress the headline number while shrinking every
   per-signal denominator. Re-run them with `--resume` as described in [Resuming a Run](resume.md).

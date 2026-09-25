@@ -151,7 +151,7 @@ python run_evaluation.py \
 
 Two defaults to know before you compare runs:
 
-- `--min-agent-turns` defaults to `3`. Scenarios where the agent completed fewer turns are counted as
+- `--min-agent-turns` defaults to `2`. Scenarios where the agent completed fewer turns are counted as
   **failures** in the composite success rate and **skipped** in the per-signal rates. This catches a hung
   LLM server. It also depresses the headline while shrinking each per-signal denominator. Check the
   warning line in `all_summary.txt` before reading the numbers. Pass `0` to disable.

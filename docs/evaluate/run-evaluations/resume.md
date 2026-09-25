@@ -61,7 +61,7 @@ too, where it is a no-op because no subdirectory exists yet.
 | **fresh** | No subdir at all | Runs normally. |
 
 The runner does not delete killed backups. They accumulate under the session directory across repeated
-resumes, so delete them after you no longer need the partial logs.
+resumes and automatic retries, so delete them after you no longer need the partial logs.
 
 At the end of a resumed session, `all_metrics.json`, `all_summary.txt`, and `all_latencies.csv` are rewritten
 from scratch covering every scenario, both freshly run and loaded from disk. `evaluation_log.txt` is opened in
@@ -92,9 +92,14 @@ need a clean comparison.
 
 ## --min-agent-turns
 
-**Default: 3.** Fewer than N LLM responses usually indicate stalled infrastructure rather than a task
+**Default: 2.** Fewer than N LLM responses usually indicate stalled infrastructure rather than a task
 failure. For example, the agent can greet the user before the LLM server stops answering. The runner handles
 these scenarios separately to keep them from distorting the per-signal rates.
+
+The floor has to sit below the shortest legitimate conversation. Across 500 measured scenarios, the agent
+LLM-call distribution bottoms out at exactly 3 calls, where 21 scenarios sit. All 21 are clean exits
+(`stop_reason` of `[EXIT]`) and 11 of them succeeded, so a floor of `3` lands inside the legitimate cluster
+and fails scenarios that did the work. A floor of `2` sits below it.
 
 The turn count comes from `count_agent_responses`. It first uses the bridge's live
 `token_usage.agent.n_calls` from `metrics.json`. For older runs without that field, it counts assistant
@@ -122,6 +127,49 @@ cd evaluation && python run_evaluation.py --domain tau2_telecom --resume 2026061
 cd evaluation && python run_evaluation.py --domain tau2_telecom --resume 20260618_072325 --min-agent-turns 0
 ```
 
+## Automatic In-Run Retry
+
+`--resume` is the manual path you take after a run ends. The runner also retries a scenario on its own,
+immediately, when the finished attempt looks like an infrastructure failure instead of a task failure. The
+two mechanisms compose: automatic retry catches transient failures during the run, and `--resume` still
+handles everything the run never reached.
+
+| Flag | Default | Effect |
+| --- | --- | --- |
+| `--no-auto-resume-on-stale` | retry is on | Turns off the automatic re-run of a scenario that recorded zero conversation turns. |
+| `--auto-resume-on-insufficient-turns` | off | Also re-runs scenarios that merely fall below `--min-agent-turns`. |
+| `--max-auto-retries N` | `1` | Caps the automatic re-runs per scenario, so a persistently dead backend cannot loop the run. |
+| `--auto-retry-backoff-secs SECS` | `5.0` | Waits this long before the re-run, because an immediate retry against a hung backend is the least likely moment to succeed. |
+
+Zero conversation turns means the two bots never exchanged audio. That attempt contains no measurement, so
+re-running it cannot bias the score, which is why this trigger ships enabled.
+
+Falling below `--min-agent-turns` is a different case, and the trigger for it ships disabled. The floor is a
+heuristic, and legitimately short scenarios sit on it. Because such a scenario is forced to
+`is_successful: false`, a retry converts a guaranteed failure into a fresh draw and pushes the success rate
+up. Run-to-run churn within a single arm of these benchmarks measures 12% to 32%, so the bias is
+measurable, not theoretical. Enable `--auto-resume-on-insufficient-turns` only when you accept that trade.
+
+The zero-turn trigger reads the bridge's own conversation record rather than `token_usage.agent.n_calls`.
+Token usage increments only when the agent bot emits an RTVI token-usage message, so an agent that does not
+report usage looks like zero calls on a healthy run. Gating a default-on retry on that counter would
+silently re-run every scenario.
+
+Each discarded attempt is kept at `<scenario>.killed.autoretry<N>.<timestamp>/` with a `__KILLED__` marker
+file inside, so its logs stay available. `check_resume.py` and a later `--resume` both skip those
+directories. The accepted attempt's `metrics.json` records `auto_retry_count`, plus `auto_retry_reasons`
+when a retry fired. Read those fields when you compare runs; refer to the
+[Metrics Dictionary](../../reference/evaluation/metrics.md) for the field definitions.
+
+```bash
+# Turn the automatic re-run off entirely
+cd evaluation && python run_evaluation.py --domain tau2_telecom --no-auto-resume-on-stale
+
+# Allow two automatic re-runs per scenario, with a 30-second wait between them
+cd evaluation && python run_evaluation.py --domain tau2_telecom \
+    --max-auto-retries 2 --auto-retry-backoff-secs 30
+```
+
 ## Preview with check_resume.py
 
 `check_resume.py` at `evaluation/check_resume.py` reports what a resume *would* do without renaming or writing
@@ -129,17 +177,44 @@ anything. It takes a
 path to the session directory, not a timestamp.
 
 ```bash
-cd evaluation && python check_resume.py eval_results/eval_20260618_072325 --min-agent-turns 3
+cd evaluation && python check_resume.py eval_results/eval_20260618_072325 --min-agent-turns 2
 ```
 
 It prints counts for completed, would-rerun, and fresh scenarios. It then lists each scenario that would be
 rerun and its reason. Reasons include `no metrics.json (in-flight)`, `0 turns (bot crashed before audio)`,
-and `1 agent LLM response(s) < 3 (TIMEOUT)`.
+and `1 agent LLM response(s) < 2 (TIMEOUT)`.
 
-Two things to know:
+A `Completed after an automatic in-run retry (N):` section follows the re-run list whenever the session
+contains finished scenarios that the runner retried during the run. Each line reads
+`<scenario>  [auto_retry_count=<n>]`. Those scenarios are complete and a resume leaves them alone, so the
+section is informational: it tells you which results survived an infrastructure failure on the first
+attempt. It does not change the completed, would-rerun, or fresh counts.
 
-- **Its `--min-agent-turns` defaults to `0`, unlike `run_evaluation.py`'s `3`.** Always pass the value you
-  intend to resume with, or the preview under-reports the re-run set.
+Scenarios that were retried and still classify as re-runnable stay in the `Would re-run` list, where their
+reason carries the suffix `; already auto-retried <n>x in-run`. Read those first. They are the cases where
+the automatic retry ran and did not fix the problem, which usually points at the backend rather than at a
+transient failure.
+
+```text
+Would re-run (1):
+  dom__stuck  [1 agent LLM response(s) < 2 ([TIMEOUT]); already auto-retried 1x in-run]
+
+Completed after an automatic in-run retry (1):
+  dom__ok  [auto_retry_count=1]
+```
+
+The suffix comes from the same `auto_retry_count` field, so it appears only when the scenario has a readable
+`metrics.json`. A scenario that never produced one is listed with its classification reason alone.
+
+Three things to know:
+
+- **Its `--min-agent-turns` defaults to `2`, matching `run_evaluation.py`.** Pass the value you intend to
+  resume with whenever you override the default, or the preview misreports the re-run set. Raising the floor
+  above `2` is rarely useful, because legitimately short scenarios bottom out at 3 agent responses and a
+  floor of `3` or more re-runs real results instead of stalls.
+- **Detect retried scenarios through `auto_retry_count` in `metrics.json`**, which is the field this script
+  reads. Do not glob for `<scenario>.killed.autoretry*/` directories, because that layout is an
+  implementation detail of how failed attempts are preserved.
 - It walks only the subdirectories already on disk, skipping `.killed.` backups and anything without a
   `metrics.json`, `bridge_log.txt`, or `scenario_config/`. Queued scenarios that were never started have no
   subdirectory at all, so they do not appear in the preview — the fresh bucket stays empty in practice.

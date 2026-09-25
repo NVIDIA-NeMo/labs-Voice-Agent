@@ -14,12 +14,17 @@
 # limitations under the License.
 
 import asyncio
+import base64
+import contextlib
+import io
 import os
+import wave
 from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 
 from loguru import logger
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+from openai import AsyncOpenAI
 from pipecat.frames.frames import (
     AudioRawFrame,
     CancelFrame,
@@ -35,7 +40,7 @@ from pipecat.frames.frames import (
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.nvidia.stt import NvidiaSTTService
 from pipecat.services.settings import STTSettings
-from pipecat.services.stt_service import STTService
+from pipecat.services.stt_service import SegmentedSTTService, STTService
 from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
 from pydantic import BaseModel
@@ -77,8 +82,8 @@ class NemoSTTService(STTService):
     def __init__(
         self,
         *,
-        model: Optional[str] = "nnvidia/parakeet_realtime_eou_120m-v1",
-        device: Optional[str] = "cuda:0",
+        model: Optional[str] = "nvidia/parakeet_realtime_eou_120m-v1",
+        device: Optional[str] = "cuda",
         sample_rate: Optional[int] = 16000,
         params: Optional[NeMoSTTInputParams] = None,
         has_turn_taking: Optional[bool] = None,  # if None, it will be set by the model name
@@ -356,6 +361,22 @@ class NemoSTTService(STTService):
                     # otherwise, we use the is_final flag to determine the frame type
                     frame_type = TranscriptionFrame if is_final else InterimTranscriptionFrame
 
+                # ``finalized`` is pipecat's "STT has nothing more to send for this
+                # utterance" signal -- a stronger claim than the frame class, which only
+                # says the text will not be revised. ``SpeechTimeoutUserTurnStopStrategy``
+                # uses it to cancel its stt_timeout safety net, and ``STTService.push_frame``
+                # uses it to report TTFB immediately instead of on a timeout.
+                #
+                # Only ``TranscriptionFrame`` carries the field -- ``InterimTranscriptionFrame``
+                # has no such attribute, so passing it there is a TypeError.
+                #
+                # Safe to derive from ``is_final`` because this service emits exactly one
+                # ``is_final=True`` per utterance: ``NemoStreamingASRService`` sets it only
+                # when an EOU/EOB token appears in the decoded text, then resets stream state
+                # (streaming_asr.py). Under ``ignore_eou_eob`` those tokens are stripped
+                # before that check, so ``is_final`` stays False and this branch never runs.
+                extra = {"finalized": is_final} if frame_type is TranscriptionFrame else {}
+
                 # Yield the frame instead of pushing it to avoid blocking
                 yield frame_type(
                     transcription,
@@ -363,6 +384,7 @@ class NemoSTTService(STTService):
                     time_now_iso8601(),
                     language,
                     result={"text": transcription},
+                    **extra,
                 )
 
         except Exception as e:
@@ -411,10 +433,243 @@ class NemoSTTService(STTService):
         await super().process_frame(frame, direction)
 
 
+class NemoSpeechLMSTTService(SegmentedSTTService):
+    """NeMo Offline Speech-to-Text service for Pipecat integration."""
+
+    #: Floor for the duration-derived budget, so a sub-second "yes" is never clipped.
+    #: Does not raise an explicitly configured ``max_tokens`` below this value — the
+    #: effective budget is always ``min(configured, max(MIN_TOKEN_BUDGET, derived))``.
+    MIN_TOKEN_BUDGET = 16
+
+    DEFAULT_USER_PROMPT = """Produce a verbatim transcript of the audio. Preserve named entities, abbreviations, 
+numbers, dates, measurements, acronyms, and technical terms as clearly as possible. Keep the same language as 
+spoken and do not translate. Omit accidental repetitions."""
+
+    def __init__(
+        self,
+        *,
+        model: str,
+        language: Optional[str] = "en-US",
+        api_key: Optional[str] = None,
+        api_key_env_var: Optional[str] = None,
+        base_url: str = "http://localhost:8000/v1",
+        sample_rate: int = 16000,
+        generation_kwargs: Optional[dict] = None,
+        max_tokens_per_sec: Optional[float] = None,
+        system_prompt: Optional[str] = "You are a helpful assistant. /no_think",
+        user_prompt: Optional[str] = None,
+        ttfs_p99_latency: Optional[float] = None,
+        **kwargs,
+    ):
+        """
+        Args:
+            model: The model to use for speech-to-text.
+            language: The language to use for the service.
+            api_key: The API key to use for the service.
+            api_key_env_var: The environment variable to use for the API key.
+            base_url: The base URL to use for the service.
+            sample_rate: The sample rate to use for the service.
+            generation_kwargs: The generation kwargs to use for the service. For example, {max_tokens: 256, temperature: 0.0, top_p: 1.0, chat_template_kwargs: {"enable_thinking": false}}.
+            max_tokens_per_sec: Duration-proportional ceiling on the decode budget. When set,
+                each request sends ``min(generation_kwargs["max_tokens"], duration * rate)``
+                instead of the flat configured value, floored at
+                :attr:`MIN_TOKEN_BUDGET` so short utterances keep a usable budget.
+                ``None`` (default) keeps the flat value and changes nothing.
+
+                Note the qualifier: this is a ceiling *relative to a configured*
+                ``max_tokens``. When ``generation_kwargs`` omits ``max_tokens``, the
+                derived bound is sent on its own, which replaces — and may exceed — the
+                server's own default budget.
+
+                This guards the repetition-hallucination failure mode: a SpeechLM can
+                decode thousands of tokens of fabricated prose from a few seconds of
+                audio, and a flat ``max_tokens`` cannot tell that apart from a genuinely
+                long utterance. A duration-proportional bound can. Observed in practice:
+                two 40-word utterances that decoded into 9,370 and 9,252 words.
+
+                Sizing: English runs roughly 2.5 words/s, and tokens outnumber words by
+                about 1.3x, so real speech needs ~3-4 tokens/s. A value of 20-25 leaves a
+                5-8x margin over natural speech while cutting a 10s hallucination from
+                thousands of tokens to a few hundred.
+            system_prompt: The system prompt to use for the service. Either the prompt text
+                itself or a path to a file containing it, following the same path-or-literal
+                rule as ``llm.system_prompt``.
+            user_prompt: The user prompt to use for the service. Path-or-literal, as above.
+            ttfs_p99_latency: ttfs_p99_latency: P99 seconds from end of speech to final transcript,
+                broadcast to downstream turn-stop strategies. Leave as None to
+                take pipecat's conservative fallback; set a value measured for
+                your deployment (model, device, VAD ``stop_secs``) to tighten
+                end-of-turn timing. We ship no default because the figure is
+                hardware-dependent and guessing it low would cut users off.
+                See https://github.com/pipecat-ai/stt-benchmark
+            (other args documented on the attributes they set)
+        """
+        super().__init__(
+            settings=STTSettings(
+                model=model,
+                language=language,
+            ),
+            sample_rate=sample_rate,
+            language=language,
+            ttfs_p99_latency=ttfs_p99_latency,
+            **kwargs,
+        )
+        self._api_key = api_key
+        self._base_url = base_url
+        if api_key_env_var is not None and api_key is None:
+            self._api_key = os.getenv(api_key_env_var)
+        # The model reasons by default and answers the prompt as a chatbot instead of
+        # transcribing. The "/no_think" in the system prompt does not suppress that; only
+        # this chat template flag does. Callers passing their own chat_template_kwargs
+        # replace it wholesale and take responsibility for the flag themselves.
+        self._generation_kwargs = {
+            "chat_template_kwargs": {"enable_thinking": False},
+            **(generation_kwargs or {}),
+        }
+        self._max_tokens_per_sec = max_tokens_per_sec
+        # Resolve here rather than in the config factory so programmatic callers get the
+        # same path-or-literal behaviour, and so ``reset_user_prompt`` restores the resolved
+        # text rather than the path.
+        #
+        # Imported inside the constructor, not at module scope: ``nemo_voice_agent.utils``
+        # eagerly imports ``ConfigManager``, which imports ``NeMoSTTInputParams`` from this
+        # module. A top-level import would close that cycle. Deferring keeps one shared
+        # implementation of the path-or-literal rule instead of forking a second copy here.
+        from nemo_voice_agent.utils.misc import resolve_prompt
+
+        system_prompt = resolve_prompt(system_prompt)
+        user_prompt = resolve_prompt(user_prompt)
+        self._original_user_prompt = user_prompt
+        self._system_prompt = system_prompt
+        self._user_prompt = user_prompt if user_prompt else self.DEFAULT_USER_PROMPT
+        self._model_name = model
+        self._client = AsyncOpenAI(api_key=self._api_key or "None", base_url=self._base_url)
+
+    def can_generate_metrics(self) -> bool:
+        """
+        Set to True to enable metrics generation.
+        """
+        return True
+
+    def set_user_prompt(self, user_prompt: str, append_to_original: bool = False):
+        """Update the user prompt.
+        Args:
+            user_prompt: The user prompt to set.
+            append_to_original: Whether to append the new user prompt to the original user prompt.
+              If False, the new user prompt will replace the original user prompt.
+        """
+        if append_to_original:
+            self._user_prompt = self._original_user_prompt + "\n" + user_prompt
+        else:
+            self._user_prompt = user_prompt
+        logger.info(f"Updating user prompt to: `{self._user_prompt}`")
+
+    def reset_user_prompt(self):
+        """Reset the user prompt to the original."""
+        self._user_prompt = self._original_user_prompt
+        logger.info(f"Resetting user prompt to the original: `{self._original_user_prompt}`")
+
+    def reset(self):
+        """Reset the service."""
+        self.reset_user_prompt()
+        logger.info("Resetting NemoSpeechLMSTTService")
+
+    @staticmethod
+    def _audio_duration_seconds(audio: bytes) -> Optional[float]:
+        """Seconds of speech in a WAV segment, or ``None`` if it cannot be parsed.
+
+        ``SegmentedSTTService`` hands us a complete WAV (16-bit mono at the service
+        sample rate), so the frame count is authoritative — more so than deriving it
+        from ``len(audio)``, which would have to assume the header size.
+        """
+        try:
+            with contextlib.closing(wave.open(io.BytesIO(audio), "rb")) as wav:
+                rate = wav.getframerate()
+                return wav.getnframes() / float(rate) if rate else None
+        except (wave.Error, EOFError, ValueError):
+            return None
+
+    def _generation_kwargs_for(self, audio: bytes) -> dict:
+        """Per-request generation kwargs, with the duration-proportional cap applied.
+
+        Returns the shared dict unchanged when ``max_tokens_per_sec`` is unset or the
+        cap does not bite, so the common path allocates nothing. Never mutates
+        ``self._generation_kwargs`` — it is shared across concurrent requests.
+        """
+        if self._max_tokens_per_sec is None:
+            return self._generation_kwargs
+        duration = self._audio_duration_seconds(audio)
+        if duration is None:
+            # Unparseable segment: fall back to the flat budget rather than guess a
+            # cap from a length we cannot trust.
+            return self._generation_kwargs
+        derived = max(self.MIN_TOKEN_BUDGET, int(duration * self._max_tokens_per_sec))
+        configured = self._generation_kwargs.get("max_tokens")
+        capped = derived if configured is None else min(configured, derived)
+        if capped == configured:
+            return self._generation_kwargs
+        logger.debug(
+            f"max_tokens {configured if configured is not None else '<server default>'} -> {capped} "
+            f"for {duration:.2f}s of audio (max_tokens_per_sec={self._max_tokens_per_sec})"
+        )
+        return {**self._generation_kwargs, "max_tokens": capped}
+
+    async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
+        """Process audio data and generate transcription frames."""
+        try:
+            await self.start_processing_metrics()
+            t0 = asyncio.get_event_loop().time()
+
+            # `wants_wav_segments` is left at its default, so the segment already carries a
+            # WAV header and can go inline as a data URL. The server also accepts file://
+            # URLs, but those require the audio to exist on the server's filesystem.
+            audio_url = f"data:audio/wav;base64,{base64.b64encode(audio).decode('ascii')}"
+            messages = []
+            if self._system_prompt:
+                messages.append({"role": "system", "content": self._system_prompt})
+            messages.append(
+                {
+                    "role": "user",
+                    # The audio part must come before the text prompt.
+                    "content": [
+                        {"type": "audio_url", "audio_url": {"url": audio_url}},
+                        {"type": "text", "text": self._user_prompt},
+                    ],
+                }
+            )
+
+            # Everything goes through extra_body so vLLM-only keys such as
+            # chat_template_kwargs reach the server untouched alongside the sampling params.
+            response = await self._client.chat.completions.create(
+                model=self._model_name,
+                messages=messages,
+                extra_body=self._generation_kwargs_for(audio),
+            )
+            t1 = asyncio.get_event_loop().time()
+            logger.debug(f"SALM inference time: {t1 - t0} seconds")
+            await self.stop_processing_metrics()
+
+            text = (response.choices[0].message.content or "").strip()
+            if text:
+                logger.debug(f"Transcription: [{text}]")
+                yield TranscriptionFrame(
+                    text,
+                    self._user_id,
+                    time_now_iso8601(),
+                    result=response,
+                )
+            else:
+                logger.warning("Received empty transcription from SALM server")
+
+        except Exception as e:
+            logger.error(f"Error in NeMo offline SALM STT processing: {e}")
+            yield ErrorFrame(error=str(e), exception=e)
+
+
 def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[AudioLogger] = None) -> STTService:
     """Get the STT service from the config."""
     backend = config.type
-    available_backends = ["nemo", "nvidia"]
+    available_backends = ["nemo", "nemo_speechlm", "nvidia"]
     assert backend in available_backends, f"Invalid STT backend: {backend}, only {available_backends} are supported"
 
     if backend == "nemo":
@@ -440,6 +695,29 @@ def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[Audio
             audio_logger=audio_logger,
             ignore_eou_eob=config.get("ignore_eou_eob", False),
             ttfs_p99_latency=config.get("ttfs_p99_latency", None),
+        )
+    elif backend == "nemo_speechlm":
+        # Served by an external vLLM SpeechLM endpoint, so there is no local model to load
+        # and no device to pick. `model` must match the server's --served-model-name.
+        kwargs = {}
+        for key in (
+            "api_key",
+            "api_key_env_var",
+            "generation_kwargs",
+            "max_tokens_per_sec",
+            "system_prompt",
+            "user_prompt",
+        ):
+            if key in config:
+                kwargs[key] = config[key]
+        if "generation_kwargs" in kwargs:
+            kwargs["generation_kwargs"] = OmegaConf.to_container(kwargs["generation_kwargs"], resolve=True)
+        return NemoSpeechLMSTTService(
+            model=config.model,
+            base_url=config.get("base_url", "http://localhost:8000/v1"),
+            sample_rate=config.get("sample_rate", 16000),
+            audio_passthrough=True,
+            **kwargs,
         )
     elif backend == "nvidia":
         api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))

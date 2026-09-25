@@ -129,7 +129,7 @@ scenarios are affected and in which domains, and pointing at `--judge-url`, `--j
 
 Two runner-level overrides sit on top of this:
 
-- **Stalled scenarios.** With `--min-agent-turns` (default `3`), a scenario whose agent produced fewer
+- **Stalled scenarios.** With `--min-agent-turns` (default `2`), a scenario whose agent produced fewer
   completed turns is forced to `is_successful = False`. It counts as a composite-rate failure but is skipped
   in the per-signal rates. The individual measurements are meaningless for a conversation that never happened.
   The scenario remains in the denominator.

@@ -37,11 +37,11 @@ Each builder owns one runtime component and reads the corresponding configuratio
 | `build_ws_transport(config_manager, vad_analyzer, host, port)` | `transport.audio_in_sample_rate`, `transport.audio_out_sample_rate`, `transport.audio_out_10ms_chunks` | `SingleClientWebsocketServerTransport` with a Protobuf serializer and `session_timeout=None`. |
 | `build_stt(config_manager, audio_logger=None)` | the whole `stt` block | An `STTService` from `get_stt_service_from_config`. Never `None`. |
 | `build_diar(config_manager, audio_logger=None)` | `diar.enabled`, `diar.model`, `diar.threshold`, `diar.frame_len_in_secs`, and `stt.device` | `NemoDiarService`, or `None` when `diar.enabled` is false. |
-| `build_turn_taking(config_manager, audio_logger=None, *, use_diar=None, use_vad=True)` | `turn_taking.enabled`, `turn_taking.max_buffer_size`, `turn_taking.bot_stop_delay`, `turn_taking.backchannel_phrases_path`, `diar.enabled` | `NeMoTurnTakingService`, or `None` when `turn_taking.enabled` is false. |
+| `build_turn_taking(config_manager, audio_logger=None, *, use_diar=None, use_vad=True)` | `turn_taking.type`, `turn_taking.max_buffer_size`, `turn_taking.bot_stop_delay`, `turn_taking.backchannel_phrases_path`, `diar.enabled` | `NeMoTurnTakingService`, or `None` when `turn_taking.type` is not `nemo`. |
 | `build_tts(config_manager, audio_logger=None)` | the whole `tts` block | A `TTSService` from `get_tts_service_from_config`. Never `None`. |
 | `build_llm_text_processor(config_manager)` | `tts.use_text_aggregator`, plus `tts.extra_separator`, `tts.ignore_strings`, `tts.min_sentence_length`, `tts.use_legacy_eos_detection` | `LLMTextProcessor` holding the segmenting text aggregator, or `None` when `tts.use_text_aggregator` is false. |
 | `build_llm(config_manager)` | the whole `llm` block | An `LLMService` from `get_llm_service_from_config`. Never `None`. |
-| `build_context_and_aggregators(llm, config_manager, turn_taking=None)` | `llm.system_role`, `llm.system_prompt` (plus suffix), `llm.inject_dummy_user_message`, `llm.dummy_user_message`, `turn_taking.enabled` | A 4-tuple: `(context, user_aggregator, assistant_aggregator, original_messages)`. |
+| `build_context_and_aggregators(llm, config_manager, turn_taking=None)` | `llm.system_role`, `llm.system_prompt` (plus suffix), `llm.inject_dummy_user_message`, `llm.dummy_user_message`, `turn_taking.type`, `turn_taking.user_speech_timeout` | A 4-tuple: `(context, user_aggregator, assistant_aggregator, original_messages)`. |
 
 Two helpers in the same module are not pipeline stages:
 
@@ -60,7 +60,9 @@ Details worth knowing:
   `build_turn_taking` forwards it to the service. `build_stt` and `build_tts` forward it into their
   `get_stt_service_from_config` / `get_tts_service_from_config` factory.
 - `build_turn_taking` is annotated as returning `NeMoTurnTakingService` but returns `None` when
-  `turn_taking.enabled` is false — treat it as optional like the others.
+  `turn_taking.type` is `speech_timeout` — treat it as optional like the others. The type accepts only
+  `nemo` and `speech_timeout`, defaults to `nemo` when the key is absent, and replaces the removed
+  `turn_taking.enabled` boolean. `ConfigManager` warns and ignores `enabled` if a config still sets it.
 - `build_llm_text_processor` exists because Pipecat 1.0 dropped `TTSService(text_aggregator=...)`.
   Pipecat silently ignores unknown constructor kwargs, so passing an aggregator to the TTS service
   would fall back to plain sentence splitting with no error.
@@ -100,12 +102,27 @@ The third dependency matters most. In Pipecat 1.0+, the pipeline permits exactly
 component. Given a service, the builder selects `ExternalUserTurnStrategies` so
 `NeMoTurnTakingService` owns turn detection and the aggregator stays quiet. Passing `None` is
 indistinguishable from omitting the argument — `None` is the parameter's default — so in both cases
-the builder re-derives the answer from `turn_taking.enabled`. When that key is false (the
-`*_nvidia.yaml` configs) it builds `UserTurnStrategies` from `VADUserTurnStartStrategy` plus
+the builder re-derives the answer from `turn_taking.type`. When that key is `speech_timeout` (the
+`*_nvidia.yaml` and `default_salm.yaml` configs) it builds `UserTurnStrategies` from `VADUserTurnStartStrategy` plus
 `SpeechTimeoutUserTurnStopStrategy`, so the aggregator drives the turn directly from VAD frames. When the key
-is true or absent (the shipped `default.yaml`), it still selects `ExternalUserTurnStrategies`. Nothing is
+is `nemo` or absent (the shipped `default.yaml`), it still selects `ExternalUserTurnStrategies`. Nothing is
 then left in the pipeline to emit the user-turn frames. That fallback is correct for the stock builders but
 not for a bot that constructs its turn-taking service inline. Such a bot must pass the service explicitly.
+
+On the `speech_timeout` path, the builder passes `turn_taking.user_speech_timeout` to the stop strategy:
+
+```python
+user_turn_strategies = UserTurnStrategies(
+    start=[VADUserTurnStartStrategy()],
+    stop=[
+        SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT)
+    ],
+)
+```
+
+`turn_taking.user_speech_timeout` defaults to 0.6 seconds. The strategy starts that timer when the VAD
+reports end of speech, so the value adds to `vad.stop_secs` instead of replacing it. Tune both keys together
+when you adjust end-of-turn latency.
 
 `original_messages`, the fourth tuple element, is a fresh deep copy of the initial message list. Hand
 it to the reset and update-prompt RTVI handler factories. Refer to
