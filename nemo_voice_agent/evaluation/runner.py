@@ -221,6 +221,52 @@ def _load_optional_trace_metrics(scenario_dir: str) -> Optional[dict]:
     return None
 
 
+def auto_retry_reason(
+    turn_count: Optional[int],
+    agent_llm_count: Optional[int],
+    min_agent_turns: int,
+    *,
+    on_stale: bool,
+    on_insufficient_turns: bool,
+) -> Optional[str]:
+    """Decide whether a just-finished scenario attempt should be re-run.
+
+    Returns a short reason string when the attempt should be retried, or
+    ``None`` to accept it.
+
+    Two triggers, deliberately separated by how certain the failure is:
+
+    - **Hard failure** (``turn_count == 0``): not a single conversation turn was
+      exchanged, so the bots never talked and no measurement exists. Re-running
+      cannot bias the score because there is no score to bias. This mirrors the
+      ``"0 turns (bot crashed before audio)"`` case in
+      ``classify_scenario_resume_state``. Governed by ``on_stale`` (default True).
+    - **Soft heuristic** (``0 < agent_llm_count < min_agent_turns``): the agent
+      responded, but fewer times than the floor. This is only a *proxy* for a
+      stalled backend — legitimately short scenarios (refusals, quick lookups)
+      sit right on the floor. Because ``insufficient_turns`` forces
+      ``is_successful=False``, retrying converts a guaranteed failure into a
+      fresh draw, which inflates scores whenever the heuristic fires on a
+      scenario that would have passed. Governed by ``on_insufficient_turns``,
+      which defaults to False for that reason.
+
+    Turn count, not ``token_usage``, gates the hard trigger on purpose.
+    ``token_usage.agent.n_calls`` only increments when the agent emits an RTVI
+    token-usage message, so a backend that does not report usage would read as
+    zero on a perfectly healthy run — and with ``on_stale`` defaulting to True
+    that would silently re-run every scenario. Turn count comes from the
+    bridge's own conversation record and does not depend on backend reporting.
+
+    A ``None`` count means the signal was unavailable; never retry on a guess.
+    """
+    if on_stale and turn_count == 0:
+        return "0 conversation turns (bots never exchanged audio)"
+    if on_insufficient_turns and agent_llm_count is not None and min_agent_turns > 0:
+        if 0 < agent_llm_count < min_agent_turns:
+            return f"{agent_llm_count} agent LLM response(s) < min_agent_turns={min_agent_turns}"
+    return None
+
+
 async def run_dynamic_evaluation(
     user_url: str,
     agent_url: str,
@@ -241,6 +287,10 @@ async def run_dynamic_evaluation(
     judge_include_conversation: bool = False,
     strict_match: bool = False,
     min_agent_turns: int = 0,
+    auto_resume_on_stale: bool = True,
+    auto_resume_on_insufficient_turns: bool = False,
+    max_auto_retries: int = 1,
+    auto_retry_backoff_secs: float = 5.0,
 ):
     """
     Run evaluation with dynamic scenario switching and latency measurement.
@@ -267,6 +317,17 @@ async def run_dynamic_evaluation(
         strict_match: If True, force ``disallow_extra_items=True`` on every scenario for this run,
             overriding each scenario's own setting. Default False respects per-scenario flags.
         min_agent_turns: scenarios with agent turns less than this number will be treated as incomplete
+        auto_resume_on_stale: If True (default), immediately re-run a scenario that recorded zero
+            conversation turns — an unambiguous infrastructure failure with no measurement to bias.
+            Keyed on the bridge's turn record rather than ``token_usage``, which reads zero on a
+            healthy run against a backend that does not report usage.
+        auto_resume_on_insufficient_turns: If True, also re-run scenarios that merely fall below
+            ``min_agent_turns``. Default False: that floor is a heuristic, legitimately short
+            scenarios sit on it, and retrying a forced failure biases the score upward.
+        max_auto_retries: Maximum automatic re-runs per scenario (default 1). Bounds the loop when
+            the backend is persistently down.
+        auto_retry_backoff_secs: Seconds to wait before an automatic re-run (default 5.0). An
+            immediate retry against a hung backend is the least likely moment to succeed.
     """
 
     if not logger:
@@ -417,21 +478,69 @@ async def run_dynamic_evaluation(
         # (``get_user_prompt``, ``setup_shared_state``,
         # ``initialization_actions``, ``sync_state``, etc.) as the
         # single source of truth.
-        logger.info(f"Preparing for scenario: {scenario.name}...")
-        await bridge.prepare_for_scenario(scenario, scenario_dir)
-        scenario_config_dir = os.path.join(scenario_dir, "scenario_config")
-        os.makedirs(scenario_config_dir, exist_ok=True)
-        scenario.save(scenario_config_dir)
-        await asyncio.sleep(pause_between_scenarios)
+        # Each pass is one live attempt. A pass is retried only when
+        # ``auto_retry_reason`` reports an infrastructure failure AND retry
+        # budget remains; see that function for why the two triggers differ.
+        auto_retry_count = 0
+        auto_retry_reasons: List[str] = []
+        while True:
+            os.makedirs(scenario_dir, exist_ok=True)
+            logger.info(f"Preparing for scenario: {scenario.name}...")
+            await bridge.prepare_for_scenario(scenario, scenario_dir)
+            scenario_config_dir = os.path.join(scenario_dir, "scenario_config")
+            os.makedirs(scenario_config_dir, exist_ok=True)
+            scenario.save(scenario_config_dir)
+            await asyncio.sleep(pause_between_scenarios)
 
-        # Run scenario
-        duration = duration_per_scenario if duration_per_scenario is not None else scenario.max_duration
-        assert duration > 0, f"Duration per scenario must be greater than 0, got {duration}"
-        logger.info(f"Running scenario for {duration} seconds...")
+            # Run scenario
+            duration = duration_per_scenario if duration_per_scenario is not None else scenario.max_duration
+            assert duration > 0, f"Duration per scenario must be greater than 0, got {duration}"
+            logger.info(f"Running scenario for {duration} seconds...")
 
-        scenario_start = datetime.now()
-        await bridge.run_scenario(duration=duration)
-        scenario_end = datetime.now()
+            scenario_start = datetime.now()
+            await bridge.run_scenario(duration=duration)
+            scenario_end = datetime.now()
+
+            # Turn count is the bridge's own conversation record, independent of
+            # whether the backend reports token usage. Read defensively: a bridge
+            # implementation without ``.metrics`` yields None, which
+            # ``auto_retry_reason`` treats as "unknown, do not retry" rather than
+            # as a failure.
+            _bridge_metrics = getattr(bridge, "metrics", None)
+            _turn_count = None if _bridge_metrics is None else len(getattr(_bridge_metrics, "turns", None) or [])
+            _live_agent_llm_count = (bridge.token_usage.get("agent") or {}).get("n_calls")
+            _retry_reason = auto_retry_reason(
+                _turn_count,
+                _live_agent_llm_count,
+                min_agent_turns,
+                on_stale=auto_resume_on_stale,
+                on_insufficient_turns=auto_resume_on_insufficient_turns,
+            )
+            if _retry_reason is None:
+                break
+            if auto_retry_count >= max_auto_retries:
+                logger.info(
+                    f"  AUTO-RETRY EXHAUSTED: {scenario.name}: {_retry_reason} "
+                    f"(already retried {auto_retry_count}/{max_auto_retries}); keeping this attempt."
+                )
+                break
+
+            # Preserve the failed attempt. The ``.killed.`` infix keeps it
+            # excluded by check_resume.py and the eval-result-analyzer skill,
+            # which already filter on that substring.
+            auto_retry_count += 1
+            auto_retry_reasons.append(_retry_reason)
+            backup = f"{scenario_dir}.killed.autoretry{auto_retry_count}.{resume_timestamp}"
+            os.rename(scenario_dir, backup)
+            open(os.path.join(backup, "__KILLED__"), "w").close()
+            logger.info(
+                f"  AUTO-RETRY {auto_retry_count}/{max_auto_retries}: {scenario.name}: {_retry_reason}; "
+                f"attempt moved to {os.path.basename(backup)}/, re-running in {auto_retry_backoff_secs}s."
+            )
+            # An immediate retry against a hung backend is the least likely
+            # moment to succeed; give it a chance to recover first.
+            if auto_retry_backoff_secs > 0:
+                await asyncio.sleep(auto_retry_backoff_secs)
 
         # Domain prefix for per-domain aggregation. Scenarios named "<prefix>__<id>"
         # bucket under <prefix>; scenarios without a "__" (e.g. "fastbite") bucket
@@ -721,6 +830,13 @@ async def run_dynamic_evaluation(
         # score as success just because clean_exit was the only applicable signal.
         # Overriding here keeps metrics.json, the per-scenario display, and the
         # aggregate buckets all consistent with the "counted as failures" warning.
+        # Retry provenance: downstream analysis must be able to tell a
+        # first-attempt result from a retried one without globbing for
+        # ``.killed.`` directories. Always present (0 when no retry happened).
+        metrics["auto_retry_count"] = auto_retry_count
+        if auto_retry_reasons:
+            metrics["auto_retry_reasons"] = auto_retry_reasons
+
         if insufficient_turns:
             metrics["is_successful"] = False
             metrics["is_task_successful"] = False

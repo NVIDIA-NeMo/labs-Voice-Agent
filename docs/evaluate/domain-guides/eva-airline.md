@@ -194,7 +194,7 @@ hashes are comparable byte for byte.
 
 No eva_airline scenario declares a `reference_answer`, so `is_action_match` does not participate — the
 commented-out block in `VoluntaryDateChange` is kept only as a worked example of the action-list shape.
-Scenarios that complete fewer than `--min-agent-turns` agent turns (default `3`) are counted as failures
+Scenarios that complete fewer than `--min-agent-turns` agent turns (default `2`) are counted as failures
 in the composite rate and skipped in the per-signal rates. Details in [Scoring](../understand-scoring/scoring.md) and
 [Metrics reference](../../reference/evaluation/metrics.md).
 

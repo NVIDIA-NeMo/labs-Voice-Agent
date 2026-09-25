@@ -171,7 +171,7 @@ Use these flags to select work, control output placement, and configure the firs
 | `--scenarios` | none | Explicit scenario names; overrides `--domain` |
 | `--output-dir` | `./eval_results` | Relative to the CWD, so it lands under `evaluation/` |
 | `--duration` | unset | Per-scenario cap in seconds; when unset, each scenario's own `max_duration` applies |
-| `--min-agent-turns` | `3` | Scenarios with fewer completed agent turns are counted as **failures** in the composite rate and skipped in the per-signal rates. Pass `0` to disable |
+| `--min-agent-turns` | `2` | Scenarios with fewer completed agent turns are counted as **failures** in the composite rate and skipped in the per-signal rates. Pass `0` to disable |
 | `--judge-url` | `http://localhost:8000/v1/chat/completions` | The LLM judge is on by default and reuses your vLLM server |
 | `--judge-api-key-name` | `JUDGE_API_KEY` | Environment variable read when `--judge-api-key` is not passed |
 

@@ -345,14 +345,54 @@ Examples:
     parser.add_argument(
         "--min-agent-turns",
         type=int,
-        default=3,
+        default=2,
         metavar="N",
         help=(
             "Minimum number of completed agent turns for a scenario to be scored on its own merits. "
             "Scenarios with fewer agent turns (e.g. due to a stalled vLLM server) are counted as FAILURES "
             "in the composite success rate, skipped in the per-signal action-match/db-state/nl-assertion "
             "rates, and flagged in the summary. On --resume, they are also treated as in-flight and "
-            "re-run. Default: 3. Pass 0 to disable the filter."
+            "re-run. Default: 2 — legitimately short scenarios (refusals, quick lookups) bottom out at 3 "
+            "agent responses, so a floor of 3 sits inside that cluster. Pass 0 to disable the filter."
+        ),
+    )
+    parser.add_argument(
+        "--no-auto-resume-on-stale",
+        dest="auto_resume_on_stale",
+        action="store_false",
+        default=True,
+        help=(
+            "Disable the automatic in-run re-run of scenarios that recorded ZERO conversation turns. "
+            "Enabled by default: zero turns means the bots never exchanged audio, so there is no "
+            "measurement to bias by retrying."
+        ),
+    )
+    parser.add_argument(
+        "--auto-resume-on-insufficient-turns",
+        action="store_true",
+        default=False,
+        help=(
+            "Also auto-retry scenarios that merely fall below --min-agent-turns. OFF by default: that "
+            "floor is a heuristic and legitimately short scenarios sit on it, so because such scenarios "
+            "are forced to is_successful=False, retrying turns a guaranteed failure into a fresh draw "
+            "and biases the success rate upward."
+        ),
+    )
+    parser.add_argument(
+        "--max-auto-retries",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Maximum automatic re-runs per scenario (default: 1). Bounds the loop when a backend is down.",
+    )
+    parser.add_argument(
+        "--auto-retry-backoff-secs",
+        type=float,
+        default=5.0,
+        metavar="SECS",
+        help=(
+            "Seconds to wait before an automatic re-run (default: 5.0). An immediate retry against a "
+            "hung backend is the least likely moment to succeed."
         ),
     )
 
@@ -508,6 +548,10 @@ Examples:
                 judge_include_conversation=args.judge_include_conversation,
                 strict_match=args.strict_match,
                 min_agent_turns=args.min_agent_turns,
+                auto_resume_on_stale=args.auto_resume_on_stale,
+                auto_resume_on_insufficient_turns=args.auto_resume_on_insufficient_turns,
+                max_auto_retries=args.max_auto_retries,
+                auto_retry_backoff_secs=args.auto_retry_backoff_secs,
             )
         )
         return 0

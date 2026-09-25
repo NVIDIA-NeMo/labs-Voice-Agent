@@ -90,7 +90,7 @@ Use these flags to set scenario limits, resume runs, and control matching behavi
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--duration SEC` | `None` | Hard cap per scenario. When unset, each scenario's own `max_duration` applies (900 s for the eva and tau2 bases, shorter for the small demo domains). |
-| `--min-agent-turns N` | `3` | Minimum agent large language model (LLM) responses for a scenario to be scored on its own merits. Pass `0` to disable. |
+| `--min-agent-turns N` | `2` | Minimum agent large language model (LLM) responses for a scenario to be scored on its own merits. Pass `0` to disable. |
 | `--resume TIMESTAMP` | `None` | Reuse the existing `eval_<TIMESTAMP>/` session directory under `--output-dir`. Exits with status 1 if that directory does not exist. |
 | `--strict-match` | off | Force `disallow_extra_items=True` on every scenario, overriding each scenario's own setting, so the action-list comparator requires exact-length matches. |
 
@@ -99,6 +99,44 @@ are **counted as failures** in the composite success rate and **skipped** in the
 (action-match, DB-state, NL-assertion) — they are not dropped from the run. Under `--resume` they are
 additionally treated as in-flight and re-run. The turn count comes from the live-recorded
 `token_usage.agent.n_calls` in `metrics.json`, falling back to the saved agent LLM context for older runs.
+
+The default is `2` because the floor has to sit *below* the shortest legitimate conversation. Across 500
+measured scenarios, the agent LLM-call distribution bottoms out at exactly 3 calls, where 21 scenarios sit.
+Every one of those is a clean exit (`stop_reason` of `[EXIT]`), and 11 of them succeeded. A floor of `3`
+therefore lands inside that legitimate cluster and fails scenarios that did the work; `2` sits below it.
+
+### Automatic Retry
+
+The runner can re-run a scenario immediately, inside the same session, when the finished attempt looks like
+an infrastructure failure instead of a task failure. This is separate from `--resume`, which you invoke by
+hand after a run ends.
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--no-auto-resume-on-stale` | retry is on | Disable the automatic re-run of a scenario that recorded zero conversation turns. |
+| `--auto-resume-on-insufficient-turns` | off | Also re-run scenarios that merely fall below `--min-agent-turns`. |
+| `--max-auto-retries N` | `1` | Maximum automatic re-runs per scenario. Bounds the loop when a backend is persistently down. |
+| `--auto-retry-backoff-secs SECS` | `5.0` | Seconds to wait before an automatic re-run. An immediate retry against a hung backend is the least likely moment to succeed. |
+
+The two triggers differ in how certain the failure is:
+
+- **Zero conversation turns**, enabled by default. The bots never exchanged audio, so the attempt holds no
+  measurement that a retry could bias. Turn off with `--no-auto-resume-on-stale`.
+- **Fewer agent turns than `--min-agent-turns`**, disabled by default. That floor is a heuristic, and
+  legitimately short scenarios sit on it. Because an insufficient-turns scenario is forced to
+  `is_successful: false`, retrying it converts a guaranteed failure into a fresh draw and biases the
+  success rate upward. Run-to-run churn within a single arm of these benchmarks measures 12% to 32%, so the
+  bias is real rather than theoretical. Enable it only when you accept that trade.
+
+The stale trigger reads the bridge's own conversation record, not `token_usage.agent.n_calls`. Token usage
+increments only when the agent bot emits an RTVI token-usage message, so a backend that does not report
+usage reads as zero calls on a perfectly healthy run. Gating the default-on trigger on that counter would
+silently re-run every scenario.
+
+A retried attempt is preserved on disk as `<scenario>.killed.autoretry<N>.<timestamp>/` with a `__KILLED__`
+marker file inside, so its logs stay available for triage. Every `metrics.json` records `auto_retry_count`,
+and `auto_retry_reasons` appears when at least one retry fired. Use those fields for downstream analysis
+rather than matching directory names.
 
 ### LLM Judge
 
@@ -174,16 +212,18 @@ would do.
 
 ```bash
 cd evaluation
-python check_resume.py ../eval_results/eval_20260618_072325 --min-agent-turns 3
+python check_resume.py ../eval_results/eval_20260618_072325 --min-agent-turns 2
 ```
 
 | Argument | Default | Description |
 | --- | --- | --- |
 | `eval_dir` | required | Path to the `eval_<TIMESTAMP>/` session directory. Exits with status 1 if it is not a directory. |
-| `--min-agent-turns N` | `0` | Flag scenarios with fewer than N agent LLM responses as stalled. `0` disables the check. |
+| `--min-agent-turns N` | `2` | Flag scenarios with fewer than N agent LLM responses as stalled. `0` disables the check. |
 
-The `--min-agent-turns` default here is `0`, unlike the runner's `3`. Pass the same value you intend to
-use with `--resume` if you want the preview to match.
+The `--min-agent-turns` default here is `2`, matching `run_evaluation.py`. Pass the same value you intend
+to use with `--resume` whenever you override it, so the preview matches the run. Raising the floor above
+`2` is rarely what you want. Legitimately short scenarios bottom out at 3 agent responses, so a floor of
+`3` or more re-runs real results instead of stalls.
 
 Each subdirectory is bucketed into one of three states:
 
@@ -194,7 +234,26 @@ Each subdirectory is bucketed into one of three states:
 | `fresh` | No subdirectory yet; it runs normally. |
 
 Directories already named `*.killed.*` or containing `__KILLED__`, and top-level files such as
-`run_args.json` and `evaluation_log.txt`, are ignored. The script prints per-bucket counts followed by the
-re-run and fresh lists, with the classification reason next to each re-run entry.
+`run_args.json` and `evaluation_log.txt`, are ignored.
+
+The script prints the per-bucket counts first, then up to three lists in this order:
+
+| Section | Contents |
+| --- | --- |
+| `Would re-run (N):` | One line per `rerun` scenario, with the classification reason in brackets. A scenario the runner already retried in-run gets the suffix `; already auto-retried <n>x in-run` appended to that reason. |
+| `Completed after an automatic in-run retry (N):` | One line per `completed` scenario whose `metrics.json` records a nonzero `auto_retry_count`, formatted as `<scenario>  [auto_retry_count=<n>]`. |
+| `Fresh / never started (N):` | One line per `fresh` scenario. |
+
+The retry list is informational. It reports which finished results needed an automatic re-run before they
+succeeded, and it does not change the `completed`, `rerun`, or `fresh` counts. It covers only scenarios in
+the `completed` bucket. A scenario that was retried and still classifies as re-runnable stays under
+`Would re-run`, where the inline suffix flags it — that combination is the most diagnostic of the two,
+because it means the automatic retry did not fix the problem. The suffix needs a readable `metrics.json`,
+so a scenario that has no metrics file at all is listed without it. When nothing is queued for a re-run and
+no scenario is fresh, the script prints `All scenarios are complete — nothing to resume.`
+
+Detect retried scenarios through the `auto_retry_count` field in `metrics.json`, which is what this script
+reads. Do not glob for `<scenario>.killed.autoretry*/` directories: that layout is an implementation detail
+of how the runner preserves failed attempts.
 
 For the resume workflow, refer to [Resuming a Run](../../evaluate/run-evaluations/resume.md).
