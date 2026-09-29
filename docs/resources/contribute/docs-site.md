@@ -157,10 +157,12 @@ Beyond the gates, two authoring conventions matter:
   build. Put YAML braces, OmegaConf interpolation, type generics, and comparison operators inside
   fenced code blocks or inline backticks.
 
-`fern-docs-preview.yml` builds a hosted preview and posts the link as a pull request comment when
-`PUBLISH_FERN=true`. It runs from the trusted base branch, checks out the pull request documentation as
-input, and uses the trusted Fern configuration, CLI version, and generated Markdown sanitizer. This flow
-also supports fork pull requests.
+`fern-docs-preview.yml` runs when a pull request head is pushed to a bot-mirrored
+`pull-request/<number>` branch. It builds a hosted preview and posts the link as a pull request comment
+when `PUBLISH_FERN=true` and the pull request changes `docs/**` or
+`.github/workflows/fern-docs-ci.yml`. The workflow reads
+the documentation from the mirror branch, uses the Fern configuration and generated Markdown sanitizer
+from `main`, and pins the Fern CLI version in the workflow.
 
 ## Publishing
 

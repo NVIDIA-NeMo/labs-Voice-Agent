@@ -187,9 +187,10 @@ Repeat the comment for each new commit. Get the SHA from `git log --oneline -1`.
 
 Documentation-only pull requests take a different path. `fern-docs-ci.yml` checks MDX safety, navigation,
 Fern configuration, and offline links when a pull request changes `docs/**`. Separately,
-`fern-docs-preview.yml` builds a hosted preview from the trusted base-branch workflow and posts its link
-on the pull request when `PUBLISH_FERN=true`. Refer to [Building the Docs](docs-site.md) before editing
-anything under `docs/`.
+`fern-docs-preview.yml` runs on pushes to bot-mirrored `pull-request/<number>` branches. It builds a hosted
+preview and posts its link when `PUBLISH_FERN=true` and the pull request changes `docs/**` or
+`.github/workflows/fern-docs-ci.yml`. Refer to [Building the Docs](docs-site.md) before editing anything
+under `docs/`.
 
 ## Where Changes Usually Go
 
