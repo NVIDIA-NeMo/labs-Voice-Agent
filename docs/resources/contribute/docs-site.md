@@ -159,8 +159,9 @@ Beyond the gates, two authoring conventions matter:
 
 A separate pair of workflows (`fern-docs-preview-build.yml` and `fern-docs-preview-comment.yml`)
 builds a hosted preview and posts the link as a PR comment. The build job runs on the PR branch with
-no secrets. The comment job picks up the artifact and builds with the organization token, so previews are
-safe on fork pull requests.
+no secrets. The comment job picks up the PR documentation artifact and builds with the organization token.
+It uses the Fern CLI, configuration, and generated Markdown sanitizer from the trusted workflow revision.
+This flow also supports fork pull requests.
 
 ## Publishing
 
