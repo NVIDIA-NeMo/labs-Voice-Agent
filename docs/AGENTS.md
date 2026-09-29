@@ -132,8 +132,8 @@ Apply these source-of-truth rules:
 Merging a `docs/**` change to `main` publishes it when the `PUBLISH_FERN` repository variable is enabled.
 Review the pull request preview because the repository has no staging channel.
 
-The documentation workflows are `fern-docs-ci.yml`, `fern-docs-preview-build.yml`,
-`fern-docs-preview-comment.yml`, and `publish-fern-docs.yml` under `.github/workflows/`.
+The documentation workflows are `fern-docs-ci.yml`, `fern-docs-preview.yml`, and
+`publish-fern-docs.yml` under `.github/workflows/`.
 
 Follow these maintenance rules:
 
