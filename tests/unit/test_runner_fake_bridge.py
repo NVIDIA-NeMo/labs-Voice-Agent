@@ -19,7 +19,7 @@ import asyncio
 import json
 
 from nemo_voice_agent.evaluation import runner as runner_module
-from nemo_voice_agent.evaluation.bridge import STOP_REASON_EXIT
+from nemo_voice_agent.evaluation.bridge import STOP_REASON_EXIT, STOP_REASON_INACTIVITY_TIMEOUT
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 from nemo_voice_agent.evaluation.scenarios.classes import (
     Actions,
@@ -103,9 +103,11 @@ class _FakeBridge:
     """Deterministic bridge replacement for exercising runner orchestration cheaply."""
 
     final_response_file = "final_agent_response.json"
+    last_init_kwargs = {}
 
     def __init__(self, *args, **kwargs):
         """Initialize fake bridge state matching the runner's expected attributes."""
+        type(self).last_init_kwargs = kwargs
         self.output_dir = None
         self.stop_reason = STOP_REASON_EXIT
         self.scenario_summary = {}
@@ -171,6 +173,33 @@ class _TimeoutFakeBridge(_FakeBridge):
         super().__init__(*args, **kwargs)
         self.stop_reason = "[TIMEOUT]"
         self.token_usage["agent"]["n_calls"] = 1
+
+
+class _UserFinalInactivityTimeoutFakeBridge(_TimeoutFakeBridge):
+    """Inactivity-timeout bridge whose final completed transcript turn belongs to the user."""
+
+    def __init__(self, *args, **kwargs):
+        """Record enough agent activity to avoid the independent stall guard."""
+        super().__init__(*args, **kwargs)
+        self.stop_reason = STOP_REASON_INACTIVITY_TIMEOUT
+        self.token_usage["agent"]["n_calls"] = 3
+
+    def get_metrics(self):
+        """Append a final user turn to the standard fake metrics."""
+        metrics = super().get_metrics()
+        metrics["turns"].append({"role": "user", "text": "Thank you, goodbye."})
+        metrics["total_turns"] = len(metrics["turns"])
+        return metrics
+
+
+class _SimulatorExitFakeBridge(_FakeBridge):
+    """Bridge whose simulated user explicitly reports a successful end."""
+
+    def __init__(self, *args, **kwargs):
+        """Expose simulator terminal evidence to the runner."""
+        super().__init__(*args, **kwargs)
+        self.stop_reason = "[SIMULATOR_EXIT]"
+        self.simulator_end_reported = True
 
 
 def test_run_dynamic_evaluation_with_fake_bridge_writes_run_artifacts(monkeypatch, tmp_path):
@@ -256,3 +285,55 @@ def test_run_dynamic_evaluation_counts_timeout_and_low_turns_as_failure(monkeypa
     assert results[0]["insufficient_agent_turns"] is True
     assert results[0]["is_successful"] is False
     assert "COUNTED AS FAILURE" in summary
+
+
+def test_valid_terminal_policy_accepts_inactivity_timeout_after_user_final_turn(monkeypatch, tmp_path):
+    """The opt-in policy accepts an inactivity timeout after the user's final turn."""
+    monkeypatch.setattr(runner_module, "VoiceAgentEvaluationBridge", _UserFinalInactivityTimeoutFakeBridge)
+
+    results = asyncio.run(
+        runner_module.run_dynamic_evaluation(
+            user_url="ws://fake-user",
+            agent_url="ws://fake-agent",
+            output_dir=str(tmp_path),
+            scenarios=[_CleanExitScenario()],
+            pause_between_scenarios=0.0,
+            duration_per_scenario=1,
+            logger=_FakeLogger(),
+            min_agent_turns=3,
+            conversation_end_policy="valid-terminal-state",
+            inactivity_timeout=7.5,
+        )
+    )
+
+    assert results[0]["clean_exit"] is True
+    assert results[0]["stop_reason"] == STOP_REASON_INACTIVITY_TIMEOUT
+    assert results[0]["inactivity_timeout_seconds"] == 7.5
+    assert _UserFinalInactivityTimeoutFakeBridge.last_init_kwargs["inactivity_timeout"] == 7.5
+    assert results[0]["end_conversation_tool_called"] is False
+    assert results[0]["conversation_end_reason"] == "inactivity_timeout_after_user_final_turn"
+    assert results[0]["last_speaker"] == "user"
+    assert results[0]["is_successful"] is True
+
+
+def test_valid_terminal_policy_accepts_simulator_report(monkeypatch, tmp_path):
+    """The opt-in policy accepts an explicit successful end from the simulator."""
+    monkeypatch.setattr(runner_module, "VoiceAgentEvaluationBridge", _SimulatorExitFakeBridge)
+
+    results = asyncio.run(
+        runner_module.run_dynamic_evaluation(
+            user_url="ws://fake-user",
+            agent_url="ws://fake-agent",
+            output_dir=str(tmp_path),
+            scenarios=[_CleanExitScenario()],
+            pause_between_scenarios=0.0,
+            duration_per_scenario=1,
+            logger=_FakeLogger(),
+            conversation_end_policy="valid-terminal-state",
+        )
+    )
+
+    assert results[0]["clean_exit"] is True
+    assert results[0]["simulator_end_reported"] is True
+    assert results[0]["conversation_end_reason"] == "simulator_reported_end"
+    assert results[0]["is_successful"] is True

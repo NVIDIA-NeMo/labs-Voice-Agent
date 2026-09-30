@@ -186,7 +186,7 @@ The domain whitelists two of the six scoring signals:
 | Signal | How It Is Produced |
 | --- | --- |
 | `db_state_match` | The bot hashes its own `shared_state["db"]` and returns the SHA-256 string in the `get_scenario_summary` response, alongside the recorded action list. The runner hashes `scenario.expected_scenario_db` from its in-process gold replay and compares strings. The database itself never crosses the WebSocket. |
-| `clean_exit` | The agent called `EndConversationTool` and the conversation terminated normally. |
+| `clean_exit` | The conversation satisfied the selected end policy. The default requires `EndConversationTool`. |
 
 Hash matching is path-independent: any sequence of tool calls that lands on the gold end state passes.
 Both sides import the same canonicalization module, `nemo_voice_agent/evaluation/db_hash.py`, so the two

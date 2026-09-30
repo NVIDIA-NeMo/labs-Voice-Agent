@@ -82,9 +82,11 @@ fields below and logs a warning listing every mismatch. It is a **soft** check â
 | --- | --- |
 | `domain`, `scenarios` | Changes which scenarios the aggregate covers |
 | `duration` | Different wall-clock budget per scenario |
+| `inactivity_timeout` | Different idle-time budget before the bridge ends a scenario |
 | `judge_url`, `judge_model`, `judge_max_tokens`, `judge_temperature`, `judge_top_p`, `judge_seed` | Different judge, different verdicts |
 | `judge_threshold` | Changes the `JUDGE_PASSED` signal |
 | `strict_match` | Changes the action-list comparator |
+| `conversation_end_policy` | Changes which terminal states pass the `CLEAN_EXIT` signal |
 
 Output directory and WebSocket URLs are recorded but not diffed. If you do change a scored field mid-session,
 the aggregate mixes scenarios graded under different settings. Re-run from scratch (omit `--resume`) when you
@@ -150,6 +152,8 @@ Use these practices to control scenario duration, preserve evidence, and avoid u
 
 - `--duration` is unset by default, in which case each scenario's own `max_duration` applies. Setting it
   overrides every scenario and is one of the diffed consistency fields.
+- `--inactivity-timeout` defaults to `30.0` seconds and is also a diffed consistency field. Meaningful activity
+  from either bot resets the timer. It remains separate from the overall scenario duration.
 - Resume in the same shell environment. `--output-dir` is relative to the CWD, so running from a different
   directory silently creates a new session instead of finding the old one.
 - Check `all_summary.txt` for the stalled-scenario warning after every long run â€” that block tells you whether

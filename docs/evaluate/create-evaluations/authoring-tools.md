@@ -94,8 +94,9 @@ Two patterns coexist. New benchmarks should use the bridge-pull pattern.
 | LLM summary (legacy) | Small in-repository sets: `restaurant` (including its waitlist scenario), `customer_service`, `qa`, `fastbite`, `simple_qa` | A `SendScenarioSummaryTool` subclass wraps the agent's structured result in `<final_response>` tags. The bridge writes it to `final_agent_response.json`. The shipped subclasses are `PlaceOrderTool` and `SaveQuestionAnswerTool` in `basic_tools.py`, `ResolveTicketTool` in `customer_service_tools.py`, and `JoinWaitListTool` and `DropWaitListTool` in `waitlist_tools.py`. |
 
 Both patterns need `EndConversationTool` in the agent's tool list. It emits `<exit>`, which stops the
-scenario early. Without it, the bridge waits out the scenario's `max_duration`. `CLEAN_EXIT` is one of the
-six scoring signals. Refer to [Scoring](../understand-scoring/scoring.md).
+scenario early. Without it, the bridge stops at the 30-second inactivity timeout or the scenario's overall
+`max_duration`, whichever occurs first. `CLEAN_EXIT` is one of the six scoring signals. Refer to
+[Scoring](../understand-scoring/scoring.md).
 
 Terminal tools that record an action and end the call (`TransferToHumanAgentsTool`) emit the exit signal from
 `_after_result`, never from `_execute`. Pipecat must commit the tool-call record before the bridge ends the
