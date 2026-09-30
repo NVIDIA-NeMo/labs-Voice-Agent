@@ -675,16 +675,20 @@ def test_receive_to_queue_deserializes_audio_and_calls_monitor(tmp_path):
     assert q.get_nowait() == b"\x01\x02"
 
 
-def test_send_audio_stream_drains_queue_sends_frame_and_tracks_chunk(tmp_path):
-    """The audio send loop drains queued audio, emits one frame, and records sent bytes."""
+@pytest.mark.parametrize(("has_speech", "expected_activity_resets"), [(True, 1), (False, 0)])
+def test_send_audio_stream_tracks_speech_activity(tmp_path, has_speech, expected_activity_resets):
+    """The send loop resets inactivity for speech audio but not silence."""
     bridge = _bridge(tmp_path)
     bridge.serializer = _FakeSerializer()
     bridge.audio_chunk_in_seconds = 0.001
     stream = _FakeAudioStream()
+    stream.outputs = [(b"\x01\x02", has_speech)]
     ws = _FakeWebSocket()
     source_queue = queue.Queue()
     source_queue.put(b"inbound")
     sent_chunks = []
+    activity_resets = []
+    bridge._record_activity = lambda: activity_resets.append(True)
 
     async def _run():
         """Run the send loop and stop it after the first outbound frame."""
@@ -703,6 +707,7 @@ def test_send_audio_stream_drains_queue_sends_frame_and_tracks_chunk(tmp_path):
     assert stream.put_chunks == [b"inbound"]
     assert sent_chunks == [b"\x01\x02"]
     assert len(ws.sent) == 1
+    assert len(activity_resets) == expected_activity_resets
 
 
 def test_propagate_cross_side_sync_replays_tool_and_dispatches_deltas(tmp_path):

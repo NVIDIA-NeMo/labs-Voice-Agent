@@ -76,9 +76,9 @@ agent turn and the overall `[TIMEOUT]` both remain `false`. The `--min-agent-tur
 and forces stalled scenarios to fail regardless of their conversation-end evidence.
 
 The inactivity timer resets on meaningful activity from either bot, including speaking lifecycle events,
-text-to-speech events, and relevant server messages or actions. It does not reset on raw audio frames because
-the bridge streams silence continuously. `inactivity_timeout_seconds` records the configured interval, while
-`duration_seconds` records actual elapsed runtime and `scenario_duration` includes runner overhead.
+text-to-speech events, relevant server messages or actions, and audio frames detected as speech. It does not
+reset on continuously streamed silent audio. `inactivity_timeout_seconds` records the configured interval,
+while `duration_seconds` records actual elapsed runtime and `scenario_duration` includes runner overhead.
 
 The `conversation_end_reason` value identifies the evidence used for the verdict:
 

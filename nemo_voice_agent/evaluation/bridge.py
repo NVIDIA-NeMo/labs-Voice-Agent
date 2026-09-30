@@ -1080,6 +1080,8 @@ class VoiceAgentEvaluationBridge:
 
                     # Get audio from AudioStream
                     audio_to_send, has_speech = await audio_stream.get_nowait()
+                    if has_speech:
+                        self._record_activity()
 
                     # Track sent audio
                     sent_chunks_list.append(audio_to_send)

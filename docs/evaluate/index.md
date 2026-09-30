@@ -87,7 +87,8 @@ The bridge is responsible for the following runtime coordination and evidence-ca
 - **Termination detection.** The agent ends a conversation by calling its end-conversation tool, which emits
   an `<exit>` tag. The bridge records stop reason `[EXIT]`. The bridge also stops after 30 seconds without
   meaningful activity by default and records `[INACTIVITY_TIMEOUT]`. Speaking lifecycle events, text-to-speech
-  events, and relevant server messages or actions from either bot reset this timer. Silent audio frames do not.
+  events, relevant server messages or actions, and speech-bearing audio from either bot reset this timer.
+  Continuously streamed silent audio does not.
   Use `--inactivity-timeout` to change the interval. This timer is distinct from the overall scenario time limit,
   which records `[TIMEOUT]`. With `--conversation-end-policy valid-terminal-state`, a simulated-user
   `<exit>...</exit>` message stops the run and records `[SIMULATOR_EXIT]`.
