@@ -156,6 +156,17 @@ uv run pytest tests/unit/test_config_manager.py
 Use `.github/PULL_REQUEST_TEMPLATE.md` for every pull request and complete the documentation writer review
 receipt after the changes and applicable validation are final.
 
+### Requesting Review
+
+Comment `/review` on your pull request to request an automated review. Use `/review mode=strict` for a
+strict review. The repository's [PR review skill](.claude/skills/pr-review/SKILL.md) preserves the light
+review guidance for bugs, typos, tests, and documentation.
+
+The `claude-review.yml` workflow only posts command guidance for repository owners, members, and
+collaborators. Exact `/claude review` and `/claude strict-review` comments receive guidance to use
+`/review` and `/review mode=strict`, respectively. Bot comments do not trigger the workflow, and the
+workflow does not run Claude Code.
+
 ## Documentation Writer Review Receipt
 
 Pull requests that change code or documentation must record a documentation
