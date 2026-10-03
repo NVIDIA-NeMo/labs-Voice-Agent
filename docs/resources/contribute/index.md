@@ -173,6 +173,16 @@ To prepare and submit a pull request, complete the following steps:
 5. Push to your fork and open a pull request against `main` that describes what changed and why.
 6. Address review feedback, and squash the history before merge.
 
+### Requesting Review
+
+Comment `/review` on your pull request to request an automated review. Use `/review mode=strict` for a
+strict review.
+
+The `claude-review.yml` workflow only posts command guidance for repository owners, members, and
+collaborators. Exact `/claude review` and `/claude strict-review` comments receive guidance to use
+`/review` and `/review mode=strict`, respectively. Bot comments do not trigger the workflow, and the
+workflow does not run Claude Code.
+
 ### Triggering CI
 
 The pipeline runs on pushes to `main`, to `deploy-release/*`, and to the bot-mirrored
