@@ -111,8 +111,18 @@ visible in the simulated user's context history were made by the user-sim and mu
 agent. Read telecom judge scores with this in mind. Refer to
 [tau2_telecom](../domain-guides/tau2-telecom.md).
 
-**`CLEAN_EXIT`** — `True` only when `bridge.stop_reason` is `[EXIT]`, meaning the agent voluntarily called
-`EndConversationTool`. `[TIMEOUT]` always fails. The raw reason is saved as `stop_reason`.
+**`CLEAN_EXIT`** — a compatibility signal whose verdict depends on `--conversation-end-policy`:
+
+- `tool-only` (default) passes only when the agent calls `EndConversationTool` and emits `[EXIT]`.
+- `valid-terminal-state` also passes when the simulator reports a successful end, or when the bridge records
+  `[INACTIVITY_TIMEOUT]` after the user produced the final recorded turn.
+
+The opt-in policy prevents tool-call accuracy from being the only evidence of a valid ending. It does not make
+every timeout successful: an inactivity timeout after an agent-final turn fails, and an overall `[TIMEOUT]`
+always fails. The `--min-agent-turns` stall filter continues to override the composite verdict. Use
+`end_conversation_tool_called` to measure explicit tool compliance.
+`conversation_end_reason` records why the policy passed or failed, and `conversation_end_policy` records the
+policy used. The lower-level bridge reason remains available as `stop_reason`.
 
 ## Composite is_successful
 
@@ -158,10 +168,12 @@ runs through the judge but contributes per-claim verdicts, so it is safe to gate
 
 ## Why CLEAN_EXIT Is Universal
 
-Closure discipline gates every domain. An agent that performs the right work but never stops talking is not a
-successful agent, and a timed-out scenario uses more compute than a clean exit. The gate matters most for
-**policy-refusal scenarios**, where the expected and initial states match. Without `CLEAN_EXIT`, an agent that
-crashes at the greeting would pass `DB_STATE_MATCH` by doing nothing. The regression test
+Closure discipline gates every domain. By default, an agent that performs the right work but never calls its
+end-conversation tool is not successful. The opt-in `valid-terminal-state` policy accepts additional evidence
+that the conversation ended validly while preserving explicit tool compliance as a diagnostic. The gate matters
+most for **policy-refusal scenarios**, where the expected and initial states match. Without `CLEAN_EXIT`, an agent
+that crashes at the greeting would pass `DB_STATE_MATCH` by doing nothing. The default `--min-agent-turns`
+filter prevents that outcome under either policy. The regression test
 `test_every_concrete_scenario_includes_clean_exit` in `tests/unit/test_runner_is_successful.py` fails the build
 if a new domain omits it.
 
@@ -195,7 +207,7 @@ Use the session and scenario artifacts according to the level of detail you need
 
 | Artifact | Contents |
 |---|---|
-| `<scenario>/metrics.json` | All six signals, `is_successful`, `is_task_successful`, `success_breakdown`, `stop_reason`, per-predicate `db_state_assertion_verdicts` |
+| `<scenario>/metrics.json` | All six signals, `is_successful`, `is_task_successful`, `success_breakdown`, conversation-end diagnostics, and per-predicate `db_state_assertion_verdicts` |
 | `<scenario>/judge_result.json` | Judge score, reason, `nl_assertion_verdicts`, and the verbatim judge input |
 | `<scenario>/final_scenario_db_hash.txt` | Post-run `db_hash` (and `user_db_hash` for dual-side domains) |
 | `<scenario>/scenario_config/metadata.json` | The scenario's `success_signals`, `expected_db_hash`, `db_state_assertions`, `nl_assertions`, `initialization_actions` — so an old run stays interpretable without reloading the scenario class |
