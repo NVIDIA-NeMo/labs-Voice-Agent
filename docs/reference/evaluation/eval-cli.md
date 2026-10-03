@@ -90,7 +90,7 @@ Use these flags to set scenario limits, resume runs, and control matching behavi
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--duration SEC` | `None` | Hard cap per scenario. When unset, each scenario's own `max_duration` applies (900 s for the eva and tau2 bases, shorter for the small demo domains). |
-| `--inactivity-timeout SEC` | `30.0` | Stop the bridge after this many seconds without meaningful activity from either bot. The value must be greater than `0`. Speaking lifecycle events, text-to-speech events, relevant server messages or actions, and speech-bearing audio reset the timer. Continuously streamed silent audio does not. This limit is distinct from `--duration`. |
+| `--inactivity-timeout SEC` | `120.0` | Stop the bridge after this many seconds without meaningful activity from either bot. The value must be greater than `0`. Speaking lifecycle events, text-to-speech events, relevant server messages or actions, and speech-bearing audio reset the timer. Continuously streamed silent audio does not. This limit is distinct from `--duration`. |
 | `--min-agent-turns N` | `2` | Minimum agent large language model (LLM) responses for a scenario to be scored on its own merits. Pass `0` to disable. |
 | `--resume TIMESTAMP` | `None` | Reuse the existing `eval_<TIMESTAMP>/` session directory under `--output-dir`. Exits with status 1 if that directory does not exist. |
 | `--strict-match` | off | Force `disallow_extra_items=True` on every scenario, overriding each scenario's own setting, so the action-list comparator requires exact-length matches. |
@@ -110,8 +110,8 @@ therefore lands inside that legitimate cluster and fails scenarios that did the 
 The default `tool-only` conversation-end policy preserves existing behavior: the agent must call
 `EndConversationTool`. Select `valid-terminal-state` when the agent integration cannot reliably emit the tool
 call but the simulator or final-speaker evidence can establish a valid ending. The runner still records whether
-the agent called the tool, independently of the selected policy. The 30-second inactivity timer applies under
-both policies, but only `valid-terminal-state` can treat a user-final inactivity timeout as a clean exit.
+the agent called the tool, independently of the selected policy. The default 120-second inactivity timer applies
+under both policies, but only `valid-terminal-state` can treat a user-final inactivity timeout as a clean exit.
 
 ### Automatic Retry
 

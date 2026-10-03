@@ -227,7 +227,7 @@ Use these practices to control scenario duration, preserve evidence, and avoid u
 
 - `--duration` is unset by default, in which case each scenario's own `max_duration` applies. Setting it
   overrides every scenario and is one of the diffed consistency fields.
-- `--inactivity-timeout` defaults to `30.0` seconds and is also a diffed consistency field. Meaningful activity
+- `--inactivity-timeout` defaults to `120.0` seconds and is also a diffed consistency field. Meaningful activity
   from either bot resets the timer. It remains separate from the overall scenario duration.
 - Resume in the same shell environment. `--output-dir` is relative to the CWD, so running from a different
   directory silently creates a new session instead of finding the old one.

@@ -51,7 +51,7 @@ scenario that completes a bridge run.
 | `latency_stats` | object | Aggregate over this scenario's `latencies`, with fields defined after this table. |
 | `latencies` | list | One entry per measurement: `user_transcript`, `agent_transcript`, `latency_ms`. |
 | `stop_reason` | string | Lower-level bridge stop reason, such as `"[EXIT]"`, `"[SIMULATOR_EXIT]"`, `"[INACTIVITY_TIMEOUT]"`, or `"[TIMEOUT]"`. |
-| `inactivity_timeout_seconds` | float | Configured inactivity interval for the bridge. The default is `30.0` seconds. |
+| `inactivity_timeout_seconds` | float | Configured inactivity interval for the bridge. The default is `120.0` seconds. |
 | `clean_exit` | bool | Compatibility success signal evaluated under `conversation_end_policy`. Under the default `tool-only` policy, only an agent `EndConversationTool` exit passes. |
 | `end_conversation_tool_called` | bool | Whether the agent called `EndConversationTool`, independent of the selected policy verdict. |
 | `simulator_end_reported` | bool | Whether the simulated user emitted an `<exit>...</exit>` real-time voice interface (RTVI) server message. |

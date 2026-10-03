@@ -85,7 +85,7 @@ The bridge is responsible for the following runtime coordination and evidence-ca
   resolves `db_path` to a loaded DB, applies init-function mutations). Both bots always receive
   `apply_initialization`, because the DB-load step runs even when a scenario declares no init mutations.
 - **Termination detection.** The agent ends a conversation by calling its end-conversation tool, which emits
-  an `<exit>` tag. The bridge records stop reason `[EXIT]`. The bridge also stops after 30 seconds without
+  an `<exit>` tag. The bridge records stop reason `[EXIT]`. The bridge also stops after 120 seconds without
   meaningful activity by default and records `[INACTIVITY_TIMEOUT]`. Speaking lifecycle events, text-to-speech
   events, relevant server messages or actions, and speech-bearing audio from either bot reset this timer.
   Continuously streamed silent audio does not.
@@ -165,7 +165,7 @@ Two defaults to know before you compare runs:
   warning line in `all_summary.txt` before reading the numbers. Pass `0` to disable.
 - `--duration` defaults to unset, in which case each scenario's own `max_duration` applies. Passing a value
   overrides every scenario.
-- `--inactivity-timeout` defaults to `30.0` seconds. Meaningful activity from either bot resets it. This limit
+- `--inactivity-timeout` defaults to `120.0` seconds. Meaningful activity from either bot resets it. This limit
   can end a scenario before its overall duration expires.
 
 The full flag list is in the [eval CLI reference](../reference/evaluation/eval-cli.md). Interrupted runs are picked up

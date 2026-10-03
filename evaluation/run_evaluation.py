@@ -413,11 +413,11 @@ Examples:
     parser.add_argument(
         "--inactivity-timeout",
         type=float,
-        default=30.0,
+        default=120.0,
         metavar="SECONDS",
         help=(
             "Stop a scenario after this many seconds without conversational activity from either side. "
-            "This is independent of the overall --duration limit. Default: 30.0."
+            "This is independent of the overall --duration limit. Default: 120.0."
         ),
     )
 

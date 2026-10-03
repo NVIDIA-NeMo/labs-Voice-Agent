@@ -311,13 +311,13 @@ def test_monitor_user_message_records_but_ignores_simulator_exit_by_default(tmp_
     assert not bridge.stop_event.is_set()
 
 
-def test_bridge_inactivity_timeout_defaults_to_thirty_seconds(tmp_path):
-    """The bridge stops after 30 seconds without meaningful activity by default."""
+def test_bridge_inactivity_timeout_defaults_to_two_minutes(tmp_path):
+    """The bridge stops after 120 seconds without meaningful activity by default."""
     bridge = _bridge(tmp_path)
     bridge.last_activity_monotonic = 100.0
 
-    assert bridge._stop_if_inactive(now=129.9) is False
-    assert bridge._stop_if_inactive(now=130.0) is True
+    assert bridge._stop_if_inactive(now=219.9) is False
+    assert bridge._stop_if_inactive(now=220.0) is True
     assert bridge.stop_reason == STOP_REASON_INACTIVITY_TIMEOUT
     assert bridge.stop_event.is_set()
 

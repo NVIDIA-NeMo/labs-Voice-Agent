@@ -327,7 +327,7 @@ async def run_dynamic_evaluation(
     max_auto_retries: int = 1,
     auto_retry_backoff_secs: float = 5.0,
     conversation_end_policy: ConversationEndPolicy | str = ConversationEndPolicy.TOOL_ONLY,
-    inactivity_timeout: Optional[float] = 30.0,
+    inactivity_timeout: Optional[float] = 120.0,
 ):
     """
     Run evaluation with dynamic scenario switching and latency measurement.
