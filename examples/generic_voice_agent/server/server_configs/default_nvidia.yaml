@@ -16,9 +16,16 @@ vad:
   type: silero
   confidence: 0.6  # VAD threshold for detecting speech versus non-speech
   start_secs: 0.1  # min amount of speech to trigger UserStartSpeaking
-  stop_secs: 1.0  # min amount of silence to trigger UserStopSpeaking
+  stop_secs: 0.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame, set to 0.2 if turn_taking.type is speech_timeout
   min_volume: 0.2  # Microphone volumn threshold for VAD
 
+turn_taking:
+  type: speech_timeout  # choices in ['nemo', 'speech_timeout'], `speech_timeout` lets VAD handle the user start and stop speaking
+  user_speech_timeout: 0.6  # extra silence waited after vad.stop_secs before the user turn ends, so the two add up into the end-of-turn latency
+  # the keys below are only used when type is `nemo`
+  backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
+  max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
+  bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
 
 stt:
   type: nvidia
@@ -36,17 +43,10 @@ diar:
   threshold: 0.5  # threshold value used to determine if a speaker exists or not, setting it to a lower value will increaset the sensitivity of the model
   frame_len_in_secs: 0.08  # default for Sortformer, do not change unless using other architechtures
 
-turn_taking:
-  enabled: false # disable to let VAD handle the user start and stop speaking
-  backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
-  max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
-  bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
-
-
 llm:
   type: nvidia
   base_url: "https://integrate.api.nvidia.com/v1"
-  model: "nvidia/nemotron-3-nano-30b-a3b"
+  model: "nvidia/nemotron-3.5-lightning-30b-a3b"
   system_prompt: "You are a helpful AI agent named Lisa. Start by greeting the user with 'Hi, I'm Lisa, your helpful AI assistant. How can I help you today?'."
   system_role: "system"  # role for system prompt, set it to `user` for models that do not support system prompt
   system_prompt_suffix: "Keep your responses concise and conversational since they will be spoken aloud. Avoid special characters. Use only simple, plain text sentences. Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. Always spell out numbers as words. Before responding to the user, check if the user request requires using external tools, and use the tools if they match with the user's intention. Otherwise, use your internal knowledge to answer the user's question. Do not use tools for casual conversation or when the tools don't fit the use cases. You should still try to address the user's request when it's not related to the provided tools. If you are provided with a set of tools, use them only when needed, do not limit your capabilities to the scope of the tools. If the purpose of a tool matches well with a user's request, always try to call the tool first. Conversation history should not limit your behavior on whether you can use tools. You must answer questions not related to the tools. Avoid any emoji in your response."
@@ -81,7 +81,6 @@ llm:
         chat_template_kwargs:
           enable_thinking: ${llm.enable_reasoning} 
         reasoning_budget: 3000
-
 
 tts:
   type: nvidia

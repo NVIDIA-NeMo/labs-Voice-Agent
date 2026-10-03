@@ -31,6 +31,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregator,
 )
 from pipecat.processors.aggregators.llm_text_processor import LLMTextProcessor
+from pipecat.turns.user_stop import SpeechTimeoutUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import ExternalUserTurnStrategies
 
 from nemo_voice_agent.evaluation.tools.waitlist_tools import DropWaitListTool, GetWaitlistTool, JoinWaitListTool
@@ -47,7 +48,7 @@ def _config(**overrides):
             "audio_out_sample_rate": 24000,
         },
         diar={"enabled": True},
-        turn_taking={"enabled": True},
+        turn_taking={"type": "nemo"},
         stt=SimpleNamespace(kind="stt"),
         tts=SimpleNamespace(kind="tts"),
         llm={"kind": "llm", "inject_dummy_user_message": True, "dummy_user_message": "Hi"},
@@ -60,9 +61,11 @@ def _config(**overrides):
         DIAR_MODEL="diar-model",
         STT_DEVICE="cpu",
         USE_DIAR=True,
+        TURN_TAKING_TYPE="nemo",
         TURN_TAKING_MAX_BUFFER_SIZE=3,
         TURN_TAKING_BOT_STOP_DELAY=0.25,
         TURN_TAKING_BACKCHANNEL_PHRASES_PATH=["yeah"],
+        TURN_TAKING_USER_SPEECH_TIMEOUT=0.6,
         SYSTEM_ROLE="system",
         SYSTEM_PROMPT="policy",
         get_vad_params=lambda: "vad-params",
@@ -70,6 +73,19 @@ def _config(**overrides):
     )
     for name, value in overrides.items():
         setattr(config, name, value)
+    return config
+
+
+def _set_turn_taking(config, **turn_taking):
+    """Rewrite the ``turn_taking`` block the way ConfigManager would.
+
+    ConfigManager keeps the raw block and the derived ``TURN_TAKING_*``
+    attributes in agreement, so tests must too — reading one but not the other
+    would let a builder keep the stale type.
+    """
+    config.server_config.turn_taking = dict(turn_taking)
+    config.TURN_TAKING_TYPE = turn_taking.get("type", "nemo")
+    config.TURN_TAKING_USER_SPEECH_TIMEOUT = turn_taking.get("user_speech_timeout", 0.6)
     return config
 
 
@@ -134,8 +150,16 @@ def test_optional_audio_diar_and_turn_taking_builders(monkeypatch):
     assert turn[1]["use_diar"] is False
     assert turn[1]["use_vad"] is False
     assert turn[1]["audio_logger"] == "logger"
-    config.server_config.turn_taking["enabled"] = False
+    _set_turn_taking(config, type="speech_timeout")
     assert builders.build_turn_taking(config) is None
+
+
+def test_build_turn_taking_defaults_to_nemo_when_type_is_omitted(monkeypatch):
+    """An omitted ``turn_taking.type`` still builds the NeMo service."""
+    monkeypatch.setattr(builders, "NeMoTurnTakingService", lambda **kwargs: ("turn", kwargs))
+    config = _set_turn_taking(_config(), max_buffer_size=2)
+
+    assert builders.build_turn_taking(config)[0] == "turn"
 
 
 def test_context_and_logging_builders(monkeypatch):
@@ -149,7 +173,7 @@ def test_context_and_logging_builders(monkeypatch):
     ]
     assert isinstance(user, LLMUserAggregator)
     assert isinstance(assistant, LLMAssistantAggregator)
-    # turn_taking.enabled is True in _config(), so NeMoTurnTakingService owns the
+    # turn_taking.type is nemo in _config(), so NeMoTurnTakingService owns the
     # turn boundaries and the aggregator must defer to it rather than deriving
     # turns from VAD itself.
     assert isinstance(user._params.user_turn_strategies, ExternalUserTurnStrategies)
@@ -408,7 +432,7 @@ def test_exactly_one_component_emits_user_speaking_frames():
     assert not any(s._enable_user_speaking_frames for s in with_service.stop)
 
     # Turn-taking absent: VAD drives the turn and the aggregator emits.
-    config.server_config.turn_taking = {"enabled": False}
+    _set_turn_taking(config, type="speech_timeout")
     without_service = _turn_strategies(config, None)
     assert not isinstance(without_service, ExternalUserTurnStrategies)
     assert all(s._enable_user_speaking_frames for s in without_service.start)
@@ -418,14 +442,43 @@ def test_exactly_one_component_emits_user_speaking_frames():
     assert [type(s).__name__ for s in without_service.stop] == ["SpeechTimeoutUserTurnStopStrategy"]
 
 
-def test_turn_taking_instance_overrides_the_config_flag():
-    """The passed-in service decides, not a re-derived read of turn_taking.enabled.
+def test_turn_taking_instance_overrides_the_config_type():
+    """The passed-in service decides, not a re-derived read of turn_taking.type.
 
     A bot may construct its turn-taking service inline; re-deriving the answer
     from config would then silently pick the wrong strategy pair.
     """
     config = _config()
-    config.server_config.turn_taking = {"enabled": False}
+    _set_turn_taking(config, type="speech_timeout")
 
     assert isinstance(_turn_strategies(config, object()), ExternalUserTurnStrategies)
     assert not isinstance(_turn_strategies(config, None), ExternalUserTurnStrategies)
+
+
+def test_omitted_turn_taking_type_selects_the_external_turn_strategies():
+    """No ``type`` means ``nemo``, so the aggregator must defer to the service."""
+    config = _set_turn_taking(_config(), max_buffer_size=2)
+
+    assert isinstance(_turn_strategies(config, None), ExternalUserTurnStrategies)
+
+
+def test_configured_user_speech_timeout_reaches_the_stop_strategy():
+    """``turn_taking.user_speech_timeout`` must land on the pipecat strategy.
+
+    The strategy waits this long *after* ``vad.stop_secs`` before ending the
+    turn, so dropping the configured value silently restores pipecat's 0.6s and
+    the end-of-turn latency the key exists to control.
+    """
+    config = _set_turn_taking(_config(), type="speech_timeout", user_speech_timeout=0.25)
+
+    (stop,) = _turn_strategies(config, None).stop
+    assert isinstance(stop, SpeechTimeoutUserTurnStopStrategy)
+    assert stop._user_speech_timeout == 0.25
+
+
+def test_default_user_speech_timeout_matches_pipecat():
+    """The shipped default carries pipecat's own 0.6s, not a silent zero."""
+    config = _set_turn_taking(_config(), type="speech_timeout")
+
+    (stop,) = _turn_strategies(config, None).stop
+    assert stop._user_speech_timeout == 0.6

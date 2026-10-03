@@ -113,7 +113,7 @@ difference matters:
   Referencing one that only a sub-config supplies raises `InterpolationKeyError` at startup.
 - **Sub-config: resolved lazily against the merged root.** Sub-config values are copied over verbatim and
   resolved on access, against the *final merged* server config. That is why `llm_configs/nemotron_3.5_lightning.yaml`
-  can write the following and get `0.6` and `1024` — the values its own file contributed to `llm.temperature`
+  can write the following and get `1.0` and `1024` — the values its own file contributed to `llm.temperature`
   and `llm.max_new_tokens`:
 
 ```yaml
@@ -130,7 +130,9 @@ Paths in interpolations are absolute from the config root (`llm.temperature`), n
 `llm.system_prompt` is **path-or-literal**: `ConfigManager` runs `os.path.isfile()` on the value and reads the
 file when it exists, otherwise treats the string as the prompt itself. Relative paths resolve against the
 current working directory, not the server base path. Reusable prompts ship in
-`examples/generic_voice_agent/server/example_prompts/`.
+`examples/generic_voice_agent/server/example_prompts/`. The `stt.system_prompt` and `stt.user_prompt` keys of
+the `nemo_speechlm` backend follow the same rule, so a prompt file works unchanged in either block. Refer to
+[ASR](../../about/core-concepts/speech-pipeline/asr.md#prompt-files).
 
 `llm.system_prompt_suffix` is appended to whichever prompt was chosen, separated by a newline. The shipped
 default combines a literal prompt from `default.yaml` with a tool-usage suffix from the LLM sub-config. Omit
@@ -148,7 +150,7 @@ reads one block of the merged config:
 | `vad` | — | `build_vad_analyzer` (Silero `VADParams`) |
 | `stt` | `stt_configs/` | `build_stt` |
 | `diar` | — | `build_diar`; returns `None` when `diar.enabled` is false |
-| `turn_taking` | — | `build_turn_taking`; returns `None` when `turn_taking.enabled` is false |
+| `turn_taking` | — | `build_turn_taking`; `turn_taking.type` selects `nemo` or `speech_timeout`, and returns `None` for `speech_timeout` |
 | `llm` | `llm_configs/` | `build_llm`; `llm.type` selects `auto`, `hf`, `vllm`, or `nvidia` |
 | `tts` | `tts_configs/` | `build_tts` and `build_llm_text_processor` |
 
@@ -175,9 +177,12 @@ Keep these merge and path behaviors in mind when a configuration edit does not t
 - The shipped `llm_configs/nemotron_3.5_lightning.yaml` sets `start_vllm_on_init: false`, so `python server.py` alone
   does not work by itself. Start vLLM first, or change that key. Refer to
   [vLLM Backend](../model-serving/vllm.md).
+- `turn_taking.type` replaced the boolean `turn_taking.enabled`. A config that still sets `enabled` gets a
+  startup warning naming the mapping and falls back to the `nemo` default: use `type: nemo` in place of
+  `enabled: true`, and `type: speech_timeout` in place of `enabled: false`.
 - `turn_taking.backchannel_phrases_path` is tried against the working directory first, then against the server
   base path, and raises `FileNotFoundError` naming both if neither exists. An inline list or `null` is also
-  accepted — `null` lets any speech interrupt the bot.
+  accepted — `null` lets any speech interrupt the bot. It applies to `type: nemo` only.
 - Only one client can be connected at a time. A second connection is rejected with WebSocket close code 1013,
   and the incumbent is kept. No config key changes this.
 

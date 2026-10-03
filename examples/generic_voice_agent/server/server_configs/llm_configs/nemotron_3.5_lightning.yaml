@@ -13,8 +13,8 @@ inject_dummy_user_message: true
 ##############################
 ## Common generation config ##
 ##############################
-temperature: 0.6  # LLM sampling params
-top_k: 20  # LLM sampling params
+temperature: 1.0  # LLM sampling params
+top_k: null  # LLM sampling params
 top_p: 0.95  # LLM sampling params
 min_p: 0.0  # LLM sampling params
 max_new_tokens: 1024  # max num of output tokens from LLM

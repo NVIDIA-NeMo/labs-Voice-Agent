@@ -86,15 +86,17 @@ The following table shows when each conditional stage is present and why it can 
 | --- | --- | --- |
 | VAD | always | `build_vad_analyzer` always returns a `SileroVADAnalyzer`, so `build_vad_processor` never returns `None` on this path. VAD is not an opt-out. |
 | Diar | `diar.enabled: true` | `true` in the shipped `default.yaml`. Requires GPU. |
-| TurnTaking | `turn_taking.enabled` is not `false` | Defaults to on when the key is absent. The `*_nvidia.yaml` configurations set it to `false` and let VAD alone drive turn boundaries. |
+| TurnTaking | `turn_taking.type: nemo` | The default when the key is absent. The `*_nvidia.yaml` and `default_salm.yaml` configurations set `type: speech_timeout`, which drops the stage and lets Pipecat's VAD strategies drive turn boundaries. |
 | UserAudioBuffer | `llm.is_omni_model: true` | Only the `nemotron_nano_v3_omni*` LLM configurations set this. |
 | LLMTextProcessor | `tts.use_text_aggregator` is not `false` | Defaults to on. With it off, TTS falls back to plain sentence splitting. |
 
 Turn detection has exactly one owner. `build_context_and_aggregators` inspects whether a turn-taking
 service exists: when it does, the user aggregator is configured with `ExternalUserTurnStrategies` so
 it stays quiet and lets `NeMoTurnTakingService` emit the user-turn frames. When no service exists, the
-aggregator emits those frames directly from the VAD frames. Only one component emits
-`UserStartedSpeakingFrame`, so there is no double emission either way.
+aggregator emits those frames from the VAD frames through a `SpeechTimeoutUserTurnStopStrategy`, which
+waits `turn_taking.user_speech_timeout` on top of `vad.stop_secs`. Only one component emits
+`UserStartedSpeakingFrame`, so there is no double emission either way. For the latency arithmetic, refer
+to [Turn taking](core-concepts/speech-pipeline/turn-taking.md).
 
 ## Configuration Flow
 

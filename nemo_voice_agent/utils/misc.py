@@ -23,6 +23,27 @@ from typing import Optional
 from loguru import logger
 
 
+def resolve_prompt(value: Optional[str]) -> Optional[str]:
+    """Return ``value``, or the contents of the file it names.
+
+    Mirrors the ``llm.system_prompt`` convention already used by
+    ``ConfigManager`` (see its ``SYSTEM_PROMPT`` handling): a value naming an
+    existing file is read from disk, anything else is taken literally. Keeping
+    both on the same rule means a prompt can be moved between ``llm`` and
+    ``stt`` config without changing form.
+
+    Taking a literal prompt is unambiguous in practice — ``os.path.isfile`` is
+    false for multi-line text, for any path that does not exist, and (because it
+    swallows ``OSError``/``ValueError``) for strings too long or malformed to be
+    a path at all.
+    """
+    if value and os.path.isfile(value):
+        logger.info(f"Loading prompt from file: {value}")
+        with open(value, "r", encoding="utf-8") as f:
+            return f.read()
+    return value
+
+
 def setup_logging(log_file: str = "bot_server.log", log_level: str = "DEBUG", rotation: str = "1 day"):
     """Configure loguru to emit to stderr and a rotating log file."""
     logger.remove()  # Remove default handler

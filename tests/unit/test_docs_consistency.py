@@ -137,26 +137,28 @@ def test_eval_cli_reference_documents_true_defaults():
     """docs/reference/evaluation/eval-cli.md must not contradict argparse on defaults.
 
     `--min-agent-turns` shipped documented as "0 (disabled)" while defaulting to
-    3, silently reshaping every aggregate rate.
+    3, silently reshaping every aggregate rate. The default is now 2: the measured
+    floor of legitimately short scenarios is 3 agent responses, so a floor of 3 sat
+    inside that cluster.
     """
     defaults = _argparse_defaults()
     assert defaults, "failed to parse any argparse defaults — the extractor needs updating"
 
     page = _read(DOCS / "reference" / "evaluation" / "eval-cli.md")
 
-    # The page documents two tools whose --min-agent-turns defaults legitimately
-    # differ (run_evaluation.py 3, check_resume.py 0), so scope to the runner's
-    # section or the check_resume table produces a false positive.
+    # The page documents two tools that both default --min-agent-turns to 2, but
+    # scope to the runner's section anyway so a future divergence between the two
+    # cannot silently satisfy this assertion from the wrong table.
     runner_section = page.split("## `check_resume.py`")[0]
     assert "`run_evaluation.py`" in runner_section, (
         "eval-cli.md structure changed — this test scopes assertions by the check_resume.py heading"
     )
 
-    assert defaults["--min-agent-turns"] == "3", (
+    assert defaults["--min-agent-turns"] == "2", (
         f"--min-agent-turns default changed to {defaults['--min-agent-turns']}; update the docs and this test"
     )
-    assert re.search(r"`--min-agent-turns[^`]*`\s*\|\s*`3`", runner_section), (
-        "docs/reference/evaluation/eval-cli.md does not document the runner's --min-agent-turns default of 3"
+    assert re.search(r"`--min-agent-turns[^`]*`\s*\|\s*`2`", runner_section), (
+        "docs/reference/evaluation/eval-cli.md does not document the runner's --min-agent-turns default of 2"
     )
     assert not re.search(r"`--min-agent-turns[^`]*`\s*\|\s*`0`", runner_section), (
         "docs/reference/evaluation/eval-cli.md claims the runner's --min-agent-turns defaults to 0"

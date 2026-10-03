@@ -146,6 +146,30 @@ LLM run when the client reports ready. You hear the greeting from the system pro
 If a service does not start or the browser cannot connect, use
 [Troubleshooting](../troubleshooting/index.md) to diagnose the symptom.
 
+## Access the Agent From Another Machine
+
+The defaults assume that the browser and the server run on the same machine. Two settings change when you
+browse from a different machine. Both produce confusing failures when you miss them, because the page
+loads normally either way.
+
+1. Export `SERVER_PUBLIC_HOST` before you start the server. The `/connect` endpoint advertises this
+   address to the browser, and the default of `127.0.0.1` resolves to the browser's own machine. The
+   result is a successful `/connect` request followed by a WebSocket connection failure. Set
+   `WEBSOCKET_SCHEME` to `wss` only when you terminate TLS in front of the server.
+
+   ```bash
+   export SERVER_PUBLIC_HOST="10.0.0.5"   # hostname or IP that the browser dials
+   export WEBSOCKET_SCHEME="wss"          # only behind TLS termination
+   cd examples/generic_voice_agent/server && python server.py
+   ```
+
+2. Add the client origin to the Chrome insecure-origin allowlist. Microphone capture requires a secure
+   context, and `http://<your-machine-ip>:5173/` is not one, so the **Connect** button fails when it
+   requests the microphone. Refer to [Connect From the Browser](#connect-from-the-browser).
+
+The client needs no change. It derives its own base URL from the browser address bar, and the Vite dev
+server in `examples/generic_voice_agent/client/vite.config.js` already binds `0.0.0.0`.
+
 ## Controls
 
 Use the browser controls to manage the active session and inspect its state:

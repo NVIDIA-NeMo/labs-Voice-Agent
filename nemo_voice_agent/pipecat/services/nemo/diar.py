@@ -65,7 +65,7 @@ class NemoDiarService(STTService):
         self,
         *,
         model: Optional[str] = "",
-        device: Optional[str] = "cuda:0",
+        device: Optional[str] = "cuda",
         sample_rate: Optional[int] = 16000,
         params: Optional[NeMoDiarInputParams] = None,
         use_vad: bool = True,
