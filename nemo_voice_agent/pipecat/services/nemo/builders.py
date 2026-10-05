@@ -150,10 +150,13 @@ def build_turn_taking(
     use_diar: Optional[bool] = None,
     use_vad: bool = True,
 ) -> NeMoTurnTakingService:
-    """Build the turn-taking service. ``use_diar`` defaults to ``config_manager.USE_DIAR``."""
+    """Build the turn-taking service, or return ``None`` unless ``turn_taking.type`` is ``nemo``.
+
+    ``use_diar`` defaults to ``config_manager.USE_DIAR``.
+    """
     if use_diar is None:
         use_diar = config_manager.USE_DIAR
-    if not config_manager.server_config.turn_taking.get("enabled", True):
+    if config_manager.TURN_TAKING_TYPE != "nemo":
         return None
     return NeMoTurnTakingService(
         use_vad=use_vad,
@@ -216,20 +219,23 @@ def build_context_and_aggregators(
       so the aggregator stays quiet and there is no double emission. This
       replaces the old ``transport.can_create_user_frames=False`` knob, which
       pipecat removed along with transport-side VAD.
-    - ``turn_taking`` is ``None`` (the ``*_nvidia.yaml`` configs, which set
-      ``turn_taking.enabled: false``): nothing upstream emits user-turn frames,
-      so drive the turn from VAD directly and let the aggregator emit them.
-      These configs used to rely on the transport's VAD for this, which is what
-      their now-obsolete ``can_create_user_frames: true`` was for. Note we name
-      the stop strategy explicitly rather than taking pipecat's default, which
-      would pull in ``LocalSmartTurnAnalyzerV3``.
+    - ``turn_taking`` is ``None`` (the configs that set
+      ``turn_taking.type: speech_timeout``): nothing upstream emits user-turn
+      frames, so drive the turn from VAD directly and let the aggregator emit
+      them. These configs used to rely on the transport's VAD for this, which is
+      what their now-obsolete ``can_create_user_frames: true`` was for. Note we
+      name the stop strategy explicitly rather than taking pipecat's default,
+      which would pull in ``LocalSmartTurnAnalyzerV3``. Its
+      ``turn_taking.user_speech_timeout`` is spent *after* the VAD has already
+      waited ``vad.stop_secs``, so the two add up into the end-of-turn latency,
+      which a slow first transcript can extend further.
 
     Either way the strategies read the ``VADUserStartedSpeakingFrame`` /
     ``VADUserStoppedSpeakingFrame`` that :func:`build_vad_processor` emits right
     after ``transport.input()`` — neither branch needs its own analyzer.
 
     Omitting ``turn_taking`` falls back to re-deriving the answer from
-    ``turn_taking.enabled``, which is correct for the stock builders but silently
+    ``turn_taking.type``, which is correct for the stock builders but silently
     wrong for a bot that constructs its turn-taking service inline.
     """
     messages = [
@@ -245,17 +251,15 @@ def build_context_and_aggregators(
     context = LLMContext(messages=messages)
     original_messages = copy.deepcopy(context.get_messages())
 
-    owns_turn_detection = (
-        turn_taking is not None
-        if turn_taking is not None
-        else config_manager.server_config.turn_taking.get("enabled", True)
-    )
+    owns_turn_detection = turn_taking is not None or config_manager.TURN_TAKING_TYPE == "nemo"
     if owns_turn_detection:
         user_turn_strategies = ExternalUserTurnStrategies()
     else:
         user_turn_strategies = UserTurnStrategies(
             start=[VADUserTurnStartStrategy()],
-            stop=[SpeechTimeoutUserTurnStopStrategy()],
+            stop=[
+                SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT)
+            ],
         )
 
     context_aggregator = LLMContextAggregatorPair(

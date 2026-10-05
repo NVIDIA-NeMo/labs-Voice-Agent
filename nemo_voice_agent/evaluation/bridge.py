@@ -217,7 +217,7 @@ class VoiceAgentEvaluationBridge:
         noise_config: Optional[NoiseConfig] = None,
         log_level: str = "DEBUG",
         accept_simulator_exit: bool = False,
-        inactivity_timeout: Optional[float] = 30.0,
+        inactivity_timeout: Optional[float] = 120.0,
     ):
         """
         Args:

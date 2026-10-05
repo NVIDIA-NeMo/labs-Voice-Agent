@@ -107,7 +107,9 @@ Everything outside the connection and RTVI contracts can be adapted to the agent
 
 Pass your turn-taking service to `build_context_and_aggregators()` if you use it. In Pipecat 1.0+, the
 pipeline permits exactly one component to emit user-speaking frames, and that argument determines the component. Omitting it derives
-the answer again from `turn_taking.enabled`, which is incorrect for a bot that builds the service inline.
+the answer again from `turn_taking.type`, which is incorrect for a bot that builds the service inline. When
+that key is `speech_timeout`, the builder gives the aggregator a `SpeechTimeoutUserTurnStopStrategy`
+configured with `turn_taking.user_speech_timeout`. Refer to [The Builder API](builders.md).
 
 ## Skeleton
 

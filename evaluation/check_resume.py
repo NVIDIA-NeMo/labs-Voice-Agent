@@ -25,14 +25,36 @@ Usage:
 
 Examples:
   python check_resume.py eval_results/eval_20260618_072325
-  python check_resume.py eval_results/eval_20260618_072325 --min-agent-turns 4
+  python check_resume.py eval_results/eval_20260618_072325 --min-agent-turns 0
+
+Raising the floor above the default of 2 is rarely what you want: legitimately
+short scenarios (refusals, quick lookups) bottom out at 3 agent responses, so a
+floor of 3 or more re-runs real results rather than stalls.
 """
 
 import argparse
+import json
 import os
 import sys
 
 from nemo_voice_agent.evaluation.resume import classify_scenario_resume_state
+
+
+def _auto_retry_count(scenario_dir: str) -> int:
+    """Return how many times the runner auto-retried this scenario in-run.
+
+    Reads ``auto_retry_count`` from metrics.json. Prefer this over counting
+    ``<scenario>.killed.autoretry*/`` directories, which are an implementation
+    detail of how failed attempts are preserved.
+    """
+    mf = os.path.join(scenario_dir, "metrics.json")
+    if not os.path.exists(mf):
+        return 0
+    try:
+        with open(mf) as f:
+            return int(json.load(f).get("auto_retry_count") or 0)
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        return 0
 
 
 def classify(scenario_dir: str, min_agent_turns: int):
@@ -55,9 +77,9 @@ def main():
     parser.add_argument(
         "--min-agent-turns",
         type=int,
-        default=0,
+        default=2,
         metavar="N",
-        help="Flag scenarios with fewer than N assistant LLM messages as stalled (default: 0 = disabled)",
+        help="Flag scenarios with fewer than N assistant LLM messages as stalled (default: 2; 0 = disabled)",
     )
     args = parser.parse_args()
 
@@ -68,6 +90,7 @@ def main():
     rerun = []
     completed = []
     fresh = []
+    retried = []
 
     for name in sorted(os.listdir(args.eval_dir)):
         scen_dir = os.path.join(args.eval_dir, name)
@@ -83,9 +106,22 @@ def main():
 
         state, reason = classify(scen_dir, args.min_agent_turns)
         if state == "rerun":
+            # A scenario the runner already auto-retried that STILL classifies as
+            # re-runnable is the most informative case: the retry did not help.
+            # Annotate it inline, since such scenarios never reach the completed
+            # retry list below.
+            n_retries = _auto_retry_count(scen_dir)
+            if n_retries:
+                reason = f"{reason}; already auto-retried {n_retries}x in-run"
             rerun.append((name, reason))
         elif state == "completed":
             completed.append((name, reason))
+            # Surface scenarios the runner already auto-retried in-run. Their
+            # metrics are final, but a retry means the first attempt hit an
+            # infrastructure failure and is worth knowing about.
+            n_retries = _auto_retry_count(scen_dir)
+            if n_retries:
+                retried.append((name, n_retries))
         else:
             fresh.append((name, reason))
 
@@ -98,6 +134,11 @@ def main():
         print(f"\nWould re-run ({len(rerun)}):")
         for name, reason in rerun:
             print(f"  {name}  [{reason}]")
+
+    if retried:
+        print(f"\nCompleted after an automatic in-run retry ({len(retried)}):")
+        for name, n in retried:
+            print(f"  {name}  [auto_retry_count={n}]")
 
     if fresh:
         print(f"\nFresh / never started ({len(fresh)}):")

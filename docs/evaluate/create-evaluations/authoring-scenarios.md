@@ -247,7 +247,7 @@ python run_evaluation.py --list
 python run_evaluation.py --scenarios restaurant__pizza_pepperoni
 ```
 
-Scenarios that produce fewer than `--min-agent-turns` agent turns (default `3`) count as **failures** in the
+Scenarios that produce fewer than `--min-agent-turns` agent turns (default `2`) count as **failures** in the
 composite success rate. The per-signal rates skip them because a scenario that does not start is a defect,
 not an exclusion. Pass `--min-agent-turns 0` to disable the
 filter. To start the two bot servers, refer to the [Evaluation Quickstart](../run-evaluations/quickstart.md).

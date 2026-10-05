@@ -176,7 +176,7 @@ SERVER_CONFIG_PATH=./server_configs/default_nvidia.yaml python server.py
 The `nvidia` backend connects the LLM stage to a hosted NVIDIA endpoint.
 
 `server_configs/default_nvidia.yaml` is the provided example: `llm.type: nvidia`,
-`base_url: https://integrate.api.nvidia.com/v1`, `model: nvidia/nemotron-3-nano-30b-a3b`. It reads
+`base_url: https://integrate.api.nvidia.com/v1`, `model: nvidia/nemotron-3.5-lightning-30b-a3b`. It reads
 `NVIDIA_API_KEY` from the environment and raises at startup if the key is missing. Pointing `base_url`
 at `https://inference-api.nvidia.com/v1` switches the expected variable to `NVIDIA_INFERENCE_API_KEY`.
 Unlike the local backends, this configuration carries its generation settings inline under

@@ -59,7 +59,7 @@ python run_evaluation.py --scenarios tau2_airline__11 tau2_airline__17
 ```
 
 Two flags matter for a 50-scenario job. `--duration` is unset by default, so each scenario gets its own
-900-second ceiling. Pass an integer to cap it globally. `--min-agent-turns` defaults to `3`. Scenarios with
+900-second ceiling. Pass an integer to cap it globally. `--min-agent-turns` defaults to `2`. Scenarios with
 fewer completed agent turns count as failures in the composite rate. The per-signal rates skip them instead
 of dropping them. Refer to the
 [Evaluation Command-Line Interface (CLI)](../../reference/evaluation/eval-cli.md) for all flags.

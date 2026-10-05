@@ -18,30 +18,41 @@ vad:
   type: silero
   confidence: 0.6  # VAD threshold for detecting speech versus non-speech
   start_secs: 0.1  # min amount of speech to trigger UserStartSpeaking
-  stop_secs: 1.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame, set to 0.2 if turn_taking.type is speech_timeout
-  min_volume: 0.2  # Microphone volumn threshold for VAD
-
-stt:
-  type: nemo
-  model: "nvidia/parakeet_realtime_eou_120m-v1"
-  # model: "nvidia/nemotron-speech-streaming-en-0.6b"
-  model_config: "./server_configs/stt_configs/nemo_cache_aware_streaming.yaml"
-  device: "cuda"
-
-diar:
-  type: nemo
-  enabled: true # set to false to disable
-  model: "nvidia/diar_streaming_sortformer_4spk-v2.1"
-  device: "cuda"
-  threshold: 0.5  # threshold value used to determine if a speaker exists or not, setting it to a lower value will increaset the sensitivity of the model
-  frame_len_in_secs: 0.08  # default for Sortformer, do not change unless using other architechtures
+  stop_secs: 1.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame; kept long because the offline SpeechLM only transcribes once this fires
+  min_volume: 0.4  # Microphone volumn threshold for VAD
 
 turn_taking:
-  type: nemo  # choices in ['nemo', 'speech_timeout'], `speech_timeout` drops the NeMo turn-taking model and ends the turn from VAD alone, after an extra `user_speech_timeout` (default 0.6s) on top of vad.stop_secs
+  type: speech_timeout  # choices in ['nemo', 'speech_timeout'], `speech_timeout` lets VAD alone end the user turn
+  user_speech_timeout: 0.6  # extra silence waited after vad.stop_secs before the user turn ends, so the two add up into the end-of-turn latency
   # the keys below are only used when type is `nemo`
   backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
   max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
   bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
+
+stt:
+  # Offline SpeechLM transcription served by an external vLLM endpoint, so the whole
+  # utterance is transcribed at once after the user stops speaking rather than streamed.
+  # Start the server separately, e.g. with nemo_experiments/run_vllm_nemotron_transcribe.sh
+  type: nemo_speechlm
+  model: "nemotron-transcribe"  # must match the server's --served-model-name
+  base_url: "http://localhost:5002/v1"
+  sample_rate: 16000
+  generation_kwargs:
+    max_tokens: 2048
+    temperature: 0.0
+    top_p: 1.0
+    chat_template_kwargs:
+      enable_thinking: false
+  system_prompt: "You are a helpful assistant. /no_think"
+  user_prompt: "Produce a verbatim transcript of the audio. Preserve named entities, abbreviations, numbers, dates, measurements, acronyms, and technical terms as clearly as possible. Keep the same language as spoken and do not translate. Omit accidental repetitions."
+
+diar:
+  type: nemo
+  enabled: false # set to false to disable
+  model: "nvidia/diar_streaming_sortformer_4spk-v2.1"
+  device: "cuda"
+  threshold: 0.5  # threshold value used to determine if a speaker exists or not, setting it to a lower value will increaset the sensitivity of the model
+  frame_len_in_secs: 0.08  # default for Sortformer, do not change unless using other architechtures
 
 llm:
   type: auto  # choices in ['auto', 'hf', 'vllm'], if `auto`, it will try to use vllm and fall back to hf if vllm not available
