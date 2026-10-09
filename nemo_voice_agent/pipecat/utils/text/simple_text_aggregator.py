@@ -89,8 +89,11 @@ def find_last_period_index(text: str) -> int:
     if idx <= 0:
         return idx
     if text[idx - 1].isdigit():
-        # if the period is after a digit, it's likely a partial decimal, return -1
-        return -1
+        # A digit before the period is still ambiguous (for example "3." can
+        # grow into "3.5"), unless this period closes a finished decimal
+        # (for example "$3.14."). That trailing period ends the sentence.
+        if not re.search(r"\d+\.\d+\.$", text[: idx + 1]):
+            return -1
     elif text[idx - 1].isupper():
         # if the period is after a capital letter (e.g., "Washington, D.C."), it's likely a abbreviation, return -1
         return -1
