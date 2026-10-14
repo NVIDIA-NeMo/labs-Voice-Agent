@@ -46,6 +46,7 @@ from nemo_voice_agent.pipecat.services.nvidia.tts import ResilientNvidiaTTSServi
 from nemo_voice_agent.pipecat.utils.text.simple_text_aggregator import (
     SimpleSegmentedTextAggregator,
 )
+from nemo_voice_agent.utils.misc import redact_secrets
 from nemo_voice_agent.utils.tool_calling.mixins import ToolCallingMixin
 
 
@@ -930,7 +931,7 @@ def get_tts_service_from_config(config: DictConfig, audio_logger: Optional[Audio
         f"Invalid TTS type: {config.get('type')}, only {available_types} are supported"
     )
 
-    logger.debug(f"Getting TTS service from config: {config}")
+    logger.debug(f"Getting TTS service from config: {redact_secrets(config)}")
     model = config.get("model", None)
     device = config.get("device", "cuda")
     if config.get("type", None) == "nvidia":

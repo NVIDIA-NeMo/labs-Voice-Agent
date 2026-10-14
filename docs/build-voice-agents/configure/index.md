@@ -168,7 +168,8 @@ vLLM can load the model and falls back to the Hugging Face backend if not. Refer
 The startup log is the source of truth. `ConfigManager` emits `Final STT config:`, `Final LLM config:`, and
 `Final TTS config:` lines after each merge. It also emits one `... is overridden from ... by ...` line per
 replaced key. The example server then logs the fully resolved config as `Server config:`. Check those lines whenever a
-setting appears to be ignored — the override log names the file that won.
+setting appears to be ignored — the override log names the file that won. In these log lines, any non-empty value of
+`api_key` or of a key that ends in `_api_key` appears as `<redacted>`.
 
 ## Gotchas
 
