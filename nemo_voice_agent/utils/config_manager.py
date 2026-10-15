@@ -22,7 +22,7 @@ from pipecat.audio.vad.silero import VADParams
 
 from nemo_voice_agent.pipecat.services.nemo.diar import NeMoDiarInputParams
 from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams
-from nemo_voice_agent.utils.misc import resolve_prompt
+from nemo_voice_agent.utils.misc import redact_secrets, redact_value, resolve_prompt
 
 
 class ConfigManager:
@@ -162,12 +162,13 @@ class ConfigManager:
             for key in stt_config:
                 if key in self.server_config.stt and self.server_config.stt[key] != stt_config[key]:
                     logger.info(
-                        f"STT config field `{key}` is overridden from `{self.server_config.stt[key]}` "
-                        f"to `{stt_config[key]}` by {stt_config_path}"
+                        f"STT config field `{key}` is overridden from "
+                        f"`{redact_value(key, self.server_config.stt[key])}` "
+                        f"to `{redact_value(key, stt_config[key])}` by {stt_config_path}"
                     )
                 self.server_config.stt[key] = stt_config[key]
 
-        logger.info(f"Final STT config: {self.server_config.stt}")
+        logger.info(f"Final STT config: {redact_secrets(self.server_config.stt)}")
 
         audio_chunk_size_in_secs = self.server_config.stt.get("audio_chunk_size_in_secs", 0.08)
         buffer_size = audio_chunk_size_in_secs // self.RAW_AUDIO_FRAME_LEN_IN_SECS
@@ -303,12 +304,13 @@ class ConfigManager:
             for key in llm_config:
                 if key in self.server_config.llm and self.server_config.llm[key] != llm_config[key]:
                     logger.info(
-                        f"LLM config field `{key}` is overridden from `{self.server_config.llm[key]}` to "
-                        f"`{llm_config[key]}` by {llm_config_path}"
+                        f"LLM config field `{key}` is overridden from "
+                        f"`{redact_value(key, self.server_config.llm[key])}` to "
+                        f"`{redact_value(key, llm_config[key])}` by {llm_config_path}"
                     )
                 self.server_config.llm[key] = llm_config[key]
 
-        logger.info(f"Final LLM config: {self.server_config.llm}")
+        logger.info(f"Final LLM config: {redact_secrets(self.server_config.llm)}")
 
         # Configure system prompt
         self.SYSTEM_ROLE = self.server_config.llm.get("system_role", "system")
@@ -354,12 +356,13 @@ class ConfigManager:
             for key in tts_config:
                 if key in self.server_config.tts and self.server_config.tts[key] != tts_config[key]:
                     logger.info(
-                        f"TTS config field `{key}` is overridden from `{self.server_config.tts[key]}` to "
-                        f"`{tts_config[key]}` by {tts_config_path}"
+                        f"TTS config field `{key}` is overridden from "
+                        f"`{redact_value(key, self.server_config.tts[key])}` to "
+                        f"`{redact_value(key, tts_config[key])}` by {tts_config_path}"
                     )
                 self.server_config.tts[key] = tts_config[key]
 
-        logger.info(f"Final TTS config: {self.server_config.tts}")
+        logger.info(f"Final TTS config: {redact_secrets(self.server_config.tts)}")
 
         # Extract TTS parameters
         self.TTS_MAIN_MODEL_ID = self.server_config.tts.get("main_model_id", None)

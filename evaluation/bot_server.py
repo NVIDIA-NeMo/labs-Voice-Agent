@@ -63,6 +63,7 @@ from nemo_voice_agent.pipecat.services.nemo.builders import (
     build_ws_transport,
 )
 from nemo_voice_agent.utils import ConfigManager, setup_rotating_log
+from nemo_voice_agent.utils.misc import redact_secrets
 from nemo_voice_agent.utils.tool_calling import register_schema_tools_to_llm
 
 
@@ -86,7 +87,7 @@ async def run_bot_websocket(
 
     config_manager = ConfigManager(server_base_path=server_base_path, server_config_path=server_config_path)
     server_config = config_manager.get_server_config()
-    logger.info(f"Server config: {OmegaConf.to_container(server_config, resolve=True)}")
+    logger.info(f"Server config: {redact_secrets(OmegaConf.to_container(server_config, resolve=True))}")
 
     log_file = server_config.server.get("log_file", "bot_server.log")
     log_level = server_config.server.get("log_level", "DEBUG")

@@ -16,6 +16,7 @@
 """Unit coverage for config-driven STT, TTS, and LLM factories."""
 
 import pytest
+from loguru import logger
 from omegaconf import OmegaConf
 
 from nemo_voice_agent.pipecat.services.nemo import llm, stt, tts
@@ -157,6 +158,28 @@ class TestFunctionCallTimeoutIsBounded:
         assert LLMService(function_call_timeout_secs=10.0)._function_call_timeout_secs == 10.0
         # Guard the premise: upstream's default really is unbounded.
         assert LLMService()._function_call_timeout_secs is None
+
+
+class TestVLLMApiKeyIsRedactedInLogs:
+    """The vLLM key reaches the service but never the log."""
+
+    @pytest.mark.unit
+    def test_factory_logs_redacted_config_and_passes_the_key(self, monkeypatch):
+        monkeypatch.setattr(llm, "VLLMService", _fake("vllm"))
+        cfg = OmegaConf.create({"type": "vllm", "model": "m", "dtype": "float16", "api_key": "fake-api-key"})
+
+        # The code logs through loguru, which never reaches pytest's caplog.
+        records = []
+        sink_id = logger.add(records.append, level="DEBUG")
+        try:
+            result = llm.get_llm_service_from_config(cfg)
+        finally:
+            logger.remove(sink_id)
+
+        message = "".join(records)
+        assert "fake-api-key" not in message
+        assert "'api_key': '<redacted>'" in message
+        assert result[1]["api_key"] == "fake-api-key"
 
 
 def test_llm_auto_detection_and_validation(monkeypatch):

@@ -423,3 +423,25 @@ class TestConfigureTurnTaking:
         )
 
         assert config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT == 0.25
+
+
+class TestCredentialRedaction:
+    """Config log lines must never print an ``api_key`` value."""
+
+    @pytest.mark.unit
+    def test_configure_llm_redacts_api_key_in_logs(self, voice_agent_server_base_path):
+        config_manager = ConfigManager(voice_agent_server_base_path)
+        config_manager.server_config.llm.api_key = "fake-api-key"
+
+        # The code logs through loguru, which never reaches pytest's caplog.
+        records = []
+        sink_id = logger.add(records.append, level="DEBUG")
+        try:
+            config_manager._configure_llm()
+        finally:
+            logger.remove(sink_id)
+
+        message = "".join(records)
+        assert "fake-api-key" not in message
+        assert "'api_key': '<redacted>'" in message
+        assert config_manager.server_config.llm.api_key == "EMPTY"
