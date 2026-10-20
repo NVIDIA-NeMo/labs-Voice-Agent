@@ -226,8 +226,8 @@ def create_reset_context_action(
     async def handler(rtvi_processor: RTVIProcessor, arguments: dict[str, Any]) -> bool:
         logger.info("Resetting conversation context...")
         try:
-            user_aggregator.reset()
-            assistant_aggregator.reset()
+            await user_aggregator.reset()
+            await assistant_aggregator.reset()
             user_aggregator.set_messages(copy.deepcopy(original_messages))
             assistant_aggregator.set_messages(copy.deepcopy(original_messages))
             _reset_services(resettable_services)
@@ -300,8 +300,8 @@ def create_update_system_prompt_action(
             original_messages.clear()
             original_messages.extend(new_messages)
 
-            user_aggregator.reset()
-            assistant_aggregator.reset()
+            await user_aggregator.reset()
+            await assistant_aggregator.reset()
             user_aggregator.set_messages(copy.deepcopy(new_messages))
             assistant_aggregator.set_messages(copy.deepcopy(new_messages))
 

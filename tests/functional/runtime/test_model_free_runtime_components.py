@@ -52,8 +52,8 @@ class _Aggregator:
         self.tools = []
         self.has_function_calls_in_progress = False
 
-    def reset(self):
-        """Record a reset call."""
+    async def reset(self):
+        """Record a reset call; async like pipecat's, so an un-awaited call leaves the count unchanged."""
         self.reset_count += 1
 
     def set_messages(self, messages):
@@ -235,6 +235,10 @@ def test_rtvi_context_actions_reset_update_history_and_summary():
     assert task.frames == []
     assert user_aggregator._messages == [{"role": "system", "content": "new prompt\nsuffix"}]
     assert assistant_aggregator._messages[0]["role"] == "user"
+    # Both actions must actually clear the aggregators: a transcript left over from one evaluation
+    # scenario was otherwise prepended to the next scenario's first user message.
+    assert user_aggregator.reset_count == 2
+    assert assistant_aggregator.reset_count == 2
     assert service.reset_count == 2
     assert shared_state_ref.state["__tool_domain__"] == "demo"
     assert registered[0]["tools"][0]["tool_name"] == "ToolA"

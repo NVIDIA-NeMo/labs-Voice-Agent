@@ -167,6 +167,7 @@ The `turn_taking` block selects the turn-detection strategy, then tunes the one 
 | `max_buffer_size` | int | required for `nemo` (shipped: `2`) | word count above which a non-backchannel utterance interrupts immediately |
 | `bot_stop_delay` | float | required for `nemo` (shipped: `0.5`) | seconds of server and client audio slack before bot-stop is honored |
 | `user_speech_timeout` | float | `0.6` | `build_context_and_aggregators` — silence `SpeechTimeoutUserTurnStopStrategy` waits on top of `vad.stop_secs`; applies to `speech_timeout` only |
+| `user_turn_stop_timeout` | float or null | `null` (watchdog off) | `build_context_and_aggregators` — `LLMUserAggregatorParams.user_turn_stop_timeout`; `null` or `0` disables Pipecat's watchdog; applies to both types |
 
 `type` also decides which component owns turn detection, because exactly one of them may emit the user-turn
 frames:
@@ -175,6 +176,11 @@ frames:
   `build_context_and_aggregators` gives the user aggregator `ExternalUserTurnStrategies` so it stays quiet.
 - `speech_timeout` — the pipeline has no turn-taking stage, and the user aggregator derives the turn from VAD
   with `VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy`.
+
+`user_turn_stop_timeout` applies under either type. Pipecat defaults its user-turn watchdog to 5.0 seconds.
+`ConfigManager` instead resolves an absent key, `null`, or `0` to `None`, so the watchdog is off. A user turn
+then ends only when its stop strategy fires. For the trade-off, refer to
+[Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md#user-turn-watchdog).
 
 The boolean `enabled` key that this block used before is gone. `ConfigManager` ignores it and logs a warning
 naming the mapping when a config still sets it, so a stale config silently falls back to the `nemo` default.
@@ -237,12 +243,12 @@ Omni and multimodal keys, read by `server.py` to insert a `UserAudioBuffer` and 
 
 | Key | Type | Default |
 | --- | --- | --- |
-| `is_omni_model` | bool | `false` — the switch that inserts the buffer |
+| `is_omni_model` | bool | `false` — the switch that inserts the buffer; `build_context_and_aggregators` also reads it to end user turns without waiting for a transcript |
 | `pre_cache_duration_secs` | float | `0.3` |
 | `use_stt_transcript` | bool | `false` |
 | `keep_only_last_audio_turn` | bool | `false` |
 | `text_prompt_for_audio` | string | none |
-| `text_prompt_for_transcript` | string | none — used only when `use_stt_transcript` is true |
+| `text_prompt_for_transcript` | string | none — used in the audio message when `use_stt_transcript` is true, and always in the `keep_only_last_audio_turn` stand-in |
 
 ## tts
 

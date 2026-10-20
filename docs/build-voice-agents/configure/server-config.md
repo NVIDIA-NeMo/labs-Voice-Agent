@@ -152,6 +152,7 @@ them and `build_context_and_aggregators` selects `ExternalUserTurnStrategies` fo
 | `max_buffer_size` | For `nemo`. Word count above which speech interrupts the bot immediately, regardless of backchannel matching. |
 | `bot_stop_delay` | For `nemo`. Seconds of slack between server-side and client-side audio end. |
 | `user_speech_timeout` | For `speech_timeout`. Seconds the stop strategy waits after the VAD reports silence, on top of `vad.stop_secs`. Defaults to 0.6. |
+| `user_turn_stop_timeout` | For both types. Seconds without speech or transcripts before Pipecat's watchdog ends an open user turn early. Defaults to `null`, which keeps the watchdog off, and `0` also turns it off. Refer to [User-Turn Watchdog](../../about/core-concepts/speech-pipeline/turn-taking.md#user-turn-watchdog). |
 
 This block used a boolean `enabled` key before. A config that still sets it gets a startup warning naming the
 mapping and falls back to the `nemo` default: use `type: nemo` in place of `enabled: true`, and
@@ -189,7 +190,8 @@ vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
 
 Setting `llm.is_omni_model` inserts a `UserAudioBuffer` before the user aggregator, which reads the
 `pre_cache_duration_secs`, `use_stt_transcript`, `keep_only_last_audio_turn`, `text_prompt_for_audio`,
-and `text_prompt_for_transcript` keys. Refer to
+and `text_prompt_for_transcript` keys. Because the buffer consumes every transcript, the user-turn stop
+strategy then ends each turn without waiting for one. Refer to
 [Multimodal](../../about/core-concepts/language-models/multimodal.md).
 
 ## tts

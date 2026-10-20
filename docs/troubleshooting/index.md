@@ -38,6 +38,23 @@ model configuration takes precedence.
 **Resolution:** Install `build-essential` and `python3-dev`, or run `bash install.sh`, which installs them. For
 more information, refer to [Installation](../get-started/installation.md).
 
+## A previous utterance appears at the start of the next user message
+
+**Cause:** A transcript arrived after Pipecat's user-turn watchdog had already ended the turn. The large
+language model (LLM) user aggregator keeps that late text and adds it to the start of the next user message.
+In an evaluation run, the `update_system_prompt` action clears that text at the start of each scenario. A
+transcript that arrives after that reset still starts the next scenario's first message. The watchdog fires only when
+`turn_taking.user_turn_stop_timeout` is a positive number. An offline `nemo_speechlm` transcription that takes
+longer than that value triggers it. With an omni LLM, a late transcript can instead move into the next turn's
+audio message or text stand-in, regardless of the watchdog setting. For that case, refer to
+[Multimodal and Omni Models](../about/core-concepts/language-models/multimodal.md#how-the-omni-switch-changes-the-pipeline).
+
+**Resolution:** Remove `turn_taking.user_turn_stop_timeout` or set it to `null`, which turns the watchdog off.
+That is the default. If you need a finite watchdog, set it above your slowest transcription latency. To confirm
+that the watchdog fired, search `bot_server.log` and the rotated `bot_server.<timestamp>.log` files for
+`User stopped speaking (strategy: None)`. For more information, refer to
+[Turn taking](../about/core-concepts/speech-pipeline/turn-taking.md#user-turn-watchdog).
+
 ## Agent quietly starts a second vLLM on port 8001
 
 **Cause:** When `start_vllm_on_init: true`, the server on the requested port is already serving a different
@@ -45,6 +62,20 @@ model ID. The launcher scans forward for a free port.
 
 **Resolution:** Kill the stale server with `lsof -i :8000`, or set `llm.model` to exactly the ID that the
 running server reports.
+
+## Bot ignores an utterance and the log reports an empty or failed transcription
+
+**Cause:** `NemoSpeechLMSTTService` logged `Received empty transcription from SALM server` or
+`Error in NeMo offline SALM STT processing:`, so no transcript reached the LLM user aggregator. For a
+non-omni LLM, the stop strategy waits for transcript text, and the user-turn watchdog is off by default. The
+user turn therefore stays open until the user speaks again and that speech produces a transcript. The LLM
+receives nothing for that utterance with or without the watchdog. An omni LLM still receives the audio,
+because its turns do not wait for a transcript.
+
+**Resolution:** Check that the SpeechLM endpoint at `stt.base_url` is running and that `stt.model` matches its
+`--served-model-name`. The next utterance that produces a transcript closes the open turn. To close such a
+turn on its own, set `turn_taking.user_turn_stop_timeout` above your slowest transcription latency. For more
+information, refer to [Turn taking](../about/core-concepts/speech-pipeline/turn-taking.md#user-turn-watchdog).
 
 ## Bot interrupts too eagerly or waits too long before replying
 

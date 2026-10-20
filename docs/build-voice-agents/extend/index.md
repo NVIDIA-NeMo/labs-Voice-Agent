@@ -102,6 +102,7 @@ What Tier 1 covers without any Python:
 | Backchannel handling (`nemo` only) | `turn_taking.backchannel_phrases_path` |
 | VAD sensitivity and endpointing | `vad.confidence`, `vad.stop_secs` |
 | End-of-turn wait added after VAD stop (`speech_timeout` only) | `turn_taking.user_speech_timeout` |
+| Watchdog that ends a stalled user turn (off by default) | `turn_taking.user_turn_stop_timeout` |
 | Tool calling | `llm.enable_tool_calling` |
 
 Run a demo server against your edited config:

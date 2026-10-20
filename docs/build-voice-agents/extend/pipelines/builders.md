@@ -41,7 +41,7 @@ Each builder owns one runtime component and reads the corresponding configuratio
 | `build_tts(config_manager, audio_logger=None)` | the whole `tts` block | A `TTSService` from `get_tts_service_from_config`. Never `None`. |
 | `build_llm_text_processor(config_manager)` | `tts.use_text_aggregator`, plus `tts.extra_separator`, `tts.ignore_strings`, `tts.min_sentence_length`, `tts.use_legacy_eos_detection` | `LLMTextProcessor` holding the segmenting text aggregator, or `None` when `tts.use_text_aggregator` is false. |
 | `build_llm(config_manager)` | the whole `llm` block | An `LLMService` from `get_llm_service_from_config`. Never `None`. |
-| `build_context_and_aggregators(llm, config_manager, turn_taking=None)` | `llm.system_role`, `llm.system_prompt` (plus suffix), `llm.inject_dummy_user_message`, `llm.dummy_user_message`, `turn_taking.type`, `turn_taking.user_speech_timeout` | A 4-tuple: `(context, user_aggregator, assistant_aggregator, original_messages)`. |
+| `build_context_and_aggregators(llm, config_manager, turn_taking=None)` | `llm.system_role`, `llm.system_prompt` (plus suffix), `llm.inject_dummy_user_message`, `llm.dummy_user_message`, `turn_taking.type`, `turn_taking.user_speech_timeout`, `turn_taking.user_turn_stop_timeout`, `llm.is_omni_model` | A 4-tuple: `(context, user_aggregator, assistant_aggregator, original_messages)`. |
 
 Two helpers in the same module are not pipeline stages:
 
@@ -115,7 +115,10 @@ On the `speech_timeout` path, the builder passes `turn_taking.user_speech_timeou
 user_turn_strategies = UserTurnStrategies(
     start=[VADUserTurnStartStrategy()],
     stop=[
-        SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT)
+        SpeechTimeoutUserTurnStopStrategy(
+            user_speech_timeout=config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT,
+            wait_for_transcript=wait_for_transcript,
+        )
     ],
 )
 ```
@@ -123,6 +126,17 @@ user_turn_strategies = UserTurnStrategies(
 `turn_taking.user_speech_timeout` defaults to 0.6 seconds. The strategy starts that timer when the VAD
 reports end of speech, so the value adds to `vad.stop_secs` instead of replacing it. Tune both keys together
 when you adjust end-of-turn latency.
+
+On both paths, the builder also passes `turn_taking.user_turn_stop_timeout` to the user aggregator as
+`LLMUserAggregatorParams(user_turn_stop_timeout=...)`. The key is unset by default, so the value is `None` and
+Pipecat's 5-second user-turn watchdog never fires. A user turn then ends only when its stop strategy fires.
+Refer to [User-Turn Watchdog](../../../about/core-concepts/speech-pipeline/turn-taking.md#user-turn-watchdog).
+
+`wait_for_transcript` is `False` when `llm.is_omni_model` is true and `True` otherwise. The builder applies it
+to the `speech_timeout` stop strategy above and to each stop strategy in `ExternalUserTurnStrategies`. An omni
+pipeline needs this setting because `UserAudioBuffer` consumes every transcript before the user aggregator.
+Without it, the stop strategy would wait for text that never arrives. Refer to
+[Multimodal and Omni Models](../../../about/core-concepts/language-models/multimodal.md#how-the-omni-switch-changes-the-pipeline).
 
 `original_messages`, the fourth tuple element, is a fresh deep copy of the initial message list. Hand
 it to the reset and update-prompt RTVI handler factories. Refer to
