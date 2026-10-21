@@ -251,6 +251,17 @@ class ConfigManager:
 
         self.TURN_TAKING_USER_SPEECH_TIMEOUT = turn_taking.get("user_speech_timeout", 0.6)
 
+        # Pipecat's watchdog force-ends a user turn after this many seconds without speech or transcripts.
+        # Off by default (null or 0): an STT reply slower than the timeout landed in the next user turn. 0 is
+        # mapped to None because pipecat would busy-loop on it.
+        user_turn_stop_timeout = turn_taking.get("user_turn_stop_timeout", None)
+        assert user_turn_stop_timeout is None or (
+            isinstance(user_turn_stop_timeout, (int, float))
+            and not isinstance(user_turn_stop_timeout, bool)
+            and user_turn_stop_timeout >= 0
+        ), f"turn_taking.user_turn_stop_timeout must be null or a number >= 0, got {user_turn_stop_timeout!r}"
+        self.TURN_TAKING_USER_TURN_STOP_TIMEOUT = float(user_turn_stop_timeout) if user_turn_stop_timeout else None
+
         if self.TURN_TAKING_TYPE == "nemo":
             self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = self._resolve_backchannel_phrases(
                 turn_taking.backchannel_phrases_path

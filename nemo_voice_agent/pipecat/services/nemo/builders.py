@@ -251,20 +251,34 @@ def build_context_and_aggregators(
     context = LLMContext(messages=messages)
     original_messages = copy.deepcopy(context.get_messages())
 
+    # An omni LLM hears the audio itself, and UserAudioBuffer consumes every transcript before it reaches the
+    # aggregator, so the stop strategy must not wait for one. Otherwise the turn only ends on the watchdog.
+    wait_for_transcript = not config_manager.server_config.llm.get("is_omni_model", False)
+
     owns_turn_detection = turn_taking is not None or config_manager.TURN_TAKING_TYPE == "nemo"
     if owns_turn_detection:
         user_turn_strategies = ExternalUserTurnStrategies()
+        for stop_strategy in user_turn_strategies.stop:
+            stop_strategy.wait_for_transcript = wait_for_transcript
     else:
         user_turn_strategies = UserTurnStrategies(
             start=[VADUserTurnStartStrategy()],
             stop=[
-                SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT)
+                SpeechTimeoutUserTurnStopStrategy(
+                    user_speech_timeout=config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT,
+                    wait_for_transcript=wait_for_transcript,
+                )
             ],
         )
 
+    # None disables pipecat's 5 s user-turn watchdog (its wait_for then never times out), so a turn ends only
+    # when its stop strategy fires; see ``turn_taking.user_turn_stop_timeout``.
     context_aggregator = LLMContextAggregatorPair(
         context,
-        user_params=LLMUserAggregatorParams(user_turn_strategies=user_turn_strategies),
+        user_params=LLMUserAggregatorParams(
+            user_turn_strategies=user_turn_strategies,
+            user_turn_stop_timeout=config_manager.TURN_TAKING_USER_TURN_STOP_TIMEOUT,
+        ),
     )
     return (
         context,

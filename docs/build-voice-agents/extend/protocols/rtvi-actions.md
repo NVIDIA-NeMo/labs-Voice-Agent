@@ -63,7 +63,8 @@ Arguments: `prompt` (required), `tools` (JSON string), `add_suffix` (default `tr
 (default `"default"`).
 
 Replaces the system message, optionally appends the configured system-prompt suffix, and then resets both
-aggregators. It is also the **scenario-start gate**. It clears `shared_state` in place using `dict.clear()`,
+aggregators. The reset discards any transcript text still pending from the previous scenario. It is also the
+**scenario-start gate**. It clears `shared_state` in place using `dict.clear()`,
 so tools holding a reference continue to use the same object. The handler then stashes two bot-side runtime
 sentinels: `__rtvi__` and `__tool_domain__`. Write tools use `__rtvi__` to emit `action-applied` messages.
 When tool calling is enabled and a `tools` payload is present, the injected `tool_factory` builds each entry.

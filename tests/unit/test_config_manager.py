@@ -423,3 +423,33 @@ class TestConfigureTurnTaking:
         )
 
         assert config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT == 0.25
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("turn_taking_type", ["nemo", "speech_timeout"])
+    def test_user_turn_stop_timeout_is_disabled_by_default(self, config_manager, turn_taking_type):
+        """Unset means no watchdog: a slow STT reply must not be cut off at pipecat's 5s."""
+        self._reconfigure(
+            config_manager,
+            type=turn_taking_type,
+            backchannel_phrases_path=None,
+            max_buffer_size=2,
+            bot_stop_delay=0.5,
+        )
+
+        assert config_manager.TURN_TAKING_USER_TURN_STOP_TIMEOUT is None
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(("configured", "resolved"), [(None, None), (0, None), (0.0, None), (30, 30.0)])
+    def test_user_turn_stop_timeout_resolution(self, config_manager, configured, resolved):
+        """0 must become None: pipecat would busy-loop on a 0s watchdog and end every turn at VAD stop."""
+        self._reconfigure(config_manager, type="speech_timeout", user_turn_stop_timeout=configured)
+
+        assert config_manager.TURN_TAKING_USER_TURN_STOP_TIMEOUT == resolved
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("configured", [-1, True, "5"])
+    def test_invalid_user_turn_stop_timeout_is_rejected(self, config_manager, configured):
+        """A negative, boolean or quoted value is a typo, so fail at config load (``true`` would mean 1s)."""
+        with pytest.raises(AssertionError) as excinfo:
+            self._reconfigure(config_manager, type="speech_timeout", user_turn_stop_timeout=configured)
+        assert "user_turn_stop_timeout" in str(excinfo.value)

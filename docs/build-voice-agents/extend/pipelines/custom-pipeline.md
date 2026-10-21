@@ -109,7 +109,11 @@ Pass your turn-taking service to `build_context_and_aggregators()` if you use it
 pipeline permits exactly one component to emit user-speaking frames, and that argument determines the component. Omitting it derives
 the answer again from `turn_taking.type`, which is incorrect for a bot that builds the service inline. When
 that key is `speech_timeout`, the builder gives the aggregator a `SpeechTimeoutUserTurnStopStrategy`
-configured with `turn_taking.user_speech_timeout`. Refer to [The Builder API](builders.md).
+configured with `turn_taking.user_speech_timeout`. On either path, the builder also passes
+`turn_taking.user_turn_stop_timeout`, which is `None` unless you set it, so Pipecat's user-turn watchdog is off.
+An aggregator pair that you build yourself keeps Pipecat's 5.0-second `LLMUserAggregatorParams` default unless
+you pass `user_turn_stop_timeout=None`. For an omni LLM behind `UserAudioBuffer`, also set
+`wait_for_transcript=False` on each stop strategy, as the builder does. Refer to [The Builder API](builders.md).
 
 ## Skeleton
 

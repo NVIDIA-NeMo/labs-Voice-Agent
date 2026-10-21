@@ -100,6 +100,7 @@ The following settings control turn finalization, backchannel filtering, and res
 | `turn_taking.max_buffer_size` | `2` | Number of completed words that can accumulate mid-utterance before the bot is interrupted and an interim transcript is pushed downstream. Lower interrupts sooner. |
 | `turn_taking.bot_stop_delay` | `0.5` | Seconds to keep treating the bot as "still speaking" after `BotStoppedSpeakingFrame`, covering audio still buffered on the client. `0` flips the flag immediately. |
 | `turn_taking.user_speech_timeout` | `0.6` | Seconds that `SpeechTimeoutUserTurnStopStrategy` waits after the VAD reports the end of speech, on top of `vad.stop_secs`. `ConfigManager` reads it for either type, but only `type: speech_timeout` applies it. |
+| `turn_taking.user_turn_stop_timeout` | `null` (off) | Seconds without speech or transcript activity before Pipecat's watchdog ends an open user turn early. `null` or `0` disables the watchdog. Applies to both types. Refer to User-Turn Watchdog. |
 
 The `backchannel_phrases_path`, `max_buffer_size`, and `bot_stop_delay` keys belong to the NeMo service. Under
 `type: speech_timeout`, `ConfigManager` replaces them with an empty phrases path, a `max_buffer_size` of 0, and
@@ -157,6 +158,81 @@ To stop the safety net from dominating, measure the latency of your deployment a
 `stt.ttfs_p99_latency`. `get_stt_service_from_config` reads that key only for `stt.type: nemo`, so on the
 `nvidia` and `nemo_speechlm` backends the 1.0-second substitute is the only value available. For the key
 itself, refer to [ASR](asr.md).
+
+## User-Turn Watchdog
+
+Pipecat's LLM user aggregator has a watchdog that can end a user turn early. When
+`turn_taking.user_turn_stop_timeout` is a positive number, the watchdog ends an open user turn after that many
+seconds pass with no VAD frame, user-turn frame, or transcript. It does not fire while the user is speaking.
+`build_context_and_aggregators` passes the value to `LLMUserAggregatorParams` under both turn-taking types.
+
+The watchdog is off by default. Pipecat's own default is 5.0 seconds, but `ConfigManager` resolves an absent
+key, `null`, or `0` to `None`, which disables the watchdog. No shipped configuration sets the key. `0` maps to
+`None` because Pipecat would otherwise run the watchdog in a tight loop that uses a full CPU core. That loop
+ends every user turn as soon as the user stops speaking, without waiting for the transcript or
+`turn_taking.user_speech_timeout`. A negative number, a
+boolean, or a quoted string fails an assertion at startup. With the watchdog off, a user turn ends only when
+its stop strategy fires.
+
+The default protects slow transcripts. `NemoSpeechLMSTTService` starts transcribing only after the VAD stop
+frame, so its reply can take several seconds. With a 5-second watchdog, a reply slower than that arrived after
+the watchdog had already ended the empty turn. The user aggregator then kept the late text and added it to the
+start of the next user message. In an evaluation run, the `update_system_prompt` action clears that text at the
+start of each scenario. A transcript that arrives after that reset still starts the next scenario's first message.
+
+For a non-omni LLM, the cost is that a turn without a transcript no longer closes on its own. Both stop
+strategies wait for transcript text: `ExternalUserTurnStopStrategy` under `type: nemo` and
+`SpeechTimeoutUserTurnStopStrategy` under `type: speech_timeout`. When no transcript arrives, the turn stays
+open until the user speaks again and that speech produces a transcript. For example, `NemoSpeechLMSTTService`
+can receive an empty transcription, or its request can fail. The LLM receives nothing for the lost utterance
+with or without the watchdog, because the aggregator does not push an empty user message.
+
+Two related cases follow from turning the watchdog off:
+
+- Under `type: nemo` with `backchannel_phrases_path: null`, as in the shipped evaluation `agent.yaml` and
+  `user.yaml`, a VAD segment with no ASR text also leaves the turn open. `NeMoTurnTakingService` starts the
+  turn at the VAD start frame but ends it only after transcript text arrives. A cough or background noise
+  therefore keeps the turn open until the next transcribed utterance closes it.
+- Under `type: speech_timeout` with a non-omni LLM, Pipecat's user turn controller ignores new turn starts
+  while such a turn is open. The user's next speech therefore does not broadcast an interruption until a
+  transcript closes the open turn. The bot is normally silent then, because the opening turn already interrupted it. It
+  can be speaking only if something else started it, such as `talk_first` on a reconnect or the evaluation
+  bridge's opening `send-text` message. Under `type: nemo`, interruptions do not depend on the user turn
+  controller, because `NeMoTurnTakingService` pushes them itself. The watchdog setting therefore does not change
+  its barge-in behavior.
+
+To bound such turns, restore a finite watchdog. Set a value longer than your slowest transcription reply, for
+example 30 seconds:
+
+```yaml
+turn_taking:
+  user_turn_stop_timeout: 30.0  # seconds; null or 0 disables the watchdog
+```
+
+When the watchdog fires, the user aggregator logs `User stopped speaking (strategy: None)` at the `DEBUG`
+level. Search `bot_server.log` and the rotated `bot_server.<timestamp>.log` files for that line.
+
+### Omni Models
+
+An omni LLM hears the audio itself, so its turns do not wait for a transcript. When `llm.is_omni_model` is
+true, `UserAudioBuffer` consumes every `TranscriptionFrame` before the user aggregator. A stop strategy that
+waits for text would never fire. `build_context_and_aggregators` therefore sets `wait_for_transcript=False`
+on the stop strategy under both turn-taking types:
+
+- Under `type: speech_timeout`, the turn ends `vad.stop_secs` plus `turn_taking.user_speech_timeout` after
+  the user stops speaking. The safety-net timer from End-of-Turn Latency can extend that wait, because no
+  finalized transcript cancels it. `UserAudioBuffer` then adds the audio message and runs the LLM. With
+  `evaluation/server_configs/agent_nvidia_omni.yaml`, a turn ends 1.0 second after the user stops speaking.
+- Under `type: nemo`, the `UserStoppedSpeakingFrame` from `NeMoTurnTakingService` drives `UserAudioBuffer`,
+  and the aggregator turn closes on the same frame. Because the turn is already closed, a finite watchdog does
+  not send a second `UserStoppedSpeakingFrame` after each utterance. Such a frame would add a duplicate audio
+  message and a second LLM run.
+
+Because the turn does not wait for a transcript, a transcript that arrives after the turn ends stays in the
+buffer for the next turn. With `llm.use_stt_transcript: true`, the next turn's audio message carries it.
+Every shipped omni configuration sets that key to `false`. The `keep_only_last_audio_turn` stand-in text reads
+the same buffer, so a late transcript also moves into the next turn's stand-in. For the buffer itself, refer
+to [Multimodal and Omni Models](../language-models/multimodal.md#how-the-omni-switch-changes-the-pipeline).
 
 ## Backchannel Suppression
 

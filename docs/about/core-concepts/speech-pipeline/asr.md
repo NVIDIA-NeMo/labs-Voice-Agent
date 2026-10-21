@@ -143,6 +143,12 @@ decoding incrementally. Start the endpoint yourself, and set `model` to the serv
 example ships as `server_configs/default_salm.yaml`, which pairs the backend with
 `turn_taking.type: speech_timeout` and a longer `vad.stop_secs` of 1.2 seconds.
 
+Because transcription starts only after the VAD stop frame, the transcript can arrive several seconds after the
+user stops speaking. Unless `llm.is_omni_model` is true, the user turn waits for it, because
+`turn_taking.user_turn_stop_timeout` leaves Pipecat's user-turn watchdog off by default. For a non-omni LLM,
+when the endpoint returns an empty transcription or the request fails, the turn stays open until the user
+speaks again and that speech produces a transcript. Refer to [User-Turn Watchdog](turn-taking.md#user-turn-watchdog).
+
 The following table lists the keys that `get_stt_service_from_config` reads for `type: nemo_speechlm`. None of
 the streaming keys in the previous table apply, and `device` is not read because no model loads locally.
 
