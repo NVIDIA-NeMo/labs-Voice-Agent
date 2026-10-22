@@ -37,14 +37,17 @@ stt:
   model: "nemotron-transcribe"  # must match the server's --served-model-name
   base_url: "http://localhost:5002/v1"
   sample_rate: 16000
+  max_tokens_per_sec: 20
   generation_kwargs:
-    max_tokens: 2048
+    max_tokens: 10000
     temperature: 0.0
     top_p: 1.0
     chat_template_kwargs:
       enable_thinking: false
-  system_prompt: "You are a helpful assistant. /no_think"
-  user_prompt: "Produce a verbatim transcript of the audio. Preserve named entities, abbreviations, numbers, dates, measurements, acronyms, and technical terms as clearly as possible. Keep the same language as spoken and do not translate. Omit accidental repetitions."
+    skip_special_tokens: false
+    spaces_between_special_tokens: false
+  system_prompt: ""
+  user_prompt: "Audio transcription. Language: as spoken. Wording: verbatim, including fillers and repetitions. Formatting: punctuation and capitalization. Output: transcript only."
 
 diar:
   type: nemo
