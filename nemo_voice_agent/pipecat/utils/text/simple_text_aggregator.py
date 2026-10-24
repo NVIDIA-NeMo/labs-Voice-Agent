@@ -93,10 +93,7 @@ def find_last_period_index(text: str) -> int:
         # "3.5", and "3.14." can grow into "3.14.2" before the next chunk
         # arrives. A finished decimal ends the sentence only when whitespace
         # follows the period, as in "$3.14. Thank you".
-        if not (
-            re.search(r"\d+\.\d+\.$", text[: idx + 1])
-            and text[idx + 1 : idx + 2].isspace()
-        ):
+        if not (re.search(r"\d+\.\d+\.$", text[: idx + 1]) and text[idx + 1 : idx + 2].isspace()):
             return -1
     elif text[idx - 1].isupper():
         # if the period is after a capital letter (e.g., "Washington, D.C."), it's likely a abbreviation, return -1
