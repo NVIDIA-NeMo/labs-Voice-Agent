@@ -18,9 +18,33 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from loguru import logger
+from omegaconf import DictConfig, ListConfig, OmegaConf
+
+
+REDACTED = "<redacted>"
+
+
+def redact_value(key: Any, value: Any) -> Any:
+    """Return ``REDACTED`` if ``key`` is a credential key and ``value`` is set, else ``value``."""
+    if isinstance(key, str):
+        key = key.lower()
+        if (key == "api_key" or key.endswith("_api_key")) and value:
+            return REDACTED
+    return value
+
+
+def redact_secrets(config: Any) -> Any:
+    """Return a copy of ``config`` with credential values redacted; interpolations are left unresolved."""
+    if isinstance(config, (DictConfig, ListConfig)):
+        config = OmegaConf.to_container(config, resolve=False)
+    if isinstance(config, dict):
+        return {key: redact_value(key, redact_secrets(value)) for key, value in config.items()}
+    if isinstance(config, list):
+        return [redact_secrets(item) for item in config]
+    return config
 
 
 def resolve_prompt(value: Optional[str]) -> Optional[str]:

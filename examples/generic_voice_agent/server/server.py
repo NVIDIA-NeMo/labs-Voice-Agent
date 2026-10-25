@@ -55,6 +55,7 @@ from nemo_voice_agent.pipecat.services.nemo.builders import (
     build_ws_transport,
 )
 from nemo_voice_agent.utils import ConfigManager, setup_logging
+from nemo_voice_agent.utils.misc import redact_secrets
 from nemo_voice_agent.utils.tool_calling.basic_tools import tool_get_city_weather
 from nemo_voice_agent.utils.tool_calling.mixins import register_direct_tools_to_llm
 
@@ -81,7 +82,7 @@ async def run_bot_websocket(host: str, port: int):
         server_config_path=SERVER_CONFIG_PATH,
     )
     server_config = config_manager.get_server_config()
-    logger.info(f"Server config: {OmegaConf.to_container(server_config, resolve=True)}")
+    logger.info(f"Server config: {redact_secrets(OmegaConf.to_container(server_config, resolve=True))}")
 
     audio_logger = build_audio_logger(config_manager)
     vad_analyzer = build_vad_analyzer(config_manager)

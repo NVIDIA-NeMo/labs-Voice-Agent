@@ -87,6 +87,7 @@ Practices to follow:
   covered by `.gitignore`, but a key pasted into a `server_configs/*.yaml` file is not.
 - Do not paste keys into issues, pull requests, or logs. Server logs (`bot_server.log` and its rotated
   `bot_server.*.log` siblings) are gitignored, but they can still capture request metadata.
+- Startup config logs show `<redacted>` in place of `api_key` and `*_api_key` values.
 - Rotate any key that has been committed or shared. If it belonged to someone else, report the exposure
   through the private disclosure channels above.
 

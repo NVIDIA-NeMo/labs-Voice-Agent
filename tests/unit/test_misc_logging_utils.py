@@ -17,8 +17,10 @@
 
 from pathlib import Path
 
+from omegaconf import OmegaConf
+
 import nemo_voice_agent.utils.misc as misc
-from nemo_voice_agent.utils.misc import FileLogger
+from nemo_voice_agent.utils.misc import REDACTED, FileLogger, redact_secrets
 
 
 def test_filelogger_level_helpers_and_callable_write_expected_prefixes(tmp_path):
@@ -96,3 +98,24 @@ def test_setup_rotating_log_renames_existing_file_when_not_overwriting(monkeypat
     assert not log_path.exists()
     assert (tmp_path / "server.20260708_120000.log").read_text() == "old"
     assert calls == [{"log_file": str(log_path), "log_level": "DEBUG", "rotation": "10 MB"}]
+
+
+def test_redact_secrets_masks_credential_keys_and_leaves_interpolations_unresolved():
+    """Credential values are masked at any depth; other values and interpolations are kept as written."""
+    config = {
+        "api_key": "fake-api-key",
+        "model": "m",
+        "nested": {"api_key": "fake-nested-key", "judge_API_KEY": "fake-judge-key", "base_url": "http://x"},
+        "api_key_env_var": "NVIDIA_API_KEY",
+        "empty": {"api_key": "", "other_api_key": None},
+    }
+    assert redact_secrets(config) == {
+        "api_key": REDACTED,
+        "model": "m",
+        "nested": {"api_key": REDACTED, "judge_API_KEY": REDACTED, "base_url": "http://x"},
+        "api_key_env_var": "NVIDIA_API_KEY",
+        "empty": {"api_key": "", "other_api_key": None},
+    }
+
+    dict_config = OmegaConf.create({"llm": {"api_key": "fake-api-key", "top_p": "${missing.key}"}})
+    assert redact_secrets(dict_config) == {"llm": {"api_key": REDACTED, "top_p": "${missing.key}"}}
