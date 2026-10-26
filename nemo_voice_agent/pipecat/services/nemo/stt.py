@@ -45,6 +45,7 @@ from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
 from pydantic import BaseModel
 
+from nemo_voice_agent.pipecat.frames.frames import STTSegmentDoneFrame
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
 from nemo_voice_agent.pipecat.services.nemo.streaming_asr import NemoStreamingASRService
 
@@ -664,6 +665,10 @@ spoken and do not translate. Omit accidental repetitions."""
         except Exception as e:
             logger.error(f"Error in NeMo offline SALM STT processing: {e}")
             yield ErrorFrame(error=str(e), exception=e)
+
+        # Sent for every segment, including an empty or failed one, so the user-turn stop strategy can tell when
+        # the turn's last segment is done instead of waiting for a transcript that will never come.
+        yield STTSegmentDoneFrame()
 
 
 def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[AudioLogger] = None) -> STTService:

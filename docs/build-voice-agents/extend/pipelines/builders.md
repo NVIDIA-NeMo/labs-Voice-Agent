@@ -41,7 +41,7 @@ Each builder owns one runtime component and reads the corresponding configuratio
 | `build_tts(config_manager, audio_logger=None)` | the whole `tts` block | A `TTSService` from `get_tts_service_from_config`. Never `None`. |
 | `build_llm_text_processor(config_manager)` | `tts.use_text_aggregator`, plus `tts.extra_separator`, `tts.ignore_strings`, `tts.min_sentence_length`, `tts.use_legacy_eos_detection` | `LLMTextProcessor` holding the segmenting text aggregator, or `None` when `tts.use_text_aggregator` is false. |
 | `build_llm(config_manager)` | the whole `llm` block | An `LLMService` from `get_llm_service_from_config`. Never `None`. |
-| `build_context_and_aggregators(llm, config_manager, turn_taking=None)` | `llm.system_role`, `llm.system_prompt` (plus suffix), `llm.inject_dummy_user_message`, `llm.dummy_user_message`, `turn_taking.type`, `turn_taking.user_speech_timeout`, `turn_taking.user_turn_stop_timeout`, `llm.is_omni_model` | A 4-tuple: `(context, user_aggregator, assistant_aggregator, original_messages)`. |
+| `build_context_and_aggregators(llm, config_manager, turn_taking=None)` | `llm.system_role`, `llm.system_prompt` (plus suffix), `llm.inject_dummy_user_message`, `llm.dummy_user_message`, `turn_taking.type`, `turn_taking.user_speech_timeout`, `turn_taking.user_turn_stop_timeout`, `llm.is_omni_model`, `stt.type` | A 4-tuple: `(context, user_aggregator, assistant_aggregator, original_messages)`. |
 
 Two helpers in the same module are not pipeline stages:
 
@@ -104,24 +104,41 @@ component. Given a service, the builder selects `ExternalUserTurnStrategies` so
 indistinguishable from omitting the argument — `None` is the parameter's default — so in both cases
 the builder re-derives the answer from `turn_taking.type`. When that key is `speech_timeout` (the
 `*_nvidia.yaml` and `default_salm.yaml` configs) it builds `UserTurnStrategies` from `VADUserTurnStartStrategy` plus
-`SpeechTimeoutUserTurnStopStrategy`, so the aggregator drives the turn directly from VAD frames. When the key
-is `nemo` or absent (the shipped `default.yaml`), it still selects `ExternalUserTurnStrategies`. Nothing is
-then left in the pipeline to emit the user-turn frames. That fallback is correct for the stock builders but
-not for a bot that constructs its turn-taking service inline. Such a bot must pass the service explicitly.
+`SpeechTimeoutUserTurnStopStrategy` or its `SegmentedSTTUserTurnStopStrategy` subclass, so the aggregator
+drives the turn directly from VAD frames. When the key is `nemo` or absent (the shipped `default.yaml`), it
+still selects `ExternalUserTurnStrategies`. Nothing is then left in the pipeline to emit the user-turn frames.
+That fallback is correct for the stock builders but not for a bot that constructs its turn-taking service
+inline. Such a bot must pass the service explicitly.
 
-On the `speech_timeout` path, the builder passes `turn_taking.user_speech_timeout` to the stop strategy:
+On the `speech_timeout` path, the builder passes `turn_taking.user_speech_timeout` to the stop strategy. It
+selects `SegmentedSTTUserTurnStopStrategy` from `nemo_voice_agent.pipecat.turns` when `stt.type` is
+`nemo_speechlm` and `wait_for_transcript` is `True`, and Pipecat's `SpeechTimeoutUserTurnStopStrategy`
+otherwise:
 
 ```python
+segmented_stt = getattr(config_manager.server_config.stt, "type", None) == "nemo_speechlm"
+stop_strategy_class = (
+    SegmentedSTTUserTurnStopStrategy
+    if segmented_stt and wait_for_transcript
+    else SpeechTimeoutUserTurnStopStrategy
+)
 user_turn_strategies = UserTurnStrategies(
     start=[VADUserTurnStartStrategy()],
     stop=[
-        SpeechTimeoutUserTurnStopStrategy(
+        stop_strategy_class(
             user_speech_timeout=config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT,
             wait_for_transcript=wait_for_transcript,
         )
     ],
 )
 ```
+
+`NemoSpeechLMSTTService` transcribes each VAD segment after the segment ends, so a mid-utterance pause can
+leave the last segment's transcript pending when the turn would otherwise end. The subclass holds the turn
+until the service pushes an `STTSegmentDoneFrame` for every segment. It gives up on a transcription that has
+not returned 10 seconds after the latest VAD stop. The builder does not pass `pending_transcript_timeout`, so
+that 10-second default applies, and no configuration key changes it. Refer to
+[Multi-Segment Turns](../../../about/core-concepts/speech-pipeline/turn-taking.md#multi-segment-turns).
 
 `turn_taking.user_speech_timeout` defaults to 0.6 seconds. The strategy starts that timer when the VAD
 reports end of speech, so the value adds to `vad.stop_secs` instead of replacing it. Tune both keys together
@@ -135,7 +152,8 @@ Refer to [User-Turn Watchdog](../../../about/core-concepts/speech-pipeline/turn-
 `wait_for_transcript` is `False` when `llm.is_omni_model` is true and `True` otherwise. The builder applies it
 to the `speech_timeout` stop strategy above and to each stop strategy in `ExternalUserTurnStrategies`. An omni
 pipeline needs this setting because `UserAudioBuffer` consumes every transcript before the user aggregator.
-Without it, the stop strategy would wait for text that never arrives. Refer to
+Without it, the stop strategy would wait for text that never arrives. For the same reason, the builder keeps
+Pipecat's strategy for an omni LLM, because the turn does not wait for any transcript. Refer to
 [Multimodal and Omni Models](../../../about/core-concepts/language-models/multimodal.md#how-the-omni-switch-changes-the-pipeline).
 
 `original_messages`, the fourth tuple element, is a fresh deep copy of the initial message list. Hand

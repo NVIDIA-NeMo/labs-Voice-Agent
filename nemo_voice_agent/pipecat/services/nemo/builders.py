@@ -56,6 +56,7 @@ from nemo_voice_agent.pipecat.services.nemo.llm import get_llm_service_from_conf
 from nemo_voice_agent.pipecat.services.nemo.stt import get_stt_service_from_config
 from nemo_voice_agent.pipecat.services.nemo.tts import build_text_aggregator, get_tts_service_from_config
 from nemo_voice_agent.pipecat.services.nemo.turn_taking import NeMoTurnTakingService
+from nemo_voice_agent.pipecat.turns import SegmentedSTTUserTurnStopStrategy
 from nemo_voice_agent.utils import ConfigManager
 
 
@@ -261,10 +262,20 @@ def build_context_and_aggregators(
         for stop_strategy in user_turn_strategies.stop:
             stop_strategy.wait_for_transcript = wait_for_transcript
     else:
+        # A SpeechLM STT transcribes each VAD segment after it ends, so a mid-utterance pause leaves the last
+        # segment's transcript pending at the final VAD stop. Its stop strategy holds the turn until every segment is
+        # transcribed. An omni LLM hears the audio itself and its transcripts never reach the aggregator, so its turn
+        # does not wait for them.
+        segmented_stt = getattr(config_manager.server_config.stt, "type", None) == "nemo_speechlm"
+        stop_strategy_class = (
+            SegmentedSTTUserTurnStopStrategy
+            if segmented_stt and wait_for_transcript
+            else SpeechTimeoutUserTurnStopStrategy
+        )
         user_turn_strategies = UserTurnStrategies(
             start=[VADUserTurnStartStrategy()],
             stop=[
-                SpeechTimeoutUserTurnStopStrategy(
+                stop_strategy_class(
                     user_speech_timeout=config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT,
                     wait_for_transcript=wait_for_transcript,
                 )

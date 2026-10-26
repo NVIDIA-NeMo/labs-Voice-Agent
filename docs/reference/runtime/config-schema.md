@@ -104,7 +104,9 @@ The code reads all four voice activity detection (VAD) keys without a fallback a
   `vad.stop_secs` plus that wait after the last speech. For `default_nvidia.yaml`, which pairs
   `stop_secs: 0.2` with `user_speech_timeout: 0.6` and an unset `ttfs_p99_latency` that Pipecat substitutes
   with 1.0, the wait is between 0.6 and 0.8 seconds, so the turn ends 0.8 to 1.0 seconds after the last
-  speech. Refer to
+  speech. With `stt.type: nemo_speechlm` and a non-omni LLM, the builder uses the
+  `SegmentedSTTUserTurnStopStrategy` subclass, which also waits until every VAD segment in the turn is
+  transcribed. Refer to
   [Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md) for the worked cases.
 
 Tune `stop_secs` and `user_speech_timeout` together when you chase end-of-turn latency.
@@ -117,7 +119,7 @@ The `stt` block selects and configures the local or hosted speech-to-text (STT) 
 
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
-| `type` | `nemo` \| `nemo_speechlm` \| `nvidia` | required | `get_stt_service_from_config` (asserted) |
+| `type` | `nemo` \| `nemo_speechlm` \| `nvidia` | required | `get_stt_service_from_config` (asserted); `build_context_and_aggregators` — `nemo_speechlm` selects `SegmentedSTTUserTurnStopStrategy` under `turn_taking.type: speech_timeout` with a non-omni LLM |
 | `model` | string | required | all three backends |
 | `model_config` | path | none | `ConfigManager` — basename selects the file under `stt_configs/` |
 | `device` | string | required for `nemo` | `NemoSTTService` |
@@ -175,7 +177,11 @@ frames:
 - `nemo` — `build_turn_taking` returns a `NeMoTurnTakingService` that emits the frames, and
   `build_context_and_aggregators` gives the user aggregator `ExternalUserTurnStrategies` so it stays quiet.
 - `speech_timeout` — the pipeline has no turn-taking stage, and the user aggregator derives the turn from VAD
-  with `VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy`.
+  with `VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy`. With `stt.type: nemo_speechlm` and a
+  non-omni LLM, the stop strategy is the `SegmentedSTTUserTurnStopStrategy` subclass. It holds the turn until
+  every VAD segment is transcribed, and it gives up on a transcription that has not returned 10 seconds after
+  the latest VAD stop. No key in this block configures it. Refer to
+  [Multi-Segment Turns](../../about/core-concepts/speech-pipeline/turn-taking.md#multi-segment-turns).
 
 `user_turn_stop_timeout` applies under either type. Pipecat defaults its user-turn watchdog to 5.0 seconds.
 `ConfigManager` instead resolves an absent key, `null`, or `0` to `None`, so the watchdog is off. A user turn

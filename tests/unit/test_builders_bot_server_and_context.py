@@ -53,8 +53,11 @@ from pipecat.utils.asyncio.task_manager import TaskManager
 
 from nemo_voice_agent.evaluation.tools.waitlist_tools import DropWaitListTool, GetWaitlistTool, JoinWaitListTool
 from nemo_voice_agent.pipecat import bot_server
+from nemo_voice_agent.pipecat.frames.frames import STTSegmentDoneFrame
 from nemo_voice_agent.pipecat.services.common import UserAudioBuffer
 from nemo_voice_agent.pipecat.services.nemo import builders
+from nemo_voice_agent.pipecat.services.nemo.stt import NemoSpeechLMSTTService
+from nemo_voice_agent.pipecat.turns import SegmentedSTTUserTurnStopStrategy
 from nemo_voice_agent.pipecat.utils.text.simple_text_aggregator import SimpleSegmentedTextAggregator
 
 
@@ -647,3 +650,122 @@ def test_omni_speech_timeout_turn_runs_the_llm_without_the_watchdog():
 
     assert counter.runs == 2
     assert [m["role"] for m in context.get_messages()].count("user") == 2
+
+
+@pytest.mark.parametrize(
+    ("stt_type", "is_omni_model", "expected"),
+    [
+        ("nemo_speechlm", False, SegmentedSTTUserTurnStopStrategy),
+        # An omni LLM hears the audio itself, and UserAudioBuffer consumes the transcripts, so nothing waits for STT.
+        ("nemo_speechlm", True, SpeechTimeoutUserTurnStopStrategy),
+        # A streaming STT emits final transcripts on its own schedule, not one per VAD stop.
+        ("nemo", False, SpeechTimeoutUserTurnStopStrategy),
+        ("nvidia", False, SpeechTimeoutUserTurnStopStrategy),
+    ],
+)
+def test_speechlm_stt_selects_the_segmented_stop_strategy(stt_type, is_omni_model, expected):
+    config = _set_turn_taking(_config(), type="speech_timeout", user_speech_timeout=0.25)
+    config.server_config.stt = SimpleNamespace(type=stt_type)
+    config.server_config.llm["is_omni_model"] = is_omni_model
+
+    (stop,) = _turn_strategies(config, None).stop
+    assert type(stop) is expected
+    assert stop._user_speech_timeout == 0.25
+
+
+def _speechlm_user_aggregator(user_speech_timeout):
+    """Return the builder's user aggregator for a SpeechLM STT, and the list its ended user turns are recorded in.
+
+    Each entry is ``(strategy, text)``. Pipecat also writes a still-open turn to the context when the session ends,
+    with no strategy, so checking the context alone would not show whether the strategy ever ended the turn.
+    """
+    config = _set_turn_taking(_config(), type="speech_timeout", user_speech_timeout=user_speech_timeout)
+    config.server_config.stt = SimpleNamespace(type="nemo_speechlm")
+    config.server_config.llm["inject_dummy_user_message"] = False
+    _, user_agg, _, _ = builders.build_context_and_aggregators(object(), config, None)
+    turns = []
+
+    @user_agg.event_handler("on_user_turn_stopped")
+    async def record(_aggregator, strategy, message):
+        turns.append((type(strategy).__name__ if strategy else None, message.content))
+
+    return user_agg, turns
+
+
+def test_speechlm_turn_keeps_a_late_second_segment():
+    """Regression: a mid-utterance pause made the turn end before its second segment was transcribed.
+
+    The frames follow the order in the GA run's agent log, where the second segment's VAD start reached the
+    aggregator before the first transcript. Pipecat's own strategy ends this turn with only "Hi." and leaves "Bye."
+    for the next user message.
+    """
+    user_agg, turns = _speechlm_user_aggregator(user_speech_timeout=0.0)
+
+    asyncio.run(
+        run_test(
+            Pipeline([user_agg]),
+            frames_to_send=[
+                VADUserStartedSpeakingFrame(start_secs=0.1),
+                VADUserStoppedSpeakingFrame(stop_secs=1.2),
+                VADUserStartedSpeakingFrame(start_secs=0.1),
+                TranscriptionFrame("Hi.", "user", "now", finalized=True),
+                STTSegmentDoneFrame(),
+                VADUserStoppedSpeakingFrame(stop_secs=1.2),
+                SleepFrame(0.3),
+                TranscriptionFrame("Bye.", "user", "now", finalized=True),
+                STTSegmentDoneFrame(),
+                SleepFrame(0.3),
+            ],
+        )
+    )
+
+    assert turns == [("SegmentedSTTUserTurnStopStrategy", "Hi. Bye.")]
+
+
+class _FakeSpeechLMEndpoint:
+    """Stands in for the vLLM client: returns the scripted transcripts in order, each after its delay."""
+
+    def __init__(self, replies):
+        self._replies = list(replies)
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    async def _create(self, **_kwargs):
+        delay, reply = self._replies.pop(0)
+        await asyncio.sleep(delay)
+        if isinstance(reply, Exception):
+            raise reply
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=reply))])
+
+
+def _two_segment_utterance(stt_replies, user_speech_timeout):
+    """Send one utterance with a mid-utterance pause through the real SpeechLM STT service and the user aggregator."""
+    user_agg, turns = _speechlm_user_aggregator(user_speech_timeout)
+    stt = NemoSpeechLMSTTService(model="m", sample_rate=16000, audio_passthrough=False)
+    stt._client = _FakeSpeechLMEndpoint(stt_replies)
+
+    def segment():
+        audio = InputAudioRawFrame(audio=b"\x00" * 3200, sample_rate=16000, num_channels=1)
+        return [VADUserStartedSpeakingFrame(start_secs=0.1), audio, VADUserStoppedSpeakingFrame(stop_secs=1.2)]
+
+    asyncio.run(
+        run_test(Pipeline([stt, user_agg]), frames_to_send=segment() + segment() + [SleepFrame(1.5)]),
+    )
+    return turns
+
+
+def test_speechlm_turn_waits_for_a_slow_second_segment():
+    """End to end: the second segment takes longer than the turn's speech timeout, and the turn still waits for it."""
+    turns = _two_segment_utterance([(0.0, "Hi."), (0.8, "Bye.")], user_speech_timeout=0.5)
+    assert turns == [("SegmentedSTTUserTurnStopStrategy", "Hi. Bye.")]
+
+
+@pytest.mark.parametrize("second_reply", ["", RuntimeError("SpeechLM server down")])
+def test_speechlm_turn_ends_when_an_empty_or_failed_last_segment_is_done(second_reply):
+    """A last segment with no text ends the turn when its transcription returns, not at the 10 s backstop.
+
+    The pipeline runs for 1.5 s after the last VAD stop, so a turn the strategy had held for the backstop would only
+    be written at session end, with no strategy.
+    """
+    # The empty or failed reply comes after the 0.5 s speech timeout, so the strategy holds the turn until it returns.
+    turns = _two_segment_utterance([(0.0, "Hi."), (0.8, second_reply)], user_speech_timeout=0.5)
+    assert turns == [("SegmentedSTTUserTurnStopStrategy", "Hi.")]
