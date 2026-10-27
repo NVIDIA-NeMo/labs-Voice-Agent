@@ -43,6 +43,8 @@ from pipecat.services.settings import assert_given
 from transformers import AsyncTextIteratorStreamer, AutoModelForCausalLM, AutoTokenizer
 from vllm.config import ModelConfig as vllmModelConfig
 
+from nemo_voice_agent.utils.misc import redact_secrets
+
 
 DEFAULT_GENERATION_KWARGS = {
     "max_new_tokens": 256,
@@ -360,9 +362,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         )
         self._vllm_server_params = vllm_server_params
         self._start_vllm_on_init = start_vllm_on_init
-        logger.info(
-            f"VLLMService initialized with model: {model}, api_key: {api_key}, base_url: {base_url}, settings: {settings}"
-        )
+        logger.info(f"VLLMService initialized with model: {model}, base_url: {base_url}, settings: {settings}")
 
     def _start_vllm_server(
         self,
@@ -708,7 +708,7 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
     """Get an LLM service from the configuration."""
     backend = config.type
 
-    logger.info(f"Initializing LLM service from config: {config}")
+    logger.info(f"Initializing LLM service from config: {redact_secrets(config)}")
 
     # If backend is "auto", try to detect the best backend
     if backend == "auto":

@@ -16,6 +16,7 @@
 """Unit coverage for config-driven STT, TTS, and LLM factories."""
 
 import pytest
+from loguru import logger
 from omegaconf import OmegaConf
 
 from nemo_voice_agent.pipecat.services.nemo import llm, stt, tts
@@ -157,6 +158,50 @@ class TestFunctionCallTimeoutIsBounded:
         assert LLMService(function_call_timeout_secs=10.0)._function_call_timeout_secs == 10.0
         # Guard the premise: upstream's default really is unbounded.
         assert LLMService()._function_call_timeout_secs is None
+
+
+class TestApiKeyIsRedactedInLogs:
+    """The key reaches the service but never the log."""
+
+    @pytest.fixture
+    def logs(self):
+        # The code logs through loguru, which never reaches pytest's caplog.
+        records = []
+        sink_id = logger.add(records.append, level="DEBUG")
+        yield records
+        logger.remove(sink_id)
+
+    @pytest.mark.unit
+    def test_llm_factory(self, monkeypatch, logs):
+        monkeypatch.setattr(llm, "VLLMService", _fake("vllm"))
+        cfg = OmegaConf.create({"type": "vllm", "model": "m", "dtype": "float16", "api_key": "fake-api-key"})
+
+        result = llm.get_llm_service_from_config(cfg)
+
+        assert "fake-api-key" not in "".join(logs)
+        assert "'api_key': '<redacted>'" in "".join(logs)
+        assert result[1]["api_key"] == "fake-api-key"
+
+    @pytest.mark.unit
+    def test_tts_factory(self, monkeypatch, logs):
+        monkeypatch.delenv("NVIDIA_API_KEY", raising=False)
+        monkeypatch.setattr(tts, "SimpleSegmentedTextAggregator", _fake("aggregator"))
+        monkeypatch.setattr(tts, "ResilientNvidiaTTSService", _fake("nvidia"))
+        cfg = OmegaConf.create({"type": "nvidia", "api_key": "fake-api-key"})
+
+        result = tts.get_tts_service_from_config(cfg)
+
+        assert "fake-api-key" not in "".join(logs)
+        assert "'api_key': '<redacted>'" in "".join(logs)
+        assert result[1]["api_key"] == "fake-api-key"
+
+    @pytest.mark.unit
+    def test_vllm_service_init(self, logs):
+        """No vLLM server is started; the OpenAI client is only constructed."""
+        service = llm.VLLMService(model="m", api_key="fake-api-key", start_vllm_on_init=False)
+
+        assert "fake-api-key" not in "".join(logs)
+        assert service._client.api_key == "fake-api-key"
 
 
 def test_llm_auto_detection_and_validation(monkeypatch):

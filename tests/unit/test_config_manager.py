@@ -453,3 +453,39 @@ class TestConfigureTurnTaking:
         with pytest.raises(AssertionError) as excinfo:
             self._reconfigure(config_manager, type="speech_timeout", user_turn_stop_timeout=configured)
         assert "user_turn_stop_timeout" in str(excinfo.value)
+
+
+class TestCredentialRedaction:
+    """Config log lines must never print an ``api_key`` value."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("block", ["stt", "llm", "tts"])
+    def test_override_and_final_logs_redact_api_key(self, voice_agent_server_base_path, monkeypatch, block):
+        config_manager = ConfigManager(voice_agent_server_base_path)
+        getattr(config_manager.server_config, block).api_key = "fake-server-key"
+
+        # Also put a key in the model sub-config, so both sides of the override line are checked.
+        load = OmegaConf.load
+
+        def load_with_key(path):
+            config = load(path)
+            if f"/{block}_configs/" in str(path):
+                config.api_key = "fake-sub-config-key"
+            return config
+
+        monkeypatch.setattr(OmegaConf, "load", load_with_key)
+
+        # The code logs through loguru, which never reaches pytest's caplog.
+        records = []
+        sink_id = logger.add(records.append, level="DEBUG")
+        try:
+            getattr(config_manager, f"_configure_{block}")()
+        finally:
+            logger.remove(sink_id)
+
+        message = "".join(records)
+        assert "fake-server-key" not in message
+        assert "fake-sub-config-key" not in message
+        assert "`api_key` is overridden from `<redacted>` to `<redacted>`" in message
+        assert "'api_key': '<redacted>'" in message
+        assert getattr(config_manager.server_config, block).api_key == "fake-sub-config-key"
