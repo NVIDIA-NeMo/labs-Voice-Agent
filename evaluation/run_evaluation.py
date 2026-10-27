@@ -39,6 +39,7 @@ from nemo_voice_agent.evaluation.runner import run_dynamic_evaluation
 from nemo_voice_agent.evaluation.scenarios import get_eval_scenario, list_eval_scenarios
 from nemo_voice_agent.evaluation.utils import LLMJudge, validate_judge_numeric_options
 from nemo_voice_agent.utils import FileLogger
+from nemo_voice_agent.utils.misc import REDACTED, redact_literals
 
 
 # Args that materially affect scoring or scenario selection — diff these on resume
@@ -83,14 +84,15 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
 def _build_invocation_record(args: argparse.Namespace, scenarios: list) -> dict:
     """Snapshot the CLI invocation for ``run_args.json``.
 
-    Redacts ``judge_api_key`` so it never lands on disk.
+    Redacts ``judge_api_key`` in both ``parsed_args`` and ``argv`` so it never lands on disk. ``argv`` is
+    redacted by value, which covers ``--judge-api-key KEY``, ``--judge-api-key=KEY``, and abbreviated flags.
     """
     parsed = {k: v for k, v in vars(args).items()}
     if parsed.get("judge_api_key"):
-        parsed["judge_api_key"] = "<redacted>"
+        parsed["judge_api_key"] = REDACTED
     return {
         "started_at": datetime.now().isoformat(timespec="seconds"),
-        "argv": list(sys.argv),
+        "argv": [redact_literals(arg, [args.judge_api_key]) for arg in sys.argv],
         "parsed_args": parsed,
         "resolved_scenario_count": len(scenarios),
         "resolved_scenario_names": [s.name for s in scenarios],

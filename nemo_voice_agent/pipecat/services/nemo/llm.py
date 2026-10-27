@@ -43,7 +43,7 @@ from pipecat.services.settings import assert_given
 from transformers import AsyncTextIteratorStreamer, AutoModelForCausalLM, AutoTokenizer
 from vllm.config import ModelConfig as vllmModelConfig
 
-from nemo_voice_agent.utils.misc import redact_secrets
+from nemo_voice_agent.utils.misc import cli_api_keys, redact_cli_secrets, redact_literals, redact_secrets
 
 
 DEFAULT_GENERATION_KWARGS = {
@@ -536,7 +536,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
             # Add port if vllm_server_params is not provided
             cmd_parts.extend(["--port", str(port)])
 
-        logger.info(f"Starting vLLM server with command: {' '.join(cmd_parts)}")
+        logger.info(f"Starting vLLM server with command: {redact_cli_secrets(' '.join(cmd_parts))}")
         logger.warning("It will take a while to download the model if it's not already downloaded.")
         # Set up environment variables for device configuration
         env = os.environ.copy()
@@ -591,7 +591,11 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
                 # Check if process is still running
                 if process.poll() is not None:
                     # Process has terminated
-                    stdout, stderr = process.communicate()
+                    # vLLM echoes its non-default args, including the API key, on startup.
+                    stdout, stderr = (
+                        redact_literals(output or "", cli_api_keys(vllm_server_params or ""))
+                        for output in process.communicate()
+                    )
                     logger.error(f"vLLM server process terminated unexpectedly. stdout: {stdout}, stderr: {stderr}")
                     raise RuntimeError(f"Failed to start vLLM server: {stderr}")
 
@@ -774,7 +778,9 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
         if vllm_server_params is not None:
             if "dtype" not in vllm_server_params:
                 vllm_server_params = f"--dtype {llm_dtype} {vllm_server_params}"
-                logger.info(f"Adding dtype {llm_dtype} to vllm_server_params: {vllm_server_params}")
+                logger.info(
+                    f"Adding dtype {llm_dtype} to vllm_server_params: {redact_cli_secrets(vllm_server_params)}"
+                )
         if llm_params is not None:
             # cast into OpenAILLMService.Settings object
             llm_params = OmegaConf.to_container(llm_params, resolve=True)

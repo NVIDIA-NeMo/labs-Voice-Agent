@@ -20,7 +20,15 @@ from pathlib import Path
 from omegaconf import OmegaConf
 
 import nemo_voice_agent.utils.misc as misc
-from nemo_voice_agent.utils.misc import REDACTED, FileLogger, redact_secrets
+from nemo_voice_agent.utils.misc import (
+    REDACTED,
+    FileLogger,
+    cli_api_keys,
+    redact_cli_secrets,
+    redact_literals,
+    redact_secrets,
+    redact_value,
+)
 
 
 def test_filelogger_level_helpers_and_callable_write_expected_prefixes(tmp_path):
@@ -119,3 +127,36 @@ def test_redact_secrets_masks_credential_keys_and_leaves_interpolations_unresolv
 
     dict_config = OmegaConf.create({"llm": {"api_key": "fake-api-key", "top_p": "${missing.key}"}})
     assert redact_secrets(dict_config) == {"llm": {"api_key": REDACTED, "top_p": "${missing.key}"}}
+
+
+def test_redact_cli_secrets_masks_every_api_key_flag_form():
+    """``--api-key`` values are masked whether separated by spaces or ``=``, and in either spelling."""
+    params = "--dtype bfloat16 --api-key sk-one --port 8000 --api_key=sk-two --api-key   sk-three"
+    assert cli_api_keys(params) == ["sk-one", "sk-two", "sk-three"]
+    assert redact_cli_secrets(params) == (
+        f"--dtype bfloat16 --api-key {REDACTED} --port 8000 --api_key={REDACTED} --api-key   {REDACTED}"
+    )
+    assert redact_cli_secrets("--dtype bfloat16 --api-key-file keys.txt") == "--dtype bfloat16 --api-key-file keys.txt"
+
+
+def test_redact_literals_masks_each_non_empty_secret():
+    assert redact_literals("args: {'api_key': ['sk-one']} sk-one", ["sk-one", "", None]) == (
+        f"args: {{'api_key': ['{REDACTED}']}} {REDACTED}"
+    )
+
+
+def test_redact_secrets_masks_api_key_flags_inside_string_values():
+    """``vllm_server_params`` is a flag string, so its ``--api-key`` is masked by value, not by key name."""
+    config = OmegaConf.create(
+        {"llm": {"vllm_server_params": "--api-key sk-secret --port 8000", "args": ["--api-key=x"]}}
+    )
+    assert redact_secrets(config) == {
+        "llm": {"vllm_server_params": f"--api-key {REDACTED} --port 8000", "args": [f"--api-key={REDACTED}"]}
+    }
+
+
+def test_redact_value_recurses_into_a_non_credential_mapping():
+    """Override log lines pass a whole section as the value, so nested credentials must still be masked."""
+    value = OmegaConf.create({"api_key": "sk-nested", "vllm_server_params": "--api-key sk-flag"})
+    assert redact_value("params", value) == {"api_key": REDACTED, "vllm_server_params": f"--api-key {REDACTED}"}
+    assert redact_value("judge_api_key", value) == REDACTED

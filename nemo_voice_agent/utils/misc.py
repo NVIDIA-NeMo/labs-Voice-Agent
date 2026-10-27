@@ -15,10 +15,11 @@
 
 import inspect
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterable, Optional
 
 from loguru import logger
 from omegaconf import DictConfig, ListConfig, OmegaConf
@@ -27,23 +28,51 @@ from omegaconf import DictConfig, ListConfig, OmegaConf
 REDACTED = "<redacted>"
 
 
+# vLLM accepts both spellings, as either "--api-key KEY" or "--api-key=KEY".
+_CLI_API_KEY_PATTERN = re.compile(r"(--api[-_]key(?:=|\s+))(\S+)")
+
+
+def cli_api_keys(command: str) -> list[str]:
+    """Return the values passed to ``--api-key`` in a CLI flag string such as ``vllm_server_params``."""
+    return [match.group(2) for match in _CLI_API_KEY_PATTERN.finditer(command)]
+
+
+def redact_cli_secrets(command: str) -> str:
+    """Return ``command`` with every ``--api-key`` value replaced by ``REDACTED``."""
+    return _CLI_API_KEY_PATTERN.sub(rf"\g<1>{REDACTED}", command)
+
+
+def redact_literals(text: str, secrets: Iterable[Optional[str]]) -> str:
+    """Return ``text`` with every occurrence of each non-empty secret replaced by ``REDACTED``."""
+    for secret in secrets:
+        if secret:
+            text = text.replace(secret, REDACTED)
+    return text
+
+
 def redact_value(key: Any, value: Any) -> Any:
-    """Return ``REDACTED`` if ``key`` is a credential key and ``value`` is set, else ``value``."""
+    """Return ``REDACTED`` if ``key`` is a credential key and ``value`` is set, else ``value`` with secrets redacted."""
     if isinstance(key, str):
         key = key.lower()
         if (key == "api_key" or key.endswith("_api_key")) and value:
             return REDACTED
-    return value
+    return redact_secrets(value)
 
 
 def redact_secrets(config: Any) -> Any:
-    """Return a copy of ``config`` with credential values redacted; interpolations are left unresolved."""
+    """Return a copy of ``config`` with credential values redacted; interpolations are left unresolved.
+
+    Values under ``api_key`` / ``*_api_key`` keys are masked, and so are ``--api-key`` values inside
+    strings such as ``vllm_server_params``.
+    """
     if isinstance(config, (DictConfig, ListConfig)):
         config = OmegaConf.to_container(config, resolve=False)
     if isinstance(config, dict):
-        return {key: redact_value(key, redact_secrets(value)) for key, value in config.items()}
+        return {key: redact_value(key, value) for key, value in config.items()}
     if isinstance(config, list):
         return [redact_secrets(item) for item in config]
+    if isinstance(config, str):
+        return redact_cli_secrets(config)
     return config
 
 
