@@ -303,3 +303,72 @@ class TestServiceSettingsAreFullyInitialized:
         assert self._uninitialized(service) == []
         assert service._settings.voice == expected_voice
         assert service._settings.language == expected_language
+
+
+class TestVLLMReadinessCheckSendsApiKey:
+    """A vLLM server started with an API key answers 401 to unauthenticated /v1 requests."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("params", "env_key", "client_key", "expected"),
+        [
+            ("--dtype float16 --api-key sk-flag", "sk-env", "sk-client", "sk-flag"),
+            ("--api_key=sk-flag --port 8001", "sk-env", "sk-client", "sk-flag"),
+            ("--dtype float16", "sk-env", "sk-client", "sk-env"),
+            (None, None, "sk-client", "sk-client"),
+            (None, None, None, None),
+        ],
+    )
+    def test_server_api_key_resolution(self, monkeypatch, params, env_key, client_key, expected):
+        if env_key is None:
+            monkeypatch.delenv("VLLM_API_KEY", raising=False)
+        else:
+            monkeypatch.setenv("VLLM_API_KEY", env_key)
+        assert llm.get_vllm_server_api_key(params, client_key) == expected
+
+    @pytest.mark.unit
+    def test_keyed_server_is_detected_as_ready(self, monkeypatch):
+        monkeypatch.delenv("VLLM_API_KEY", raising=False)
+        state = {"launched": False, "headers": []}
+
+        class _RunningProcess:
+            pid = 1234
+
+            def __init__(self, cmd, **kwargs):
+                state["launched"] = True
+
+            def poll(self):
+                return None
+
+            def terminate(self):
+                pass
+
+        class _Response:
+            def __init__(self, status_code):
+                self.status_code = status_code
+
+            def json(self):
+                return {"data": [{"id": "m"}]}
+
+        def _get(url, headers=None, timeout=None):
+            state["headers"].append(headers)
+            if not state["launched"]:
+                raise llm.requests.exceptions.ConnectionError()
+            if headers != {"Authorization": "Bearer sk-server"}:
+                return _Response(401)
+            return _Response(200)
+
+        monkeypatch.setattr(llm.requests, "get", _get)
+        monkeypatch.setattr(llm.psutil, "process_iter", lambda *args, **kwargs: [])
+        monkeypatch.setattr(llm.psutil, "net_connections", lambda *args, **kwargs: [])
+        monkeypatch.setattr(llm.subprocess, "Popen", _RunningProcess)
+        monkeypatch.setattr(llm.time, "sleep", lambda seconds: None)
+        service = object.__new__(llm.VLLMService)
+        service._device = "cpu"
+        service._vllm_server_max_wait_time = 3
+        service._vllm_server_check_interval = 1
+
+        base_url = service._start_vllm_server("m", "--dtype float16 --api-key sk-server", None, api_key="EMPTY")
+
+        assert base_url.startswith("http://localhost:")
+        assert state["headers"][-1] == {"Authorization": "Bearer sk-server"}
