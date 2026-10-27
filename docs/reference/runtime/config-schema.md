@@ -44,7 +44,8 @@ The server resolves a configuration in the following order before any service bu
 3. **The sub-config overwrites the top-level block**, key by key. Setting a key in `default.yaml` that the
    sub-config also sets has no effect. Overrides are logged at INFO.
 4. The server logs the fully resolved configuration at startup as `Server config: ...`. Use that entry to
-   confirm which values took effect. Any non-empty `api_key` or `*_api_key` value appears as `<redacted>`.
+   confirm which values took effect. Any non-empty `api_key` or `*_api_key` value appears as `<redacted>`,
+   and so does an `--api-key` value inside `llm.vllm_server_params`.
 
 "Required" below means the code reads the key without a fallback, so the server raises if it is missing.
 

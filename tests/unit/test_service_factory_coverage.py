@@ -203,6 +203,57 @@ class TestApiKeyIsRedactedInLogs:
         assert "fake-api-key" not in "".join(logs)
         assert service._client.api_key == "fake-api-key"
 
+    @pytest.mark.unit
+    def test_llm_factory_redacts_api_key_in_vllm_server_params(self, monkeypatch, logs):
+        monkeypatch.setattr(llm, "VLLMService", _fake("vllm"))
+        params = "--api-key fake-server-key --port 8000"
+        cfg = OmegaConf.create({"type": "vllm", "model": "m", "dtype": "float16", "vllm_server_params": params})
+
+        result = llm.get_llm_service_from_config(cfg)
+
+        assert "fake-server-key" not in "".join(logs)
+        assert "--api-key <redacted>" in "".join(logs)
+        assert result[1]["vllm_server_params"] == f"--dtype float16 {params}"
+
+    @pytest.mark.unit
+    def test_vllm_server_start_redacts_api_key(self, monkeypatch, logs):
+        """The launch command and vLLM's own startup output are logged without the key."""
+        launched = {}
+
+        class _DeadProcess:
+            pid = 1234
+
+            def __init__(self, cmd, **kwargs):
+                launched["cmd"] = cmd
+
+            def terminate(self):
+                pass
+
+            def poll(self):
+                return 1
+
+            def communicate(self):
+                return "non-default args: {'api_key': ['fake-server-key']}", "boom with fake-server-key"
+
+        def _no_server(*args, **kwargs):
+            raise llm.requests.exceptions.ConnectionError()
+
+        monkeypatch.setattr(llm.requests, "get", _no_server)
+        monkeypatch.setattr(llm.psutil, "process_iter", lambda *args, **kwargs: [])
+        monkeypatch.setattr(llm.subprocess, "Popen", _DeadProcess)
+        service = object.__new__(llm.VLLMService)
+        service._device = "cpu"
+        service._vllm_server_max_wait_time = 10
+        service._vllm_server_check_interval = 1
+
+        with pytest.raises(RuntimeError) as excinfo:
+            service._start_vllm_server("m", "--dtype float16 --api-key fake-server-key", None)
+
+        assert "fake-server-key" not in "".join(logs)
+        assert "fake-server-key" not in str(excinfo.value)
+        assert "--api-key <redacted>" in "".join(logs)
+        assert launched["cmd"][-2:] == ["--api-key", "fake-server-key"]
+
 
 def test_llm_auto_detection_and_validation(monkeypatch):
     monkeypatch.setattr(llm, "HuggingFaceLLMService", _fake("hf"))

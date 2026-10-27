@@ -169,7 +169,8 @@ The startup log is the source of truth. `ConfigManager` emits `Final STT config:
 `Final TTS config:` lines after each merge. It also emits one `... is overridden from ... by ...` line per
 replaced key. The example server then logs the fully resolved config as `Server config:`. Check those lines whenever a
 setting appears to be ignored — the override log names the file that won. In these log lines, any non-empty value of
-`api_key` or of a key that ends in `_api_key` appears as `<redacted>`.
+`api_key` or of a key that ends in `_api_key` appears as `<redacted>`, including inside an overridden mapping.
+An `--api-key` value inside `llm.vllm_server_params` also appears as `<redacted>`.
 
 ## Gotchas
 

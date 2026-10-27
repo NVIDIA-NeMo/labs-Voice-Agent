@@ -154,7 +154,7 @@ Use these flags to connect and configure the optional LLM judge.
 | --- | --- | --- |
 | `--judge-url URL` | `http://localhost:8000/v1/chat/completions` | OpenAI-compatible chat-completions endpoint for the judge. |
 | `--judge-model NAME` | `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | Judge model name. |
-| `--judge-api-key KEY` | `None` | Inline API key. Redacted to `<redacted>` in `run_args.json`. |
+| `--judge-api-key KEY` | `None` | Inline API key. Redacted to `<redacted>` in both `argv` and `parsed_args` in `run_args.json`. |
 | `--judge-api-key-name VAR` | `JUDGE_API_KEY` | Environment variable read for the key when `--judge-api-key` is not given. |
 | `--judge-threshold F` | `0.9` | Score threshold above which the judge verdict counts as a pass. |
 | `--judge-timeout SEC` | `120.0` | Per-request timeout. |
@@ -199,7 +199,7 @@ The evaluation driver exits with one of the following status codes.
 Every run writes `run_args.json` into the session directory with the shape
 `{"invocations": [...]}`. Each entry records:
 
-- `started_at` and the raw `argv`.
+- `started_at` and the command-line `argv`, with the judge API key value redacted.
 - The parsed arguments, with the judge API key redacted.
 - The resolved scenario names and count.
 

@@ -139,7 +139,8 @@ Notes on the individual blocks:
   `apply_chat_template_kwargs.tokenize` is forced to `False` — a `True` value is dropped with a warning.
 - **`vllm_server_params` (`vllm` only).** A single flag string appended to `vllm serve <model>`. If it
   does not already mention `dtype`, the server prepends `--dtype <llm.dtype>` for you. Keep
-  `--max-num-seqs 1`: the agent serves one connection at a time.
+  `--max-num-seqs 1`: the agent serves one connection at a time. Logs show an `--api-key` value in this
+  string as `<redacted>`, but `vllm serve` still receives the real key.
 - **`vllm_generation_params` and `nvidia_generation_params`.** Cast into the Pipecat OpenAI settings
   object, so the keys must be ones that object accepts. The shipped set is `frequency_penalty`,
   `presence_penalty`, `seed`, `temperature`, `top_k`, `top_p`, `max_completion_tokens`, and `extra`.

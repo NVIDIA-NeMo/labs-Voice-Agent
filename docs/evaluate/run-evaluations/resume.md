@@ -70,9 +70,9 @@ append mode and gets a `=== RESUMING run eval_<TIMESTAMP> ===` banner rather tha
 ## run_args.json and the Consistency Soft-Check
 
 Every invocation appends a record to `run_args.json` at `<session_dir>/run_args.json`, shaped as
-`{"invocations": [...]}`. Each record holds the wall-clock start time, raw `argv`, the fully parsed argument
-namespace, and the resolved scenario count and names. `judge_api_key` is replaced with `"<redacted>"` before
-the file is written. Resume records also carry `resumed_from_invocation`, the index of the invocation they
+`{"invocations": [...]}`. Each record holds the wall-clock start time, the command-line `argv`, the fully parsed argument
+namespace, and the resolved scenario count and names. The judge API key is replaced with `"<redacted>"` in both
+`parsed_args` and `argv` before the file is written. Resume records also carry `resumed_from_invocation`, the index of the invocation they
 continued.
 
 On resume, the runner diffs the new invocation against the most recent prior one across the scoring-relevant
