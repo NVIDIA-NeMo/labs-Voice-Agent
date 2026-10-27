@@ -28,14 +28,17 @@ These tests fail loudly if a pipecat upgrade moves the field in either
 direction, which is the only way the guard can become wrong.
 """
 
+import asyncio
 import contextlib
 import inspect
 import io
 import wave
+from types import SimpleNamespace
 
 import pytest
-from pipecat.frames.frames import InterimTranscriptionFrame, TranscriptionFrame
+from pipecat.frames.frames import ErrorFrame, InterimTranscriptionFrame, TranscriptionFrame, UninterruptibleFrame
 
+from nemo_voice_agent.pipecat.frames.frames import STTSegmentDoneFrame
 from nemo_voice_agent.pipecat.services.nemo import stt as nemo_stt
 
 
@@ -207,3 +210,43 @@ def test_resolve_prompt_handles_none_and_empty():
 
     assert resolve_prompt(None) is None
     assert resolve_prompt("") == ""
+
+
+# ---------------------------------------------------------------------------
+# NemoSpeechLMSTTService segment-done frame
+# ---------------------------------------------------------------------------
+
+
+def _run_stt_frames(reply):
+    """Run one segment through ``run_stt`` against a stub endpoint and return the frame types it yields."""
+
+    async def create(**_kwargs):
+        if isinstance(reply, Exception):
+            raise reply
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=reply))])
+
+    svc = _svc()
+    svc._client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+    async def collect():
+        return [type(frame) async for frame in svc.run_stt(_wav(0.5))]
+
+    return asyncio.run(collect())
+
+
+@pytest.mark.parametrize(
+    ("reply", "frames"),
+    [
+        ("Hello.", [TranscriptionFrame, STTSegmentDoneFrame]),
+        ("  ", [STTSegmentDoneFrame]),
+        (RuntimeError("server down"), [ErrorFrame, STTSegmentDoneFrame]),
+    ],
+)
+def test_every_segment_ends_with_a_done_frame(reply, frames):
+    """The user-turn stop strategy counts these, so an empty or failed segment must send one too."""
+    assert _run_stt_frames(reply) == frames
+
+
+def test_done_frame_survives_interruptions():
+    """An interruption flushes queued data frames; losing a done frame would leave the stop strategy's count high."""
+    assert isinstance(STTSegmentDoneFrame(), UninterruptibleFrame)

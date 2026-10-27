@@ -142,8 +142,10 @@ Two keys in the shipped file are inert: `diar.device` is not read — `build_dia
 Consumed by `build_turn_taking`, which builds a `NeMoTurnTakingService` for `type: nemo` and returns `None`
 for `type: speech_timeout`. The type also decides who emits user-turn frames. With `nemo`, the service emits
 them and `build_context_and_aggregators` selects `ExternalUserTurnStrategies` for the aggregator. With
-`speech_timeout`, the aggregator drives turns from VAD itself. Refer to
-[Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md).
+`speech_timeout`, the aggregator drives turns from VAD itself. With `stt.type: nemo_speechlm` and a non-omni
+LLM, it also waits until every VAD segment of the turn is transcribed. Refer to
+[Turn Taking](../../about/core-concepts/speech-pipeline/turn-taking.md) and
+[Multi-Segment Turns](../../about/core-concepts/speech-pipeline/turn-taking.md#multi-segment-turns).
 
 | Key | Effect |
 | --- | --- |

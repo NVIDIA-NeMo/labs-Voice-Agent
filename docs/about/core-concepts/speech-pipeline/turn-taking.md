@@ -31,7 +31,7 @@ and any other value raises an assertion that lists the two it accepts.
 | Value | What Ends the Turn | Choose It When |
 | --- | --- | --- |
 | `nemo` | `NeMoTurnTakingService` reads ASR `EOU` and `EOB` tokens alongside VAD frames and emits the user-turn frames itself. `build_turn_taking` returns the service, and the pipeline gains a turn-taking stage. | You run a local EOU-capable ASR model, or you want backchannel suppression, diarization-aware buffering, or early interruption through `max_buffer_size`. |
-| `speech_timeout` | Pipecat's `VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy` run inside the user aggregator. `build_turn_taking` returns `None`, so the pipeline has no turn-taking stage. | Your ASR model emits no `EOU` token, such as the hosted `nvidia` path, or you want plain silence-based endpointing. |
+| `speech_timeout` | Pipecat's `VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy` run inside the user aggregator. With `stt.type: nemo_speechlm` and a non-omni LLM, the stop strategy is the `SegmentedSTTUserTurnStopStrategy` subclass instead. Refer to Multi-Segment Turns. `build_turn_taking` returns `None`, so the pipeline has no turn-taking stage. | Your ASR model emits no `EOU` token, such as the hosted `nvidia` path, or you want plain silence-based endpointing. |
 
 The default is `nemo` when the key is absent. The boolean `turn_taking.enabled` key that earlier releases used
 is gone. `ConfigManager` logs a warning that names the replacement and then ignores the old key, so a config
@@ -152,12 +152,56 @@ configurations show both ends of the range:
 | Configuration | `vad.stop_secs` | Post-VAD wait | End-of-turn latency |
 | --- | --- | --- | --- |
 | `default_nvidia.yaml` (`stt.type: nvidia`) | `0.2` | 0.6 s, or up to 0.8 s until the final transcript lands | 0.8 to 1.0 s |
-| `default_salm.yaml` (`stt.type: nemo_speechlm`) | `1.2` | 0.6 s, since `1.0 - 1.2` clamps the second timer to 0 | 1.8 s |
+| `default_salm.yaml` (`stt.type: nemo_speechlm`) | `1.2` | 0.6 s, since `1.0 - 1.2` clamps the second timer to 0, or longer until the last segment's transcription returns | 1.8 s or more |
 
 To stop the safety net from dominating, measure the latency of your deployment and set
 `stt.ttfs_p99_latency`. `get_stt_service_from_config` reads that key only for `stt.type: nemo`, so on the
 `nvidia` and `nemo_speechlm` backends the 1.0-second substitute is the only value available. For the key
 itself, refer to [ASR](asr.md).
+
+## Multi-Segment Turns
+
+`NemoSpeechLMSTTService`, the `stt.type: nemo_speechlm` backend, transcribes each VAD segment only after that
+segment's `VADUserStoppedSpeakingFrame`. A mid-utterance pause longer than `vad.stop_secs` splits one user turn
+into two or more segments, so the last transcript arrives after the last VAD stop frame of the turn.
+
+Pipecat's `SpeechTimeoutUserTurnStopStrategy` can end such a turn before the last segment is transcribed. Its
+transcript check is per turn, so the first segment's transcript already satisfies it. Its safety-net timer is
+zero on `default_salm.yaml`, as End-of-Turn Latency shows, and even a nonzero timer can be skipped. VAD frames
+are system frames, so the second segment's VAD start frame can overtake the first transcript on its way to the
+user aggregator. The first transcript then sets the finalized flag after that VAD start frame has cleared it, and
+the stale flag skips the timer at the last VAD stop. The aggregator keeps the late text and adds it to the start
+of the next user message.
+
+`build_context_and_aggregators` therefore uses `SegmentedSTTUserTurnStopStrategy` from
+`nemo_voice_agent.pipecat.turns` when `turn_taking.type` is `speech_timeout`, `stt.type` is `nemo_speechlm`,
+and `llm.is_omni_model` is false. The shipped `default_salm.yaml` meets these conditions. No configuration key
+turns the strategy on or off, and every other combination keeps Pipecat's strategy.
+
+The strategy subclasses `SpeechTimeoutUserTurnStopStrategy`, so the timers from End-of-Turn Latency still
+apply. It also counts pending segments. Each `VADUserStoppedSpeakingFrame` adds one, and each
+`STTSegmentDoneFrame` removes one, with a floor of zero. `NemoSpeechLMSTTService` pushes this data frame after
+every segment. It follows the `TranscriptionFrame` when the transcription has text, and it arrives alone when
+the transcription is empty or the request fails. The count therefore does not depend on whether VAD frames
+overtake transcripts. The user aggregator passes `STTSegmentDoneFrame` downstream like any other data frame
+that it does not handle.
+
+While any segment is pending, the strategy holds a turn that would otherwise end, and it logs
+`holding the user turn for` at the `DEBUG` level. The `STTSegmentDoneFrame` that clears the last pending segment
+ends a held turn, so the user message carries the text of every segment. An empty or failed segment clears its
+count as soon as its request returns, so it does not delay the end of the turn. A turn whose only segment comes
+back empty still stays open until the user speaks again, as described in User-Turn Watchdog. Otherwise, turn
+timing does not change, except that a turn now waits for the transcription of its last segment.
+
+The `pending_transcript_timeout` argument, 10 seconds by default, is a backstop for a transcription that does
+not return in time. It counts from the latest VAD stop frame, and each new VAD stop frame restarts it. When it
+expires, the strategy logs a `WARNING` that ends in `giving up on them` and clears the pending count. A held turn
+then ends without the missing segment's text. If that text arrives later, it starts the next user message, and the
+segment's late `STTSegmentDoneFrame` is ignored, so it cannot clear a newer segment. A turn with no transcript yet
+keeps waiting, because Pipecat's transcript check still applies. The builder passes no
+`pending_transcript_timeout`, and no configuration key sets it. A custom pipeline can pass its own value.
+Refer to
+[Building Your Own Pipeline](../../../build-voice-agents/extend/pipelines/custom-pipeline.md#stop-strategy-for-offline-speechlm-transcription).
 
 ## User-Turn Watchdog
 
@@ -179,13 +223,15 @@ frame, so its reply can take several seconds. With a 5-second watchdog, a reply 
 the watchdog had already ended the empty turn. The user aggregator then kept the late text and added it to the
 start of the next user message. In an evaluation run, the `update_system_prompt` action clears that text at the
 start of each scenario. A transcript that arrives after that reset still starts the next scenario's first message.
+Turning the watchdog off is enough for a turn with one VAD segment. For a turn that a mid-utterance pause
+splits into several segments, refer to Multi-Segment Turns.
 
-For a non-omni LLM, the cost is that a turn without a transcript no longer closes on its own. Both stop
-strategies wait for transcript text: `ExternalUserTurnStopStrategy` under `type: nemo` and
-`SpeechTimeoutUserTurnStopStrategy` under `type: speech_timeout`. When no transcript arrives, the turn stays
-open until the user speaks again and that speech produces a transcript. For example, `NemoSpeechLMSTTService`
-can receive an empty transcription, or its request can fail. The LLM receives nothing for the lost utterance
-with or without the watchdog, because the aggregator does not push an empty user message.
+For a non-omni LLM, the cost is that a turn without a transcript no longer closes on its own. Both stop strategies
+wait for transcript text: `ExternalUserTurnStopStrategy` under `type: nemo` and `SpeechTimeoutUserTurnStopStrategy`
+or its `SegmentedSTTUserTurnStopStrategy` subclass under `type: speech_timeout`. When no transcript arrives, the
+turn stays open until the user speaks again and that speech produces a transcript. For example,
+`NemoSpeechLMSTTService` can receive an empty transcription, or its request can fail. The LLM receives nothing for
+the lost utterance with or without the watchdog, because the aggregator does not push an empty user message.
 
 Two related cases follow from turning the watchdog off:
 
@@ -223,6 +269,8 @@ on the stop strategy under both turn-taking types:
   the user stops speaking. The safety-net timer from End-of-Turn Latency can extend that wait, because no
   finalized transcript cancels it. `UserAudioBuffer` then adds the audio message and runs the LLM. With
   `evaluation/server_configs/agent_nvidia_omni.yaml`, a turn ends 1.0 second after the user stops speaking.
+  The builder keeps Pipecat's `SpeechTimeoutUserTurnStopStrategy` even with `stt.type: nemo_speechlm`,
+  because the turn has no transcript for `SegmentedSTTUserTurnStopStrategy` to wait for.
 - Under `type: nemo`, the `UserStoppedSpeakingFrame` from `NeMoTurnTakingService` drives `UserAudioBuffer`,
   and the aggregator turn closes on the same frame. Because the turn is already closed, a finite watchdog does
   not send a second `UserStoppedSpeakingFrame` after each utterance. Such a frame would add a duplicate audio
@@ -299,10 +347,11 @@ turn_taking:
 
 `build_turn_taking` then returns `None`, and the server omits the processor from the pipeline. Turn boundaries
 come from VAD through the LLM user aggregator's turn strategies, which `build_context_and_aggregators` sets to
-`VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy`. Backchannel suppression, `max_buffer_size`,
-and `bot_stop_delay` are inactive. The shipped `server_configs/default_nvidia.yaml` uses this mode because the
-hosted ASR path does not emit `<EOU>` or `<EOB>`, and it pairs the mode with a short `vad.stop_secs` of 0.2
-seconds.
+`VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy`. With `stt.type: nemo_speechlm` and a
+non-omni LLM, the stop strategy is `SegmentedSTTUserTurnStopStrategy`, as described in Multi-Segment Turns.
+Backchannel suppression, `max_buffer_size`, and `bot_stop_delay` are inactive. The shipped
+`server_configs/default_nvidia.yaml` uses this mode because the hosted ASR path does not emit `<EOU>` or
+`<EOB>`, and it pairs the mode with a short `vad.stop_secs` of 0.2 seconds.
 
 In contrast, the two evaluation configurations (`evaluation/server_configs/agent.yaml` and `user.yaml`) keep
 the NeMo mode. They set `backchannel_phrases_path: null`, `max_buffer_size: 0`, and `bot_stop_delay: 0.0` to

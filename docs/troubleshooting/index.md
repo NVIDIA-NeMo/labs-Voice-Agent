@@ -40,20 +40,35 @@ more information, refer to [Installation](../get-started/installation.md).
 
 ## A previous utterance appears at the start of the next user message
 
-**Cause:** A transcript arrived after Pipecat's user-turn watchdog had already ended the turn. The large
-language model (LLM) user aggregator keeps that late text and adds it to the start of the next user message.
-In an evaluation run, the `update_system_prompt` action clears that text at the start of each scenario. A
-transcript that arrives after that reset still starts the next scenario's first message. The watchdog fires only when
-`turn_taking.user_turn_stop_timeout` is a positive number. An offline `nemo_speechlm` transcription that takes
-longer than that value triggers it. With an omni LLM, a late transcript can instead move into the next turn's
-audio message or text stand-in, regardless of the watchdog setting. For that case, refer to
+**Cause:** A transcript arrived after its user turn had already ended. The large language model (LLM) user
+aggregator keeps that late text and adds it to the start of the next user message. In an evaluation run, the
+`update_system_prompt` action clears that text at the start of each scenario. A transcript that arrives after
+that reset still starts the next scenario's first message. The following conditions can end a turn before its
+transcript arrives:
+
+- Pipecat's user-turn watchdog fired. It fires only when `turn_taking.user_turn_stop_timeout` is a positive
+  number. An offline `nemo_speechlm` transcription that takes longer than that value triggers it.
+- `SegmentedSTTUserTurnStopStrategy` gave up on a `nemo_speechlm` segment whose transcription had not returned
+  10 seconds after the latest VAD stop.
+- A custom pipeline pairs `NemoSpeechLMSTTService` with Pipecat's `SpeechTimeoutUserTurnStopStrategy`, and
+  the user paused mid-utterance.
+
+With an omni LLM, a late transcript can instead move into the next turn's audio message or text stand-in,
+regardless of the watchdog setting. For that case, refer to
 [Multimodal and Omni Models](../about/core-concepts/language-models/multimodal.md#how-the-omni-switch-changes-the-pipeline).
 
 **Resolution:** Remove `turn_taking.user_turn_stop_timeout` or set it to `null`, which turns the watchdog off.
 That is the default. If you need a finite watchdog, set it above your slowest transcription latency. To confirm
 that the watchdog fired, search `bot_server.log` and the rotated `bot_server.<timestamp>.log` files for
-`User stopped speaking (strategy: None)`. For more information, refer to
-[Turn taking](../about/core-concepts/speech-pipeline/turn-taking.md#user-turn-watchdog).
+`User stopped speaking (strategy: None)`. A `WARNING` that ends in `giving up on them` instead means that the
+speech language model (SpeechLM) endpoint at `stt.base_url` had not returned a segment's transcription 10
+seconds after the latest VAD stop. That limit has no configuration key, so reduce the endpoint latency. If a
+custom pipeline pairs `NemoSpeechLMSTTService` with Pipecat's `SpeechTimeoutUserTurnStopStrategy`, use
+`SegmentedSTTUserTurnStopStrategy` instead, as described in
+[Building Your Own Pipeline](../build-voice-agents/extend/pipelines/custom-pipeline.md#stop-strategy-for-offline-speechlm-transcription).
+For more information, refer to
+[Turn taking](../about/core-concepts/speech-pipeline/turn-taking.md#user-turn-watchdog) and
+[Multi-Segment Turns](../about/core-concepts/speech-pipeline/turn-taking.md#multi-segment-turns).
 
 ## Agent quietly starts a second vLLM on port 8001
 

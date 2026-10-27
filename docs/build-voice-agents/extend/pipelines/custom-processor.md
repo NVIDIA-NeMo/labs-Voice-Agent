@@ -80,7 +80,7 @@ Pick the position by the frame type you need to see. Frame classes come from
 | Position | Frames Arriving There | Typical Use |
 | --- | --- | --- |
 | After `ws_transport.input()` | `InputAudioRawFrame` | Resampling, gain control, noise suppression |
-| Between `stt` and `user_agg` | `TranscriptionFrame`, `InterimTranscriptionFrame` | ASR error correction, PII redaction, language routing |
+| Between `stt` and `user_agg` | `TranscriptionFrame`, `InterimTranscriptionFrame`, and, with `stt.type: nemo_speechlm`, `STTSegmentDoneFrame` (from `nemo_voice_agent.pipecat.frames.frames`). Forward it, because `SegmentedSTTUserTurnStopStrategy` waits for it before it ends the user turn. | ASR error correction, PII redaction, language routing |
 | After `diar` | `DiarResultFrame` (from `nemo_voice_agent.pipecat.frames.frames`) | Rewriting or filtering speaker labels |
 | Between `user_agg` and `llm` | `LLMRunFrame` and everything from upstream | Context shaping, retrieval, or memory injection |
 | Between `llm` and `llm_text_processor` | `LLMTextFrame` (streaming token chunks) | Token-level filtering; text can be split mid-word |

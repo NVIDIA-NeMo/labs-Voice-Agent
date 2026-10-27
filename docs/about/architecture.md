@@ -94,10 +94,12 @@ Turn detection has exactly one owner. `build_context_and_aggregators` inspects w
 service exists: when it does, the user aggregator is configured with `ExternalUserTurnStrategies` so
 it stays quiet and lets `NeMoTurnTakingService` emit the user-turn frames. When no service exists, the
 aggregator emits those frames from the VAD frames through a `SpeechTimeoutUserTurnStopStrategy`, which
-waits `turn_taking.user_speech_timeout` on top of `vad.stop_secs`. Only one component emits
-`UserStartedSpeakingFrame`, so there is no double emission either way. On both paths, Pipecat's user-turn
-watchdog stays off unless `turn_taking.user_turn_stop_timeout` sets it, so a user turn ends only when its stop
-strategy fires. For the latency arithmetic and the watchdog, refer to
+waits `turn_taking.user_speech_timeout` on top of `vad.stop_secs`. With `stt.type: nemo_speechlm` and a
+non-omni LLM, the builder uses the `SegmentedSTTUserTurnStopStrategy` subclass from
+`nemo_voice_agent/pipecat/turns/`, which also waits until every VAD segment in the turn is transcribed. Only
+one component emits `UserStartedSpeakingFrame`, so there is no double emission either way. On both paths,
+Pipecat's user-turn watchdog stays off unless `turn_taking.user_turn_stop_timeout` sets it, so a user turn ends
+only when its stop strategy fires. For the latency arithmetic and the watchdog, refer to
 [Turn taking](core-concepts/speech-pipeline/turn-taking.md).
 
 ## Configuration Flow

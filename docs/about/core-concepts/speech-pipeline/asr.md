@@ -149,6 +149,13 @@ user stops speaking. Unless `llm.is_omni_model` is true, the user turn waits for
 when the endpoint returns an empty transcription or the request fails, the turn stays open until the user
 speaks again and that speech produces a transcript. Refer to [User-Turn Watchdog](turn-taking.md#user-turn-watchdog).
 
+A pause longer than `vad.stop_secs` splits one utterance into several VAD segments, and the service
+transcribes each segment separately. After every segment, it pushes an `STTSegmentDoneFrame`, whether the
+transcription has text, comes back empty, or fails. Under `turn_taking.type: speech_timeout` with a non-omni
+LLM, `build_context_and_aggregators` pairs this backend with `SegmentedSTTUserTurnStopStrategy`, which counts
+those frames and holds the user turn until every segment is transcribed. Under `turn_taking.type: nemo`, the
+strategy does not apply. Refer to [Multi-Segment Turns](turn-taking.md#multi-segment-turns).
+
 The following table lists the keys that `get_stt_service_from_config` reads for `type: nemo_speechlm`. None of
 the streaming keys in the previous table apply, and `device` is not read because no model loads locally.
 
