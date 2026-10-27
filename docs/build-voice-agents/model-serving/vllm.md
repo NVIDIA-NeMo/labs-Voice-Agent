@@ -45,7 +45,7 @@ Keys that matter for vLLM:
 | `llm.type` | `auto`, `hf`, `vllm`, or `nvidia`. `auto` probes vLLM support for the model and falls back to Hugging Face. |
 | `llm.model` | Sent as the `model` field on every request, so it must match the id vLLM serves. |
 | `llm.base_url` | Where the agent sends completions. Shipped default: `http://localhost:8000/v1`. |
-| `llm.api_key` | vLLM ignores it unless it was started with an API key; the configs ship `"EMPTY"`. |
+| `llm.api_key` | Sent as the bearer token on chat requests. vLLM ignores it unless the server has an API key, in which case it must match that key. The configs ship `"EMPTY"`. |
 | `llm.start_vllm_on_init` | `true` makes the agent spawn `vllm serve` at startup. `false` means you start it. |
 | `llm.vllm_server_params` | A single string of CLI flags appended to `vllm serve <model>`. Only read when spawning. |
 | `llm.vllm_generation_params` | Per-request sampling settings (OpenAI fields plus an `extra` dict). |
@@ -140,6 +140,12 @@ Two constraints follow from the implementation:
   Use `start_vllm_on_init: false` for a remote server.
 - **No shell quoting.** `vllm_server_params` is split on whitespace, so any flag whose value contains a space
   (such as the omni `--limit-mm-per-prompt` JSON) is mangled. Start those models manually.
+
+A spawned server can require an API key. Set `--api-key <key>` in `vllm_server_params`, or export
+`VLLM_API_KEY`, which the child process inherits. The `/v1/models` probes send that key as a bearer token. The
+probes resolve the key from `--api-key` first, then `VLLM_API_KEY`, then `llm.api_key`, which covers a server
+that is already running on the port. Chat requests always use `llm.api_key`, so set it to the same key. If an
+already-running server rejects the key with 401, the agent logs a warning that names these three settings.
 
 `llm.device` does **not** reach the spawned vLLM process: `get_llm_service_from_config` passes `device` only on
 the `hf` path, so `VLLMService` always uses its built-in `cuda` default and never sets `CUDA_VISIBLE_DEVICES`.

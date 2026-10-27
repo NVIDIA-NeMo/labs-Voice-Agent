@@ -322,6 +322,22 @@ class HuggingFaceLLMService(OpenAILLMService):
         return "".join(chunks) or None
 
 
+def get_vllm_server_api_key(vllm_server_params: Optional[str], api_key: Optional[str] = None) -> Optional[str]:
+    """Return the API key a vLLM server expects, resolved the way vLLM resolves it.
+
+    Once a key is set, vLLM rejects every unauthenticated ``/v1`` request. ``--api-key`` in the server flags takes
+    precedence over ``VLLM_API_KEY``, which the spawned server inherits from this process. With neither set, fall
+    back to the client ``api_key``, which is the key an already-running server would expect.
+    """
+    params = (vllm_server_params or "").split()
+    for i, param in enumerate(params):
+        if param in ("--api-key", "--api_key") and i + 1 < len(params):
+            return params[i + 1]
+        if param.startswith(("--api-key=", "--api_key=")):
+            return param.split("=", 1)[1]
+    return os.environ.get("VLLM_API_KEY") or api_key
+
+
 class VLLMService(OpenAILLMService, LLMUtilsMixin):
     """
     LLM service that hosts a vLLM server.
@@ -348,7 +364,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         self._vllm_server_max_wait_time = vllm_server_max_wait_time
         self._vllm_server_check_interval = vllm_server_check_interval
         if start_vllm_on_init:
-            base_url = self._start_vllm_server(model, vllm_server_params, base_url)
+            base_url = self._start_vllm_server(model, vllm_server_params, base_url, api_key=api_key)
 
         super().__init__(
             model=model,
@@ -369,10 +385,13 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         model: str,
         vllm_server_params: Optional[str] = None,
         base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
     ) -> str:
         """
         Start a vllm server and return the base url.
         """
+        server_api_key = get_vllm_server_api_key(vllm_server_params, api_key)
+        auth_headers = {"Authorization": f"Bearer {server_api_key}"} if server_api_key else None
 
         requested_port = None
         # If base_url is provided, extract port from it
@@ -433,7 +452,13 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         def check_server_model(port: int, verbose: bool = False) -> tuple[bool, str]:
             """Check if server is running on port and return (is_running, model_name)"""
             try:
-                response = requests.get(f"http://localhost:{port}/v1/models", timeout=5)
+                # A vLLM server started with an API key rejects unauthenticated /v1 requests with 401.
+                response = requests.get(f"http://localhost:{port}/v1/models", headers=auth_headers, timeout=5)
+                if response.status_code == 401 and verbose:
+                    logger.warning(
+                        f"Server on port {port} rejected the API key. Set `--api-key` in vllm_server_params, "
+                        "VLLM_API_KEY, or llm.api_key to the key that server expects."
+                    )
                 if response.status_code == 200:
                     # get the PID for the server process
                     pid = get_pid_on_port(port)
