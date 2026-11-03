@@ -30,8 +30,9 @@ loading and cache management in `nemo_voice_agent/pipecat/services/nemo/streamin
 
 ## Supported Models
 
-All shipped models are English. Choose based on whether you need end-of-utterance (EOU) prediction or
-punctuation — no current model gives you both.
+All shipped streaming models are English. Choose based on whether you need end-of-utterance (EOU) prediction
+or punctuation — no current streaming model gives you both. For offline, multilingual transcription with
+Nemotron-3.5-Transcribe, refer to [Offline SpeechLM Transcription](#offline-speechlm-transcription).
 
 | Model | EOU and EOB Tokens | Punctuation and Capitalization | Use When |
 | --- | --- | --- | --- |
@@ -143,6 +144,15 @@ decoding incrementally. Start the endpoint yourself, and set `model` to the serv
 example ships as `server_configs/default_salm.yaml`, which pairs the backend with
 `turn_taking.type: speech_timeout` and a longer `vad.stop_secs` of 1.2 seconds.
 
+The backend targets
+[NVIDIA-Nemotron-3.5-Transcribe-30B-A4B](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B),
+an open-weight, offline speech and audio model that transcribes 40 languages. Serve it with vLLM as the Quick
+Start on its model card describes, and add `--port 5002` to the command. The Quick Start serves the checkpoint
+as `nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B`, which is the `model` that `default_salm.yaml` sets, but on
+vLLM's default port 8000, which the agent LLM in `default_salm.yaml` already uses. `default_salm.yaml` expects
+the transcription server at `http://localhost:5002/v1`. Alternatively, set `model` and `base_url` to match your
+server.
+
 Because transcription starts only after the VAD stop frame, the transcript can arrive several seconds after the
 user stops speaking. Unless `llm.is_omni_model` is true, the user turn waits for it, because
 `turn_taking.user_turn_stop_timeout` leaves Pipecat's user-turn watchdog off by default. For a non-omni LLM,
@@ -216,7 +226,7 @@ the flat value:
 ```yaml
 stt:
   type: nemo_speechlm
-  model: "nemotron-transcribe"
+  model: "nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B"
   generation_kwargs:
     max_tokens: 2048
   max_tokens_per_sec: 20
@@ -232,7 +242,8 @@ few hundred.
 
 Four properties of the cap are worth knowing before you set it:
 
-- **The default is off.** `max_tokens_per_sec` is unset in every shipped configuration. An unset value
+- **The default is off.** `max_tokens_per_sec` defaults to `null`. Of the shipped configurations, only
+  `default_salm.yaml` sets it, to 20. An unset value
   preserves the flat `max_tokens` behavior exactly.
 - **It only lowers a budget that you set.** The derived value is capped by the configured `max_tokens`, so it
   never raises the budget above the value in `generation_kwargs`. The qualifier matters. When
