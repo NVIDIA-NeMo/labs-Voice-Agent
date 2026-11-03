@@ -13,7 +13,7 @@ No API keys required to get started. Happy hacking~!
 - Talk to most LLMs from vLLM/HuggingFace with configurable prompts.
 - Streaming speech recognition with low latency and end-of-utterance detection.
 - Low latency TTS for fast audio response generation.
-- Speaker diarization up to 4 speakers in different user turns.
+- Speaker diarization in different user turns: up to 8 speakers with Nemotron-3-Diarization (default), or 4 with Streaming Sortformer v2.1.
 - WebSocket server for easy deployment.
 - Tool calling for LLMs to use external tools and adjust its own behavior.
 - Voice-agent evaluation harness with deterministic + LLM-judged scoring, and 328 scenarios across 4
@@ -94,6 +94,10 @@ See [Evaluate](https://docs.nvidia.com/nemo/labs-voice-agent/evaluate-voice-agen
 
 ## 📅 Latest Updates
 
+- **2026-11-03** — Default speaker diarization model switched to
+  [Nemotron-3-Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization), which tells up to 8 speakers
+  apart. It needs a newer NeMo than PyPI ships, so NeMo is now pinned to a NeMo Speech commit: re-run
+  `bash install.sh` (or `uv sync`) in an existing checkout.
 - **2026-09-09** — `tau2_airline` evaluation now scores natural-language assertions on the 24 scenarios
   whose expected database is unchanged, so an agent that does nothing no longer passes them. One upstream
   reference action that the domain's own policy forbids is dropped from gold replay.

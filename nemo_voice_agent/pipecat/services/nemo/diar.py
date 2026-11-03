@@ -39,6 +39,7 @@ from pydantic import BaseModel
 from nemo_voice_agent.pipecat.frames.frames import DiarResultFrame
 from nemo_voice_agent.pipecat.services.nemo.streaming_diar import (
     DiarizationConfig,
+    NeMoChunkedStreamingDiarService,
     NeMoStreamingDiarService,
 )
 
@@ -56,6 +57,16 @@ class NeMoDiarInputParams(BaseModel):
     # number of audio frames to buffer; 1 frame is 16ms,
     # streaming Sortformer was trained with 6*0.08=0.48s chunks
     buffer_size: Optional[int] = 30
+    # Streaming speaker cache and FIFO, in 80 ms model frames; None keeps the `DiarizationConfig` default.
+    spkcache_len: Optional[int] = None
+    fifo_len: Optional[int] = None
+    spkcache_update_period: Optional[int] = None
+    # Setting chunk_len (80 ms frames) runs NeMo's non-overlapping chunked streaming instead of the sliding window.
+    chunk_len: Optional[int] = None
+    chunk_right_context: Optional[int] = None
+
+
+_STREAMING_PARAMS = ("spkcache_len", "fifo_len", "spkcache_update_period", "chunk_len", "chunk_right_context")
 
 
 class _DiarJob(NamedTuple):
@@ -138,15 +149,30 @@ class NemoDiarService(STTService):
         if self._backend == "legacy":
             cfg = DiarizationConfig()
             cfg.device = self._device
-            self._model = NeMoStreamingDiarService(
+            for key in _STREAMING_PARAMS:
+                if getattr(self._params, key, None) is not None:
+                    setattr(cfg, key, getattr(self._params, key))
+            chunked = getattr(self._params, "chunk_len", None) is not None
+            model_cls = NeMoChunkedStreamingDiarService if chunked else NeMoStreamingDiarService
+            self._model = model_cls(
                 cfg,
                 self._model_name,
                 frame_len_in_secs=self._params.frame_len_in_secs,
                 sample_rate=self.sample_rate,
             )
+            if not chunked and getattr(self._model.diarizer, "high_resolution", False):
+                logger.warning(
+                    f"Diarization model `{self._model_name}` is a high-resolution checkpoint running in the sliding-"
+                    "window path, which tends to merge speakers. Set diar.chunk_len and diar.chunk_right_context "
+                    "(or use its diar_configs entry) to run chunked streaming."
+                )
+            self._model.warmup()
         else:
             raise ValueError(f"Invalid backend: {self._backend}")
-        logger.info(f"Diarization service initialized on device: {self._device}")
+        logger.info(
+            f"Diarization service initialized on device: {self._device} ({type(self._model).__name__}, "
+            f"{self._model.max_num_speakers} speakers)"
+        )
 
     def can_generate_metrics(self) -> bool:
         """
@@ -287,13 +313,18 @@ class NemoDiarService(STTService):
                 # must not be applied to whatever the user says next.
                 logger.debug(f"Dropping diarization result from ended VAD segment {segment_id}")
                 return
-            speaker_id = self._get_speaker_evidence(diar_result)
-            if speaker_id is None:
-                return
-            if speaker_id != self._current_speaker_id:
-                self._current_speaker_id = speaker_id
-                logger.debug(f"Diarization speaker changed to {speaker_id} in VAD segment {segment_id}")
-            await self.push_frame(DiarResultFrame(speaker_id, stream_id="default", segment_id=segment_id))
+            windows = [diar_result]
+            if getattr(self._model, "returns_new_rows_only", False):
+                # Chunked streaming returns one row per frame that no earlier result reported: each row is a vote.
+                windows = [row[None] for row in np.asarray(diar_result)]
+            for window in windows:
+                speaker_id = self._get_speaker_evidence(window)
+                if speaker_id is None:
+                    continue
+                if speaker_id != self._current_speaker_id:
+                    self._current_speaker_id = speaker_id
+                    logger.debug(f"Diarization speaker changed to {speaker_id} in VAD segment {segment_id}")
+                await self.push_frame(DiarResultFrame(speaker_id, stream_id="default", segment_id=segment_id))
         except Exception as e:
             logger.error(f"Error handling diarization result: {e}")
             await self.push_frame(
@@ -432,10 +463,10 @@ class NemoDiarService(STTService):
     def _get_speaker_evidence(self, spk_pred: np.ndarray) -> Optional[int]:
         """Return the speaker heard in the newest frame of the model's output window, or ``None`` for silence.
 
-        Each result describes roughly the last 400 ms of audio, and consecutive results overlap by about 320 ms. A
-        majority over the whole window would count the same audio several times and keep voting into the silence
-        after speech. The newest frame covers audio that no earlier result reported, so each stretch of audio is
-        counted once.
+        In the sliding-window path each result describes roughly the last 400 ms of audio, and consecutive results
+        overlap by about 320 ms. A majority over the whole window would count the same audio several times and keep
+        voting into the silence after speech. The newest frame covers audio that no earlier result reported, so
+        each stretch of audio is counted once.
         """
         spk_pred = np.asarray(spk_pred)
         if spk_pred.size == 0:  # the model step failed and returned no frames

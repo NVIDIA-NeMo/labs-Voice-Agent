@@ -39,6 +39,7 @@ Install or make available the software required by the workflow you plan to run:
 | Python | Python 3.12 or 3.13. The project configures `uv` to download and manage a compatible interpreter. |
 | Node.js and npm | Required for the browser client. `install.sh` installs both on systems that provide `apt-get`. |
 | Pipecat | The install pins `pipecat-ai` to version 1.6.0 exactly. Custom processors, services, and bot-control code must target that release. |
+| Git and GitHub access | The install takes `nemo-toolkit[asr,tts]` from a pinned commit of the NeMo Speech GitHub repository, not from PyPI. `uv sync` fetches it with `git`, so the machine needs Git and network access to `github.com`. |
 
 ## Pre-Installation Checklist
 

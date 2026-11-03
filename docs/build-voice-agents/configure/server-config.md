@@ -24,9 +24,10 @@ builder that consumes each one.
 ## How the File Is Loaded
 
 `ConfigManager` (`nemo_voice_agent/utils/config_manager.py`) loads the top-level YAML, then for the
-`stt`, `llm`, and `tts` blocks merges in a model-specific sub-config. `examples/generic_voice_agent/server/server.py`
-passes `server_base_path=os.path.dirname(__file__)` and reads the config path from the
-`SERVER_CONFIG_PATH` environment variable, defaulting to `<server dir>/server_configs/default.yaml`.
+`stt`, `llm`, and `tts` blocks, and for the `diar` block when diarization is enabled, merges in a
+model-specific sub-config. `examples/generic_voice_agent/server/server.py` passes
+`server_base_path=os.path.dirname(__file__)` and reads the config path from the `SERVER_CONFIG_PATH`
+environment variable, defaulting to `<server dir>/server_configs/default.yaml`.
 
 ```bash
 cd examples/generic_voice_agent/server
@@ -42,7 +43,8 @@ Three rules govern the merge:
   top-level value and logs an `... is overridden from ... to ...` line. Editing a key in `default.yaml`
   that the sub-YAML also sets has no effect.
 - **Only the basename of `model_config` matters.** The directory is fixed per component:
-  `server_configs/stt_configs/`, `server_configs/llm_configs/`, `server_configs/tts_configs/`.
+  `server_configs/stt_configs/`, `server_configs/llm_configs/`, `server_configs/tts_configs/`,
+  `server_configs/diar_configs/`.
 - **Interpolation in the top-level file is resolved eagerly at load** (`OmegaConf.to_container(..., resolve=True)`),
   while sub-config values are copied over unresolved and resolved lazily against the merged config. That is how
   `nemotron_3.5_lightning.yaml` can write `temperature: ${llm.temperature}` — it resolves to the `temperature: 1.0` the
@@ -130,9 +132,16 @@ out of the pipeline entirely. Refer to
 | Key | Effect |
 | --- | --- |
 | `enabled` | Insert the Sortformer diarization stage. |
-| `model` | Streaming diarization model, for example `nvidia/diar_streaming_sortformer_4spk-v2.1`. |
+| `model` | Streaming diarization model. The shipped value is `nvidia/Nemotron-3-Diarization` (8 speakers). `nvidia/diar_streaming_sortformer_4spk-v2.1` (4 speakers) is the commented alternative. |
+| `model_config` | Optional. Sub-config under `diar_configs/` that holds the model's streaming settings. When unset, the registry's `diar_models` section selects it. |
 | `threshold` | Speaker-presence threshold; lower is more sensitive. |
-| `frame_len_in_secs` | Frame length; leave at the Sortformer default unless the architecture changes. |
+| `frame_len_in_secs` | Frame length. It must equal the model's encoder frame (80 ms for both shipped models), or startup fails with a `ValueError`. |
+| `spkcache_len`, `fifo_len`, `spkcache_update_period` | Optional. Speaker cache, FIFO queue, and cache update period, in 80 ms frames. |
+| `chunk_len`, `chunk_right_context` | Optional. Setting `chunk_len` switches from sliding-window to chunked streaming with `chunk_right_context` look-ahead frames. |
+
+The shipped `default.yaml` sets none of the optional keys. For its `nvidia/Nemotron-3-Diarization` model, the
+registry merges `diar_configs/nemotron_3_diarization.yaml`, which sets all five streaming keys and overrides the
+same keys in this block, so the shipped server runs chunked streaming.
 
 Two keys in the shipped file are inert: `diar.device` is not read — `build_diar` runs the diarizer on
 `stt.device` — and `diar.type` has no consumer.

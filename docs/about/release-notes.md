@@ -31,6 +31,7 @@ The following table summarizes the dated project milestones documented on this p
 
 | Date | Highlights |
 | --- | --- |
+| 2026-11-03 | Nemotron-3-Diarization is the new default diarization model (eight speakers); NeMo pinned to a NeMo Speech commit; utterance-scoped speaker tags |
 | 2026-09-09 | `tau2_airline` scores NL assertions on 24 scenarios; task 39 gold-action correction |
 | 2026-09-02 | Nemotron-3.5-Lightning-30B-A3B-NVFP4 is the new shipped default LLM; added Qwen3.6-35B-A3B and Qwen3.8-27B configs |
 | 2026-08-06 | Graduated to a standalone repository |
@@ -42,6 +43,38 @@ The following table summarizes the dated project milestones documented on this p
 | 2025-10-10 | Kokoro-82M TTS |
 | 2025-10-03 | vLLM serving with automatic Hugging Face fallback |
 | 2025-09-05 | First release |
+
+## 2026-11-03 — Nemotron-3-Diarization Default Model and Utterance-Scoped Speaker Tags
+
+The example server's default speaker diarization model changed from
+`nvidia/diar_streaming_sortformer_4spk-v2.1` to `nvidia/Nemotron-3-Diarization`, which tells up to eight
+speakers apart instead of four. `default.yaml` keeps `server.use_model_registry: true`, so the new
+`diar_models` registry section merges `diar_configs/nemotron_3_diarization.yaml` into the `diar` block. That
+file applies the ultra-low latency streaming settings from the model card, and the service runs chunked
+streaming in `NeMoChunkedStreamingDiarService`. Speaker votes therefore arrive in bursts: the first after
+320 ms of a voice activity detection (VAD) segment, and then every 240 ms. A vote can lag its audio by up to
+320 ms plus inference time. The v2.1 model remains available as a commented alternative in `default.yaml` and
+runs the sliding-window path as before.
+
+No NeMo release on PyPI can load the new model, so `pyproject.toml` now installs `nemo-toolkit[asr,tts]` from
+a pinned commit of the [NeMo Speech repository](https://github.com/NVIDIA-NeMo/Speech). Installation therefore
+needs Git and access to `github.com`. An existing environment keeps NeMo 2.7.3 until you sync it, and the
+server then fails at startup with `Error locating target 'nemo.collections.asr.modules.TransformerEncoder'`.
+Run `bash install.sh` or `uv sync` again to update the environment, or set `diar.model` back to
+`nvidia/diar_streaming_sortformer_4spk-v2.1` until you can.
+
+This release also fixes speaker tags that bound to the wrong utterance, reported in
+[GitHub issue 47](https://github.com/NVIDIA-NeMo/labs-Voice-Agent/issues/47). Before, a late diarization
+result from an earlier turn could relabel the next utterance. Speaker evidence is now scoped to the VAD
+segment that its audio came from, and results from an ended segment are dropped. The turn-taking service tags
+each utterance with the speaker that holds most of its 80 ms speaker votes, so a brief interruption by
+another speaker no longer relabels it.
+
+Learn more: [Diarization](core-concepts/speech-pipeline/diarization.md) ·
+[Turn taking](core-concepts/speech-pipeline/turn-taking.md) ·
+[Model registry](../build-voice-agents/configure/model-registry.md) ·
+[Installation](../get-started/installation.md) ·
+[Troubleshooting](../troubleshooting/index.md)
 
 ## 2026-09-09 — tau2_airline NL-Assertion Scoring and Task 39 Gold-Action Correction
 
@@ -157,7 +190,8 @@ This milestone expanded tool-calling examples and updated the default diarizatio
   male or female voice), and `tool_tts_reset_voice`. A standalone example function,
   `tool_get_city_weather`, looks up current weather with the `python_weather` package.
 - Updated the diarization model to `nvidia/diar_streaming_sortformer_4spk-v2.1`, which handles up to
-  four speakers across user turns.
+  four speakers across user turns. It was the shipped default until the 2026-11-03 change to
+  Nemotron-3-Diarization.
 
 Learn more: [Tool calling](../build-voice-agents/tools/tool-calling.md) · [Custom tools](../build-voice-agents/tools/custom-tools.md) ·
 [Diarization](core-concepts/speech-pipeline/diarization.md)

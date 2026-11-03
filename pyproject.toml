@@ -26,16 +26,24 @@ dependencies = [
     "torch",
     "torchvision",
     "torchaudio",
-    # NeMo speech stack (ASR + TTS models)
-    "nemo-toolkit[asr,tts]>=2.7.3",
+    # NeMo speech stack (ASR + TTS models). Pinned to a NeMo Speech main commit because no PyPI release can
+    # load nvidia/Nemotron-3-Diarization yet: 3.0.0 lacks its RoPE TransformerEncoder and 10 ms high-resolution
+    # Sortformer outputs. Move back to a version specifier once a release that includes them ships.
+    "nemo-toolkit[asr,tts] @ git+https://github.com/NVIDIA-NeMo/Speech.git@e5d79d5a49cbec49d79440b0070aac0c32a8dbb8",
+    # NeMo's TTS package imports nemo.collections.speechlm2, which needs peft; NeMo only lists it under the
+    # speechlm2 extra, so importing our TTS services fails without it.
+    "peft>=0.18.1",
     # Real-time voice pipeline framework.
     # NOTE: deliberately NOT the `[nvidia]` extra — it requires protobuf>=6.31.1,
-    # which nemo-toolkit forbids (it pins protobuf~=5.29.5). We supply the Riva
-    # client ourselves below. See the nvidia-riva-client comment for the details.
+    # which nemo-toolkit 2.7.x forbade (it pinned protobuf~=5.29.5; the pinned NeMo
+    # Speech commit no longer constrains protobuf). We supply the Riva client
+    # ourselves below. See the nvidia-riva-client comment for the details.
     "pipecat-ai[websocket,tracing]==1.6.0",
     # LLM backends
     "transformers>=5.8.0",
-    "vllm>=0.24.0",
+    # Capped to the vLLM releases that pin torch==2.11.0: the torch override below hides vLLM's exact torch pin
+    # from the resolver, so a newer vLLM would lock against a torch it was not built for. Move both together.
+    "vllm>=0.24.0,<0.27",
     "openai",
     # TTS backends and audio processing
     "kokoro",
@@ -172,15 +180,24 @@ torch-backend = "cu130"
 
 # Force patched versions for known CVEs
 override-dependencies = [
+    # uv applies a git dependency's own [tool.uv.sources], and NeMo Speech main maps torch to its CPU wheel index
+    # unless one of its cu12/cu13 extras is enabled. Re-declaring torch here drops that source, so torch keeps
+    # resolving from PyPI with its CUDA 13 runtime wheels. Keep it equal to the locked vLLM's torch pin (see the
+    # vllm dependency above).
+    "torch==2.11.0",
+    # Same mechanism: NeMo Speech main sources nltk from its v3.10.0-rc1 git tag, which lacks the downloader and
+    # data-loading security fixes of the 3.10.0 release. Re-declaring it keeps nltk on the PyPI release.
+    "nltk>=3.10.0",
     # protobuf 6.33.5 patches BOTH live advisories: CVE-2025-4565 (recursion DoS,
     # fixed 4.25.8/5.29.5/6.31.1) and CVE-2026-0994 (JSON recursion depth bypass,
     # fixed 5.29.6/6.33.5). Do NOT drop to 6.31.1-6.33.4 — those reintroduce the
     # second one. vllm excludes exactly that range too.
-    # This override deliberately ignores nemo-toolkit's protobuf~=5.29.5 pin.
-    # That pin is conservative: protobuf runtimes are backward compatible with
-    # older gencode (a 6.x runtime reads NeMo's 5.x-generated code fine); only
-    # the reverse fails. Riva >=2.25.1 is required for TTS to work at all (see
-    # nvidia-riva-client above) and its gencode mandates a 6.x runtime.
+    # This override was added to ignore nemo-toolkit 2.7.x's protobuf~=5.29.5
+    # pin (the pinned NeMo Speech commit has none). That pin was conservative:
+    # protobuf runtimes are backward compatible with older gencode (a 6.x
+    # runtime reads NeMo's 5.x-generated code fine); only the reverse fails.
+    # Riva >=2.25.1 is required for TTS to work at all (see nvidia-riva-client
+    # above) and its gencode mandates a 6.x runtime.
     "protobuf==6.33.5",
     "numba==0.65.0",
     "transformers>=5.8.0",

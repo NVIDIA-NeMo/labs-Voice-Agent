@@ -68,7 +68,7 @@ behind and produces a shorter pipeline.
 | VAD | `VADProcessor` wrapping a Silero analyzer. Emits `VADUserStartedSpeakingFrame` and `VADUserStoppedSpeakingFrame`. Pipecat 1.x removed VAD from the input transport, so it runs here as its own processor. |
 | RTVI | `RTVIProcessor`. Handles the client control protocol — client-ready handshake, client messages, and server responses. |
 | STT | Streaming NeMo ASR. Pushes transcription frames **and** passes the raw audio through (`audio_passthrough=True`), so downstream stages still see audio. |
-| Diar | Streaming speaker diarization. Pushes one `DiarResultFrame` for each 80 ms chunk in which it hears a speaker, tagged with the VAD segment that the audio came from. |
+| Diar | Streaming speaker diarization. Pushes one `DiarResultFrame` for each 80 ms frame of audio in which it hears a speaker, tagged with the VAD segment that the audio came from. The shipped `nvidia/Nemotron-3-Diarization` model streams in chunks, so it pushes these frames in bursts, one burst per chunk. |
 | TurnTaking | `NeMoTurnTakingService`. Decides when the user's turn has ended, filters backchannels, and, when diarization is on, prefixes each transcript with a `<speaker_N>` tag chosen from that utterance's `DiarResultFrame` votes. |
 | UserAudioBuffer | Buffers the user's raw audio and attaches it to the large language model (LLM) context for audio-input (omni) models. |
 | UserAggregator | Turns finalized user speech into a user message on the shared `LLMContext`, then triggers the LLM. |

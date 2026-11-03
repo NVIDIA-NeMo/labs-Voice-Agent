@@ -45,13 +45,20 @@ def test_constructor_disabled_legacy_and_invalid_backend(monkeypatch):
     made = {}
 
     class Model:
+        max_num_speakers = 4
+        diarizer = SimpleNamespace(high_resolution=False)
+
         def __init__(self, config, model, **kwargs):
             made.update(config=config, model=model, kwargs=kwargs)
+
+        def warmup(self):
+            made["warmed_up"] = True
 
     monkeypatch.setattr(diar_module, "NeMoStreamingDiarService", Model)
     legacy = NemoDiarService(model="diar.nemo", params=_params(), enabled=True, device="cpu")
     assert isinstance(legacy._model, Model) and made["model"] == "diar.nemo"
     assert made["kwargs"]["frame_len_in_secs"] == 0.16
+    assert made["warmed_up"]  # the first user turn must not pay for CUDA start-up
 
     with pytest.raises(ValueError, match="Invalid backend"):
         NemoDiarService(model="diar.nemo", params=_params(), enabled=True, backend="other")

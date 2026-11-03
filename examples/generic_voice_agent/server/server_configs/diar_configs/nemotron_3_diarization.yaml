@@ -1,0 +1,14 @@
+# Streaming settings for nvidia/Nemotron-3-Diarization (8 speakers).
+# Please refer to https://github.com/NVIDIA-NeMo/labs-Voice-Agent/blob/main/README.md for more details.
+# The model needs a NeMo build newer than 3.0.0; pyproject.toml pins one.
+#
+# Keys here override the same keys in the `diar` block of the server config. Lengths are in 80 ms model frames.
+
+# Speaker cache, FIFO and cache update period from the model card's streaming configurations.
+spkcache_len: 264
+fifo_len: 264
+spkcache_update_period: 222
+# Chunked streaming scores every frame once: chunks of 3 frames with 1 frame of look-ahead, the model card's
+# ultra-low latency setting (0.32 s input buffer). The sliding-window path merges speakers with this model.
+chunk_len: 3
+chunk_right_context: 1

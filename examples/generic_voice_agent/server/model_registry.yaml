@@ -48,3 +48,13 @@ stt_models:
   "stt_en_fastconformer_hybrid_large_streaming_80ms":
     yaml_id: "nemo_cache_aware_streaming.yaml"
     type: "nemo"
+
+diar_models:
+  "nvidia/diar_streaming_sortformer_4spk-v2.1":
+    yaml_id: "diar_streaming_sortformer_4spk.yaml"
+
+  "nvidia/diar_streaming_sortformer_4spk-v2":
+    yaml_id: "diar_streaming_sortformer_4spk.yaml"
+
+  "nvidia/Nemotron-3-Diarization":
+    yaml_id: "nemotron_3_diarization.yaml"

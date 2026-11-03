@@ -1,0 +1,6 @@
+# Streaming settings for nvidia/diar_streaming_sortformer_4spk-v2.1 and -v2 (4 speakers).
+# Please refer to https://github.com/NVIDIA-NeMo/labs-Voice-Agent/blob/main/README.md for more details.
+#
+# These checkpoints use the defaults in the `diar` block of the server config: the sliding-window streaming path
+# with a 188-frame speaker cache and FIFO. Nothing is set here, so every `diar` key you set in the server config
+# takes effect. To try chunked streaming with these models, set `chunk_len` and `chunk_right_context` there.
