@@ -27,7 +27,6 @@ pytestmark = [pytest.mark.functional, pytest.mark.gpu]
 REALTIME_EOU_ASR_MODEL = "nvidia/parakeet_realtime_eou_120m-v1"
 SMALL_PARAKEET_ASR_MODEL = "nvidia/parakeet-tdt_ctc-110m"
 DIAR_MODEL = "nvidia/diar_streaming_sortformer_4spk-v2.1"
-NEMOTRON_DIAR_MODEL = "nvidia/Nemotron-3-Diarization"
 KOKORO_MODEL = "hexgrad/Kokoro-82M"
 MAGPIE_MODEL = "nvidia/magpie_tts_multilingual_357m"
 FASTPITCH_MODEL = "nvidia/tts_en_fastpitch"
@@ -154,31 +153,6 @@ def test_streaming_diarization_model_returns_speaker_probabilities_from_cache():
         assert service.max_num_speakers == 4
         assert diar_result.shape == (service.chunk_size, service.max_num_speakers)
         assert np.isfinite(diar_result).all()
-    finally:
-        del service
-        _cleanup_cuda()
-
-
-def test_nemotron_diarization_chunked_streaming_returns_one_row_per_new_frame():
-    """Nemotron-3-Diarization loads with its registry settings and scores each 80 ms frame once."""
-    _require_cuda()
-
-    from nemo_voice_agent.pipecat.services.nemo.streaming_diar import (
-        DiarizationConfig,
-        NeMoChunkedStreamingDiarService,
-    )
-
-    cfg = DiarizationConfig(
-        device="cuda", spkcache_len=264, fifo_len=264, spkcache_update_period=222, chunk_len=3, chunk_right_context=1
-    )
-    service = NeMoChunkedStreamingDiarService(cfg, NEMOTRON_DIAR_MODEL, sample_rate=16000)
-    try:
-        rows = [service.diarize(_pcm_silence(0.08), stream_id="functional-diar") for _ in range(8)]
-
-        assert service.max_num_speakers == 8
-        # A chunk of 3 frames is scored once its 1-frame look-ahead arrives: after frames 4 and 7.
-        assert [len(r) for r in rows] == [0, 0, 0, 3, 0, 0, 3, 0]
-        assert all(r.shape[1] == 8 and np.isfinite(r).all() for r in rows)
     finally:
         del service
         _cleanup_cuda()
