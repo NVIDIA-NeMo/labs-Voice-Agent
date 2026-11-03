@@ -32,6 +32,7 @@ The following table summarizes the dated project milestones documented on this p
 | Date | Highlights |
 | --- | --- |
 | 2026-11-03 | Nemotron-3-Diarization is the new default diarization model (eight speakers); NeMo pinned to a NeMo Speech commit; utterance-scoped speaker tags |
+| 2026-11-02 | Nemotron-3.5-Transcribe-30B-A4B offline speech recognition; named turn-taking modes; evaluation auto-retry and conversation-end policy |
 | 2026-09-09 | `tau2_airline` scores NL assertions on 24 scenarios; task 39 gold-action correction |
 | 2026-09-02 | Nemotron-3.5-Lightning-30B-A3B-NVFP4 is the new shipped default LLM; added Qwen3.6-35B-A3B and Qwen3.8-27B configs |
 | 2026-08-06 | Graduated to a standalone repository |
@@ -75,6 +76,116 @@ Learn more: [Diarization](core-concepts/speech-pipeline/diarization.md) ·
 [Model registry](../build-voice-agents/configure/model-registry.md) ·
 [Installation](../get-started/installation.md) ·
 [Troubleshooting](../troubleshooting/index.md)
+## 2026-11-02 — Nemotron-3.5-Transcribe Offline Speech Recognition
+
+NeMo Labs Voice Agent now supports
+[NVIDIA-Nemotron-3.5-Transcribe-30B-A4B](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B)
+for speech-to-text (STT). Nemotron-3.5-Transcribe is an open-weight, offline speech and audio model that
+transcribes 40 languages. It is a Mamba-2 and Transformer hybrid mixture-of-experts (MoE) model with 34 billion
+total parameters and about 4.3 billion active parameters, including its audio encoder.
+
+The new `stt.type: nemo_speechlm` backend, `NemoSpeechLMSTTService`, sends each utterance to an
+OpenAI-compatible vLLM endpoint that serves the model. Because the model is offline, the backend transcribes a
+complete utterance after voice activity detection (VAD) reports the end of speech, instead of streaming partial
+text.
+
+To try it with the example server, complete the following steps:
+
+1. Start the vLLM server for the agent LLM as
+   [Start vLLM Yourself](../build-voice-agents/model-serving/vllm.md#start-vllm-yourself-shipped-default)
+   describes. `default_salm.yaml` uses the same Nemotron-3.5-Lightning LLM at `http://localhost:8000/v1`.
+2. Serve Nemotron-3.5-Transcribe with vLLM as the Quick Start on the model card describes, in an environment with
+   the vLLM version and NeMo Speech plugin that the card lists. Add `--port 5002` to the Quick Start command.
+   `default_salm.yaml` expects the server at `http://localhost:5002/v1` under the Quick Start's served model
+   name, `nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B`, and the agent LLM already uses vLLM's default port
+   8000. Alternatively, set `stt.model` and `stt.base_url` to match your server.
+3. From `examples/generic_voice_agent/server/`, run
+   `SERVER_CONFIG_PATH=./server_configs/default_salm.yaml python server.py`.
+
+The Quick Start reserves 94 percent of GPU memory and the agent LLM reserves 80 percent, so run the two vLLM
+servers on separate GPUs or lower their `--gpu-memory-utilization` values.
+
+`default_salm.yaml` also sets the following values for offline transcription:
+
+- `stt.max_tokens_per_sec: 20` caps the decode budget in proportion to the duration of the audio. On 10 seconds
+  of audio, a repetition hallucination stops at 200 tokens instead of running to thousands.
+- `stt.generation_kwargs.chat_template_kwargs.enable_thinking: false` keeps the model transcribing instead of
+  answering the prompt as a chatbot would. The backend sends this flag by default, but a `chat_template_kwargs`
+  block of your own replaces that default, so keep the flag in it.
+- `vad.stop_secs: 1.2` with `turn_taking.type: speech_timeout` waits for a longer silence before transcribing,
+  so each request usually carries a whole utterance rather than fragments.
+
+This release also reworks turn taking, largely to support offline transcription:
+
+- **Named turn-taking modes.** `turn_taking.type` replaces the boolean `turn_taking.enabled`. The `nemo` default
+  runs the NeMo turn-taking service, and `speech_timeout` lets VAD end the user turn through Pipecat's
+  `SpeechTimeoutUserTurnStopStrategy`. `ConfigManager` ignores a leftover `enabled` key and logs a warning, so a
+  configuration with `enabled: false` now runs `nemo`. Replace it with `type: speech_timeout`.
+- **Configurable speech timeout.** `turn_taking.user_speech_timeout`, 0.6 seconds by default, sets the extra
+  silence that `speech_timeout` waits after `vad.stop_secs`. Pipecat already waited 0.6 seconds, so the key alone
+  changes no timing. To shorten end-of-turn latency, the hosted `speech_timeout` configurations lower
+  `vad.stop_secs`: `default_nvidia.yaml` from 1.0 to 0.2 seconds, `agent_nvidia.yaml` from 1.0 to 0.4,
+  `agent_nvidia_omni.yaml` from 0.8 to 0.4, and `user_nvidia.yaml` from 1.5 to 0.9.
+- **User-turn watchdog off by default.** Pipecat ends an open user turn after 5 seconds without activity, which
+  sent a slow offline transcript to the next user turn. `turn_taking.user_turn_stop_timeout` now leaves that
+  watchdog off in every configuration unless you set it to a positive number of seconds. As a trade-off, a
+  non-omni turn whose transcription is empty or fails stays open until the user's next transcribed speech. Set
+  the key to 5.0 to restore the previous behavior.
+- **Multi-segment turns.** With `nemo_speechlm`, `speech_timeout`, and a non-omni LLM, a user turn no longer
+  ends while one of its VAD segments is still being transcribed. The turn gives up on a segment 10 seconds after
+  the latest VAD stop. A custom pipeline that uses `NemoSpeechLMSTTService` needs
+  `SegmentedSTTUserTurnStopStrategy`, and a custom processor between the STT service and the user aggregator
+  must forward `STTSegmentDoneFrame`.
+- **Faster omni turns.** With an omni LLM under `speech_timeout`, the user turn now ends after `vad.stop_secs`
+  plus `user_speech_timeout` instead of after the 5-second watchdog. The stop strategy no longer waits for a
+  transcript that the omni pipeline consumes.
+
+The evaluation harness has the following changes:
+
+- `--conversation-end-policy` selects how the `clean_exit` signal is scored. The `tool-only` default still
+  requires the agent to call the end-conversation tool. `valid-terminal-state` also accepts a successful end
+  that the simulator reports, which then stops the scenario, or an inactivity timeout after a final user turn.
+- `--inactivity-timeout`, 120 seconds by default, stops a scenario after that long without meaningful activity
+  from either bot.
+- The runner now re-runs a scenario that recorded zero conversation turns, once by default, instead of leaving
+  it for a `--resume` run. `--no-auto-resume-on-stale` turns this off, `--max-auto-retries` caps the re-runs,
+  and `--auto-retry-backoff-secs` sets the wait before each one. `--auto-resume-on-insufficient-turns` also
+  re-runs scenarios below `--min-agent-turns`. The runner keeps each discarded attempt at
+  `<scenario>.killed.autoretry<N>.<timestamp>/`, and `metrics.json` records `auto_retry_count`.
+- `run_evaluation.py` now defaults `--min-agent-turns` to 2, down from 3. `check_resume.py` defaults to the same
+  2 instead of 0, so it now flags stalled scenarios by default. It also lists scenarios that completed after an
+  automatic retry.
+
+The shipped model configurations have the following changes:
+
+- The Nemotron-3.5-Lightning configurations, `nemotron_3.5_lightning.yaml` and its `_think.yaml` sibling, now
+  sample with `temperature: 1.0` and no `top_k` limit, in place of 0.6 and 20.
+- The hosted `default_nvidia.yaml` and `agent_nvidia.yaml` configurations, and the `llm.type: nvidia` fallback
+  model, now use `nvidia/nemotron-3.5-lightning-30b-a3b` instead of `nvidia/nemotron-3-nano-30b-a3b`.
+  `default_nvidia.yaml` passes `reasoning_budget` in place of `thinking_token_budget`.
+- `default.yaml` lowers `vad.min_volume` from 0.4 to 0.2, so the default server detects quieter speech.
+
+This release also includes the following fixes:
+
+- A sentence that ends on a finished decimal, such as `It costs $3.14.`, now goes to text-to-speech (TTS) on
+  its own instead of merging with the next sentence.
+- The `reset` and `update_system_prompt` Real-Time Voice Interface (RTVI) actions now clear pending text from
+  the user and assistant aggregators. Previously, the reset never ran, so an evaluation scenario could begin
+  with text left over from the previous scenario.
+- Logs and evaluation artifacts redact more API keys. `api_key` and `*_api_key` values in configuration log
+  lines, `--api-key` in `llm.vllm_server_params` and in the captured vLLM output, and the judge key in
+  `run_args.json` now appear as `<redacted>`. `Authorization` headers in `default_headers` are still logged.
+  Services still receive the real keys.
+- With `llm.start_vllm_on_init: true` and a vLLM API key, the readiness check now sends the key. Startup no
+  longer waits the full hour for the server and then fails.
+
+Learn more: [ASR](core-concepts/speech-pipeline/asr.md#offline-speechlm-transcription) ·
+[Turn taking](core-concepts/speech-pipeline/turn-taking.md) ·
+[Evaluation CLI](../reference/evaluation/eval-cli.md) ·
+[Automatic in-run retry](../evaluate/run-evaluations/resume.md#automatic-in-run-retry) ·
+[Scoring](../evaluate/understand-scoring/scoring.md) ·
+[Security](../resources/contribute/security.md#handling-credentials) ·
+[Serving with vLLM](../build-voice-agents/model-serving/vllm.md)
 
 ## 2026-09-09 — tau2_airline NL-Assertion Scoring and Task 39 Gold-Action Correction
 

@@ -114,9 +114,9 @@ value raises. For details, refer to [ASR](../../about/core-concepts/speech-pipel
 | `device` | Torch device for the local model. Also used for diarization, as described below. |
 
 For `type: nemo_speechlm`, the block instead points at a vLLM endpoint with `base_url`, `generation_kwargs`,
-`system_prompt`, and `user_prompt`, as `server_configs/default_salm.yaml` shows. Add `max_tokens_per_sec` there
-to cap the decode budget by audio duration, which contains the repetition hallucinations that a flat
-`generation_kwargs.max_tokens` cannot. It is unset by default. Refer to
+`system_prompt`, and `user_prompt`, as `server_configs/default_salm.yaml` shows. `max_tokens_per_sec` caps the
+decode budget by audio duration, which contains the repetition hallucinations that a flat
+`generation_kwargs.max_tokens` cannot. It is unset by default, and `default_salm.yaml` sets it to 20. Refer to
 [ASR](../../about/core-concepts/speech-pipeline/asr.md#offline-speechlm-transcription).
 
 For `type: nvidia`, the relevant keys are `language`, `model`, and `function_id` — the model name and

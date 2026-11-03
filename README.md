@@ -12,6 +12,8 @@ No API keys required to get started. Happy hacking~!
 - Open-source, local deployment, and flexible customization.
 - Talk to most LLMs from vLLM/HuggingFace with configurable prompts.
 - Streaming speech recognition with low latency and end-of-utterance detection.
+- Offline, multilingual speech recognition with
+  [Nemotron-3.5-Transcribe](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B) served through vLLM.
 - Low latency TTS for fast audio response generation.
 - Speaker diarization in different user turns: up to 8 speakers with Nemotron-3-Diarization (default), or 4 with Streaming Sortformer v2.1.
 - WebSocket server for easy deployment.
@@ -98,6 +100,12 @@ See [Evaluate](https://docs.nvidia.com/nemo/labs-voice-agent/evaluate-voice-agen
   [Nemotron-3-Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization), which tells up to 8 speakers
   apart. It needs a newer NeMo than PyPI ships, so NeMo is now pinned to a NeMo Speech commit: re-run
   `bash install.sh` (or `uv sync`) in an existing checkout.
+- **2026-11-02** — Support for
+  [NVIDIA-Nemotron-3.5-Transcribe-30B-A4B](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B),
+  an offline speech recognition model for 40 languages, through the new `stt.type: nemo_speechlm` backend
+  (example config: `server_configs/default_salm.yaml`). Turn taking is now selected by `turn_taking.type`, and
+  a user turn waits for its offline transcript. The evaluation harness adds automatic retries and a
+  `--conversation-end-policy` option.
 - **2026-09-09** — `tau2_airline` evaluation now scores natural-language assertions on the 24 scenarios
   whose expected database is unchanged, so an agent that does nothing no longer passes them. One upstream
   reference action that the domain's own policy forbids is dropped from gold replay.
