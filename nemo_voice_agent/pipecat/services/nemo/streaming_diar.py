@@ -129,6 +129,10 @@ class NeMoStreamingDiarService:
         diar_result = chunk_preds[:, -self.chunk_size :, :].clone().cpu().numpy()
         return diar_result[0]  # tensor of shape [6, 4]
 
+    def reset_audio_context(self, stream_id: str = "default"):
+        """Clear the buffered audio and features but keep the speaker cache, so speaker ids stay stable."""
+        self.feature_bufferer.reset()
+
     def reset_state(self, stream_id: str = "default"):
         self.feature_bufferer.reset()
         self.streaming_state = self.init_streaming_state(batch_size=1)

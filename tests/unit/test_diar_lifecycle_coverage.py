@@ -24,7 +24,7 @@ from pipecat.processors.frame_processor import FrameDirection
 from pipecat.transcriptions.language import Language
 
 from nemo_voice_agent.pipecat.services.nemo import diar as diar_module
-from nemo_voice_agent.pipecat.services.nemo.diar import NemoDiarService
+from nemo_voice_agent.pipecat.services.nemo.diar import NemoDiarService, _DiarResult
 
 
 def _params():
@@ -69,7 +69,12 @@ def _bare():
     service._vad_user_speaking = False
     service._audio_buffer = []
     service._current_speaker_id = 2
+    service._segment_id = None
+    service._worker_segment_id = None
+    service._use_vad = True
+    service._model_reset_pending = False
     service._has_generated_metrics = False
+    service._model = None
     service.frames = []
 
     async def push(frame, direction=None):
@@ -121,14 +126,14 @@ def test_response_handler_emits_errors_and_success_then_cancels():
     service = _bare()
     handled = []
 
-    async def handle(result):
-        handled.append(result)
+    async def handle(result, segment_id=None):
+        handled.append((result, segment_id))
 
     service._handle_diarization_result = handle
 
     class Results:
         def __init__(self):
-            self.values = iter([("error", RuntimeError("bad diar")), "speaker"])
+            self.values = iter([_DiarResult(None, error=RuntimeError("bad diar")), _DiarResult(7, preds="speaker")])
 
         async def get(self):
             try:
@@ -140,7 +145,7 @@ def test_response_handler_emits_errors_and_success_then_cancels():
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(service._response_task_handler())
     assert isinstance(service.frames[0][0], ErrorFrame)
-    assert handled == ["speaker"] and service._has_generated_metrics
+    assert handled == [("speaker", 7)] and service._has_generated_metrics
 
 
 def test_process_frame_tracks_vad_and_disabled_passthrough(monkeypatch):
@@ -153,10 +158,10 @@ def test_process_frame_tracks_vad_and_disabled_passthrough(monkeypatch):
     start = VADUserStartedSpeakingFrame()
     stop = VADUserStoppedSpeakingFrame()
     asyncio.run(service.process_frame(start, FrameDirection.DOWNSTREAM))
-    assert service._vad_user_speaking and service._audio_buffer == []
+    assert service._vad_user_speaking and service._audio_buffer == [] and service._segment_id == start.id
     service._audio_buffer = [b"audio"]
     asyncio.run(service.process_frame(stop, FrameDirection.UPSTREAM))
-    assert not service._vad_user_speaking and service._current_speaker_id is None
+    assert not service._vad_user_speaking and service._audio_buffer == []
 
     service._enabled = False
     asyncio.run(service.process_frame(start, FrameDirection.DOWNSTREAM))

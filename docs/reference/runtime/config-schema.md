@@ -167,7 +167,7 @@ The `turn_taking` block selects the turn-detection strategy, then tunes the one 
 | --- | --- | --- | --- |
 | `type` | `nemo` \| `speech_timeout` | `nemo` | `ConfigManager` (asserted), `build_turn_taking` — returns `None` for `speech_timeout` |
 | `backchannel_phrases_path` | path, list, or null | required for `nemo` | `NeMoTurnTakingService`; a relative path is tried against the CWD then the server base dir, and a missing file raises |
-| `max_buffer_size` | int | required for `nemo` (shipped: `2`) | word count above which a non-backchannel utterance interrupts immediately |
+| `max_buffer_size` | int | required for `nemo` (shipped: `2`) | completed-word count at which an utterance interrupts the bot before `<EOU>`, regardless of backchannel matching; a speaker tag is not counted |
 | `bot_stop_delay` | float | required for `nemo` (shipped: `0.5`) | seconds of server and client audio slack before bot-stop is honored |
 | `user_speech_timeout` | float | `0.6` | `build_context_and_aggregators` — silence `SpeechTimeoutUserTurnStopStrategy` waits on top of `vad.stop_secs`; applies to `speech_timeout` only |
 | `user_turn_stop_timeout` | float or null | `null` (watchdog off) | `build_context_and_aggregators` — `LLMUserAggregatorParams.user_turn_stop_timeout`; `null` or `0` disables Pipecat's watchdog; applies to both types |

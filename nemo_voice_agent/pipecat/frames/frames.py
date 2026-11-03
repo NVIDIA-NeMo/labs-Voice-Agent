@@ -15,6 +15,7 @@
 
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 from pipecat.frames.frames import DataFrame, UninterruptibleFrame
@@ -22,10 +23,21 @@ from pipecat.frames.frames import DataFrame, UninterruptibleFrame
 
 @dataclass
 class DiarResultFrame(DataFrame):
-    """Diarization frame."""
+    """Speaker evidence for one chunk of user audio.
+
+    ``NemoDiarService`` pushes one for every 80 ms chunk in which it hears a speaker. ``diar_result`` is that
+    speaker's id.
+
+    ``segment_id`` is the ``id`` of the ``VADUserStartedSpeakingFrame`` that opened the VAD segment the audio came
+    from. pipecat hands that frame object unchanged down the pipeline, so ``NeMoTurnTakingService`` sees the same
+    ``id`` and drops evidence from a segment that has already ended. This matters because VAD frames are
+    SystemFrames and can overtake a ``DiarResultFrame`` that was pushed earlier. ``None`` means the producer is not
+    VAD-scoped, and the frame applies to the current utterance.
+    """
 
     diar_result: np.ndarray | int
     stream_id: str = "default"
+    segment_id: Optional[int] = None
 
 
 @dataclass

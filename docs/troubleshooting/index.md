@@ -317,6 +317,23 @@ data.
 `diar.enabled: false`. For more information, refer to
 [Diarization](../about/core-concepts/speech-pipeline/diarization.md).
 
+## Speaker tags are missing from some transcripts
+
+**Cause:** `NeMoTurnTakingService` tags a transcript only from speaker evidence in the same VAD segment. When
+no evidence has arrived by the time the transcript is emitted, the transcript stays untagged. This happens
+after a very short utterance, or when diarization inference runs slower than real time, for example on a CPU.
+Slow inference can also give a later transcript in the same VAD segment the previous speaker's tag.
+
+**Resolution:** Run diarization on a GPU. The diarizer runs on the `stt.device` device and ignores
+`diar.device`, so set `stt.device` to a CUDA device. Lowering `diar.threshold` also lets more chunks count as
+speaker evidence.
+
+To confirm the cause, search `bot_server.log` for `Speaker tag`. The turn-taking service logs one such line at
+the `DEBUG` level for each final transcript. The line shows the chosen speaker and the vote count for each
+speaker, for example `Speaker tag None from votes {}` for an untagged transcript. Each second of speech yields
+up to about 12.5 votes, so counts far below that rate mean that inference is not keeping up. For the tagging
+rules, refer to [Diarization](../about/core-concepts/speech-pipeline/diarization.md).
+
 ## Spelled-out confirmation codes are transcribed wrongly
 
 **Cause:** The shipped STT model, `nvidia/parakeet_realtime_eou_120m-v1`, mis-recognizes spelled-out

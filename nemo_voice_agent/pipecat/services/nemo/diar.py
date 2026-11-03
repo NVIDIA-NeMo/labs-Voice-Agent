@@ -15,7 +15,7 @@
 
 
 import asyncio
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, NamedTuple, Optional
 
 import numpy as np
 from loguru import logger
@@ -56,6 +56,21 @@ class NeMoDiarInputParams(BaseModel):
     # number of audio frames to buffer; 1 frame is 16ms,
     # streaming Sortformer was trained with 6*0.08=0.48s chunks
     buffer_size: Optional[int] = 30
+
+
+class _DiarJob(NamedTuple):
+    """One chunk of VAD-active audio, tagged with the VAD segment it was captured in."""
+
+    segment_id: Optional[int]
+    audio: bytes
+
+
+class _DiarResult(NamedTuple):
+    """Model output for one ``_DiarJob``. ``error`` is set instead of ``preds`` when inference failed."""
+
+    segment_id: Optional[int]
+    preds: Optional[np.ndarray] = None
+    error: Optional[Exception] = None
 
 
 class NemoDiarService(STTService):
@@ -104,6 +119,11 @@ class NemoDiarService(STTService):
         self._vad_user_speaking = False
         self._audio_buffer = []
         self._current_speaker_id = None
+        # ``id`` of the VADUserStartedSpeakingFrame that opened the current VAD segment. Every chunk and every
+        # DiarResultFrame carries it, so a result is never applied outside the segment its audio came from.
+        self._segment_id = None
+        self._worker_segment_id = None  # segment of the last chunk the model ran on; worker thread only
+        self._model_reset_pending = False
         self._processing_running = False
         self._has_generated_metrics = False
         if not self._use_vad:
@@ -183,28 +203,56 @@ class NemoDiarService(STTService):
             await self.cancel_task(self._response_task)
             self._response_task = None
 
+    def _is_current_segment(self, segment_id: Optional[int]) -> bool:
+        """Whether audio or a result from ``segment_id`` still belongs to the open VAD segment."""
+        return self._vad_user_speaking and segment_id == self._segment_id
+
     def _diarization_processor(self):
         """Background processor that handles diarization calls."""
         try:
             while self._processing_running:
+                job = None
                 try:
                     # Get audio from queue - blocking call that will be interrupted by cancellation
                     future = asyncio.run_coroutine_threadsafe(self._queue.get(), self.get_event_loop())
-                    audio = future.result()
+                    job = future.result()
 
-                    if audio is None:  # Stop signal
+                    if job is None:  # Stop signal
                         logger.debug("Received stop signal in background processor")
                         break
 
+                    if self._model_reset_pending:
+                        # reset() runs on the event loop; resetting here means it never lands mid-diarize().
+                        self._model_reset_pending = False
+                        self._model.reset_state()
+                        self._worker_segment_id = None
+
+                    if not self._is_current_segment(job.segment_id):
+                        # The segment has ended, so its result would be dropped anyway. Skipping the chunk keeps a
+                        # model slower than real time from carrying a backlog of old audio into the next turn.
+                        continue
+
+                    if job.segment_id != self._worker_segment_id:
+                        # First chunk of a new segment: keep the previous segment's audio out of this segment's
+                        # output window. The speaker cache is kept, so speaker ids stay stable across turns.
+                        self._model.reset_audio_context()
+                        self._worker_segment_id = job.segment_id
+
                     # Process diarization
-                    diar_result = self._model.diarize(audio)
+                    diar_result = self._model.diarize(job.audio)
                     # Send result back to async loop
-                    asyncio.run_coroutine_threadsafe(self._response_queue.put(diar_result), self.get_event_loop())
+                    asyncio.run_coroutine_threadsafe(
+                        self._response_queue.put(_DiarResult(job.segment_id, preds=diar_result)),
+                        self.get_event_loop(),
+                    )
 
                 except Exception as e:
                     logger.error(f"Error in background diarization processor: {e}")
                     # Send error back to async loop
-                    asyncio.run_coroutine_threadsafe(self._response_queue.put(("error", e)), self.get_event_loop())
+                    segment_id = job.segment_id if job is not None else None
+                    asyncio.run_coroutine_threadsafe(
+                        self._response_queue.put(_DiarResult(segment_id, error=e)), self.get_event_loop()
+                    )
 
         except Exception as e:
             logger.error(f"Background diarization processor fatal error: {e}")
@@ -224,17 +272,28 @@ class NemoDiarService(STTService):
         finally:
             self._processing_running = False
 
-    async def _handle_diarization_result(self, diar_result):
-        """Handle diarization result from background processing."""
+    async def _handle_diarization_result(self, diar_result, segment_id: Optional[int] = None):
+        """Handle diarization result from background processing.
+
+        Every 80 ms frame of new audio with a detected speaker becomes one ``DiarResultFrame``: turn-taking counts
+        them as votes for the utterance it is buffering, so a single late or noisy frame cannot relabel a whole
+        utterance.
+        """
         try:
             if diar_result is None:
                 return
-            dominant_speaker_id = self._get_dominant_speaker_id(diar_result)
-            # logger.debug(f"Dominant speaker ID: {dominant_speaker_id}")
-            if dominant_speaker_id is not None and dominant_speaker_id != self._current_speaker_id:
-                self._current_speaker_id = dominant_speaker_id
-                logger.debug(f"Pushing DiarResultFrame with speaker {dominant_speaker_id}")
-                await self.push_frame(DiarResultFrame(dominant_speaker_id, stream_id="default"))
+            if not self._is_current_segment(segment_id):
+                # Checked before anything else: the VAD segment this audio came from has ended, and its speaker
+                # must not be applied to whatever the user says next.
+                logger.debug(f"Dropping diarization result from ended VAD segment {segment_id}")
+                return
+            speaker_id = self._get_speaker_evidence(diar_result)
+            if speaker_id is None:
+                return
+            if speaker_id != self._current_speaker_id:
+                self._current_speaker_id = speaker_id
+                logger.debug(f"Diarization speaker changed to {speaker_id} in VAD segment {segment_id}")
+            await self.push_frame(DiarResultFrame(speaker_id, stream_id="default", segment_id=segment_id))
         except Exception as e:
             logger.error(f"Error handling diarization result: {e}")
             await self.push_frame(
@@ -255,19 +314,18 @@ class NemoDiarService(STTService):
                     await self.stop_processing_metrics()
                     self._has_generated_metrics = True  # prevent future metrics generation
 
-                    if isinstance(result, tuple) and result[0] == "error":
+                    if result.error is not None:
                         # Handle error from background processing
-                        error = result[1]
-                        logger.error(f"Error in NeMo Diarization processing: {error}")
+                        logger.error(f"Error in NeMo Diarization processing: {result.error}")
                         await self.push_frame(
                             ErrorFrame(
-                                str(error),
+                                str(result.error),
                                 time_now_iso8601(),
                             )
                         )
                     else:
                         # Handle successful diarization result
-                        await self._handle_diarization_result(result)
+                        await self._handle_diarization_result(result.preds, result.segment_id)
 
                 except Exception as e:
                     logger.error(f"Error in response task handler: {e}")
@@ -292,7 +350,7 @@ class NemoDiarService(STTService):
                 audio = b"".join(self._audio_buffer)
                 self._audio_buffer = []
                 # Queue audio for background processing
-                await self._queue.put(audio)
+                await self._queue.put(_DiarJob(self._segment_id, audio))
         yield None
 
     @traced_stt
@@ -343,50 +401,47 @@ class NemoDiarService(STTService):
             await self.push_frame(frame, direction)
             return
 
-        await super().process_frame(frame, direction)
+        # Update the segment state before the VAD frame is forwarded, so that no result from the previous segment
+        # can be pushed downstream after it.
         if isinstance(frame, VADUserStartedSpeakingFrame):
+            self._segment_id = frame.id
             self._vad_user_speaking = True
             self._audio_buffer = []
-            logger.debug("VADUserStartedSpeakingFrame received")
+            self._current_speaker_id = None
+            logger.debug(f"VADUserStartedSpeakingFrame received, VAD segment {self._segment_id} started")
         elif isinstance(frame, VADUserStoppedSpeakingFrame):
             self._vad_user_speaking = False
-            logger.debug("VADUserStoppedSpeakingFrame received")
-            self._current_speaker_id = None
             self._audio_buffer = []
+            self._current_speaker_id = None
+            logger.debug(f"VADUserStoppedSpeakingFrame received, VAD segment {self._segment_id} ended")
+        await super().process_frame(frame, direction)
 
     def reset(self):
-        """Reset the diarization service."""
+        """Reset the diarization service.
+
+        When VAD frames scope the audio, results still in flight are dropped. The model state is reset by the worker
+        thread before it runs the next chunk, so the reset never races a ``diarize()`` call that is already running.
+        """
+        self._segment_id = None
         self._current_speaker_id = None
         self._audio_buffer = []
-        self._vad_user_speaking = False
-        self._model.reset_state()
+        self._vad_user_speaking = not self._use_vad
+        self._model_reset_pending = True
         logger.debug("Diarization service reset complete")
 
-    def _get_dominant_speaker_id(self, spk_pred: np.ndarray):
-        spk_pred = (spk_pred > self._params.threshold).astype(int)
-        dominant_speaker_id = None
-        if spk_pred.sum() > 0:
-            # get the dominant speaker id
-            # Filter to only keep frames that have any speaker probability > 0.0
-            valid_frame_mask = spk_pred.sum(axis=1) > 0
+    def _get_speaker_evidence(self, spk_pred: np.ndarray) -> Optional[int]:
+        """Return the speaker heard in the newest frame of the model's output window, or ``None`` for silence.
 
-            # Filter diar_result to only keep valid frames
-            filtered_diar_result = spk_pred[valid_frame_mask]  # ndarray of shape [num_valid_frames, num_speakers]
-
-            # Get the primary speaker for each valid frame
-            primary_spk = np.argmax(filtered_diar_result, axis=1)  # ndarray of shape [num_valid_frames]
-            # logger.debug(f"Primary speaker for valid frames: {primary_spk}")
-
-            # count the number of different speakers in the primary speaker sequence
-            num_speakers = len(np.unique(primary_spk))
-            # logger.debug(f"Number of different speakers: {num_speakers}")
-
-            # If there are multiple speakers, get the dominant one
-            if num_speakers > 1:
-                # Count occurrences of each speaker
-                speaker_counts = np.bincount(primary_spk)
-                dominant_speaker_id = np.argmax(speaker_counts)
-            else:
-                # Only one speaker, return that speaker ID
-                dominant_speaker_id = primary_spk[0]
-        return dominant_speaker_id
+        Each result describes roughly the last 400 ms of audio, and consecutive results overlap by about 320 ms. A
+        majority over the whole window would count the same audio several times and keep voting into the silence
+        after speech. The newest frame covers audio that no earlier result reported, so each stretch of audio is
+        counted once.
+        """
+        spk_pred = np.asarray(spk_pred)
+        if spk_pred.size == 0:  # the model step failed and returned no frames
+            return None
+        newest = spk_pred[-1]
+        active = newest > self._params.threshold
+        if not active.any():
+            return None
+        return int(np.argmax(np.where(active, newest, -np.inf)))

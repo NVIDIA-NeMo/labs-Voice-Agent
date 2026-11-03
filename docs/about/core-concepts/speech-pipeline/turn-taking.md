@@ -30,7 +30,7 @@ and any other value raises an assertion that lists the two it accepts.
 
 | Value | What Ends the Turn | Choose It When |
 | --- | --- | --- |
-| `nemo` | `NeMoTurnTakingService` reads ASR `EOU` and `EOB` tokens alongside VAD frames and emits the user-turn frames itself. `build_turn_taking` returns the service, and the pipeline gains a turn-taking stage. | You run a local EOU-capable ASR model, or you want backchannel suppression, diarization-aware buffering, or early interruption through `max_buffer_size`. |
+| `nemo` | `NeMoTurnTakingService` reads ASR `EOU` and `EOB` tokens alongside VAD frames and emits the user-turn frames itself. `build_turn_taking` returns the service, and the pipeline gains a turn-taking stage. | You run a local EOU-capable ASR model, or you want backchannel suppression, speaker tags from diarization, or early interruption through `max_buffer_size`. |
 | `speech_timeout` | Pipecat's `VADUserTurnStartStrategy` and `SpeechTimeoutUserTurnStopStrategy` run inside the user aggregator. With `stt.type: nemo_speechlm` and a non-omni LLM, the stop strategy is the `SegmentedSTTUserTurnStopStrategy` subclass instead. Refer to Multi-Segment Turns. `build_turn_taking` returns `None`, so the pipeline has no turn-taking stage. | Your ASR model emits no `EOU` token, such as the hosted `nvidia` path, or you want plain silence-based endpointing. |
 
 The default is `nemo` when the key is absent. The boolean `turn_taking.enabled` key that earlier releases used
@@ -97,7 +97,7 @@ The following settings control turn finalization, backchannel filtering, and res
 | --- | --- | --- |
 | `turn_taking.type` | `nemo` when the key is absent | `nemo` or `speech_timeout`. Refer to Turn-Taking Modes. |
 | `turn_taking.backchannel_phrases_path` | `"./backchannel_phrases.yaml"` | YAML file path, inline list, or `null`. Refer to Backchannel Suppression. |
-| `turn_taking.max_buffer_size` | `2` | Number of completed words that can accumulate mid-utterance before the bot is interrupted and an interim transcript is pushed downstream. Lower interrupts sooner. |
+| `turn_taking.max_buffer_size` | `2` | Number of completed words that can accumulate mid-utterance before the bot is interrupted and an interim transcript is pushed downstream. Lower interrupts sooner. A speaker tag does not count as a word. |
 | `turn_taking.bot_stop_delay` | `0.5` | Seconds to keep treating the bot as "still speaking" after `BotStoppedSpeakingFrame`, covering audio still buffered on the client. `0` flips the flag immediately. |
 | `turn_taking.user_speech_timeout` | `0.6` | Seconds that `SpeechTimeoutUserTurnStopStrategy` waits after the VAD reports the end of speech, on top of `vad.stop_secs`. `ConfigManager` reads it for either type, but only `type: speech_timeout` applies it. |
 | `turn_taking.user_turn_stop_timeout` | `null` (off) | Seconds without speech or transcript activity before Pipecat's watchdog ends an open user turn early. `null` or `0` disables the watchdog. Applies to both types. Refer to User-Turn Watchdog. |
@@ -359,9 +359,16 @@ provide fast, deterministic barge-in for the bot-to-bot harness.
 
 ## Diarization Interaction
 
-When `diar.enabled` is true, `NeMoTurnTakingService` receives `DiarResultFrame` and prefixes the buffered
-utterance with a `<speaker_N>` tag, which is stripped again before backchannel matching. A buffer that
-contains only a speaker tag is never pushed downstream. For speaker attribution details, refer to
+When `diar.enabled` is true, `NeMoTurnTakingService` counts each `DiarResultFrame` as one vote for the
+utterance that it is buffering. It does not store a speaker tag in the text buffer. When it emits a final or
+interim transcript, it picks the tag from the votes for that utterance and prefixes the text, for example
+`<speaker_0> text`. When the current VAD segment has no speaker evidence, it emits the transcript without a
+tag. The service drops a `DiarResultFrame` from a VAD segment that has already ended, and it clears all
+speaker evidence when a VAD segment starts or stops.
+
+Because the buffer holds no tag, the tag does not count toward `max_buffer_size` and does not affect
+backchannel matching. An early interim transcript needs `max_buffer_size` completed words whether
+diarization is on or off. For the voting rules and the VAD segment boundaries, refer to
 [Diarization](diarization.md).
 
 ## Related Topics

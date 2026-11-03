@@ -139,7 +139,8 @@ same constants, so agents stay consistent between the server and eval runs.
 
 If diarization is on, add the speaker-tag handling from `simple_chatbot_diar.txt`. The transcript carries
 `speaker_0`-style tags in angle brackets. The model must use them for attribution without repeating them in
-its reply. Refer to [Diarization](../../about/core-concepts/speech-pipeline/diarization.md).
+its reply. Some user messages can arrive without a tag, so do not instruct the model to expect one on every
+message. Refer to [Diarization](../../about/core-concepts/speech-pipeline/diarization.md).
 
 ## The First Turn
 
