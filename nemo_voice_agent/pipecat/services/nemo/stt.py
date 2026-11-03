@@ -14,12 +14,17 @@
 # limitations under the License.
 
 import asyncio
+import base64
+import contextlib
+import io
 import os
+import wave
 from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 
 from loguru import logger
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+from openai import AsyncOpenAI
 from pipecat.frames.frames import (
     AudioRawFrame,
     CancelFrame,
@@ -34,14 +39,15 @@ from pipecat.frames.frames import (
 )
 from pipecat.processors.frame_processor import FrameDirection
 from pipecat.services.nvidia.stt import NvidiaSTTService
-from pipecat.services.stt_service import STTService
+from pipecat.services.settings import STTSettings
+from pipecat.services.stt_service import SegmentedSTTService, STTService
 from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
 from pydantic import BaseModel
 
+from nemo_voice_agent.pipecat.frames.frames import STTSegmentDoneFrame
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
 from nemo_voice_agent.pipecat.services.nemo.streaming_asr import NemoStreamingASRService
-from nemo_voice_agent.pipecat.services.riva_speech import NemotronASRService
 
 
 ASR_EOU_MODELS = ["nvidia/parakeet_realtime_eou_120m-v1"]
@@ -77,8 +83,8 @@ class NemoSTTService(STTService):
     def __init__(
         self,
         *,
-        model: Optional[str] = "nnvidia/parakeet_realtime_eou_120m-v1",
-        device: Optional[str] = "cuda:0",
+        model: Optional[str] = "nvidia/parakeet_realtime_eou_120m-v1",
+        device: Optional[str] = "cuda",
         sample_rate: Optional[int] = 16000,
         params: Optional[NeMoSTTInputParams] = None,
         has_turn_taking: Optional[bool] = None,  # if None, it will be set by the model name
@@ -86,12 +92,34 @@ class NemoSTTService(STTService):
         decoder_type: Optional[str] = "rnnt",
         audio_logger: Optional[AudioLogger] = None,
         ignore_eou_eob: Optional[bool] = False,
+        ttfs_p99_latency: Optional[float] = None,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        """Initialize the NeMo STT service.
+
+        Args:
+            ttfs_p99_latency: P99 seconds from end of speech to final transcript,
+                broadcast to downstream turn-stop strategies. Leave as None to
+                take pipecat's conservative fallback; set a value measured for
+                your deployment (model, device, VAD ``stop_secs``) to tighten
+                end-of-turn timing. We ship no default because the figure is
+                hardware-dependent and guessing it low would cut users off.
+                See https://github.com/pipecat-ai/stt-benchmark
+            (other args documented on the attributes they set)
+        """
+        # Resolve params before super().__init__ so the settings object can be
+        # fully populated. Pipecat >=1.0 validates at start() that every
+        # STTSettings field was initialized here and logs an error per field
+        # left as NOT_GIVEN.
+        params = params or NeMoSTTInputParams()
+        super().__init__(
+            settings=STTSettings(model=model, language=params.language),
+            ttfs_p99_latency=ttfs_p99_latency,
+            **kwargs,
+        )
         self._queue = asyncio.Queue()
         self._sample_rate = sample_rate
-        self._params = params or NeMoSTTInputParams()
+        self._params = params
         self._model_name = model
         self._ignore_eou_eob = ignore_eou_eob
         self._input_sample_rate = None
@@ -334,6 +362,22 @@ class NemoSTTService(STTService):
                     # otherwise, we use the is_final flag to determine the frame type
                     frame_type = TranscriptionFrame if is_final else InterimTranscriptionFrame
 
+                # ``finalized`` is pipecat's "STT has nothing more to send for this
+                # utterance" signal -- a stronger claim than the frame class, which only
+                # says the text will not be revised. ``SpeechTimeoutUserTurnStopStrategy``
+                # uses it to cancel its stt_timeout safety net, and ``STTService.push_frame``
+                # uses it to report TTFB immediately instead of on a timeout.
+                #
+                # Only ``TranscriptionFrame`` carries the field -- ``InterimTranscriptionFrame``
+                # has no such attribute, so passing it there is a TypeError.
+                #
+                # Safe to derive from ``is_final`` because this service emits exactly one
+                # ``is_final=True`` per utterance: ``NemoStreamingASRService`` sets it only
+                # when an EOU/EOB token appears in the decoded text, then resets stream state
+                # (streaming_asr.py). Under ``ignore_eou_eob`` those tokens are stripped
+                # before that check, so ``is_final`` stays False and this branch never runs.
+                extra = {"finalized": is_final} if frame_type is TranscriptionFrame else {}
+
                 # Yield the frame instead of pushing it to avoid blocking
                 yield frame_type(
                     transcription,
@@ -341,6 +385,7 @@ class NemoSTTService(STTService):
                     time_now_iso8601(),
                     language,
                     result={"text": transcription},
+                    **extra,
                 )
 
         except Exception as e:
@@ -389,162 +434,247 @@ class NemoSTTService(STTService):
         await super().process_frame(frame, direction)
 
 
-class ResilientNvidiaSTTService(NvidiaSTTService):
-    """``NvidiaSTTService`` with auto-recovery from transient streaming errors.
+class NemoSpeechLMSTTService(SegmentedSTTService):
+    """NeMo Offline Speech-to-Text service for Pipecat integration."""
 
-    **Problem.** The Riva streaming ASR endpoint (NVCF-hosted
-    ``parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer`` and similar
-    sequence models) periodically fails mid-stream with one of two distinct
-    error classes that the upstream ``NvidiaSTTService`` doesn't recover from:
+    #: Floor for the duration-derived budget, so a sub-second "yes" is never clipped.
+    #: Does not raise an explicitly configured ``max_tokens`` below this value — the
+    #: effective budget is always ``min(configured, max(MIN_TOKEN_BUDGET, derived))``.
+    MIN_TOKEN_BUDGET = 16
 
-    1. **Sequence-state error** (``StatusCode.INVALID_ARGUMENT``)::
+    DEFAULT_USER_PROMPT = """Produce a verbatim transcript of the audio. Preserve named entities, abbreviations, 
+numbers, dates, measurements, acronyms, and technical terms as clearly as possible. Keep the same language as 
+spoken and do not translate. Omit accidental repetitions."""
 
-           "inference request for sequence X to model '...' must specify the
-            START flag on the first request of the sequence"
-
-       Occurs when the NVCF backend GCs an idle session (observed during long
-       agent LLM-thinking turns of 60-145s in tau2 scenarios) and the next
-       audio chunk arrives without a fresh START flag.
-
-    2. **Transient gRPC stream resets** (``StatusCode.INTERNAL``,
-       ``UNAVAILABLE``, ``DEADLINE_EXCEEDED``) — most commonly
-       ``RST_STREAM with error code 2`` (HTTP/2 ``INTERNAL_ERROR``), which
-       fires when the cloud-side endpoint abruptly closes the bidirectional
-       stream (pod restart, load-balancer reset, server-side timeout).
-
-    Both classes are recoverable by **opening a fresh streaming session**,
-    which is what ``streaming_response_generator(...)`` does on each call.
-
-    **Fix.** Override ``_thread_task_handler`` with a bounded retry loop
-    around ``_response_handler``. The retry policy is conservative:
-
-    - ``INVALID_ARGUMENT`` is retried only when the message matches
-      ``SEQUENCE_ERROR_FRAGMENT`` — we don't want to retry every
-      client-validation error (malformed audio, bad config, etc.).
-    - ``INTERNAL`` / ``UNAVAILABLE`` / ``DEADLINE_EXCEEDED`` are always retried
-      (within budget) — these are the canonical "transient cloud" status codes.
-    - Everything else propagates immediately (auth, permission, not_found,
-      pipeline-cancel) so real configuration issues fail fast.
-
-    ``self._thread_running`` stays ``True`` across retries so ``__next__``
-    continues to feed audio chunks from ``self._queue``; only explicit
-    ``cancel_task`` sets it to ``False`` (in the ``CancelledError`` branch).
-    Audio chunks already in flight when the stream errored may be lost, but the
-    next user utterance will be transcribed cleanly.
-
-    Borrows the "opening new streaming-ASR session" log line from
-    ``NemotronASRService._response_handler`` (in
-    ``nemo_voice_agent/pipecat/services/riva_speech.py``) so each retry is
-    visible in ``bot_logs_agent/``.
-    """
-
-    # Exact substring match for the sequence-state error. The full gRPC error
-    # message includes a server-generated sequence_id, so we can't match the
-    # whole thing — this fragment is the stable identifier.
-    SEQUENCE_ERROR_FRAGMENT = "must specify the START flag on the first request"
-
-    # gRPC ``StatusCode`` names treated as transient, retryable failures.
-    # Stored as strings (not enum values) so we don't need a hard import on
-    # ``grpc`` at class-definition time — duck-typed lookup via
-    # ``exc.code().name`` works against any grpc.RpcError subclass.
-    _RETRYABLE_GRPC_STATUS_NAMES = frozenset(
-        [
-            "INTERNAL",  # RST_STREAM with INTERNAL_ERROR — cloud pod restart / abrupt close
-            "UNAVAILABLE",  # transient endpoint unavailability
-            "DEADLINE_EXCEEDED",  # long-stream timeout
-        ]
-    )
-
-    MAX_RETRIES = 5
-
-    def _is_retryable_error(self, exc: BaseException) -> bool:
-        """Decide whether ``exc`` warrants restarting the streaming session.
-
-        Two retryable classes:
-
-        1. **Sequence-state errors** (Triton's "must specify START flag" message)
-           — match the canonical substring regardless of the wrapping exception
-           type so the rule works for both ``grpc.RpcError`` and plain
-           ``RuntimeError`` (the latter used in unit tests).
-
-        2. **Transient gRPC status codes** (``INTERNAL`` / ``UNAVAILABLE`` /
-           ``DEADLINE_EXCEEDED``) — duck-typed lookup via ``exc.code().name``
-           so we don't take a hard import on ``grpc`` at module level. Any
-           exception that exposes a ``code()`` method returning an object with
-           a ``name`` attribute matching the set qualifies.
-
-        Everything else returns ``False`` — propagate immediately.
+    def __init__(
+        self,
+        *,
+        model: str,
+        language: Optional[str] = "en-US",
+        api_key: Optional[str] = None,
+        api_key_env_var: Optional[str] = None,
+        base_url: str = "http://localhost:8000/v1",
+        sample_rate: int = 16000,
+        generation_kwargs: Optional[dict] = None,
+        max_tokens_per_sec: Optional[float] = None,
+        system_prompt: Optional[str] = "You are a helpful assistant. /no_think",
+        user_prompt: Optional[str] = None,
+        ttfs_p99_latency: Optional[float] = None,
+        **kwargs,
+    ):
         """
-        if self.SEQUENCE_ERROR_FRAGMENT in str(exc):
-            return True
+        Args:
+            model: The model to use for speech-to-text.
+            language: The language to use for the service.
+            api_key: The API key to use for the service.
+            api_key_env_var: The environment variable to use for the API key.
+            base_url: The base URL to use for the service.
+            sample_rate: The sample rate to use for the service.
+            generation_kwargs: The generation kwargs to use for the service. For example, {max_tokens: 256, temperature: 0.0, top_p: 1.0, chat_template_kwargs: {"enable_thinking": false}}.
+            max_tokens_per_sec: Duration-proportional ceiling on the decode budget. When set,
+                each request sends ``min(generation_kwargs["max_tokens"], duration * rate)``
+                instead of the flat configured value, floored at
+                :attr:`MIN_TOKEN_BUDGET` so short utterances keep a usable budget.
+                ``None`` (default) keeps the flat value and changes nothing.
+
+                Note the qualifier: this is a ceiling *relative to a configured*
+                ``max_tokens``. When ``generation_kwargs`` omits ``max_tokens``, the
+                derived bound is sent on its own, which replaces — and may exceed — the
+                server's own default budget.
+
+                This guards the repetition-hallucination failure mode: a SpeechLM can
+                decode thousands of tokens of fabricated prose from a few seconds of
+                audio, and a flat ``max_tokens`` cannot tell that apart from a genuinely
+                long utterance. A duration-proportional bound can. Observed in practice:
+                two 40-word utterances that decoded into 9,370 and 9,252 words.
+
+                Sizing: English runs roughly 2.5 words/s, and tokens outnumber words by
+                about 1.3x, so real speech needs ~3-4 tokens/s. A value of 20-25 leaves a
+                5-8x margin over natural speech while cutting a 10s hallucination from
+                thousands of tokens to a few hundred.
+            system_prompt: The system prompt to use for the service. Either the prompt text
+                itself or a path to a file containing it, following the same path-or-literal
+                rule as ``llm.system_prompt``.
+            user_prompt: The user prompt to use for the service. Path-or-literal, as above.
+            ttfs_p99_latency: ttfs_p99_latency: P99 seconds from end of speech to final transcript,
+                broadcast to downstream turn-stop strategies. Leave as None to
+                take pipecat's conservative fallback; set a value measured for
+                your deployment (model, device, VAD ``stop_secs``) to tighten
+                end-of-turn timing. We ship no default because the figure is
+                hardware-dependent and guessing it low would cut users off.
+                See https://github.com/pipecat-ai/stt-benchmark
+            (other args documented on the attributes they set)
+        """
+        super().__init__(
+            settings=STTSettings(
+                model=model,
+                language=language,
+            ),
+            sample_rate=sample_rate,
+            language=language,
+            ttfs_p99_latency=ttfs_p99_latency,
+            **kwargs,
+        )
+        self._api_key = api_key
+        self._base_url = base_url
+        if api_key_env_var is not None and api_key is None:
+            self._api_key = os.getenv(api_key_env_var)
+        # The model reasons by default and answers the prompt as a chatbot instead of
+        # transcribing. The "/no_think" in the system prompt does not suppress that; only
+        # this chat template flag does. Callers passing their own chat_template_kwargs
+        # replace it wholesale and take responsibility for the flag themselves.
+        self._generation_kwargs = {
+            "chat_template_kwargs": {"enable_thinking": False},
+            **(generation_kwargs or {}),
+        }
+        self._max_tokens_per_sec = max_tokens_per_sec
+        # Resolve here rather than in the config factory so programmatic callers get the
+        # same path-or-literal behaviour, and so ``reset_user_prompt`` restores the resolved
+        # text rather than the path.
+        #
+        # Imported inside the constructor, not at module scope: ``nemo_voice_agent.utils``
+        # eagerly imports ``ConfigManager``, which imports ``NeMoSTTInputParams`` from this
+        # module. A top-level import would close that cycle. Deferring keeps one shared
+        # implementation of the path-or-literal rule instead of forking a second copy here.
+        from nemo_voice_agent.utils.misc import resolve_prompt
+
+        system_prompt = resolve_prompt(system_prompt)
+        user_prompt = resolve_prompt(user_prompt)
+        self._original_user_prompt = user_prompt
+        self._system_prompt = system_prompt
+        self._user_prompt = user_prompt if user_prompt else self.DEFAULT_USER_PROMPT
+        self._model_name = model
+        self._client = AsyncOpenAI(api_key=self._api_key or "None", base_url=self._base_url)
+
+    def can_generate_metrics(self) -> bool:
+        """
+        Set to True to enable metrics generation.
+        """
+        return True
+
+    def set_user_prompt(self, user_prompt: str, append_to_original: bool = False):
+        """Update the user prompt.
+        Args:
+            user_prompt: The user prompt to set.
+            append_to_original: Whether to append the new user prompt to the original user prompt.
+              If False, the new user prompt will replace the original user prompt.
+        """
+        if append_to_original:
+            self._user_prompt = self._original_user_prompt + "\n" + user_prompt
+        else:
+            self._user_prompt = user_prompt
+        logger.info(f"Updating user prompt to: `{self._user_prompt}`")
+
+    def reset_user_prompt(self):
+        """Reset the user prompt to the original."""
+        self._user_prompt = self._original_user_prompt
+        logger.info(f"Resetting user prompt to the original: `{self._original_user_prompt}`")
+
+    def reset(self):
+        """Reset the service."""
+        self.reset_user_prompt()
+        logger.info("Resetting NemoSpeechLMSTTService")
+
+    @staticmethod
+    def _audio_duration_seconds(audio: bytes) -> Optional[float]:
+        """Seconds of speech in a WAV segment, or ``None`` if it cannot be parsed.
+
+        ``SegmentedSTTService`` hands us a complete WAV (16-bit mono at the service
+        sample rate), so the frame count is authoritative — more so than deriving it
+        from ``len(audio)``, which would have to assume the header size.
+        """
         try:
-            status_name = exc.code().name  # type: ignore[attr-defined]
-        except (AttributeError, TypeError):
-            return False
-        return status_name in self._RETRYABLE_GRPC_STATUS_NAMES
+            with contextlib.closing(wave.open(io.BytesIO(audio), "rb")) as wav:
+                rate = wav.getframerate()
+                return wav.getnframes() / float(rate) if rate else None
+        except (wave.Error, EOFError, ValueError):
+            return None
 
-    def _response_handler(self):
-        """Mirror upstream behavior with an extra debug log at start of stream.
+    def _generation_kwargs_for(self, audio: bytes) -> dict:
+        """Per-request generation kwargs, with the duration-proportional cap applied.
 
-        The base class's ``_response_handler`` opens the gRPC streaming generator
-        and pushes responses into ``self._response_queue``. Adding the log line
-        makes session restarts (driven by ``_thread_task_handler`` below) visible
-        in the bot log without having to subclass everything.
+        Returns the shared dict unchanged when ``max_tokens_per_sec`` is unset or the
+        cap does not bite, so the common path allocates nothing. Never mutates
+        ``self._generation_kwargs`` — it is shared across concurrent requests.
         """
-        logger.debug(f"{self}: opening new streaming-ASR session")
-        super()._response_handler()
+        if self._max_tokens_per_sec is None:
+            return self._generation_kwargs
+        duration = self._audio_duration_seconds(audio)
+        if duration is None:
+            # Unparseable segment: fall back to the flat budget rather than guess a
+            # cap from a length we cannot trust.
+            return self._generation_kwargs
+        derived = max(self.MIN_TOKEN_BUDGET, int(duration * self._max_tokens_per_sec))
+        configured = self._generation_kwargs.get("max_tokens")
+        capped = derived if configured is None else min(configured, derived)
+        if capped == configured:
+            return self._generation_kwargs
+        logger.debug(
+            f"max_tokens {configured if configured is not None else '<server default>'} -> {capped} "
+            f"for {duration:.2f}s of audio (max_tokens_per_sec={self._max_tokens_per_sec})"
+        )
+        return {**self._generation_kwargs, "max_tokens": capped}
 
-    async def _thread_task_handler(self):
-        """Retry the streaming session on transient errors.
-
-        Loops up to ``MAX_RETRIES`` times. Each iteration:
-          - Runs ``_response_handler`` in a worker thread (same as upstream).
-          - On clean return (server closed the stream), exits normally.
-          - On a retryable exception (see ``_is_retryable_error``), logs a
-            warning and re-enters the loop — the next
-            ``streaming_response_generator`` call opens a fresh gRPC stream.
-          - On any other exception, propagates immediately so configuration
-            errors fail fast.
-
-        ``self._thread_running`` stays ``True`` across retries so ``__next__``
-        continues to feed audio chunks; only explicit ``cancel_task`` sets it
-        to ``False`` (in the ``CancelledError`` branch below).
-        """
-        attempts = 0
+    async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame, None]:
+        """Process audio data and generate transcription frames."""
         try:
-            self._thread_running = True
-            while True:
-                try:
-                    await asyncio.to_thread(self._response_handler)
-                    return  # Stream ended cleanly.
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    if self._is_retryable_error(e) and attempts < self.MAX_RETRIES:
-                        attempts += 1
-                        logger.warning(
-                            f"{self}: transient STT streaming error "
-                            f"(retry {attempts}/{self.MAX_RETRIES}); "
-                            f"restarting streaming session. Error: {str(e)[:300]}"
-                        )
-                        # Fall through to next loop iteration — the next call
-                        # to streaming_response_generator opens a fresh stream.
-                        continue
-                    logger.error(
-                        f"{self}: STT thread giving up after {attempts} retries "
-                        f"(non-retryable error or budget exhausted); will not "
-                        f"transcribe further. Error: {e!r}"
-                    )
-                    raise
-        except asyncio.CancelledError:
-            self._thread_running = False
-            raise
+            await self.start_processing_metrics()
+            t0 = asyncio.get_event_loop().time()
+
+            # `wants_wav_segments` is left at its default, so the segment already carries a
+            # WAV header and can go inline as a data URL. The server also accepts file://
+            # URLs, but those require the audio to exist on the server's filesystem.
+            audio_url = f"data:audio/wav;base64,{base64.b64encode(audio).decode('ascii')}"
+            messages = []
+            if self._system_prompt:
+                messages.append({"role": "system", "content": self._system_prompt})
+            messages.append(
+                {
+                    "role": "user",
+                    # The audio part must come before the text prompt.
+                    "content": [
+                        {"type": "audio_url", "audio_url": {"url": audio_url}},
+                        {"type": "text", "text": self._user_prompt},
+                    ],
+                }
+            )
+
+            # Everything goes through extra_body so vLLM-only keys such as
+            # chat_template_kwargs reach the server untouched alongside the sampling params.
+            response = await self._client.chat.completions.create(
+                model=self._model_name,
+                messages=messages,
+                extra_body=self._generation_kwargs_for(audio),
+            )
+            t1 = asyncio.get_event_loop().time()
+            logger.debug(f"SALM inference time: {t1 - t0} seconds")
+            await self.stop_processing_metrics()
+
+            text = (response.choices[0].message.content or "").strip()
+            if text:
+                logger.debug(f"Transcription: [{text}]")
+                yield TranscriptionFrame(
+                    text,
+                    self._user_id,
+                    time_now_iso8601(),
+                    result=response,
+                )
+            else:
+                logger.warning("Received empty transcription from SALM server")
+
+        except Exception as e:
+            logger.error(f"Error in NeMo offline SALM STT processing: {e}")
+            yield ErrorFrame(error=str(e), exception=e)
+
+        # Sent for every segment, including an empty or failed one, so the user-turn stop strategy can tell when
+        # the turn's last segment is done instead of waiting for a transcript that will never come.
+        yield STTSegmentDoneFrame()
 
 
 def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[AudioLogger] = None) -> STTService:
     """Get the STT service from the config."""
     backend = config.type
-    available_backends = ["nemo", "nvidia", "nemotron"]
+    available_backends = ["nemo", "nemo_speechlm", "nvidia"]
     assert backend in available_backends, f"Invalid STT backend: {backend}, only {available_backends} are supported"
 
     if backend == "nemo":
@@ -569,34 +699,50 @@ def get_stt_service_from_config(config: DictConfig, audio_logger: Optional[Audio
             decoder_type="rnnt",
             audio_logger=audio_logger,
             ignore_eou_eob=config.get("ignore_eou_eob", False),
+            ttfs_p99_latency=config.get("ttfs_p99_latency", None),
+        )
+    elif backend == "nemo_speechlm":
+        # Served by an external vLLM SpeechLM endpoint, so there is no local model to load
+        # and no device to pick. `model` must match the server's --served-model-name.
+        kwargs = {}
+        for key in (
+            "api_key",
+            "api_key_env_var",
+            "generation_kwargs",
+            "max_tokens_per_sec",
+            "system_prompt",
+            "user_prompt",
+        ):
+            if key in config:
+                kwargs[key] = config[key]
+        if "generation_kwargs" in kwargs:
+            kwargs["generation_kwargs"] = OmegaConf.to_container(kwargs["generation_kwargs"], resolve=True)
+        return NemoSpeechLMSTTService(
+            model=config.model,
+            base_url=config.get("base_url", "http://localhost:8000/v1"),
+            sample_rate=config.get("sample_rate", 16000),
+            audio_passthrough=True,
+            **kwargs,
         )
     elif backend == "nvidia":
         api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
-        model_name = config.get("model", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer")
-        function_id = config.get("function_id", "1598d209-5e27-4d3c-8079-4751568b1081")
+        # `model` and `function_id` are a matched pair — the function id addresses one
+        # specific NVCF deployment of that model, so overriding one without the other
+        # in YAML yields a mismatched request. Keep them in sync when changing either.
+        model_name = config.get("model", "nemotron-asr-streaming")
+        function_id = config.get("function_id", "bb0837de-8c7b-481f-9ec8-ef5663e9c1fa")
         language = config.get("language", "en-US")
-        # ResilientNvidiaSTTService is a drop-in subclass that auto-recovers
-        # from Triton "must specify START flag" sequence-state errors. See
-        # the class docstring for the rationale.
-        return ResilientNvidiaSTTService(
+        # Upstream NvidiaSTTService handles transient gRPC stream drops itself
+        # since pipecat 1.0 (``_handle_stream_drop`` -> ``_request_reconnect``),
+        # including the Triton "must specify START flag" sequence-state error
+        # that used to need a local retry subclass. Its reconnect is also
+        # turn-aware: it defers until the user stops speaking.
+        return NvidiaSTTService(
             api_key=api_key,
             server=config.get("server", "grpc.nvcf.nvidia.com:443"),
             model_function_map={"function_id": function_id, "model_name": model_name},
             language=language,
             sample_rate=config.get("sample_rate", 16000),
-        )
-    elif backend == "nemotron":
-        api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
-        model_name = config.get("model", "parakeet-1.1b-en-US-asr-streaming-silero-vad-sortformer")
-        function_id = config.get("function_id", "1598d209-5e27-4d3c-8079-4751568b1081")
-        language = config.get("language", "en-US")
-        return NemotronASRService(
-            api_key=api_key,
-            server=config.get("server", "grpc.nvcf.nvidia.com:443"),
-            model_function_map={"function_id": function_id, "model_name": model_name},
-            language=language,
-            sample_rate=config.get("sample_rate", 16000),
-            generate_interruptions=config.get("generate_interruptions", False),
         )
     else:
         raise ValueError(f"Invalid ASR backend: {backend}")

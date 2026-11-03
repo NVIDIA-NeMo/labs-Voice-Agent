@@ -8,7 +8,7 @@ The docs content lives in `../`. The nightly navigation is defined in `versions/
 
 | What | Where |
 |---|---|
-| Published site | https://docs.nvidia.com/nemo/voice-agent |
+| Published site | https://docs.nvidia.com/nemo/labs-voice-agent |
 | Fern dashboard | https://dashboard.buildwithfern.com |
 | Fern config | `docs.yml` |
 | Nightly navigation | `versions/nightly.yml` |
@@ -44,6 +44,9 @@ npm run check
 
 For a private checkout, use the local path-backed API reference generator:
 
+First, temporarily uncomment the `nemo-voice-agent-local` library block in
+`docs.yml`, then run:
+
 ```bash
 npm run generate:library:local
 ```
@@ -60,7 +63,7 @@ from `docs.yml`:
     input:
       path: ../../nemo_voice_agent
     output:
-      path: ./product-docs/nemo-voice-agent/Full-Library-Reference
+      path: ./product-docs/nemo-labs-voice-agent/Full-Library-Reference
     lang: python
 ```
 
@@ -86,7 +89,7 @@ npm run generate:library
 ```
 
 This requires Fern's remote parser to clone
-`https://github.com/NVIDIA-NeMo/Voice-Agent`, so it fails while the repository is
+`https://github.com/NVIDIA-NeMo/labs-Voice-Agent`, so it fails while the repository is
 private unless Fern has GitHub access.
 
 ## Hosted Preview
@@ -98,7 +101,9 @@ export FERN_TOKEN="$DOCS_FERN_TOKEN"
 npm run preview
 ```
 
-GitHub Actions also creates preview links when `PUBLISH_FERN_PREVIEWS=true` is set for the repository or organization.
+GitHub Actions creates preview links and publishes docs from `main` when
+`PUBLISH_FERN=true` is set for the repository or organization. Release events
+also publish and register versioned documentation.
 
 ## Troubleshooting
 

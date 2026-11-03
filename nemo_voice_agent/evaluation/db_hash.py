@@ -22,7 +22,7 @@
 """Utilities for computing hashes and structured diffs of scenario DB states.
 
 Used by the eva-style "DB-state hash matching" scoring mode (see
-``evaluation/README.md`` "eva_airline domain notes"): hash the post-run DB and
+``docs/evaluate/domain-guides/eva-airline.md``): hash the post-run DB and
 the expected DB; if they differ, ``compute_db_diff`` produces a tables →
 records → fields diff for human debugging.
 

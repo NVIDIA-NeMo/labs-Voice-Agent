@@ -13,8 +13,183 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#
+# GENERATED FILE — DO NOT EDIT BY HAND.
+# Source: docs/fern/nav.json   Generator: docs/fern/scripts/gen-nav.mjs
+# Regenerate: npm --prefix docs/fern run nav:gen
+#
+# Frozen-release navigation (paths relative to docs/; rewritten by the release sed).
+#
+
 navigation:
-  - section: Getting Started
+  - section: About
     contents:
       - page: Overview
-        path: index.md
+        path: about/overview.md
+      - page: Architecture
+        path: about/architecture.md
+      - page: Release Notes
+        path: about/release-notes.md
+      - section: Core Concepts
+        contents:
+          - section: Speech Pipeline
+            contents:
+              - page: Overview
+                path: about/core-concepts/speech-pipeline/overview.md
+              - page: Speech Recognition
+                path: about/core-concepts/speech-pipeline/asr.md
+              - page: Speaker Diarization
+                path: about/core-concepts/speech-pipeline/diarization.md
+              - page: Text to Speech
+                path: about/core-concepts/speech-pipeline/tts.md
+              - page: Turn Taking & Backchannels
+                path: about/core-concepts/speech-pipeline/turn-taking.md
+          - section: Language Models
+            contents:
+              - page: Overview
+                path: about/core-concepts/language-models/overview.md
+              - page: LLM Backends
+                path: about/core-concepts/language-models/llm.md
+              - page: Reasoning Mode
+                path: about/core-concepts/language-models/reasoning.md
+              - page: Multimodal / Omni
+                path: about/core-concepts/language-models/multimodal.md
+  - section: Get Started
+    contents:
+      - page: Choose Your Path
+        path: get-started/choose-your-path.md
+      - page: Prerequisites
+        path: get-started/prerequisites.md
+      - page: Installation
+        path: get-started/installation.md
+      - page: Quickstart
+        path: get-started/quickstart.md
+  - section: Build Voice Agents
+    contents:
+      - page: Overview
+        path: build-voice-agents/index.md
+      - section: Configure
+        contents:
+          - page: Overview
+            path: build-voice-agents/configure/index.md
+          - page: Server Config
+            path: build-voice-agents/configure/server-config.md
+          - page: Model Registry
+            path: build-voice-agents/configure/model-registry.md
+          - page: System Prompts
+            path: build-voice-agents/configure/prompts.md
+          - page: Audio Capture & Logging
+            path: build-voice-agents/configure/audio-logging.md
+      - section: Model Serving
+        contents:
+          - page: Serving with vLLM
+            path: build-voice-agents/model-serving/vllm.md
+          - page: vLLM Plugins
+            path: build-voice-agents/model-serving/vllm-plugins.md
+          - page: NVIDIA NIM & Riva
+            path: build-voice-agents/model-serving/nvidia-nim.md
+      - section: Tools
+        contents:
+          - page: Tool Calling
+            path: build-voice-agents/tools/tool-calling.md
+          - page: Writing Your Own Tools
+            path: build-voice-agents/tools/custom-tools.md
+      - section: Extend
+        contents:
+          - page: Overview
+            path: build-voice-agents/extend/index.md
+          - section: Pipelines
+            contents:
+              - page: The Builder API
+                path: build-voice-agents/extend/pipelines/builders.md
+              - page: Custom Frame Processors
+                path: build-voice-agents/extend/pipelines/custom-processor.md
+              - page: Building Your Own Pipeline
+                path: build-voice-agents/extend/pipelines/custom-pipeline.md
+          - section: Protocols
+            contents:
+              - page: RTVI Control Plane
+                path: build-voice-agents/extend/protocols/rtvi-actions.md
+              - page: Client Protocol
+                path: build-voice-agents/extend/protocols/client-protocol.md
+  - section: Evaluate Voice Agents
+    contents:
+      - page: Overview
+        path: evaluate/index.md
+      - section: Run Evaluations
+        contents:
+          - page: Quickstart
+            path: evaluate/run-evaluations/quickstart.md
+          - page: Reading Results
+            path: evaluate/run-evaluations/results.md
+          - page: Resuming & Long Runs
+            path: evaluate/run-evaluations/resume.md
+          - page: Evaluating an External Agent
+            path: evaluate/run-evaluations/external-agents.md
+      - section: Understand Scoring
+        contents:
+          - page: Benchmarks & Domains
+            path: evaluate/understand-scoring/benchmarks.md
+          - page: Scoring Model
+            path: evaluate/understand-scoring/scoring.md
+      - section: Create Evaluations
+        contents:
+          - page: Authoring Scenarios
+            path: evaluate/create-evaluations/authoring-scenarios.md
+          - page: Authoring Tools
+            path: evaluate/create-evaluations/authoring-tools.md
+          - page: Adding a Domain
+            path: evaluate/create-evaluations/authoring-domains.md
+      - section: Domain Guides
+        contents:
+          - page: Fixture Data & Provenance
+            path: evaluate/domain-guides/data-provenance.md
+          - page: eva_airline
+            path: evaluate/domain-guides/eva-airline.md
+          - page: tau2_airline
+            path: evaluate/domain-guides/tau2-airline.md
+          - page: tau2_retail
+            path: evaluate/domain-guides/tau2-retail.md
+          - page: tau2_telecom
+            path: evaluate/domain-guides/tau2-telecom.md
+  - section: Reference
+    slug: reference
+    contents:
+      - section: Runtime
+        contents:
+          - page: Server Config Schema
+            path: reference/runtime/config-schema.md
+          - page: Environment Variables
+            path: reference/runtime/environment.md
+          - page: RTVI Message Reference
+            path: reference/runtime/rtvi-messages.md
+      - section: Evaluation
+        contents:
+          - page: Evaluation CLI
+            path: reference/evaluation/eval-cli.md
+          - page: Metrics Dictionary
+            path: reference/evaluation/metrics.md
+      # Generated Python API reference. Path is relative to
+      # docs/fern/versions/ in BOTH files — the release sed rewrites
+      # only "path: ", never "folder: ".
+      - folder: ../product-docs/nemo-labs-voice-agent/Full-Library-Reference
+  - section: Troubleshooting
+    contents:
+      - page: Troubleshooting
+        path: troubleshooting/index.md
+  - section: Resources
+    contents:
+      - page: Third-Party Notices
+        path: resources/third-party-notices.md
+      - section: Contribute
+        contents:
+          - page: Contributing
+            path: resources/contribute/index.md
+          - page: Testing
+            path: resources/contribute/testing.md
+          - page: Building the Docs
+            path: resources/contribute/docs-site.md
+          - page: Regenerating Benchmark Data
+            path: resources/contribute/data-import.md
+          - page: Security Policy
+            path: resources/contribute/security.md

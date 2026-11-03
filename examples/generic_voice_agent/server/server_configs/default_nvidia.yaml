@@ -1,0 +1,92 @@
+# This is an example config for setting up a NeMo Voice Agent server using NVIDIA NIM Services.
+# Please set NVIDIA_API_KEY in your environment.
+
+server:
+  log_file: "bot_server.log"
+  log_level: "DEBUG"
+  use_model_registry: true
+  talk_first: true  
+
+transport:
+  audio_out_10ms_chunks: 8
+  record_audio_data: false
+  audio_log_dir: "./audio_logs"
+
+vad:
+  type: silero
+  confidence: 0.6  # VAD threshold for detecting speech versus non-speech
+  start_secs: 0.1  # min amount of speech to trigger UserStartSpeaking
+  stop_secs: 0.2  # min amount of silence to trigger VADUserStoppedSpeakingFrame, set to 0.2 if turn_taking.type is speech_timeout
+  min_volume: 0.2  # Microphone volumn threshold for VAD
+
+turn_taking:
+  type: speech_timeout  # choices in ['nemo', 'speech_timeout'], `speech_timeout` lets VAD handle the user start and stop speaking
+  user_speech_timeout: 0.6  # extra silence waited after vad.stop_secs before the user turn ends, so the two add up into the end-of-turn latency
+  # the keys below are only used when type is `nemo`
+  backchannel_phrases_path: "./backchannel_phrases.yaml"  # set it to the actual path of the file, or specify a list of backchannel phrases here
+  max_buffer_size: 2  # num of words more than this amount will interrupt the LLM immediately if not backchannel phrases
+  bot_stop_delay: 0.5  # a delay in seconds allowed between server and client audio output, so that the BotStopSpeaking signal is handled not too far away from the actual time that the user hears all audio output
+
+stt:
+  type: nvidia
+  language: "en-US"
+  # model: "parakeet-1.1b-rnnt-multilingual-asr"
+  # function_id: "71203149-d3b7-4460-8231-1be2543a1fca"
+  model: "nemotron-asr-streaming"
+  function_id: "bb0837de-8c7b-481f-9ec8-ef5663e9c1fa"
+
+diar:
+  enabled: false # set to false to disable local diarization model while NIM is not available yet
+  type: nemo
+  model: "nvidia/diar_streaming_sortformer_4spk-v2.1"
+  device: "cuda"
+  threshold: 0.5  # threshold value used to determine if a speaker exists or not, setting it to a lower value will increaset the sensitivity of the model
+  frame_len_in_secs: 0.08  # default for Sortformer, do not change unless using other architechtures
+
+llm:
+  type: nvidia
+  base_url: "https://integrate.api.nvidia.com/v1"
+  model: "nvidia/nemotron-3.5-lightning-30b-a3b"
+  system_prompt: "You are a helpful AI agent named Lisa. Start by greeting the user with 'Hi, I'm Lisa, your helpful AI assistant. How can I help you today?'."
+  system_role: "system"  # role for system prompt, set it to `user` for models that do not support system prompt
+  system_prompt_suffix: "Keep your responses concise and conversational since they will be spoken aloud. Avoid special characters. Use only simple, plain text sentences. Always punctuate your responses using standard sentence punctuation: commas, periods, question marks, exclamation points, etc. Always spell out numbers as words. Before responding to the user, check if the user request requires using external tools, and use the tools if they match with the user's intention. Otherwise, use your internal knowledge to answer the user's question. Do not use tools for casual conversation or when the tools don't fit the use cases. You should still try to address the user's request when it's not related to the provided tools. If you are provided with a set of tools, use them only when needed, do not limit your capabilities to the scope of the tools. If the purpose of a tool matches well with a user's request, always try to call the tool first. Conversation history should not limit your behavior on whether you can use tools. You must answer questions not related to the tools. Avoid any emoji in your response."
+  enable_tool_calling: true  # set to True since the vllm config below supports tool calling
+  # Max seconds to wait for a tool/function call to return before giving up.
+  # Pipecat >=1.0 defaults this to null (wait forever), so a tool that hangs
+  # would stall the conversation with no error. Raise it if you register a
+  # genuinely slow tool (e.g. one doing a network round-trip); set it to null
+  # to restore pipecat's unbounded default.
+  function_call_timeout_secs: 10.0
+  enable_reasoning: false # turn off reasoning for lowest latency
+
+  ##############################
+  ## Common generation config ##
+  ##############################
+  temperature: 0.6  # LLM sampling params
+  top_p: 0.95  # LLM sampling params
+  min_p: 0.0  # LLM sampling params
+  max_new_tokens: 5000  # max num of output tokens from LLM
+  ##############################
+  ######## NVIDIA config #########
+  ##############################
+  nvidia_generation_params:
+    frequency_penalty: 0.0  # Penalty for frequent tokens (-2.0 to 2.0).
+    presence_penalty: 0.0  # Penalty for new tokens (-2.0 to 2.0).
+    seed: 42  # Random seed for deterministic outputs.
+    temperature: ${llm.temperature}  # Sampling temperature (0.0 to 2.0).
+    top_p: ${llm.top_p}  # Top-p (nucleus) sampling parameter (0.0 to 1.0).
+    max_completion_tokens: ${llm.max_new_tokens}  # max number of tokens to generate
+    extra:  # additional model specific params can be specified in dict format
+      extra_body:
+        chat_template_kwargs:
+          enable_thinking: ${llm.enable_reasoning} 
+        reasoning_budget: 3000
+
+tts:
+  type: nvidia
+  server: "grpc.nvcf.nvidia.com:443"
+  model: "magpie_tts_ensemble-Magpie-Multilingual"
+  voice_id: "Magpie-Multilingual.EN-US.Aria"
+  language: "en-US"
+  function_id: "877104f7-e885-42b9-8de8-f6e4c6303969"
+

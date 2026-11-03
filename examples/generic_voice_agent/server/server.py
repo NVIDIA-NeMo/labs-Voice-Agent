@@ -22,9 +22,8 @@ from loguru import logger
 from omegaconf import OmegaConf
 from pipecat.frames.frames import LLMRunFrame
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.frameworks.rtvi import (
-    RTVIConfig,
     RTVIObserverParams,
     RTVIProcessor,
 )
@@ -38,6 +37,7 @@ from nemo_voice_agent.pipecat.processors.frameworks.rtvi import RTVIObserver
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import (
     TaskRef,
     create_reset_context_action,
+    register_client_message_handlers,
 )
 from nemo_voice_agent.pipecat.services.common import UserAudioBuffer
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import RTVIAudioLoggerObserver
@@ -46,13 +46,16 @@ from nemo_voice_agent.pipecat.services.nemo.builders import (
     build_context_and_aggregators,
     build_diar,
     build_llm,
+    build_llm_text_processor,
     build_stt,
     build_tts,
     build_turn_taking,
     build_vad_analyzer,
+    build_vad_processor,
     build_ws_transport,
 )
 from nemo_voice_agent.utils import ConfigManager, setup_logging
+from nemo_voice_agent.utils.misc import redact_secrets
 from nemo_voice_agent.utils.tool_calling.basic_tools import tool_get_city_weather
 from nemo_voice_agent.utils.tool_calling.mixins import register_direct_tools_to_llm
 
@@ -79,20 +82,28 @@ async def run_bot_websocket(host: str, port: int):
         server_config_path=SERVER_CONFIG_PATH,
     )
     server_config = config_manager.get_server_config()
-    logger.info(f"Server config: {OmegaConf.to_container(server_config, resolve=True)}")
+    logger.info(f"Server config: {redact_secrets(OmegaConf.to_container(server_config, resolve=True))}")
 
     audio_logger = build_audio_logger(config_manager)
     vad_analyzer = build_vad_analyzer(config_manager)
     ws_transport = build_ws_transport(config_manager, vad_analyzer, host, port)
+    # Pipecat 1.0 moved VAD out of the input transport; run it here instead so
+    # NeMoTurnTakingService still sees VADUserStarted/StoppedSpeakingFrame.
+    vad_processor = build_vad_processor(vad_analyzer)
     stt = build_stt(config_manager, audio_logger)
     diar = build_diar(config_manager, audio_logger)
     turn_taking = build_turn_taking(config_manager, audio_logger)
     tts = build_tts(config_manager, audio_logger)
+    # Pipecat 1.0 moved text aggregation out of TTSService into a pipeline
+    # processor placed just before it.
+    llm_text_processor = build_llm_text_processor(config_manager)
 
     setup_logging()
 
     llm = build_llm(config_manager)
-    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(llm, config_manager)
+    context, user_agg, assistant_agg, original_messages = build_context_and_aggregators(
+        llm, config_manager, turn_taking
+    )
 
     if server_config.llm.get("is_omni_model", False):
         user_audio_buffer = UserAudioBuffer(
@@ -107,15 +118,21 @@ async def run_bot_websocket(host: str, port: int):
     else:
         user_audio_buffer = None
 
-    rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
-    pipeline_list = [ws_transport.input(), rtvi, stt]
+    rtvi = RTVIProcessor()
+    pipeline_list = [ws_transport.input()]
+    if vad_processor is not None:
+        pipeline_list.append(vad_processor)
+    pipeline_list.extend([rtvi, stt])
     if diar is not None:
         pipeline_list.append(diar)
     if turn_taking is not None:
         pipeline_list.append(turn_taking)
     if user_audio_buffer is not None:
         pipeline_list.append(user_audio_buffer)
-    pipeline_list.extend([user_agg, llm, tts, ws_transport.output(), assistant_agg])
+    pipeline_list.extend([user_agg, llm])
+    if llm_text_processor is not None:
+        pipeline_list.append(llm_text_processor)
+    pipeline_list.extend([tts, ws_transport.output(), assistant_agg])
     pipeline = Pipeline(pipeline_list)
 
     resettable = [stt, tts, turn_taking, diar, user_audio_buffer]
@@ -127,12 +144,14 @@ async def run_bot_websocket(host: str, port: int):
         logger.info("Tool calling disabled; skipping initial tool registration.")
 
     task_ref = TaskRef()
-    rtvi.register_action(create_reset_context_action(task_ref, user_agg, assistant_agg, original_messages, resettable))
+    register_client_message_handlers(
+        rtvi,
+        [create_reset_context_action(task_ref, user_agg, assistant_agg, original_messages, resettable)],
+    )
 
-    task = PipelineTask(
+    task = PipelineWorker(
         pipeline,
         params=PipelineParams(
-            allow_interruptions=True,
             enable_metrics=True,
             enable_usage_metrics=True,
             idle_timeout=None,

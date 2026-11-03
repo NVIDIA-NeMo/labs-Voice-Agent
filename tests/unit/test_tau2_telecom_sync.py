@@ -401,6 +401,7 @@ def test_register_sync_applier_collision_raises():
             @register_sync_applier(domain="__test_collision__")
             def _second(db, delta):
                 pass
+
     finally:
         SYNC_APPLIERS.pop("__test_collision__", None)
 

@@ -1,0 +1,217 @@
+{/*
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/}
+
+# Scoring Model
+
+The NeMo Labs Voice Agent evaluation runner emits **six independent scoring signals** per scenario and combines
+them into the `is_successful` composite verdict. The canonical list is the `SuccessSignal` enum in
+`nemo_voice_agent/evaluation/scenarios/classes.py`. `Scenario.compute_is_successful` computes the composite,
+and `nemo_voice_agent/evaluation/runner.py` writes it.
+
+Every signal is opt-in per scenario through the `success_signals` whitelist. Signals that are computed but not
+whitelisted are still saved — they land in `success_breakdown.excluded` as diagnostics.
+
+## Signal Matrix
+
+The following matrix maps each supported signal to its persisted field, value type, and current domain use.
+
+| Enum Member | Value in `success_breakdown` | `metrics.json` Field Read | Type | Path-Dependent | Opted in by |
+|---|---|---|---|---|---|
+| `ACTION_MATCH` | `is_action_match` | `is_action_match` | `bool` or `"N/A"` | Yes — compares the action list | `restaurant`, `customer_service`, `fastbite` (computed for any scenario with a `reference_answer`) |
+| `DB_STATE_MATCH` | `db_state_match` | `db_state_match` | `bool` (absent when not applicable) | No — end state only | `eva_airline`, `tau2_airline`, `tau2_retail` (computed for any scenario with `expected_scenario_db`) |
+| `DB_STATE_ASSERTION` | `db_state_assertion` | `db_state_assertion_pass_rate` | float in 0–1 | No | `tau2_telecom` (per-task) |
+| `NL_ASSERTION` | `nl_assertion` | `nl_assertion_pass_rate` | float in 0–1 | No — judged on context/transcript | `tau2_airline`, `tau2_retail`, `tau2_telecom` (per-task) |
+| `JUDGE_PASSED` | `judge_passed` | `judge_passed` | `bool` | — | `qa` and other free-form domains |
+| `CLEAN_EXIT` | `clean_exit` | `clean_exit` | `bool` | No | **Every domain** |
+
+Note the two float signals: the enum value written to `success_breakdown` is `db_state_assertion` /
+`nl_assertion`, while the numeric field in `metrics.json` carries the `_pass_rate` suffix.
+
+## Signal Details
+
+**`ACTION_MATCH`** — `check_if_task_success` (in `nemo_voice_agent/evaluation/utils.py`) recursively compares
+`scenario_config/reference_answer.json` against `final_agent_response.json`. Every dictionary in the reference
+must have an order-independent match in the prediction. Extra prediction keys and list items are tolerated
+unless the scenario sets `disallow_extra_items` or the run passes `--strict-match`. String comparison honors the
+scenario's `ignore_capitalization`, `ignore_punctuation`, and `clean_text` flags. `"N/A"` when the scenario has
+no reference answer. The result is `False` when the reference exists but the agent produced no prediction file.
+
+Three comparator rules decide the match, and each one can flip a verdict you would otherwise expect:
+
+- **Single reference dictionary against a multi-entry prediction list.** Only the **last** dictionary in the
+  prediction is compared. The agent's earlier `<final_response>` emissions are ignored, so such a scenario is
+  graded on the agent's final payload alone.
+- **Reference list against prediction list.** Matching is order-independent, but each prediction dictionary can
+  satisfy at most one reference dictionary. Two identical reference entries therefore need two matching
+  prediction entries, not one that matches twice.
+- **Numeric values.** Compared with `np.isclose`, not `==`. Values that parse as floats are converted before the
+  comparison, so `1`, `1.0`, and `"1.0"` all match. Anything that fails to parse falls through to the string
+  path and its normalization flags.
+
+**`DB_STATE_MATCH`** — the bot computes `get_dict_hash(shared_state["db"])` inside the `get_scenario_summary`
+real-time voice interface (RTVI) handler and returns only the SHA-256 string. The runner hashes
+`scenario.expected_scenario_db` from its in-process gold replay and compares the values. The database (DB)
+itself never crosses the WebSocket. Path-independent: any action
+sequence landing on the correct end state passes. If the scenario declares an expected DB but the bot returned
+no hash, the result is `False`, not `"N/A"`. Both hashes are also written to `final_scenario_db_hash.txt` for
+triage. Only the agent-side hash is scored — the user-side `user_db_hash` pulled for dual-side domains is
+recorded but does not gate this signal.
+
+**`DB_STATE_ASSERTION`** — per-predicate scoring. Each entry in `scenario.db_state_assertions` contains
+`func_name`, `arguments`, `assert_value`, and `side`. The runner dispatches it through
+`evaluate_db_state_assertion` in `nemo_voice_agent/evaluation/db_state_predicates.py`. The function selects
+the agent or user DB based on `side` and calls a pure predicate registered under `(domain, func_name)`. The pass rate
+is passes over total predicates. Per-predicate verdicts land in `metrics.json` under
+`db_state_assertion_verdicts`. Missing or raising predicates produce `passed=False` with an `error` field rather
+than aborting the run. Used where the solution space is open and several valid end states satisfy the same
+outcome. Refer to [tau2_telecom](../domain-guides/tau2-telecom.md).
+
+**`NL_ASSERTION`** — natural-language claims about the conversation, judged per assertion by the large
+language model (LLM) judge.
+Only populated when the scenario declares `nl_assertions` **and** the judge ran. Per-assertion verdicts live in
+`judge_result.json` under `nl_assertion_verdicts`. The scenario-level rate is `nl_assertion_pass_rate` in
+`metrics.json`.
+
+**`JUDGE_PASSED`** — `judge_score >= --judge-threshold` (threshold default `0.9`). The raw float is saved
+separately as `judge_score`. The judge receives the reference and prediction payloads when they exist, both
+bots' `llm_context.json` histories, the numbered NL assertions, and — only with
+`--judge-include-conversation` — the bridge transcript turns. Both `--judge-url` and `--judge-model` carry
+defaults pointing at a local OpenAI-compatible endpoint, so the judge is constructed on every run. Override them
+to target your own judge. Refer to the
+[Evaluation Command-Line Interface (CLI) Reference](../../reference/evaluation/eval-cli.md).
+
+The judge prompt (`LLMJudge.SCENARIO_PROMPT` in `nemo_voice_agent/evaluation/utils.py`) is **side-aware**, which
+matters for dual-side domains. Each action in the reference and prediction payloads may carry a `side` field:
+
+- `side="agent"` — the judge scores whether the matching tool call appears in the agent's context history with
+  the right arguments.
+- `side="user"` — a tool the simulated user owns, such as the telecom phone controls `toggle_data` and
+  `toggle_airplane_mode`. The agent has no such tool, so the judge scores **guidance quality** instead: did the
+  agent diagnose the problem and clearly instruct the user to perform the action? The prompt forbids deducting
+  on the grounds that the agent never called the tool, and requires the judge to confirm in the user-sim's
+  context history that the action actually happened.
+
+A reference action with no `side` field defaults to `agent`, which preserves scoring for the single-side domains
+`eva_airline`, `tau2_airline`, and `tau2_retail`. The prompt also carries a strict attribution rule: tool calls
+visible in the simulated user's context history were made by the user-sim and must never be attributed to the
+agent. Read telecom judge scores with this in mind. Refer to
+[tau2_telecom](../domain-guides/tau2-telecom.md).
+
+**`CLEAN_EXIT`** — a compatibility signal whose verdict depends on `--conversation-end-policy`:
+
+- `tool-only` (default) passes only when the agent calls `EndConversationTool` and emits `[EXIT]`.
+- `valid-terminal-state` also passes when the simulator reports a successful end, or when the bridge records
+  `[INACTIVITY_TIMEOUT]` after the user produced the final recorded turn.
+
+The opt-in policy prevents tool-call accuracy from being the only evidence of a valid ending. It does not make
+every timeout successful: an inactivity timeout after an agent-final turn fails, and an overall `[TIMEOUT]`
+always fails. The `--min-agent-turns` stall filter continues to override the composite verdict. Use
+`end_conversation_tool_called` to measure explicit tool compliance.
+`conversation_end_reason` records why the policy passed or failed, and `conversation_end_policy` records the
+policy used. The lower-level bridge reason remains available as `stop_reason`.
+
+## Composite is_successful
+
+`Scenario.compute_is_successful` takes the dict of all six verdicts and returns:
+
+- the strict **AND** over the whitelist entries whose verdict is not `None`, or
+- the literal string `"N/A"` when no whitelisted signal was applicable (for example, a `qa` run with no
+  reachable judge).
+
+You do not have to wait for the summary to discover that second case. When a run starts with no judge configured
+and queued scenarios whitelist `JUDGE_PASSED` or `NL_ASSERTION`, the runner logs a warning naming how many
+scenarios are affected and in which domains, and pointing at `--judge-url`, `--judge-model`, and
+`--judge-api-key`.
+
+Two runner-level overrides sit on top of this:
+
+- **Stalled scenarios.** With `--min-agent-turns` (default `2`), a scenario whose agent produced fewer
+  completed turns is forced to `is_successful = False`. It counts as a composite-rate failure but is skipped
+  in the per-signal rates. The individual measurements are meaningless for a conversation that never happened.
+  The scenario remains in the denominator.
+- **`is_task_successful`.** The same conjunction with `clean_exit` removed from the failed set, so you can read
+  "did the agent do the work" separately from "did the agent hang up properly". Reported as
+  `Task Success Rate (excl. clean_exit)` in `all_summary.txt`.
+
+## Per-Domain Whitelists
+
+Whitelists are declared on each domain's base scenario — a `ClassVar` tuple when fixed, or a `cached_property`
+when it depends on a per-task opt-in such as `nl_assertions`.
+
+| Domain | Scenarios | Gating Signals | Why |
+|---|---|---|---|
+| `eva_airline` | 50 | `DB_STATE_MATCH`, `CLEAN_EXIT` | Gold expected DB ships per scenario; path-independent |
+| `tau2_airline` | 50 | `DB_STATE_MATCH`, `CLEAN_EXIT`, plus `NL_ASSERTION` on the 24 tasks with adopted assertions | Expected DB derived from the upstream task; those 24 tasks mutate no DB rows, so 84 curated assertions carry their outcome |
+| `tau2_retail` | 114 | `DB_STATE_MATCH`, `CLEAN_EXIT`, plus `NL_ASSERTION` when the task declares assertions | 40 of 114 tasks carry NL claims, adopted from upstream as shipped |
+| `tau2_telecom` | 114 | `DB_STATE_ASSERTION`, `CLEAN_EXIT`, plus `NL_ASSERTION` when declared | Open solution space — whole-DB hash and action match are informational only |
+| `tau2_telecom_workflow` | 114 | Same as `tau2_telecom` | Parallel registration over the same tasks with the workflow policy file |
+| `restaurant`, `customer_service` | 11, 10 | `ACTION_MATCH`, `CLEAN_EXIT` | Single canonical structured `reference_answer` |
+| `qa` | 10 | `JUDGE_PASSED`, `CLEAN_EXIT` | Free-form text answers; no deterministic comparator applies |
+
+Design rule: prefer `DB_STATE_MATCH` over `ACTION_MATCH` wherever a domain ships an expected DB, because it is
+path-independent. Use `JUDGE_PASSED` as a gate only when no deterministic alternative exists. `NL_ASSERTION`
+runs through the judge but contributes per-claim verdicts, so it is safe to gate on.
+
+## Why CLEAN_EXIT Is Universal
+
+Closure discipline gates every domain. By default, an agent that performs the right work but never calls its
+end-conversation tool is not successful. The opt-in `valid-terminal-state` policy accepts additional evidence
+that the conversation ended validly while preserving explicit tool compliance as a diagnostic. The gate matters
+most for **policy-refusal scenarios**, where the expected and initial states match. Without `CLEAN_EXIT`, an agent
+that crashes at the greeting would pass `DB_STATE_MATCH` by doing nothing. The default `--min-agent-turns`
+filter prevents that outcome under either policy. The regression test
+`test_every_concrete_scenario_includes_clean_exit` in `tests/unit/test_runner_is_successful.py` fails the build
+if a new domain omits it.
+
+`Scenario.__init_subclass__` also raises `TypeError` at class-definition time if a concrete scenario (one that
+declares `name`) resolves `success_signals` to an empty sequence. This check prevents accidentally authoring
+an unscored domain. Refer to [Authoring Domains](../create-evaluations/authoring-domains.md).
+
+## Strict Thresholds for Float Signals
+
+The two pass-rate signals are normalized to booleans with a threshold of exactly `1.0`. A 95% pass rate means one
+assertion failed, and that is a defect to investigate rather than noise to round away. Values of `None` or
+`"N/A"` normalize to "not applicable" and drop out of the conjunction entirely.
+
+## success_breakdown
+
+Every scenario's `metrics.json` carries a `success_breakdown` object with four buckets of enum-value strings:
+
+| Bucket | Contents |
+|---|---|
+| `passed` | Whitelisted signals that returned `True` |
+| `failed` | Whitelisted signals that returned `False` — these dragged the verdict down |
+| `not_applicable` | Whitelisted signals with no verdict for this scenario |
+| `excluded` | Signals computed and saved but **not** in this scenario's whitelist (diagnostics) |
+
+The `excluded` bucket is how you spot "all gating signals passed, but the agent took an unusual path" — for
+telecom, `db_state_match` and `is_action_match` land there on every scenario.
+
+## Where the Numbers Land
+
+Use the session and scenario artifacts according to the level of detail you need.
+
+| Artifact | Contents |
+|---|---|
+| `<scenario>/metrics.json` | All six signals, `is_successful`, `is_task_successful`, `success_breakdown`, conversation-end diagnostics, and per-predicate `db_state_assertion_verdicts` |
+| `<scenario>/judge_result.json` | Judge score, reason, `nl_assertion_verdicts`, and the verbatim judge input |
+| `<scenario>/final_scenario_db_hash.txt` | Post-run `db_hash` (and `user_db_hash` for dual-side domains) |
+| `<scenario>/scenario_config/metadata.json` | The scenario's `success_signals`, `expected_db_hash`, `db_state_assertions`, `nl_assertions`, `initialization_actions` — so an old run stays interpretable without reloading the scenario class |
+| `all_summary.txt` | Composite headline rate, task success rate, and per-signal pass rates with their own denominators (scenarios, predicates, assertions) |
+
+For the field-by-field schema, refer to [Metrics Reference](../../reference/evaluation/metrics.md). For the
+directory layout, refer to [Reading Results](../run-evaluations/results.md).

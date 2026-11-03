@@ -29,7 +29,6 @@ from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from openai import APITimeoutError, AsyncStream, BadRequestError
 from openai.types.chat import ChatCompletionChunk, ChatCompletionMessageParam
-from pipecat.adapters.services.open_ai_adapter import OpenAILLMInvocationParams
 from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
@@ -37,12 +36,14 @@ from pipecat.frames.frames import (
     LLMFullResponseStartFrame,
     LLMTextFrame,
 )
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.services.nvidia.llm import NvidiaLLMService
 from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.services.settings import assert_given
 from transformers import AsyncTextIteratorStreamer, AutoModelForCausalLM, AutoTokenizer
 from vllm.config import ModelConfig as vllmModelConfig
 
-from nemo_voice_agent.pipecat.services.nvidia_llm_traced import NvidiaLLMService
+from nemo_voice_agent.utils.misc import cli_api_keys, redact_cli_secrets, redact_literals, redact_secrets
 
 
 DEFAULT_GENERATION_KWARGS = {
@@ -110,7 +111,7 @@ class HuggingFaceLLMLocalService(LLMUtilsMixin):
     def __init__(
         self,
         model: str = "meta-llama/Meta-Llama-3-8B-Instruct",
-        device: str = "cuda:0",
+        device: str = "cuda",
         dtype: str = "bfloat16",
         reasoning_budget: int = 0,
         generation_kwargs: dict = None,
@@ -257,13 +258,20 @@ class HuggingFaceLLMService(OpenAILLMService):
             apply_chat_template_kwargs=self._apply_chat_template_kwargs,
         )
 
-    async def _process_context(self, context: OpenAILLMContext):
+    async def _process_context(self, context: LLMContext):
         """Process a context through the LLM and push text frames.
 
         Args:
-            context (OpenAILLMContext): The context to process, containing messages
+            context (LLMContext): The context to process, containing messages
                 and other information needed for the LLM interaction.
         """
+        # Mirror the per-call context log that BaseOpenAILLMService emits from
+        # get_chat_completions. This service drives the model directly from
+        # _process_context and never calls that method, so without this the
+        # local-HF backend is the one path with no context visibility.
+        logger.debug(
+            f"{self}: Generating chat from context {self.get_llm_adapter().get_messages_for_logging(context)}"
+        )
         await self.push_frame(LLMFullResponseStartFrame())
         cumulative_text = ""
         try:
@@ -285,24 +293,49 @@ class HuggingFaceLLMService(OpenAILLMService):
                 logger.warning(f"LLM response is empty for context: {context}")
             await self.push_frame(LLMFullResponseEndFrame())
 
-    async def get_chat_completions(
-        self, params_from_context: OpenAILLMInvocationParams
-    ) -> AsyncGenerator[ChatCompletionChunk, None]:
-        """Create a streaming chat completion using HuggingFace model.
+    async def run_inference(
+        self,
+        context: LLMContext,
+        max_tokens: Optional[int] = None,
+        system_instruction: Optional[str] = None,
+    ) -> Optional[str]:
+        """Run a one-shot, out-of-pipeline inference against the local HF model.
 
-        Args:
-            context (OpenAILLMContext): The context object containing tools configuration
-                and other settings for the chat completion.
-            messages (List[ChatCompletionMessageParam]): The list of messages comprising
-                the conversation history and current request.
-
-        Returns:
-            AsyncGenerator[ChatCompletionChunk]: A streaming response of chat completion
-                chunks that can be processed asynchronously.
+        ``BaseOpenAILLMService.run_inference`` calls
+        ``self._client.chat.completions.create(...)`` directly, but our
+        ``create_client`` returns a :class:`HuggingFaceLLMLocalService`, which
+        only exposes ``generate_stream`` — so the inherited implementation
+        raises ``AttributeError`` here. Nothing called ``run_inference`` before
+        pipecat 1.0; it now backs auto context summarization and the
+        LLM-turn-completion strategies, so implement it rather than leave a
+        latent crash behind an opt-in flag.
         """
-        messages = params_from_context["messages"]
+        messages = list(context.get_messages())
+        if system_instruction:
+            messages.insert(0, {"role": "system", "content": system_instruction})
 
-        return self._client.generate_stream(messages)
+        kwargs = {"max_new_tokens": max_tokens} if max_tokens is not None else {}
+        chunks = []
+        async for chunk in self._client.generate_stream(messages, **kwargs):
+            if chunk.choices[0].delta.content:
+                chunks.append(chunk.choices[0].delta.content)
+        return "".join(chunks) or None
+
+
+def get_vllm_server_api_key(vllm_server_params: Optional[str], api_key: Optional[str] = None) -> Optional[str]:
+    """Return the API key a vLLM server expects, resolved the way vLLM resolves it.
+
+    Once a key is set, vLLM rejects every unauthenticated ``/v1`` request. ``--api-key`` in the server flags takes
+    precedence over ``VLLM_API_KEY``, which the spawned server inherits from this process. With neither set, fall
+    back to the client ``api_key``, which is the key an already-running server would expect.
+    """
+    params = (vllm_server_params or "").split()
+    for i, param in enumerate(params):
+        if param in ("--api-key", "--api_key") and i + 1 < len(params):
+            return params[i + 1]
+        if param.startswith(("--api-key=", "--api_key=")):
+            return param.split("=", 1)[1]
+    return os.environ.get("VLLM_API_KEY") or api_key
 
 
 class VLLMService(OpenAILLMService, LLMUtilsMixin):
@@ -320,7 +353,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         organization="None",
         project="None",
         default_headers: Optional[Mapping[str, str]] = None,
-        params: Optional[OpenAILLMService.InputParams] = None,
+        settings: Optional[OpenAILLMService.Settings] = None,
         start_vllm_on_init: bool = False,
         vllm_server_params: Optional[str] = None,
         vllm_server_max_wait_time: int = 3600,  # 1 hour max wait time
@@ -331,7 +364,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         self._vllm_server_max_wait_time = vllm_server_max_wait_time
         self._vllm_server_check_interval = vllm_server_check_interval
         if start_vllm_on_init:
-            base_url = self._start_vllm_server(model, vllm_server_params, base_url)
+            base_url = self._start_vllm_server(model, vllm_server_params, base_url, api_key=api_key)
 
         super().__init__(
             model=model,
@@ -340,24 +373,25 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
             organization=organization,
             project=project,
             default_headers=default_headers,
-            params=params,
+            settings=settings,
             **kwargs,
         )
         self._vllm_server_params = vllm_server_params
         self._start_vllm_on_init = start_vllm_on_init
-        logger.info(
-            f"VLLMService initialized with model: {model}, api_key: {api_key}, base_url: {base_url},params: {params}"
-        )
+        logger.info(f"VLLMService initialized with model: {model}, base_url: {base_url}, settings: {settings}")
 
     def _start_vllm_server(
         self,
         model: str,
         vllm_server_params: Optional[str] = None,
         base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
     ) -> str:
         """
         Start a vllm server and return the base url.
         """
+        server_api_key = get_vllm_server_api_key(vllm_server_params, api_key)
+        auth_headers = {"Authorization": f"Bearer {server_api_key}"} if server_api_key else None
 
         requested_port = None
         # If base_url is provided, extract port from it
@@ -418,7 +452,13 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         def check_server_model(port: int, verbose: bool = False) -> tuple[bool, str]:
             """Check if server is running on port and return (is_running, model_name)"""
             try:
-                response = requests.get(f"http://localhost:{port}/v1/models", timeout=5)
+                # A vLLM server started with an API key rejects unauthenticated /v1 requests with 401.
+                response = requests.get(f"http://localhost:{port}/v1/models", headers=auth_headers, timeout=5)
+                if response.status_code == 401 and verbose:
+                    logger.warning(
+                        f"Server on port {port} rejected the API key. Set `--api-key` in vllm_server_params, "
+                        "VLLM_API_KEY, or llm.api_key to the key that server expects."
+                    )
                 if response.status_code == 200:
                     # get the PID for the server process
                     pid = get_pid_on_port(port)
@@ -521,7 +561,7 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
             # Add port if vllm_server_params is not provided
             cmd_parts.extend(["--port", str(port)])
 
-        logger.info(f"Starting vLLM server with command: {' '.join(cmd_parts)}")
+        logger.info(f"Starting vLLM server with command: {redact_cli_secrets(' '.join(cmd_parts))}")
         logger.warning("It will take a while to download the model if it's not already downloaded.")
         # Set up environment variables for device configuration
         env = os.environ.copy()
@@ -576,7 +616,11 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
                 # Check if process is still running
                 if process.poll() is not None:
                     # Process has terminated
-                    stdout, stderr = process.communicate()
+                    # vLLM echoes its non-default args, including the API key, on startup.
+                    stdout, stderr = (
+                        redact_literals(output or "", cli_api_keys(vllm_server_params or ""))
+                        for output in process.communicate()
+                    )
                     logger.error(f"vLLM server process terminated unexpectedly. stdout: {stdout}, stderr: {stderr}")
                     raise RuntimeError(f"Failed to start vLLM server: {stderr}")
 
@@ -621,19 +665,31 @@ class VLLMService(OpenAILLMService, LLMUtilsMixin):
         await super().cancel(frame)
         self._stop_vllm_server()
 
-    async def get_chat_completions(
-        self, params_from_context: OpenAILLMInvocationParams
-    ) -> AsyncStream[ChatCompletionChunk]:
-        """Get streaming chat completions from OpenAI API.
+    async def get_chat_completions(self, context: LLMContext) -> AsyncStream[ChatCompletionChunk]:
+        """Get streaming chat completions from the vLLM OpenAI-compatible server.
 
         Args:
-            context: The LLM context containing tools and configuration.
-            messages: List of chat completion messages to send.
+            context: The LLM context containing messages, tools and tool choice.
 
         Returns:
             Async stream of chat completion chunks.
         """
-
+        # This prologue mirrors BaseOpenAILLMService.get_chat_completions. We
+        # override the method solely to route the request through
+        # ``_get_response_from_client``, which repairs message sequences that
+        # vLLM rejects with BadRequestError; the retry-on-timeout logic below is
+        # upstream's, kept inline because pipecat offers no narrower seam around
+        # the ``chat.completions.create`` call.
+        adapter = self.get_llm_adapter()
+        # Keep the base class's per-call context log. It lives in
+        # get_chat_completions upstream, so overriding that method silently
+        # takes it away.
+        logger.debug(f"{self}: Generating chat from context {adapter.get_messages_for_logging(context)}")
+        params_from_context = adapter.get_llm_invocation_params(
+            context,
+            system_instruction=assert_given(self._settings.system_instruction),
+            convert_developer_to_user=not self.supports_developer_role,
+        )
         params = self.build_chat_completion_params(params_from_context)
         messages = params_from_context["messages"]
         if self._retry_on_timeout:
@@ -681,7 +737,7 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
     """Get an LLM service from the configuration."""
     backend = config.type
 
-    logger.info(f"Initializing LLM service from config: {config}")
+    logger.info(f"Initializing LLM service from config: {redact_secrets(config)}")
 
     # If backend is "auto", try to detect the best backend
     if backend == "auto":
@@ -700,6 +756,15 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
                 "in the config file to force using vLLM."
             )
             backend = "hf"
+
+    # Pipecat 1.6 changed LLMService's default from 10.0 to None (run forever).
+    # A tool call that never returns would then hang the turn indefinitely —
+    # and with it a whole evaluation scenario — instead of erroring. 10.0 is the
+    # pre-1.0 default, so this keeps the upgrade behavior-neutral rather than
+    # introducing a new policy. This is the *global* timeout; pipecat supports a
+    # per-function override that falls back to it, so a genuinely slow tool
+    # doesn't require raising the value for everything.
+    function_call_timeout_secs = config.get("function_call_timeout_secs", 10.0)
 
     if backend == "hf":
         llm_model = config.model
@@ -721,6 +786,7 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
             generation_kwargs=llm_generation_kwargs,
             apply_chat_template_kwargs=llm_apply_chat_template_kwargs,
             reasoning_budget=llm_reasoning_budget,
+            function_call_timeout_secs=function_call_timeout_secs,
         )
     elif backend == "vllm":
         llm_model = config.get("model", "vllm_server")
@@ -737,9 +803,11 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
         if vllm_server_params is not None:
             if "dtype" not in vllm_server_params:
                 vllm_server_params = f"--dtype {llm_dtype} {vllm_server_params}"
-                logger.info(f"Adding dtype {llm_dtype} to vllm_server_params: {vllm_server_params}")
+                logger.info(
+                    f"Adding dtype {llm_dtype} to vllm_server_params: {redact_cli_secrets(vllm_server_params)}"
+                )
         if llm_params is not None:
-            # cast into OpenAILLMService.InputParams object
+            # cast into OpenAILLMService.Settings object
             llm_params = OmegaConf.to_container(llm_params, resolve=True)
             extra = llm_params.get("extra", None)
             # ensure extra is a dictionary
@@ -747,9 +815,9 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
                 llm_params["extra"] = {}
             elif not isinstance(extra, dict):
                 raise ValueError(f"extra must be a dictionary, got {type(extra)}")
-            llm_params = OpenAILLMService.InputParams(**llm_params)
+            llm_params = OpenAILLMService.Settings(**llm_params)
         else:
-            llm_params = OpenAILLMService.InputParams()
+            llm_params = OpenAILLMService.Settings()
         return VLLMService(
             model=llm_model,
             api_key=llm_api_key,
@@ -757,12 +825,13 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
             organization=llm_organization,
             project=llm_project,
             default_headers=llm_default_headers,
-            params=llm_params,
+            settings=llm_params,
             start_vllm_on_init=config.get("start_vllm_on_init", False),
             vllm_server_params=vllm_server_params,
+            function_call_timeout_secs=function_call_timeout_secs,
         )
     elif backend == "nvidia":
-        llm_model = config.get("model", "nvidia/nemotron-3-nano-30b-a3b")
+        llm_model = config.get("model", "nvidia/nemotron-3.5-lightning-30b-a3b")
         llm_api_key = os.getenv("NVIDIA_API_KEY", config.get("api_key", "None"))
         llm_base_url = config.get("base_url", "https://integrate.api.nvidia.com/v1")
         llm_params = config.get("nvidia_generation_params", None)
@@ -784,7 +853,7 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
         if llm_default_headers is not None:
             llm_default_headers = OmegaConf.to_container(llm_default_headers, resolve=True)
         if llm_params is not None:
-            # cast into OpenAILLMService.InputParams object
+            # cast into OpenAILLMService.Settings object
             llm_params = OmegaConf.to_container(llm_params, resolve=True)
             extra = llm_params.get("extra", None)
             # ensure extra is a dictionary
@@ -792,16 +861,17 @@ def get_llm_service_from_config(config: DictConfig) -> OpenAILLMService:
                 llm_params["extra"] = {}
             elif not isinstance(extra, dict):
                 raise ValueError(f"extra must be a dictionary, got {type(extra)}")
-            llm_params = OpenAILLMService.InputParams(**llm_params)
+            llm_params = OpenAILLMService.Settings(**llm_params)
         else:
-            llm_params = OpenAILLMService.InputParams()
+            llm_params = OpenAILLMService.Settings()
 
         return NvidiaLLMService(
             api_key=llm_api_key,
             model=llm_model,
             base_url=llm_base_url,
-            params=llm_params,
+            settings=llm_params,
             default_headers=llm_default_headers,
+            function_call_timeout_secs=function_call_timeout_secs,
         )
 
     else:

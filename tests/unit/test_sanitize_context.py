@@ -48,7 +48,7 @@ def test_generic_bytes_get_binary_tag():
 
 
 def test_input_audio_data_leaf_dropped_metadata_kept():
-    # The real shape built by OpenAILLMContext.create_audio_message: the audio is
+    # The real shape built by LLMContext.create_audio_message: the audio is
     # a base64 STRING under input_audio.data. Only that leaf is dropped; the
     # sibling "format" metadata is kept.
     messages = [

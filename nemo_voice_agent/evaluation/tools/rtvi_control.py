@@ -19,12 +19,9 @@
 # flake8: noqa: E501
 from typing import Any, Dict, List, Optional
 
+import pipecat.processors.frameworks.rtvi.models as RTVI
 from loguru import logger
-from pipecat.processors.frameworks.rtvi import (
-    RTVIProcessor,
-    RTVIServerMessage,
-    RTVITextMessageData,
-)
+from pipecat.processors.frameworks.rtvi import RTVIProcessor
 from pipecat.services.llm_service import FunctionCallParams
 
 from nemo_voice_agent.evaluation.tools import register_schema_tool_for_eval
@@ -81,7 +78,7 @@ class SendRTVIMessageTool(StandardSchemaTool):
         Args:
             message: The message to be sent.
         """
-        message = RTVIServerMessage(data=RTVITextMessageData(text=message))
+        message = RTVI.ServerMessage(data=RTVI.TextMessageData(text=message))
         await self._rtvi.push_transport_message(message, exclude_none=True)
 
     async def _execute(self, message: Optional[str] = None, **kwargs: Any) -> Any:

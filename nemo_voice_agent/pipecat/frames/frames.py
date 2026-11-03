@@ -17,7 +17,7 @@
 from dataclasses import dataclass
 
 import numpy as np
-from pipecat.frames.frames import DataFrame
+from pipecat.frames.frames import DataFrame, UninterruptibleFrame
 
 
 @dataclass
@@ -26,3 +26,15 @@ class DiarResultFrame(DataFrame):
 
     diar_result: np.ndarray | int
     stream_id: str = "default"
+
+
+@dataclass
+class STTSegmentDoneFrame(DataFrame, UninterruptibleFrame):
+    """A segmented STT service has finished transcribing one VAD segment, whatever the result.
+
+    ``NemoSpeechLMSTTService`` pushes one after every segment: behind the segment's ``TranscriptionFrame`` when the
+    transcription has text, and on its own when it comes back empty or fails. Both are data frames, so this one
+    reaches downstream processors after the transcript. ``SegmentedSTTUserTurnStopStrategy`` counts these to know
+    when every segment of a user turn has been transcribed. It is uninterruptible because an interruption flushes
+    queued data frames, and a lost one would leave the count waiting for a segment that already finished.
+    """

@@ -160,6 +160,37 @@ def test_standard_schema_tool_call_normalizes_empty_results(empty_value, expecte
     assert params.results == [expected]
 
 
+def test_schema_tools_register_as_synchronous_by_default():
+    """Registered tools must not trip pipecat's asynchronous-tool protocol.
+
+    In pipecat >=1.0 ``cancel_on_interruption=False`` does double duty: besides
+    surviving interruptions it marks the tool *asynchronous*, so the LLM is told
+    not to wait for the result. The tool message it receives becomes a
+    ``{"status": "running"}`` placeholder and the real payload arrives later as a
+    ``developer`` message. Eval tools are synchronous DB lookups the agent must
+    have in hand before it speaks, so the default must keep them synchronous.
+
+    Asserted against a real ``LLMService`` rather than a double, because the
+    behaviour lives in pipecat's ``_has_async_tools()`` — a fake would happily
+    record the flag and prove nothing.
+    """
+    from pipecat.services.llm_service import LLMService
+
+    class _FakeContext:
+        tools = []
+
+        def set_tools(self, tools_schema):
+            self._tools = tools_schema
+
+    llm = LLMService()
+    register_schema_tools_to_llm(llm, _FakeContext(), [_GoodTool(name="good_tool")], keep_existing_tools=False)
+
+    assert llm._has_async_tools() is False, (
+        "schema tools registered as asynchronous — the LLM will answer from a "
+        "'status: running' placeholder instead of the real tool result"
+    )
+
+
 def test_register_schema_tools_to_llm_sets_context_and_unknown_handler_once():
     """Schema registration installs valid tools, skips invalid objects, and registers the catch-all once."""
     tool = _GoodTool(name="good_tool")

@@ -30,6 +30,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import math
 import os
 import sys
 from datetime import datetime
@@ -38,6 +39,7 @@ from nemo_voice_agent.evaluation.runner import run_dynamic_evaluation
 from nemo_voice_agent.evaluation.scenarios import get_eval_scenario, list_eval_scenarios
 from nemo_voice_agent.evaluation.utils import LLMJudge, validate_judge_numeric_options
 from nemo_voice_agent.utils import FileLogger
+from nemo_voice_agent.utils.misc import REDACTED, redact_literals
 
 
 # Args that materially affect scoring or scenario selection — diff these on resume
@@ -50,12 +52,20 @@ _CONSISTENCY_CHECK_FIELDS = (
     "judge_url",
     "judge_model",
     "judge_threshold",
+    "judge_max_tokens",
+    "judge_temperature",
+    "judge_top_p",
+    "judge_seed",
     "strict_match",
+    "conversation_end_policy",
+    "inactivity_timeout",
 )
 
 
 def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     """Validate numeric scoring options after argparse has parsed their types."""
+    if not math.isfinite(args.inactivity_timeout) or args.inactivity_timeout <= 0:
+        parser.error(f"--inactivity-timeout must be greater than 0, got {args.inactivity_timeout}")
     try:
         validate_judge_numeric_options(
             judge_threshold=args.judge_threshold,
@@ -64,6 +74,8 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
             judge_context_message_limit=args.judge_context_message_limit,
             judge_context_system_string_limit=args.judge_context_system_string_limit,
             judge_context_string_limit=args.judge_context_string_limit,
+            judge_max_tokens=args.judge_max_tokens,
+            judge_top_p=args.judge_top_p,
         )
     except ValueError as e:
         parser.error(str(e))
@@ -72,14 +84,15 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
 def _build_invocation_record(args: argparse.Namespace, scenarios: list) -> dict:
     """Snapshot the CLI invocation for ``run_args.json``.
 
-    Redacts ``judge_api_key`` so it never lands on disk.
+    Redacts ``judge_api_key`` in both ``parsed_args`` and ``argv`` so it never lands on disk. ``argv`` is
+    redacted by value, which covers ``--judge-api-key KEY``, ``--judge-api-key=KEY``, and abbreviated flags.
     """
     parsed = {k: v for k, v in vars(args).items()}
     if parsed.get("judge_api_key"):
-        parsed["judge_api_key"] = "<redacted>"
+        parsed["judge_api_key"] = REDACTED
     return {
         "started_at": datetime.now().isoformat(timespec="seconds"),
-        "argv": list(sys.argv),
+        "argv": [redact_literals(arg, [args.judge_api_key]) for arg in sys.argv],
         "parsed_args": parsed,
         "resolved_scenario_count": len(scenarios),
         "resolved_scenario_names": [s.name for s in scenarios],
@@ -210,7 +223,8 @@ Examples:
         "--duration",
         type=int,
         default=None,
-        help="Maximum duration per scenario in seconds (default: 300), which overrides the scenario's own max_duration if set.",
+        help="Maximum duration per scenario in seconds. Overrides the scenario's own max_duration. "
+        "Unset by default, in which case each scenario's own max_duration applies.",
     )
     parser.add_argument(
         "--pause",
@@ -234,7 +248,14 @@ Examples:
         default="nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
         help="Model name for the judge API (default: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4)",
     )
-    parser.add_argument("--judge-api-key", default=None, help="API key for the LLM judge")
+    parser.add_argument(
+        "--judge-api-key", default=None, help="API key for the LLM judge if not using environment variable"
+    )
+    parser.add_argument(
+        "--judge-api-key-name",
+        default="JUDGE_API_KEY",
+        help="Environment variable name for the API key if using environment variable",
+    )
     parser.add_argument(
         "--judge-threshold",
         type=float,
@@ -252,6 +273,31 @@ Examples:
         type=int,
         default=None,
         help="Optional provider-specific thinking token budget for the judge request",
+    )
+    parser.add_argument(
+        "--judge-max-tokens",
+        type=int,
+        default=100000,
+        help="Max tokens the judge may generate. Reasoning judges spend most of this on "
+        "thinking, so lowering it can truncate the verdict (default: 100k)",
+    )
+    parser.add_argument(
+        "--judge-temperature",
+        type=float,
+        default=1.0,
+        help="Sampling temperature for the judge (default: 1.0)",
+    )
+    parser.add_argument(
+        "--judge-top-p",
+        type=float,
+        default=0.95,
+        help="Nucleus sampling top_p for the judge (default: 0.95)",
+    )
+    parser.add_argument(
+        "--judge-seed",
+        type=int,
+        default=42,
+        help="Sampling seed for the judge, for run-to-run reproducibility (default: 42)",
     )
     parser.add_argument(
         "--judge-include-conversation",
@@ -306,13 +352,74 @@ Examples:
     parser.add_argument(
         "--min-agent-turns",
         type=int,
-        default=3,
+        default=2,
         metavar="N",
         help=(
-            "Minimum number of completed agent turns required to count a scenario toward aggregate rates. "
-            "Scenarios with fewer agent turns (e.g. due to a stalled vLLM server) are excluded from all "
-            "success/action-match/db-state rates and flagged in the summary. On --resume, they are also "
-            "treated as in-flight and re-run. Default: 0 (disabled). Suggested value: 2."
+            "Minimum number of completed agent turns for a scenario to be scored on its own merits. "
+            "Scenarios with fewer agent turns (e.g. due to a stalled vLLM server) are counted as FAILURES "
+            "in the composite success rate, skipped in the per-signal action-match/db-state/nl-assertion "
+            "rates, and flagged in the summary. On --resume, they are also treated as in-flight and "
+            "re-run. Default: 2 — legitimately short scenarios (refusals, quick lookups) bottom out at 3 "
+            "agent responses, so a floor of 3 sits inside that cluster. Pass 0 to disable the filter."
+        ),
+    )
+    parser.add_argument(
+        "--no-auto-resume-on-stale",
+        dest="auto_resume_on_stale",
+        action="store_false",
+        default=True,
+        help=(
+            "Disable the automatic in-run re-run of scenarios that recorded ZERO conversation turns. "
+            "Enabled by default: zero turns means the bots never exchanged audio, so there is no "
+            "measurement to bias by retrying."
+        ),
+    )
+    parser.add_argument(
+        "--auto-resume-on-insufficient-turns",
+        action="store_true",
+        default=False,
+        help=(
+            "Also auto-retry scenarios that merely fall below --min-agent-turns. OFF by default: that "
+            "floor is a heuristic and legitimately short scenarios sit on it, so because such scenarios "
+            "are forced to is_successful=False, retrying turns a guaranteed failure into a fresh draw "
+            "and biases the success rate upward."
+        ),
+    )
+    parser.add_argument(
+        "--max-auto-retries",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Maximum automatic re-runs per scenario (default: 1). Bounds the loop when a backend is down.",
+    )
+    parser.add_argument(
+        "--auto-retry-backoff-secs",
+        type=float,
+        default=5.0,
+        metavar="SECS",
+        help=(
+            "Seconds to wait before an automatic re-run (default: 5.0). An immediate retry against a "
+            "hung backend is the least likely moment to succeed."
+        ),
+    )
+    parser.add_argument(
+        "--conversation-end-policy",
+        choices=("tool-only", "valid-terminal-state"),
+        default="tool-only",
+        help=(
+            "Policy for the clean-exit success gate. 'tool-only' requires the agent to call "
+            "EndConversationTool. 'valid-terminal-state' also accepts a simulator-reported end or an "
+            "inactivity timeout when the user was the final speaker. Default: tool-only."
+        ),
+    )
+    parser.add_argument(
+        "--inactivity-timeout",
+        type=float,
+        default=120.0,
+        metavar="SECONDS",
+        help=(
+            "Stop a scenario after this many seconds without conversational activity from either side. "
+            "This is independent of the overall --duration limit. Default: 120.0."
         ),
     )
 
@@ -422,10 +529,14 @@ Examples:
     if args.judge_url and args.judge_model:
         logger.info(f"Using LLM judge: {args.judge_url} with model: {args.judge_model}")
         judge_kwargs = {
-            "max_tokens": 8192,
-            "temperature": 1.0,
-            "top_p": 0.95,
-            "seed": 42,
+            "max_tokens": args.judge_max_tokens,
+            "temperature": args.judge_temperature,
+            "top_p": args.judge_top_p,
+            "seed": args.judge_seed,
+            # Not exposed as a flag on purpose. The judge prompt asks for
+            # per-assertion verdicts with quoted evidence, and scoring quality
+            # depends on the model reasoning before it answers. Turning this off
+            # would silently change what the scores mean across runs.
             "chat_template_kwargs": {"enable_thinking": True},
         }
         if args.judge_thinking_token_budget is not None:
@@ -434,6 +545,7 @@ Examples:
             url=args.judge_url,
             model=args.judge_model,
             api_key=args.judge_api_key,
+            api_key_name=args.judge_api_key_name,
             timeout=args.judge_timeout,
             compact_context=args.judge_compact_context,
             context_message_limit=args.judge_context_message_limit,
@@ -463,6 +575,12 @@ Examples:
                 judge_include_conversation=args.judge_include_conversation,
                 strict_match=args.strict_match,
                 min_agent_turns=args.min_agent_turns,
+                auto_resume_on_stale=args.auto_resume_on_stale,
+                auto_resume_on_insufficient_turns=args.auto_resume_on_insufficient_turns,
+                max_auto_retries=args.max_auto_retries,
+                auto_retry_backoff_secs=args.auto_retry_backoff_secs,
+                conversation_end_policy=args.conversation_end_policy,
+                inactivity_timeout=args.inactivity_timeout,
             )
         )
         return 0

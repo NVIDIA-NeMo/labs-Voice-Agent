@@ -125,6 +125,7 @@ def _bare_args(**overrides) -> argparse.Namespace:
         judge_api_key=None,
         judge_threshold=0.9,
         strict_match=False,
+        inactivity_timeout=120.0,
         resume=None,
         list=False,
         list_domains=False,
@@ -331,6 +332,28 @@ def test_run_args_redacts_judge_api_key(tmp_path, _run_eval_module):
     assert data["invocations"][0]["parsed_args"]["judge_api_key"] == "<redacted>"
     # Make sure the secret didn't sneak into another field.
     assert "sk-secret-token" not in (tmp_path / "run_args.json").read_text()
+
+
+@pytest.mark.parametrize(
+    "key_args",
+    [
+        ["--judge-api-key", "sk-secret-token"],
+        ["--judge-api-key=sk-secret-token"],
+        ["--judge-api-k", "sk-secret-token"],
+    ],
+)
+def test_run_args_redacts_judge_api_key_in_argv(tmp_path, monkeypatch, _run_eval_module, key_args):
+    """The raw command line in ``argv`` must not carry the key either, whatever form the flag took."""
+    monkeypatch.setattr(sys, "argv", ["run_evaluation.py", "--domain", "tau2_retail", *key_args])
+    args = _bare_args(judge_api_key="sk-secret-token")
+    logger = _run_eval_module.FileLogger(str(tmp_path / "log.txt"))
+    _run_eval_module._write_run_args(str(tmp_path), args, [_StubScenario("x")], is_resume=False, logger=logger)
+
+    content = (tmp_path / "run_args.json").read_text()
+    assert "sk-secret-token" not in content
+    argv = json.loads(content)["invocations"][0]["argv"]
+    assert argv[:3] == ["run_evaluation.py", "--domain", "tau2_retail"]
+    assert "<redacted>" in argv[-1]
 
 
 # ---------------------------------------------------------------------------

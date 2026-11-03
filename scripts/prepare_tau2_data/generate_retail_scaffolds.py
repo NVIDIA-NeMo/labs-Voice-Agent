@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""One-shot scaffold generator for tau2_retail scenarios (M3.6).
+"""One-shot scaffold generator for tau2_retail scenarios.
 
 Same template as ``generate_tau2_airline_scaffolds.py`` — reads upstream
 ``tasks_voice.json`` and ``split_tasks.json[base]`` and emits one

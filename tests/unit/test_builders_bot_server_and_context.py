@@ -22,13 +22,43 @@ import wave
 from io import BytesIO
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
-from pipecat.frames.frames import AudioRawFrame, EndTaskFrame
+from omegaconf import OmegaConf
+from pipecat.frames.frames import (
+    AudioRawFrame,
+    EndFrame,
+    EndWorkerFrame,
+    InputAudioRawFrame,
+    LLMRunFrame,
+    StopFrame,
+    TranscriptionFrame,
+    VADUserStartedSpeakingFrame,
+    VADUserStoppedSpeakingFrame,
+)
+from pipecat.pipeline.pipeline import Pipeline
+from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMAssistantAggregator,
+    LLMUserAggregator,
+)
+from pipecat.processors.aggregators.llm_text_processor import LLMTextProcessor
+from pipecat.processors.frame_processor import FrameProcessor
+from pipecat.tests.utils import SleepFrame, run_test
+from pipecat.turns.user_start import VADUserTurnStartStrategy
+from pipecat.turns.user_stop import SpeechTimeoutUserTurnStopStrategy
+from pipecat.turns.user_turn_controller import UserTurnController
+from pipecat.turns.user_turn_strategies import ExternalUserTurnStrategies, UserTurnStrategies
+from pipecat.utils.asyncio.task_manager import TaskManager
 
 from nemo_voice_agent.evaluation.tools.waitlist_tools import DropWaitListTool, GetWaitlistTool, JoinWaitListTool
 from nemo_voice_agent.pipecat import bot_server
-from nemo_voice_agent.pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from nemo_voice_agent.pipecat.frames.frames import STTSegmentDoneFrame
+from nemo_voice_agent.pipecat.services.common import UserAudioBuffer
 from nemo_voice_agent.pipecat.services.nemo import builders
+from nemo_voice_agent.pipecat.services.nemo.stt import NemoSpeechLMSTTService
+from nemo_voice_agent.pipecat.turns import SegmentedSTTUserTurnStopStrategy
+from nemo_voice_agent.pipecat.utils.text.simple_text_aggregator import SimpleSegmentedTextAggregator
 
 
 def _config(**overrides):
@@ -37,10 +67,9 @@ def _config(**overrides):
         transport={
             "audio_in_sample_rate": 8000,
             "audio_out_sample_rate": 24000,
-            "can_create_user_frames": True,
         },
         diar={"enabled": True},
-        turn_taking={"enabled": True},
+        turn_taking={"type": "nemo"},
         stt=SimpleNamespace(kind="stt"),
         tts=SimpleNamespace(kind="tts"),
         llm={"kind": "llm", "inject_dummy_user_message": True, "dummy_user_message": "Hi"},
@@ -53,9 +82,12 @@ def _config(**overrides):
         DIAR_MODEL="diar-model",
         STT_DEVICE="cpu",
         USE_DIAR=True,
+        TURN_TAKING_TYPE="nemo",
         TURN_TAKING_MAX_BUFFER_SIZE=3,
         TURN_TAKING_BOT_STOP_DELAY=0.25,
         TURN_TAKING_BACKCHANNEL_PHRASES_PATH=["yeah"],
+        TURN_TAKING_USER_SPEECH_TIMEOUT=0.6,
+        TURN_TAKING_USER_TURN_STOP_TIMEOUT=None,
         SYSTEM_ROLE="system",
         SYSTEM_PROMPT="policy",
         get_vad_params=lambda: "vad-params",
@@ -66,13 +98,27 @@ def _config(**overrides):
     return config
 
 
+def _set_turn_taking(config, **turn_taking):
+    """Rewrite the ``turn_taking`` block the way ConfigManager would.
+
+    ConfigManager keeps the raw block and the derived ``TURN_TAKING_*``
+    attributes in agreement, so tests must too — reading one but not the other
+    would let a builder keep the stale type.
+    """
+    config.server_config.turn_taking = dict(turn_taking)
+    config.TURN_TAKING_TYPE = turn_taking.get("type", "nemo")
+    config.TURN_TAKING_USER_SPEECH_TIMEOUT = turn_taking.get("user_speech_timeout", 0.6)
+    config.TURN_TAKING_USER_TURN_STOP_TIMEOUT = turn_taking.get("user_turn_stop_timeout") or None
+    return config
+
+
 def test_builder_factories_delegate_and_preserve_configuration(monkeypatch):
     """Thin builders pass resolved configuration to their dependencies."""
     config = _config()
     monkeypatch.setattr(builders, "SileroVADAnalyzer", lambda **kwargs: ("vad", kwargs))
     monkeypatch.setattr(builders, "ProtobufFrameSerializer", lambda: "serializer")
-    monkeypatch.setattr(builders, "WebsocketServerParams", lambda **kwargs: SimpleNamespace(**kwargs))
-    monkeypatch.setattr(builders, "WebsocketServerTransport", lambda **kwargs: ("transport", kwargs))
+    monkeypatch.setattr(builders, "SingleClientWebsocketServerParams", lambda **kwargs: SimpleNamespace(**kwargs))
+    monkeypatch.setattr(builders, "SingleClientWebsocketServerTransport", lambda **kwargs: ("transport", kwargs))
     monkeypatch.setattr(builders, "get_stt_service_from_config", lambda cfg, logger: ("stt", cfg, logger))
     monkeypatch.setattr(builders, "get_tts_service_from_config", lambda cfg, logger: ("tts", cfg, logger))
     monkeypatch.setattr(builders, "get_llm_service_from_config", lambda cfg: ("llm", cfg))
@@ -86,7 +132,6 @@ def test_builder_factories_delegate_and_preserve_configuration(monkeypatch):
     assert params.serializer == "serializer"
     assert params.audio_in_sample_rate == 8000
     assert params.audio_out_sample_rate == 24000
-    assert params.can_create_user_frames is True
     assert params.audio_out_10ms_chunks == 7
     assert builders.build_stt(config, "logger")[0] == "stt"
     assert builders.build_tts(config, "logger")[0] == "tts"
@@ -128,32 +173,33 @@ def test_optional_audio_diar_and_turn_taking_builders(monkeypatch):
     assert turn[1]["use_diar"] is False
     assert turn[1]["use_vad"] is False
     assert turn[1]["audio_logger"] == "logger"
-    config.server_config.turn_taking["enabled"] = False
+    _set_turn_taking(config, type="speech_timeout")
     assert builders.build_turn_taking(config) is None
+
+
+def test_build_turn_taking_defaults_to_nemo_when_type_is_omitted(monkeypatch):
+    """An omitted ``turn_taking.type`` still builds the NeMo service."""
+    monkeypatch.setattr(builders, "NeMoTurnTakingService", lambda **kwargs: ("turn", kwargs))
+    config = _set_turn_taking(_config(), max_buffer_size=2)
+
+    assert builders.build_turn_taking(config)[0] == "turn"
 
 
 def test_context_and_logging_builders(monkeypatch):
     """Context construction preserves prompts and returns both aggregators."""
     config = _config()
 
-    class Pair:
-        def user(self):
-            return "user-aggregator"
-
-        def assistant(self):
-            return "assistant-aggregator"
-
-    class LLM:
-        def create_context_aggregator(self, context):
-            assert context.get_messages() == [
-                {"role": "system", "content": "policy"},
-                {"role": "user", "content": "Hi"},
-            ]
-            return Pair()
-
-    context, user, assistant, original = builders.build_context_and_aggregators(LLM(), config)
-    assert user == "user-aggregator"
-    assert assistant == "assistant-aggregator"
+    context, user, assistant, original = builders.build_context_and_aggregators(object(), config)
+    assert context.get_messages() == [
+        {"role": "system", "content": "policy"},
+        {"role": "user", "content": "Hi"},
+    ]
+    assert isinstance(user, LLMUserAggregator)
+    assert isinstance(assistant, LLMAssistantAggregator)
+    # turn_taking.type is nemo in _config(), so NeMoTurnTakingService owns the
+    # turn boundaries and the aggregator must defer to it rather than deriving
+    # turns from VAD itself.
+    assert isinstance(user._params.user_turn_strategies, ExternalUserTurnStrategies)
     assert original == context.get_messages()
     assert original is not context.get_messages()
     assert builders.resolve_log_file_path(config) == ("voice.log", "INFO", True)
@@ -194,7 +240,10 @@ class _Task:
 
 
 def test_run_bot_websocket_server_exercises_registered_lifecycle(monkeypatch):
-    """Registered handlers initialize, terminate, reset, and finalize a session."""
+    """Registered handlers initialize, reset, and finalize a session.
+
+    Notably they do *not* terminate the pipeline: see the assertion below.
+    """
     ws = _Registrar()
     rtvi = _RTVI()
     task = _Task()
@@ -236,8 +285,12 @@ def test_run_bot_websocket_server_exercises_registered_lifecycle(monkeypatch):
     assert rtvi._client_ready is False
     assert rtvi._bot_ready is False
     assert task.queued[0] == "initial"
-    assert sum(isinstance(frame, EndTaskFrame) for frame in task.queued) == 2
-    assert reset_service.reset_calls == 1
+    # Disconnect and session-timeout must NOT end the pipeline. The WebSocket
+    # server lives inside the input transport, so ending it would stop the
+    # server and make the bot unreachable for the rest of the process. Both
+    # handlers reset services instead.
+    assert not any(isinstance(frame, (EndWorkerFrame, EndFrame, StopFrame)) for frame in task.queued)
+    assert reset_service.reset_calls == 2
     assert disconnected == [True]
     assert audio_logger.finalize_calls == 3
 
@@ -289,25 +342,19 @@ def test_fastapi_app_and_concurrent_runner(monkeypatch):
     assert seen["served"] is seen["ws"] is True
 
 
-def test_openai_audio_context_encodes_wav_and_adds_message(tmp_path):
+def test_audio_context_encodes_wav_and_adds_message():
     """Audio context messages contain a valid WAV and optionally persist it."""
-    output = tmp_path / "nested" / "audio.wav"
     frames = [AudioRawFrame(b"\x00\x01" * 8, 16000, 1), AudioRawFrame(b"\x02\x03" * 4, 16000, 1)]
-    message = asyncio.run(
-        OpenAILLMContext.create_audio_message(
-            role="developer", audio_frames=frames, text="listen", audio_output_path=output
-        )
-    )
+    message = asyncio.run(LLMContext.create_audio_message(role="developer", audio_frames=frames, text="listen"))
     assert message["role"] == "developer"
     assert message["content"][0] == {"type": "text", "text": "listen"}
     wav_bytes = base64.b64decode(message["content"][1]["input_audio"]["data"])
-    assert output.read_bytes() == wav_bytes
     with wave.open(BytesIO(wav_bytes), "rb") as wav_file:
         assert wav_file.getframerate() == 16000
         assert wav_file.getnchannels() == 1
         assert wav_file.getnframes() == 12
 
-    context = OpenAILLMContext(messages=[])
+    context = LLMContext(messages=[])
     asyncio.run(context.add_audio_frames_message(audio_frames=frames, text="audio"))
     assert context.get_messages()[0]["content"][0]["text"] == "audio"
 
@@ -361,3 +408,364 @@ def test_waitlist_tools_cover_join_drop_get_and_not_found():
     assert len(params.results) == 1
     assert params.result["total_in_waitlist"] == 1
     assert getter.properties == {}
+
+
+def test_llm_text_processor_carries_the_custom_segmented_aggregator():
+    """The custom TTS aggregator must reach an LLMTextProcessor, not the TTS service.
+
+    Pipecat 1.0 removed ``TTSService(text_aggregator=...)`` and *silently
+    ignores* unknown constructor kwargs, so a regression here would degrade TTS
+    chunking back to plain sentence splitting without raising anything. Assert
+    the wiring explicitly.
+    """
+    config = _config()
+    config.server_config.tts = OmegaConf.create({"type": "nemo", "min_sentence_length": 9})
+
+    processor = builders.build_llm_text_processor(config)
+
+    assert isinstance(processor, LLMTextProcessor)
+    assert isinstance(processor._text_aggregator, SimpleSegmentedTextAggregator)
+    assert processor._text_aggregator._min_sentence_length == 9
+
+    config.server_config.tts = OmegaConf.create({"type": "nemo", "use_text_aggregator": False})
+    assert builders.build_llm_text_processor(config) is None
+
+
+def _turn_strategies(config, turn_taking):
+    """Return the user-turn strategies build_context_and_aggregators selects."""
+    _, user_agg, _, _ = builders.build_context_and_aggregators(object(), config, turn_taking)
+    return user_agg._params.user_turn_strategies
+
+
+def test_exactly_one_component_emits_user_speaking_frames():
+    """Whoever owns turn detection is the sole emitter of the user speaking frames.
+
+    In pipecat 1.x the LLMUserAggregator — not the transport and not VAD —
+    emits UserStartedSpeakingFrame / UserStoppedSpeakingFrame, gated on each
+    strategy's ``enable_user_speaking_frames``. So when NeMoTurnTakingService is
+    in the pipeline the aggregator must stay quiet (or both would emit), and
+    when it is absent the aggregator must emit (or nothing would).
+    """
+    config = _config()
+
+    # Turn-taking present: it pushes the frames, so the aggregator defers.
+    with_service = _turn_strategies(config, object())
+    assert isinstance(with_service, ExternalUserTurnStrategies)
+    assert not any(s._enable_user_speaking_frames for s in with_service.start)
+    assert not any(s._enable_user_speaking_frames for s in with_service.stop)
+
+    # Turn-taking absent: VAD drives the turn and the aggregator emits.
+    _set_turn_taking(config, type="speech_timeout")
+    without_service = _turn_strategies(config, None)
+    assert not isinstance(without_service, ExternalUserTurnStrategies)
+    assert all(s._enable_user_speaking_frames for s in without_service.start)
+    assert [type(s).__name__ for s in without_service.start] == ["VADUserTurnStartStrategy"]
+    # Named explicitly so we don't inherit pipecat's default stop strategy,
+    # which would pull in LocalSmartTurnAnalyzerV3.
+    assert [type(s).__name__ for s in without_service.stop] == ["SpeechTimeoutUserTurnStopStrategy"]
+
+
+def test_turn_taking_instance_overrides_the_config_type():
+    """The passed-in service decides, not a re-derived read of turn_taking.type.
+
+    A bot may construct its turn-taking service inline; re-deriving the answer
+    from config would then silently pick the wrong strategy pair.
+    """
+    config = _config()
+    _set_turn_taking(config, type="speech_timeout")
+
+    assert isinstance(_turn_strategies(config, object()), ExternalUserTurnStrategies)
+    assert not isinstance(_turn_strategies(config, None), ExternalUserTurnStrategies)
+
+
+def test_omitted_turn_taking_type_selects_the_external_turn_strategies():
+    """No ``type`` means ``nemo``, so the aggregator must defer to the service."""
+    config = _set_turn_taking(_config(), max_buffer_size=2)
+
+    assert isinstance(_turn_strategies(config, None), ExternalUserTurnStrategies)
+
+
+def test_configured_user_speech_timeout_reaches_the_stop_strategy():
+    """``turn_taking.user_speech_timeout`` must land on the pipecat strategy.
+
+    The strategy waits this long *after* ``vad.stop_secs`` before ending the
+    turn, so dropping the configured value silently restores pipecat's 0.6s and
+    the end-of-turn latency the key exists to control.
+    """
+    config = _set_turn_taking(_config(), type="speech_timeout", user_speech_timeout=0.25)
+
+    (stop,) = _turn_strategies(config, None).stop
+    assert isinstance(stop, SpeechTimeoutUserTurnStopStrategy)
+    assert stop._user_speech_timeout == 0.25
+
+
+def test_default_user_speech_timeout_matches_pipecat():
+    """The shipped default carries pipecat's own 0.6s, not a silent zero."""
+    config = _set_turn_taking(_config(), type="speech_timeout")
+
+    (stop,) = _turn_strategies(config, None).stop
+    assert stop._user_speech_timeout == 0.6
+
+
+def _user_turn_stop_timeout(config, turn_taking):
+    """Return the watchdog timeout build_context_and_aggregators gives the user aggregator."""
+    _, user_agg, _, _ = builders.build_context_and_aggregators(object(), config, turn_taking)
+    return user_agg._params.user_turn_stop_timeout
+
+
+def test_user_turn_stop_watchdog_is_disabled_by_default():
+    """Both turn paths get no watchdog, not pipecat's 5s default.
+
+    With the watchdog on, an offline STT reply slower than 5s arrived after the
+    turn had been force-ended, and its text was prepended to the next user turn.
+    """
+    assert _user_turn_stop_timeout(_config(), object()) is None
+    assert _user_turn_stop_timeout(_set_turn_taking(_config(), type="speech_timeout"), None) is None
+
+
+def test_configured_user_turn_stop_timeout_reaches_the_aggregator():
+    """A configured watchdog lands on the aggregator for either turn path."""
+    config = _set_turn_taking(_config(), type="speech_timeout", user_turn_stop_timeout=30.0)
+    assert _user_turn_stop_timeout(config, None) == 30.0
+    assert _user_turn_stop_timeout(config, object()) == 30.0
+
+
+def _turn_end_events(user_turn_stop_timeout, transcript_delay):
+    """Run one VAD-driven user turn whose transcript arrives late; return the controller's events."""
+
+    async def run():
+        controller = UserTurnController(
+            user_turn_strategies=UserTurnStrategies(
+                start=[VADUserTurnStartStrategy()],
+                stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=0.0)],
+            ),
+            user_turn_stop_timeout=user_turn_stop_timeout,
+        )
+        events = []
+
+        def record(name):
+            async def handler(*_args, **_kwargs):
+                events.append(name)
+
+            return handler
+
+        for name in ("on_user_turn_started", "on_user_turn_stopped", "on_user_turn_stop_timeout"):
+            controller.add_event_handler(name, record(name))
+        for name in (
+            "on_push_frame",
+            "on_broadcast_frame",
+            "on_user_turn_inference_triggered",
+            "on_reset_aggregation",
+        ):
+            controller.add_event_handler(name, record("ignored"))
+
+        await controller.setup(TaskManager())
+        await controller.process_frame(VADUserStartedSpeakingFrame(start_secs=0.2))
+        await controller.process_frame(VADUserStoppedSpeakingFrame(stop_secs=1.2))
+        await asyncio.sleep(transcript_delay)
+        events.append("transcript")
+        await controller.process_frame(TranscriptionFrame("late text", "user", "now", finalized=True))
+        await asyncio.sleep(0.05)
+        await controller.cleanup()
+        return [e for e in events if e != "ignored"]
+
+    return asyncio.run(run())
+
+
+def test_disabled_watchdog_lets_a_late_transcript_end_the_turn():
+    """Pins pipecat's handling of ``user_turn_stop_timeout=None``, which the builder passes by default.
+
+    A finite watchdog shorter than the STT reply ends the turn before the text
+    arrives, which is how a slow transcript landed in the next turn. None must
+    leave the turn open until the transcript ends it, not crash or fire at once.
+    """
+    assert _turn_end_events(0.05, transcript_delay=0.6) == [
+        "on_user_turn_started",
+        "on_user_turn_stop_timeout",
+        "on_user_turn_stopped",
+        "transcript",
+    ]
+    assert _turn_end_events(None, transcript_delay=0.6) == [
+        "on_user_turn_started",
+        "transcript",
+        "on_user_turn_stopped",
+    ]
+
+
+@pytest.mark.parametrize(("is_omni_model", "waits"), [(False, True), (True, False)])
+def test_omni_stop_strategies_do_not_wait_for_a_transcript(is_omni_model, waits):
+    """UserAudioBuffer consumes every transcript in omni mode, so waiting for one would never end the turn."""
+    config = _config()
+    config.server_config.llm["is_omni_model"] = is_omni_model
+
+    (external_stop,) = _turn_strategies(config, object()).stop
+    _set_turn_taking(config, type="speech_timeout")
+    (vad_stop,) = _turn_strategies(config, None).stop
+    assert external_stop.wait_for_transcript is waits
+    assert vad_stop.wait_for_transcript is waits
+
+
+class _CountLLMRuns(FrameProcessor):
+    def __init__(self):
+        super().__init__()
+        self.runs = 0
+
+    async def process_frame(self, frame, direction):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, LLMRunFrame):
+            self.runs += 1
+        await self.push_frame(frame, direction)
+
+
+def test_omni_speech_timeout_turn_runs_the_llm_without_the_watchdog():
+    """Regression: on omni + speech_timeout the 5s watchdog used to be the only thing that ended a turn.
+
+    With it disabled and a stop strategy still waiting for text, the agent never
+    replied, because UserAudioBuffer swallows the transcript and only runs the LLM
+    on the aggregator's UserStoppedSpeakingFrame.
+    """
+    config = _set_turn_taking(_config(), type="speech_timeout", user_speech_timeout=0.1)
+    config.server_config.llm.update(is_omni_model=True, inject_dummy_user_message=False)
+    context, user_agg, _, _ = builders.build_context_and_aggregators(object(), config, None)
+    audio_buffer = UserAudioBuffer(context=context, user_context_aggregator=user_agg)
+    counter = _CountLLMRuns()
+
+    def utterance(text):
+        audio = InputAudioRawFrame(audio=b"\x00" * 512, sample_rate=16000, num_channels=1)
+        return [
+            VADUserStartedSpeakingFrame(start_secs=0.2),
+            audio,
+            VADUserStoppedSpeakingFrame(stop_secs=0.4),
+            SleepFrame(0.05),
+            TranscriptionFrame(text, "user", "now", finalized=True),
+            SleepFrame(0.5),
+        ]
+
+    asyncio.run(
+        run_test(
+            Pipeline([audio_buffer, user_agg, counter]),
+            frames_to_send=utterance("one") + utterance("two"),
+        )
+    )
+
+    assert counter.runs == 2
+    assert [m["role"] for m in context.get_messages()].count("user") == 2
+
+
+@pytest.mark.parametrize(
+    ("stt_type", "is_omni_model", "expected"),
+    [
+        ("nemo_speechlm", False, SegmentedSTTUserTurnStopStrategy),
+        # An omni LLM hears the audio itself, and UserAudioBuffer consumes the transcripts, so nothing waits for STT.
+        ("nemo_speechlm", True, SpeechTimeoutUserTurnStopStrategy),
+        # A streaming STT emits final transcripts on its own schedule, not one per VAD stop.
+        ("nemo", False, SpeechTimeoutUserTurnStopStrategy),
+        ("nvidia", False, SpeechTimeoutUserTurnStopStrategy),
+    ],
+)
+def test_speechlm_stt_selects_the_segmented_stop_strategy(stt_type, is_omni_model, expected):
+    config = _set_turn_taking(_config(), type="speech_timeout", user_speech_timeout=0.25)
+    config.server_config.stt = SimpleNamespace(type=stt_type)
+    config.server_config.llm["is_omni_model"] = is_omni_model
+
+    (stop,) = _turn_strategies(config, None).stop
+    assert type(stop) is expected
+    assert stop._user_speech_timeout == 0.25
+
+
+def _speechlm_user_aggregator(user_speech_timeout):
+    """Return the builder's user aggregator for a SpeechLM STT, and the list its ended user turns are recorded in.
+
+    Each entry is ``(strategy, text)``. Pipecat also writes a still-open turn to the context when the session ends,
+    with no strategy, so checking the context alone would not show whether the strategy ever ended the turn.
+    """
+    config = _set_turn_taking(_config(), type="speech_timeout", user_speech_timeout=user_speech_timeout)
+    config.server_config.stt = SimpleNamespace(type="nemo_speechlm")
+    config.server_config.llm["inject_dummy_user_message"] = False
+    _, user_agg, _, _ = builders.build_context_and_aggregators(object(), config, None)
+    turns = []
+
+    @user_agg.event_handler("on_user_turn_stopped")
+    async def record(_aggregator, strategy, message):
+        turns.append((type(strategy).__name__ if strategy else None, message.content))
+
+    return user_agg, turns
+
+
+def test_speechlm_turn_keeps_a_late_second_segment():
+    """Regression: a mid-utterance pause made the turn end before its second segment was transcribed.
+
+    The frames follow the order in the GA run's agent log, where the second segment's VAD start reached the
+    aggregator before the first transcript. Pipecat's own strategy ends this turn with only "Hi." and leaves "Bye."
+    for the next user message.
+    """
+    user_agg, turns = _speechlm_user_aggregator(user_speech_timeout=0.0)
+
+    asyncio.run(
+        run_test(
+            Pipeline([user_agg]),
+            frames_to_send=[
+                VADUserStartedSpeakingFrame(start_secs=0.1),
+                VADUserStoppedSpeakingFrame(stop_secs=1.2),
+                VADUserStartedSpeakingFrame(start_secs=0.1),
+                TranscriptionFrame("Hi.", "user", "now", finalized=True),
+                STTSegmentDoneFrame(),
+                VADUserStoppedSpeakingFrame(stop_secs=1.2),
+                SleepFrame(0.3),
+                TranscriptionFrame("Bye.", "user", "now", finalized=True),
+                STTSegmentDoneFrame(),
+                SleepFrame(0.3),
+            ],
+        )
+    )
+
+    assert turns == [("SegmentedSTTUserTurnStopStrategy", "Hi. Bye.")]
+
+
+class _FakeSpeechLMEndpoint:
+    """Stands in for the vLLM client: returns the scripted transcripts in order, each after its delay."""
+
+    def __init__(self, replies):
+        self._replies = list(replies)
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    async def _create(self, **_kwargs):
+        delay, reply = self._replies.pop(0)
+        await asyncio.sleep(delay)
+        if isinstance(reply, Exception):
+            raise reply
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=reply))])
+
+
+def _two_segment_utterance(stt_replies, user_speech_timeout):
+    """Send one utterance with a mid-utterance pause through the real SpeechLM STT service and the user aggregator."""
+    user_agg, turns = _speechlm_user_aggregator(user_speech_timeout)
+    stt = NemoSpeechLMSTTService(model="m", sample_rate=16000, audio_passthrough=False)
+    stt._client = _FakeSpeechLMEndpoint(stt_replies)
+
+    def segment():
+        audio = InputAudioRawFrame(audio=b"\x00" * 3200, sample_rate=16000, num_channels=1)
+        return [VADUserStartedSpeakingFrame(start_secs=0.1), audio, VADUserStoppedSpeakingFrame(stop_secs=1.2)]
+
+    asyncio.run(
+        run_test(Pipeline([stt, user_agg]), frames_to_send=segment() + segment() + [SleepFrame(1.5)]),
+    )
+    return turns
+
+
+def test_speechlm_turn_waits_for_a_slow_second_segment():
+    """End to end: the second segment takes longer than the turn's speech timeout, and the turn still waits for it."""
+    turns = _two_segment_utterance([(0.0, "Hi."), (0.8, "Bye.")], user_speech_timeout=0.5)
+    assert turns == [("SegmentedSTTUserTurnStopStrategy", "Hi. Bye.")]
+
+
+@pytest.mark.parametrize("second_reply", ["", RuntimeError("SpeechLM server down")])
+def test_speechlm_turn_ends_when_an_empty_or_failed_last_segment_is_done(second_reply):
+    """A last segment with no text ends the turn when its transcription returns, not at the 10 s backstop.
+
+    The pipeline runs for 1.5 s after the last VAD stop, so a turn the strategy had held for the backstop would only
+    be written at session end, with no strategy.
+    """
+    # The empty or failed reply comes after the 0.5 s speech timeout, so the strategy holds the turn until it returns.
+    turns = _two_segment_utterance([(0.0, "Hi."), (0.8, second_reply)], user_speech_timeout=0.5)
+    assert turns == [("SegmentedSTTUserTurnStopStrategy", "Hi.")]

@@ -26,7 +26,7 @@ from pipecat.frames.frames import (
     BotStoppedSpeakingFrame,
     Frame,
     InterimTranscriptionFrame,
-    StartInterruptionFrame,
+    InterruptionFrame,
     TranscriptionFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
@@ -437,9 +437,9 @@ class NeMoTurnTakingService(FrameProcessor):
         if isinstance(frame, UserStartedSpeakingFrame):
             logger.debug("User started speaking")
             if self.can_create_user_frames:
-                logger.debug("Pushing UserStartedSpeakingFrame and StartInterruptionFrame")
+                logger.debug("Pushing UserStartedSpeakingFrame and InterruptionFrame")
                 await self.push_frame(frame)
-                await self.push_frame(StartInterruptionFrame(), direction=FrameDirection.DOWNSTREAM)
+                await self.push_frame(InterruptionFrame(), direction=FrameDirection.DOWNSTREAM)
             # Record cutoff time for agent audio when TTS is interrupted
             if self._audio_logger and self._bot_speaking:
                 self._audio_logger.set_agent_cutoff_time()

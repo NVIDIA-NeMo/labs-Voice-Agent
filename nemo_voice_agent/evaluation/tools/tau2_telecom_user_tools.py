@@ -27,7 +27,7 @@
 #
 # Translation notes vs upstream:
 #   - These are LLM-callable tools the user-sim's LLM calls during the
-#     conversation; they're distinct from M5c's initialization functions
+#     conversation; they're distinct from the initialization functions in ``tau2_telecom_init_functions.py``
 #     (which run before the conversation starts via the
 #     ``apply_initialization`` RTVI path). Some tools share helper
 #     logic with init functions (network search, status checks); we reuse
@@ -202,7 +202,7 @@ def _check_status_bar(db: dict) -> str:
 # Helper: _toggle_data / _toggle_airplane_mode
 # =============================================================================
 #
-# Distinct from M5c's ``turn_data_off`` / ``turn_airplane_mode_on`` init
+# Distinct from the ``turn_data_off`` / ``turn_airplane_mode_on`` init
 # actions which drive to a specific end state. These toggle helpers flip
 # the current value (the LLM-tool semantic) and re-derive network state.
 

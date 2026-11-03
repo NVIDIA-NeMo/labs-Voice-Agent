@@ -15,7 +15,7 @@
 #
 # Scenario fixtures and prose adapted from https://github.com/ServiceNow/eva/tree/0.1.3 (MIT-licensed).
 # Auto-scaffolded from eva_airline_dataset.jsonl entries in the 1.x sub-flow (voluntary changes).
-# See nemo_experiments/generate_eva_airline_scaffolds.py for the generator.
+# See scripts/prepare_eva_data/generate_airline_scaffolds.py for the generator.
 
 # pylint: disable=line-too-long
 # flake8: noqa: E501

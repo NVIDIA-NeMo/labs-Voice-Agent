@@ -17,12 +17,14 @@ import os
 from pathlib import Path
 
 import pytest
+from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from pipecat.audio.vad.silero import VADParams
 
 from nemo_voice_agent.pipecat.services.nemo.diar import NeMoDiarInputParams
 from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams
 from nemo_voice_agent.utils.config_manager import ConfigManager
+from nemo_voice_agent.utils.misc import resolve_prompt
 
 
 @pytest.fixture
@@ -96,6 +98,10 @@ class TestDefaultConfigs:
     def test_configure_turn_taking(self, voice_agent_server_base_path):
         """Test turn taking configuration."""
         config_manager = ConfigManager(voice_agent_server_base_path)
+        assert config_manager.TURN_TAKING_TYPE == "nemo"
+        assert hasattr(config_manager, "TURN_TAKING_USER_SPEECH_TIMEOUT") and isinstance(
+            config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT, (int, float)
+        )
         assert hasattr(config_manager, "TURN_TAKING_BACKCHANNEL_PHRASES_PATH") and isinstance(
             config_manager.TURN_TAKING_BACKCHANNEL_PHRASES_PATH, str
         )
@@ -131,9 +137,52 @@ class TestDefaultConfigs:
         assert hasattr(config_manager, "SYSTEM_PROMPT") and isinstance(config_manager.SYSTEM_PROMPT, str)
 
     @pytest.mark.unit
-    def test_configure_llm_with_file_system_prompt(self, voice_agent_server_base_path):
+    def test_configure_llm_with_file_system_prompt(self, voice_agent_server_base_path, tmp_path):
+        """A ``system_prompt`` naming an existing file is read from disk."""
+        prompt_file = tmp_path / "prompt.txt"
+        prompt_file.write_text("You are a helpful agent.\nSpeak briefly.", encoding="utf-8")
+
         config_manager = ConfigManager(voice_agent_server_base_path)
-        assert hasattr(config_manager, "SYSTEM_PROMPT") and isinstance(config_manager.SYSTEM_PROMPT, str)
+        config_manager.server_config.llm.system_prompt = str(prompt_file)
+        config_manager.server_config.llm.system_prompt_suffix = None
+        config_manager._configure_llm()
+
+        # ``_configure_llm`` may append tool-calling instructions, so anchor on the head.
+        assert config_manager.SYSTEM_PROMPT.startswith("You are a helpful agent.\nSpeak briefly.")
+
+    @pytest.mark.unit
+    def test_configure_llm_with_literal_system_prompt(self, voice_agent_server_base_path):
+        """A ``system_prompt`` that names no file is taken literally."""
+        config_manager = ConfigManager(voice_agent_server_base_path)
+        config_manager.server_config.llm.system_prompt = "You are a helpful agent."
+        config_manager.server_config.llm.system_prompt_suffix = None
+        config_manager._configure_llm()
+
+        assert config_manager.SYSTEM_PROMPT.startswith("You are a helpful agent.")
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("literal", ["You are a helpful agent.", "multi\nline\nprompt", ""])
+    def test_llm_and_stt_prompts_share_one_rule(self, voice_agent_server_base_path, tmp_path, literal):
+        """``ConfigManager`` resolves ``system_prompt`` through the same helper the STT
+        service uses, so a prompt can move between the ``llm`` and ``stt`` blocks
+        without changing form. This test is what stops the two from drifting apart.
+        """
+        config_manager = ConfigManager(voice_agent_server_base_path)
+
+        for value in (literal, str(tmp_path / "absent.txt")):
+            config_manager.server_config.llm.system_prompt = value
+            config_manager.server_config.llm.system_prompt_suffix = None
+            config_manager._configure_llm()
+            if value:
+                assert config_manager.SYSTEM_PROMPT.startswith(resolve_prompt(value))
+
+        prompt_file = tmp_path / "shared.txt"
+        prompt_file.write_text(literal or "fallback", encoding="utf-8")
+        config_manager.server_config.llm.system_prompt = str(prompt_file)
+        config_manager.server_config.llm.system_prompt_suffix = None
+        config_manager._configure_llm()
+
+        assert config_manager.SYSTEM_PROMPT.startswith(resolve_prompt(str(prompt_file)))
 
     @pytest.mark.unit
     def test_configure_llm_reasoning_model(self, voice_agent_server_base_path):
@@ -274,3 +323,169 @@ class TestResolveBackchannelPhrases:
         with pytest.raises(FileNotFoundError) as excinfo:
             config_manager._resolve_backchannel_phrases(missing)
         assert missing in str(excinfo.value)
+
+
+class TestConfigureTurnTaking:
+    """Coverage for the turn_taking.type dispatch and its tunables."""
+
+    @pytest.fixture
+    def config_manager(self, voice_agent_server_base_path):
+        return ConfigManager(voice_agent_server_base_path)
+
+    @staticmethod
+    def _reconfigure(config_manager, **turn_taking):
+        """Re-run turn-taking configuration against a replacement block."""
+        config_manager.server_config.turn_taking = OmegaConf.create(turn_taking)
+        config_manager._configure_turn_taking()
+        return config_manager
+
+    @pytest.mark.unit
+    def test_omitted_type_defaults_to_nemo(self, config_manager):
+        """No type means the NeMo service, so its own fields are resolved."""
+        self._reconfigure(config_manager, backchannel_phrases_path=None, max_buffer_size=2, bot_stop_delay=0.5)
+
+        assert config_manager.TURN_TAKING_TYPE == "nemo"
+        assert config_manager.TURN_TAKING_MAX_BUFFER_SIZE == 2
+        assert config_manager.TURN_TAKING_BOT_STOP_DELAY == 0.5
+
+    @pytest.mark.unit
+    def test_speech_timeout_type_zeroes_the_nemo_only_fields(self, config_manager):
+        """The NeMo-only keys are ignored — including a path that does not exist."""
+        self._reconfigure(
+            config_manager,
+            type="speech_timeout",
+            backchannel_phrases_path="./no_such_backchannels.yaml",
+            max_buffer_size=2,
+            bot_stop_delay=0.5,
+        )
+
+        assert config_manager.TURN_TAKING_TYPE == "speech_timeout"
+        assert config_manager.TURN_TAKING_BACKCHANNEL_PHRASES_PATH == ""
+        assert config_manager.TURN_TAKING_MAX_BUFFER_SIZE == 0
+        assert config_manager.TURN_TAKING_BOT_STOP_DELAY == 0.0
+
+    @pytest.mark.unit
+    def test_unknown_type_is_rejected_and_names_the_valid_values(self, config_manager):
+        """A typo must fail at config load, naming what is available."""
+        with pytest.raises(AssertionError) as excinfo:
+            self._reconfigure(config_manager, type="smart_turn")
+        message = str(excinfo.value)
+        assert "nemo" in message and "speech_timeout" in message
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("enabled", [True, False])
+    def test_legacy_enabled_key_warns_with_the_migration_mapping(self, config_manager, enabled):
+        """A stale ``enabled`` is ignored, so the warning is the only signal the user gets."""
+        # The code logs through loguru, which never reaches pytest's caplog.
+        records = []
+        sink_id = logger.add(records.append, level="WARNING")
+        try:
+            self._reconfigure(
+                config_manager,
+                enabled=enabled,
+                backchannel_phrases_path=None,
+                max_buffer_size=2,
+                bot_stop_delay=0.5,
+            )
+        finally:
+            logger.remove(sink_id)
+
+        assert config_manager.TURN_TAKING_TYPE == "nemo"
+        message = "".join(records)
+        assert "turn_taking.enabled" in message
+        assert "nemo" in message and "speech_timeout" in message
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("turn_taking_type", ["nemo", "speech_timeout"])
+    def test_user_speech_timeout_defaults_to_the_pipecat_value(self, config_manager, turn_taking_type):
+        """0.6s is what SpeechTimeoutUserTurnStopStrategy uses when unset."""
+        self._reconfigure(
+            config_manager,
+            type=turn_taking_type,
+            backchannel_phrases_path=None,
+            max_buffer_size=2,
+            bot_stop_delay=0.5,
+        )
+
+        assert config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT == 0.6
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("turn_taking_type", ["nemo", "speech_timeout"])
+    def test_user_speech_timeout_is_read_for_either_type(self, config_manager, turn_taking_type):
+        """The key is resolved unconditionally, not only on the VAD path."""
+        self._reconfigure(
+            config_manager,
+            type=turn_taking_type,
+            user_speech_timeout=0.25,
+            backchannel_phrases_path=None,
+            max_buffer_size=2,
+            bot_stop_delay=0.5,
+        )
+
+        assert config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT == 0.25
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("turn_taking_type", ["nemo", "speech_timeout"])
+    def test_user_turn_stop_timeout_is_disabled_by_default(self, config_manager, turn_taking_type):
+        """Unset means no watchdog: a slow STT reply must not be cut off at pipecat's 5s."""
+        self._reconfigure(
+            config_manager,
+            type=turn_taking_type,
+            backchannel_phrases_path=None,
+            max_buffer_size=2,
+            bot_stop_delay=0.5,
+        )
+
+        assert config_manager.TURN_TAKING_USER_TURN_STOP_TIMEOUT is None
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(("configured", "resolved"), [(None, None), (0, None), (0.0, None), (30, 30.0)])
+    def test_user_turn_stop_timeout_resolution(self, config_manager, configured, resolved):
+        """0 must become None: pipecat would busy-loop on a 0s watchdog and end every turn at VAD stop."""
+        self._reconfigure(config_manager, type="speech_timeout", user_turn_stop_timeout=configured)
+
+        assert config_manager.TURN_TAKING_USER_TURN_STOP_TIMEOUT == resolved
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("configured", [-1, True, "5"])
+    def test_invalid_user_turn_stop_timeout_is_rejected(self, config_manager, configured):
+        """A negative, boolean or quoted value is a typo, so fail at config load (``true`` would mean 1s)."""
+        with pytest.raises(AssertionError) as excinfo:
+            self._reconfigure(config_manager, type="speech_timeout", user_turn_stop_timeout=configured)
+        assert "user_turn_stop_timeout" in str(excinfo.value)
+
+
+class TestCredentialRedaction:
+    """Config log lines must never print an ``api_key`` value."""
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("block", ["stt", "llm", "tts"])
+    def test_override_and_final_logs_redact_api_key(self, voice_agent_server_base_path, monkeypatch, block):
+        config_manager = ConfigManager(voice_agent_server_base_path)
+        getattr(config_manager.server_config, block).api_key = "fake-server-key"
+
+        # Also put a key in the model sub-config, so both sides of the override line are checked.
+        load = OmegaConf.load
+
+        def load_with_key(path):
+            config = load(path)
+            if f"/{block}_configs/" in str(path):
+                config.api_key = "fake-sub-config-key"
+            return config
+
+        monkeypatch.setattr(OmegaConf, "load", load_with_key)
+
+        # The code logs through loguru, which never reaches pytest's caplog.
+        records = []
+        sink_id = logger.add(records.append, level="DEBUG")
+        try:
+            getattr(config_manager, f"_configure_{block}")()
+        finally:
+            logger.remove(sink_id)
+
+        message = "".join(records)
+        assert "fake-server-key" not in message
+        assert "fake-sub-config-key" not in message
+        assert "`api_key` is overridden from `<redacted>` to `<redacted>`" in message
+        assert "'api_key': '<redacted>'" in message
+        assert getattr(config_manager.server_config, block).api_key == "fake-sub-config-key"

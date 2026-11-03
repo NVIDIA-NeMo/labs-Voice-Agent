@@ -21,7 +21,7 @@ limitations under the License.
 
 ### Prerequisites
 
-- Python 3.10 or higher (up to 3.13)
+- Python 3.12 or 3.13 (`requires-python = ">=3.12,<3.14"`)
 - [UV](https://github.com/astral-sh/uv) for fast Python package management
 - Git for version control
 
@@ -89,20 +89,28 @@ uv run pre-commit run --all-files
 ### Running Tests
 
 ```bash
+# Run the fast unit suite (no GPU required)
+uv run pytest tests/unit -m "not gpu"
+
 # Run all tests
 uv run pytest
 
-# Run tests with coverage
-uv run pytest --cov=src --cov-report=term-missing
+# Run tests with coverage. `pytest-cov` is NOT a dependency — the repo drives
+# coverage through the `coverage` CLI (in the `test` dependency group), with
+# source/omit configured in pyproject.toml.
+uv run coverage run --source=nemo_voice_agent -m pytest tests/unit
+uv run coverage report -m
 
 # Run specific test file
-uv run pytest tests/test_specific_module.py
+uv run pytest tests/unit/test_config_manager.py
 ```
 
 ### Test Structure
 
-- Unit tests are located in the `tests/` directory
+- Tests live in `tests/unit/` and `tests/functional/` — there are no test modules directly under `tests/`
 - Test files should follow the naming pattern `test_*.py`
+- Available markers (declared in `pyproject.toml`): `unit`, `functional`, `gpu`, `slow`, `skipduringci`,
+  `pleasefixme`. Use `-m` to select or deselect them, e.g. `-m "unit and not slow"`
 - Use descriptive test names that explain what is being tested
 - Group related tests in classes when appropriate
 - Mock external dependencies and network calls
@@ -144,6 +152,51 @@ uv run pytest tests/test_specific_module.py
 6. **Submit PR**: Create a pull request from your fork's branch to the main repository
 7. **Address feedback**: Respond to review comments
 8. **Squash commits**: Clean up commit history before merging
+
+Use `.github/PULL_REQUEST_TEMPLATE.md` for every pull request and complete the documentation writer review
+receipt after the changes and applicable validation are final.
+
+### Requesting Review
+
+Comment `/review` on your pull request to request an automated review. Use `/review mode=strict` for a
+strict review. The repository's [PR review skill](.claude/skills/pr-review/SKILL.md) preserves the light
+review guidance for bugs, typos, tests, and documentation.
+
+The `claude-review.yml` workflow only posts command guidance for repository owners, members, and
+collaborators. Exact `/claude review` and `/claude strict-review` comments receive guidance to use
+`/review` and `/review mode=strict`, respectively. Bot comments do not trigger the workflow, and the
+workflow does not run Claude Code.
+
+## Documentation Writer Review Receipt
+
+Pull requests that change code or documentation must record a documentation
+review after the changes and applicable validation are complete. In the pull
+request description:
+
+1. Check **Documentation writer reviewed the completed changes**.
+2. Keep one result: `docs-updated`, `no-docs-needed`, or `blocked`.
+3. Add the changed documentation paths or a concise rationale to **Evidence**.
+4. Record the agent product and surface that performed the review.
+5. After committing the reviewed changes, populate the hidden metadata with:
+
+   ```bash
+   git rev-parse --short HEAD
+   git rev-parse --short HEAD:AGENTS.md
+   ```
+
+Rerun the review and refresh both values after any later commit. The
+`CI / Documentation Writer Review` workflow reports missing, invalid, or stale
+receipts in advisory mode.
+
+Maintainers can measure adoption with the following command. Replace the date
+with the start of the reporting window:
+
+```bash
+python scripts/docs-review-receipt.py report --since <YYYY-MM-DD> --format summary
+```
+
+The report uses the authenticated GitHub CLI session and also supports `json`
+and `csv` output.
 
 ## Adding New Features
 

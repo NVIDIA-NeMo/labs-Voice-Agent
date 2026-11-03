@@ -31,8 +31,9 @@ time based on which WebSocket produced the record; the gold-replay path stamps
 import asyncio
 from typing import ClassVar, List
 
+import pipecat.processors.frameworks.rtvi.models as RTVI
 from loguru import logger
-from pipecat.processors.frameworks.rtvi import RTVIProcessor, RTVIServerMessage, RTVITextMessageData
+from pipecat.processors.frameworks.rtvi import RTVIProcessor
 
 from nemo_voice_agent.utils.tool_calling import StandardSchemaTool
 
@@ -52,7 +53,7 @@ class WriteScenarioTool(StandardSchemaTool):
     Additionally — when the bot's ``shared_state`` contains the
     ``__rtvi__`` sentinel set by ``rtvi_actions.create_update_system_prompt_action``
     — ``_record_action`` ALSO pushes an ``action-applied``
-    ``RTVIServerMessage`` to the bridge. The bridge listens for it and
+    ``RTVI.ServerMessage`` to the bridge. The bridge listens for it and
     triggers the cross-side sync pipeline (replay action onto shadow
     DBs → run ``scenario.sync_state`` → dispatch deltas to the other
     bot). Domains that don't opt into sync (single-side eva / airline /
@@ -71,7 +72,7 @@ class WriteScenarioTool(StandardSchemaTool):
     def _record_action(self, action: dict) -> None:
         """Append a structured action record to shared_state['actions'].
 
-        Also emits an ``action-applied`` RTVIServerMessage when the bot
+        Also emits an ``action-applied`` RTVI.ServerMessage when the bot
         has a registered RTVI processor (stashed under
         ``shared_state["__rtvi__"]``). Bridge consumes this to drive
         cross-side sync. The push is fire-and-forget — failures
@@ -85,7 +86,7 @@ class WriteScenarioTool(StandardSchemaTool):
         self._emit_action_applied(action)
 
     def _emit_action_applied(self, action: dict) -> None:
-        """Push ``action-applied`` RTVIServerMessage if RTVI is available.
+        """Push ``action-applied`` RTVI.ServerMessage if RTVI is available.
 
         The bot side has the RTVI processor under
         ``shared_state["__rtvi__"]`` (stashed in
@@ -109,12 +110,12 @@ class WriteScenarioTool(StandardSchemaTool):
                 "action": action,
                 "tool_domain": domain,
             }
-            message = RTVIServerMessage(data=payload)
+            message = RTVI.ServerMessage(data=payload)
             # ``push_transport_message`` is the pipecat API for sending
-            # an ``RTVIServerMessage`` to the WebSocket client (the
-            # bridge in our setup). ``RTVIServerMessage`` is NOT a
+            # an ``RTVI.ServerMessage`` to the WebSocket client (the
+            # bridge in our setup). ``RTVI.ServerMessage`` is NOT a
             # ``Frame`` subclass — ``push_frame`` fails with
-            # ``AttributeError: 'RTVIServerMessage' object has no
+            # ``AttributeError: 'RTVI.ServerMessage' object has no
             # attribute 'transport_destination'`` because pipecat's
             # frame plumbing expects Frame fields. Same call shape used
             # by ``SendRTVIMessageTool.send_rtvi_message`` for the
@@ -149,7 +150,7 @@ class WriteScenarioTool(StandardSchemaTool):
         if rtvi is None:
             return
         text = f"{_EXIT_START}Transfer complete.{_EXIT_END}"
-        msg = RTVIServerMessage(data=RTVITextMessageData(text=text))
+        msg = RTVI.ServerMessage(data=RTVI.TextMessageData(text=text))
         try:
             await rtvi.push_transport_message(msg, exclude_none=True)
         except Exception as exc:

@@ -15,7 +15,7 @@
 
 """Shared bot-server runner.
 
-Bots build their own services, RTVI processor, pipeline, and ``PipelineTask``;
+Bots build their own services, RTVI processor, pipeline, and ``PipelineWorker``;
 this module handles the boilerplate that sits around the task — transport event
 handlers, the RTVI ``on_client_ready`` kick-off, audio-logger finalization,
 shutdown, and optional FastAPI ``/connect`` endpoint.
@@ -34,16 +34,14 @@ import uvicorn
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-from pipecat.frames.frames import EndTaskFrame, Frame
+from pipecat.frames.frames import Frame
 from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineTask
+from pipecat.pipeline.worker import PipelineWorker
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
+from pipecat.transports.websocket.server import SingleClientWebsocketServerTransport
 
 from nemo_voice_agent.pipecat.processors.frameworks.rtvi_actions import TaskRef
 from nemo_voice_agent.pipecat.services.nemo.audio_logger import AudioLogger
-from nemo_voice_agent.pipecat.transports.network.websocket_server import (
-    WebsocketServerTransport,
-)
 from nemo_voice_agent.utils.websocket_url import build_websocket_url
 
 
@@ -54,8 +52,8 @@ def _reset_services(services: Optional[List[Any]]) -> None:
 
 
 async def run_bot_websocket_server(
-    task: PipelineTask,
-    ws_transport: WebsocketServerTransport,
+    task: PipelineWorker,
+    ws_transport: SingleClientWebsocketServerTransport,
     rtvi: RTVIProcessor,
     *,
     task_ref: Optional[TaskRef] = None,
@@ -68,12 +66,12 @@ async def run_bot_websocket_server(
     """Wire event handlers onto ``ws_transport``/``rtvi`` and run the pipeline.
 
     Args:
-        task: Fully constructed ``PipelineTask`` with observers already attached.
+        task: Fully constructed ``PipelineWorker`` with observers already attached.
         ws_transport: Transport the task's pipeline uses for I/O.
         rtvi: RTVI processor embedded in the pipeline. Must already have any
             actions the bot wants registered.
-        task_ref: Optional ``TaskRef`` passed to RTVI action factories. Populated
-            here so handlers can queue ``EndTaskFrame`` onto the live task.
+        task_ref: Optional ``TaskRef`` passed to the RTVI handler factories.
+            Populated here so handlers can reach the live pipeline worker.
         audio_logger: Audio logger to finalize on disconnect / shutdown.
         talk_first: If True, queue ``initial_frame_factory()`` on client-ready.
         initial_frame_factory: Callable returning the Frame to kick off with
@@ -114,13 +112,18 @@ async def run_bot_websocket_server(
             logger.info("Audio logger session finalized")
         if task_ref is None or task_ref.running:
             try:
-                await task.queue_frames([EndTaskFrame()])
+                # Deliberately do not end the pipeline here. The WebSocket
+                # server lives inside the input transport, so ending the
+                # pipeline stops the server and nothing can reconnect —
+                # /connect keeps answering while port 8765 is dead. The
+                # transport already drops its socket reference on disconnect
+                # and will accept the next client into this same pipeline.
                 _reset_services(on_disconnect_reset_services)
                 if on_disconnect_hook is not None:
                     await on_disconnect_hook()
             except Exception as e:
                 if "ConnectionClosedOK" not in str(e) and "1005" not in str(e):
-                    logger.warning(f"Error sending EndTaskFrame: {e}")
+                    logger.warning(f"Error resetting services on disconnect: {e}")
                 else:
                     logger.info(f"Normal connection closure: {e}")
 
@@ -132,9 +135,12 @@ async def run_bot_websocket_server(
             logger.info("Audio logger session finalized")
         if task_ref is None or task_ref.running:
             try:
-                await task.queue_frames([EndTaskFrame()])
+                # Same reasoning as on_client_disconnected: ending the pipeline
+                # would take the WebSocket server down with it, which is the
+                # opposite of "kept server alive" above.
+                _reset_services(on_disconnect_reset_services)
             except Exception as e:
-                logger.error(f"Error sending EndTaskFrame: {e}")
+                logger.error(f"Error resetting services on session timeout: {e}")
 
     logger.info("Starting pipeline runner...")
     try:

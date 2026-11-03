@@ -23,12 +23,15 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from nemo_voice_agent.evaluation.bridge import (
     RTVI_BOT_SERVER_MESSAGE,
     RTVI_BOT_STARTED_SPEAKING,
     RTVI_BOT_STOPPED_SPEAKING,
     RTVI_BOT_TTS_TEXT,
+    STOP_REASON_INACTIVITY_TIMEOUT,
+    STOP_REASON_SIMULATOR_EXIT,
     EvaluationMetrics,
     ResponseLatency,
     SegmentEntry,
@@ -36,7 +39,7 @@ from nemo_voice_agent.evaluation.bridge import (
 )
 
 
-def _bridge(tmp_path):
+def _bridge(tmp_path, **kwargs):
     """Build a bridge configured for local helper tests without connecting sockets."""
     return VoiceAgentEvaluationBridge(
         "ws://user.invalid",
@@ -47,6 +50,7 @@ def _bridge(tmp_path):
         agent_input_sample_rate=16000,
         output_sample_rate=16000,
         log_level="ERROR",
+        **kwargs,
     )
 
 
@@ -276,6 +280,75 @@ def test_monitor_agent_message_captures_final_response_and_exit(tmp_path):
     assert bridge.stop_event.is_set()
 
 
+def test_monitor_user_message_accepts_simulator_exit_when_enabled(tmp_path):
+    """An opted-in simulator exit records evidence and stops the scenario."""
+    bridge = _bridge(tmp_path, accept_simulator_exit=True)
+    bridge.exit_settle_delay = 0.0
+
+    asyncio.run(
+        bridge._monitor_user_message(
+            SimpleNamespace(message={"type": RTVI_BOT_SERVER_MESSAGE, "data": {"text": "<exit>done</exit>"}})
+        )
+    )
+
+    assert bridge.simulator_end_reported is True
+    assert bridge.stop_reason == STOP_REASON_SIMULATOR_EXIT
+    assert bridge.stop_event.is_set()
+
+
+def test_monitor_user_message_records_but_ignores_simulator_exit_by_default(tmp_path):
+    """Strict tool-only runs retain the simulator evidence without stopping."""
+    bridge = _bridge(tmp_path)
+
+    asyncio.run(
+        bridge._monitor_user_message(
+            SimpleNamespace(message={"type": RTVI_BOT_SERVER_MESSAGE, "data": {"text": "<exit>done</exit>"}})
+        )
+    )
+
+    assert bridge.simulator_end_reported is True
+    assert bridge.stop_reason == "[TIMEOUT]"
+    assert not bridge.stop_event.is_set()
+
+
+def test_bridge_inactivity_timeout_defaults_to_two_minutes(tmp_path):
+    """The bridge stops after 120 seconds without meaningful activity by default."""
+    bridge = _bridge(tmp_path)
+    bridge.last_activity_monotonic = 100.0
+
+    assert bridge._stop_if_inactive(now=219.9) is False
+    assert bridge._stop_if_inactive(now=220.0) is True
+    assert bridge.stop_reason == STOP_REASON_INACTIVITY_TIMEOUT
+    assert bridge.stop_event.is_set()
+
+
+def test_bridge_activity_resets_configurable_inactivity_timeout(tmp_path):
+    """Conversational events reset a custom inactivity window while raw silence audio does not."""
+    bridge = _bridge(tmp_path, inactivity_timeout=5.0)
+    bridge.last_activity_monotonic = 10.0
+
+    asyncio.run(bridge._monitor_user_message(SimpleNamespace(message={"type": RTVI_BOT_STARTED_SPEAKING, "data": {}})))
+    activity_time = bridge.last_activity_monotonic
+    assert activity_time > 10.0
+    assert bridge._stop_if_inactive(now=activity_time + 4.9) is False
+
+    asyncio.run(bridge._monitor_agent_message(SimpleNamespace(audio=b"\x00\x00")))
+    assert bridge.last_activity_monotonic == activity_time
+
+    bridge.last_activity_monotonic = 0.0
+    asyncio.run(bridge._monitor_agent_message(SimpleNamespace(message={"type": "action", "data": {}})))
+    activity_time = bridge.last_activity_monotonic
+    assert activity_time > 0.0
+    assert bridge._stop_if_inactive(now=activity_time + 5.0) is True
+
+
+@pytest.mark.parametrize("value", [0, -1, float("inf"), float("nan")])
+def test_bridge_rejects_invalid_inactivity_timeout(tmp_path, value):
+    """Nonpositive and non-finite inactivity windows fail at bridge construction."""
+    with pytest.raises(ValueError, match="inactivity_timeout must be greater than 0"):
+        _bridge(tmp_path, inactivity_timeout=value)
+
+
 def test_monitor_user_and_agent_messages_build_turns_and_latency(tmp_path):
     """Fake RTVI frames exercise monitor turn lifecycle and first-audio latency capture."""
     bridge = _bridge(tmp_path)
@@ -340,24 +413,6 @@ def test_monitor_user_message_routes_action_applied_to_sync(tmp_path):
     assert seen == [({"name": "toggle_data"}, "user")]
 
 
-def test_wait_for_action_response_accepts_success_dict_and_rejects_bool_result(tmp_path):
-    """The generic action waiter treats success dicts as successful responses."""
-    bridge = _bridge(tmp_path)
-    dict_ws = _FakeWebSocket(
-        [
-            json.dumps({"data": {"message_type": "ignored", "result": {"success": True}}}),
-            json.dumps({"data": {"message_type": "action-response", "result": {"success": True}}}),
-        ]
-    )
-    bool_ws = _FakeWebSocket([json.dumps({"data": {"message_type": "action-response", "result": True}})])
-
-    dict_result = asyncio.run(bridge._wait_for_action_response(dict_ws, timeout=0.01))
-    bool_result = asyncio.run(bridge._wait_for_action_response(bool_ws, timeout=0.01))
-
-    assert dict_result is True
-    assert bool_result is False
-
-
 def test_client_ready_prompt_reset_and_send_text_helpers_emit_expected_actions(tmp_path):
     """Handshake, prompt update, reset, and send-text helpers serialize expected RTVI payloads."""
     bridge = _bridge(tmp_path)
@@ -377,18 +432,18 @@ def test_client_ready_prompt_reset_and_send_text_helpers_emit_expected_actions(t
     agent_payloads = [json.loads(m) for m in agent_ws.sent]
 
     assert user_payloads[0]["type"] == "client-ready"
-    assert user_payloads[1]["data"]["action"] == "update_system_prompt"
-    assert user_payloads[1]["data"]["arguments"] == [
-        {"name": "prompt", "value": "user prompt"},
-        {"name": "tools", "value": "{}"},
-        {"name": "add_suffix", "value": True},
-        {"name": "tool_domain", "value": "demo"},
-    ]
-    assert user_payloads[2]["data"]["action"] == "reset"
+    assert user_payloads[1]["data"]["t"] == "update_system_prompt"
+    assert user_payloads[1]["data"]["d"] == {
+        "prompt": "user prompt",
+        "tools": "{}",
+        "add_suffix": True,
+        "tool_domain": "demo",
+    }
+    assert user_payloads[2]["data"]["t"] == "reset"
     assert user_payloads[3]["type"] == "send-text"
     assert user_payloads[3]["data"]["content"] == "hello user"
-    assert agent_payloads[0]["data"]["action"] == "update_system_prompt"
-    assert agent_payloads[1]["data"]["action"] == "reset"
+    assert agent_payloads[0]["data"]["t"] == "update_system_prompt"
+    assert agent_payloads[1]["data"]["t"] == "reset"
     assert agent_payloads[2]["type"] == "send-text"
     assert agent_payloads[2]["data"]["content"] == "hello agent"
 
@@ -413,18 +468,10 @@ def test_reset_calls_user_and_agent_reset_and_clears_metrics(tmp_path):
 
     asyncio.run(bridge.reset())
 
-    assert json.loads(bridge.user_ws.sent[0])["data"]["action"] == "reset"
-    assert json.loads(bridge.agent_ws.sent[0])["data"]["action"] == "reset"
+    assert json.loads(bridge.user_ws.sent[0])["data"]["t"] == "reset"
+    assert json.loads(bridge.agent_ws.sent[0])["data"]["t"] == "reset"
     assert bridge.metrics.turns == []
     assert bridge.needs_reset is False
-
-
-def test_wait_for_action_response_returns_false_on_bad_json(tmp_path):
-    """Malformed websocket text is caught and converted into a False action result."""
-    bridge = _bridge(tmp_path)
-    ws = _FakeWebSocket(["not-json"])
-
-    assert asyncio.run(bridge._wait_for_action_response(ws, timeout=0.01)) is False
 
 
 def test_retrieve_context_history_sends_action_and_returns_result(tmp_path):
@@ -433,15 +480,15 @@ def test_retrieve_context_history_sends_action_and_returns_result(tmp_path):
     bridge.serializer = _FakeSerializer()
     ws = _FakeWebSocket(
         [
-            {"type": "not-action-response", "data": {}},
-            {"type": "action-response", "data": {"result": {"context": [{"role": "assistant"}], "logs": "ok"}}},
+            {"type": "not-a-response", "data": {}},
+            {"type": "server-response", "data": {"d": {"context": [{"role": "assistant"}], "logs": "ok"}}},
         ]
     )
 
     result = asyncio.run(bridge._retrieve_context_history(ws))
     sent = json.loads(ws.sent[0])
 
-    assert sent["data"]["action"] == "get_context_history"
+    assert sent["data"]["t"] == "get_context_history"
     assert result == {"context": [{"role": "assistant"}], "logs": "ok"}
 
 
@@ -459,9 +506,9 @@ def test_retrieve_scenario_summary_sends_include_db_argument(tmp_path):
     ws = _FakeWebSocket(
         [
             {
-                "type": "action-response",
+                "type": "server-response",
                 "data": {
-                    "result": {
+                    "d": {
                         "actions": [{"name": "done"}],
                         "db_hash": "hash",
                         "db": {"state": "ok"},
@@ -474,8 +521,8 @@ def test_retrieve_scenario_summary_sends_include_db_argument(tmp_path):
     result = asyncio.run(bridge._retrieve_scenario_summary(ws, include_db=True))
     sent = json.loads(ws.sent[0])
 
-    assert sent["data"]["action"] == "get_scenario_summary"
-    assert sent["data"]["arguments"] == [{"name": "include_db", "value": True}]
+    assert sent["data"]["t"] == "get_scenario_summary"
+    assert sent["data"]["d"] == {"include_db": True}
     assert result["actions"] == [{"name": "done"}]
     assert result["db"] == {"state": "ok"}
 
@@ -486,11 +533,11 @@ def test_send_apply_initialization_ignores_unrelated_response_and_raises_on_fail
     bridge.serializer = _FakeSerializer()
     ws = _FakeWebSocket(
         [
-            {"type": "action-response", "id": "old-response", "data": {"result": True}},
+            {"type": "server-response", "id": "old-response", "data": {"d": True}},
             {
-                "type": "action-response",
+                "type": "server-response",
                 "id": "placeholder",
-                "data": {"result": {"success": False, "errors": ["bad init"]}},
+                "data": {"d": {"success": False, "errors": ["bad init"]}},
             },
         ]
     )
@@ -527,7 +574,7 @@ def test_send_apply_initialization_success_payload(tmp_path):
     """Initialization sender serializes domain, shared_state_init JSON, and side-filtered actions."""
     bridge = _bridge(tmp_path)
     bridge.serializer = _FakeSerializer()
-    ws = _FakeWebSocket([{"type": "action-response", "id": "placeholder", "data": {"result": {"success": True}}}])
+    ws = _FakeWebSocket([{"type": "server-response", "id": "placeholder", "data": {"d": {"success": True}}}])
 
     async def _run():
         """Patch recv so the fake response matches the generated action id."""
@@ -545,10 +592,10 @@ def test_send_apply_initialization_success_payload(tmp_path):
     asyncio.run(_run())
     sent = json.loads(ws.sent[0])
 
-    assert sent["data"]["action"] == "apply_initialization"
-    assert sent["data"]["arguments"][0] == {"name": "domain", "value": "demo"}
-    assert sent["data"]["arguments"][1] == {"name": "shared_state_init", "value": json.dumps({"x": 1})}
-    assert sent["data"]["arguments"][2] == {"name": "actions", "value": [{"func_name": "seed"}]}
+    assert sent["data"]["t"] == "apply_initialization"
+    assert sent["data"]["d"]["domain"] == "demo"
+    assert sent["data"]["d"]["shared_state_init"] == json.dumps({"x": 1})
+    assert sent["data"]["d"]["actions"] == [{"func_name": "seed"}]
 
 
 def test_apply_initialization_rejects_unknown_sides_before_sending(tmp_path):
@@ -579,11 +626,8 @@ def test_send_apply_sync_delta_serializes_delta_and_ignores_send_errors(tmp_path
     asyncio.run(bridge._send_apply_sync_delta(ws, "agent", "demo", {"path": "value"}))
     sent = json.loads(ws.sent[0])
 
-    assert sent["data"]["action"] == "apply_sync_delta"
-    assert sent["data"]["arguments"] == [
-        {"name": "domain", "value": "demo"},
-        {"name": "delta", "value": {"path": "value"}},
-    ]
+    assert sent["data"]["t"] == "apply_sync_delta"
+    assert sent["data"]["d"] == {"domain": "demo", "delta": {"path": "value"}}
 
     class _FailingSendWebSocket(_FakeWebSocket):
         """Fake websocket whose send method raises."""
@@ -631,16 +675,20 @@ def test_receive_to_queue_deserializes_audio_and_calls_monitor(tmp_path):
     assert q.get_nowait() == b"\x01\x02"
 
 
-def test_send_audio_stream_drains_queue_sends_frame_and_tracks_chunk(tmp_path):
-    """The audio send loop drains queued audio, emits one frame, and records sent bytes."""
+@pytest.mark.parametrize(("has_speech", "expected_activity_resets"), [(True, 1), (False, 0)])
+def test_send_audio_stream_tracks_speech_activity(tmp_path, has_speech, expected_activity_resets):
+    """The send loop resets inactivity for speech audio but not silence."""
     bridge = _bridge(tmp_path)
     bridge.serializer = _FakeSerializer()
     bridge.audio_chunk_in_seconds = 0.001
     stream = _FakeAudioStream()
+    stream.outputs = [(b"\x01\x02", has_speech)]
     ws = _FakeWebSocket()
     source_queue = queue.Queue()
     source_queue.put(b"inbound")
     sent_chunks = []
+    activity_resets = []
+    bridge._record_activity = lambda: activity_resets.append(True)
 
     async def _run():
         """Run the send loop and stop it after the first outbound frame."""
@@ -659,6 +707,7 @@ def test_send_audio_stream_drains_queue_sends_frame_and_tracks_chunk(tmp_path):
     assert stream.put_chunks == [b"inbound"]
     assert sent_chunks == [b"\x01\x02"]
     assert len(ws.sent) == 1
+    assert len(activity_resets) == expected_activity_resets
 
 
 def test_propagate_cross_side_sync_replays_tool_and_dispatches_deltas(tmp_path):

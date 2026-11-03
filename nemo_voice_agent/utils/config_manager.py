@@ -22,6 +22,7 @@ from pipecat.audio.vad.silero import VADParams
 
 from nemo_voice_agent.pipecat.services.nemo.diar import NeMoDiarInputParams
 from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams
+from nemo_voice_agent.utils.misc import redact_secrets, redact_value, resolve_prompt
 
 
 class ConfigManager:
@@ -161,12 +162,13 @@ class ConfigManager:
             for key in stt_config:
                 if key in self.server_config.stt and self.server_config.stt[key] != stt_config[key]:
                     logger.info(
-                        f"STT config field `{key}` is overridden from `{self.server_config.stt[key]}` "
-                        f"to `{stt_config[key]}` by {stt_config_path}"
+                        f"STT config field `{key}` is overridden from "
+                        f"`{redact_value(key, self.server_config.stt[key])}` "
+                        f"to `{redact_value(key, stt_config[key])}` by {stt_config_path}"
                     )
                 self.server_config.stt[key] = stt_config[key]
 
-        logger.info(f"Final STT config: {self.server_config.stt}")
+        logger.info(f"Final STT config: {redact_secrets(self.server_config.stt)}")
 
         audio_chunk_size_in_secs = self.server_config.stt.get("audio_chunk_size_in_secs", 0.08)
         buffer_size = audio_chunk_size_in_secs // self.RAW_AUDIO_FRAME_LEN_IN_SECS
@@ -235,12 +237,38 @@ class ConfigManager:
 
     def _configure_turn_taking(self):
         """Configure turn taking parameters."""
-        if self.server_config.turn_taking.get("enabled", True):
-            self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = self._resolve_backchannel_phrases(
-                self.server_config.turn_taking.backchannel_phrases_path
+        turn_taking = self.server_config.turn_taking
+        if "enabled" in turn_taking:
+            logger.warning(
+                "turn_taking.enabled is ignored, it was replaced by turn_taking.type: use `type: nemo` in "
+                "place of `enabled: true`, and `type: speech_timeout` in place of `enabled: false`."
             )
-            self.TURN_TAKING_MAX_BUFFER_SIZE = self.server_config.turn_taking.max_buffer_size
-            self.TURN_TAKING_BOT_STOP_DELAY = self.server_config.turn_taking.bot_stop_delay
+
+        self.TURN_TAKING_TYPE = turn_taking.get("type", "nemo")
+        available_types = ["nemo", "speech_timeout"]
+        assert self.TURN_TAKING_TYPE in available_types, (
+            f"Invalid turn taking type: {self.TURN_TAKING_TYPE}, only {available_types} are supported"
+        )
+
+        self.TURN_TAKING_USER_SPEECH_TIMEOUT = turn_taking.get("user_speech_timeout", 0.6)
+
+        # Pipecat's watchdog force-ends a user turn after this many seconds without speech or transcripts.
+        # Off by default (null or 0): an STT reply slower than the timeout landed in the next user turn. 0 is
+        # mapped to None because pipecat would busy-loop on it.
+        user_turn_stop_timeout = turn_taking.get("user_turn_stop_timeout", None)
+        assert user_turn_stop_timeout is None or (
+            isinstance(user_turn_stop_timeout, (int, float))
+            and not isinstance(user_turn_stop_timeout, bool)
+            and user_turn_stop_timeout >= 0
+        ), f"turn_taking.user_turn_stop_timeout must be null or a number >= 0, got {user_turn_stop_timeout!r}"
+        self.TURN_TAKING_USER_TURN_STOP_TIMEOUT = float(user_turn_stop_timeout) if user_turn_stop_timeout else None
+
+        if self.TURN_TAKING_TYPE == "nemo":
+            self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = self._resolve_backchannel_phrases(
+                turn_taking.backchannel_phrases_path
+            )
+            self.TURN_TAKING_MAX_BUFFER_SIZE = turn_taking.max_buffer_size
+            self.TURN_TAKING_BOT_STOP_DELAY = turn_taking.bot_stop_delay
         else:
             self.TURN_TAKING_BACKCHANNEL_PHRASES_PATH = ""
             self.TURN_TAKING_MAX_BUFFER_SIZE = 0
@@ -287,21 +315,18 @@ class ConfigManager:
             for key in llm_config:
                 if key in self.server_config.llm and self.server_config.llm[key] != llm_config[key]:
                     logger.info(
-                        f"LLM config field `{key}` is overridden from `{self.server_config.llm[key]}` to "
-                        f"`{llm_config[key]}` by {llm_config_path}"
+                        f"LLM config field `{key}` is overridden from "
+                        f"`{redact_value(key, self.server_config.llm[key])}` to "
+                        f"`{redact_value(key, llm_config[key])}` by {llm_config_path}"
                     )
                 self.server_config.llm[key] = llm_config[key]
 
-        logger.info(f"Final LLM config: {self.server_config.llm}")
+        logger.info(f"Final LLM config: {redact_secrets(self.server_config.llm)}")
 
         # Configure system prompt
         self.SYSTEM_ROLE = self.server_config.llm.get("system_role", "system")
         if self.server_config.llm.get("system_prompt", None) is not None:
-            system_prompt = self.server_config.llm.system_prompt
-            if os.path.isfile(system_prompt):
-                with open(system_prompt, "r") as f:
-                    system_prompt = f.read()
-            self.SYSTEM_PROMPT = system_prompt
+            self.SYSTEM_PROMPT = resolve_prompt(self.server_config.llm.system_prompt)
         else:
             logger.info(f"No system prompt provided, using default system prompt: {self.SYSTEM_PROMPT}")
 
@@ -342,12 +367,13 @@ class ConfigManager:
             for key in tts_config:
                 if key in self.server_config.tts and self.server_config.tts[key] != tts_config[key]:
                     logger.info(
-                        f"TTS config field `{key}` is overridden from `{self.server_config.tts[key]}` to "
-                        f"`{tts_config[key]}` by {tts_config_path}"
+                        f"TTS config field `{key}` is overridden from "
+                        f"`{redact_value(key, self.server_config.tts[key])}` to "
+                        f"`{redact_value(key, tts_config[key])}` by {tts_config_path}"
                     )
                 self.server_config.tts[key] = tts_config[key]
 
-        logger.info(f"Final TTS config: {self.server_config.tts}")
+        logger.info(f"Final TTS config: {redact_secrets(self.server_config.tts)}")
 
         # Extract TTS parameters
         self.TTS_MAIN_MODEL_ID = self.server_config.tts.get("main_model_id", None)

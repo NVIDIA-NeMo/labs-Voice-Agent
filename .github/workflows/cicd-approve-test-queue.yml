@@ -18,11 +18,15 @@ name: Approve Test Queue
 on:
   schedule:
     - cron: "*/5 * * * *"
+  # Scheduled events can be delayed, so refill released queue slots immediately.
+  workflow_run:
+    workflows: ["CICD Voice Agent"]
+    types: [completed]
   workflow_dispatch:
 
 jobs:
   approve-test-queue:
-    if: github.repository == 'NVIDIA-NeMo/Voice-Agent'
+    if: github.repository == 'NVIDIA-NeMo/labs-Voice-Agent'
     uses: NVIDIA-NeMo/FW-CI-templates/.github/workflows/_test_approval_queue.yml@7a39dff97817b673465972a0e1a1c3c9dbc25372 # v1.3.0
     with:
       workflow_name: CICD Voice Agent

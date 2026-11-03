@@ -13,11 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Publishes the Fern documentation site on GitHub Release or manual dispatch.
+# Publishes nightly documentation after docs changes merge to main and publishes
+# release documentation on GitHub Release or manual dispatch.
 #
-# All versions serve frozen content extracted from their git tag — there is no
-# "live docs" entry. The newest version is stamped "Latest · vX.Y.Z" at publish
-# time so readers know which is current; the stamp is transient and not persisted.
+# Nightly serves the current main-branch docs. Registered release versions serve
+# frozen content extracted from their git tag. The newest release is stamped
+# "Latest · vX.Y.Z" at publish time; the stamp is transient and not persisted.
 #
 # Manual dispatch accepts an optional `tag` input:
 #   - empty: resolves to the latest GitHub release tag
@@ -33,11 +34,17 @@
 #
 # Required configuration:
 # - Organization secret: DOCS_FERN_TOKEN (from `fern token` for the nvidia Fern org)
-# - Repository or organization variable: PUBLISH_FERN_PREVIEWS=true
+# - Repository or organization variable: PUBLISH_FERN=true
 
 name: Publish Fern Docs
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - '.github/workflows/publish-fern-docs.yml'
   release:
     types: [published]
   workflow_dispatch:
@@ -66,14 +73,13 @@ concurrency:
 env:
   YQ_VERSION: v4.53.2
   MAX_VERSIONS: 3
-  PUBLISH_FERN_PREVIEWS: ${{ vars.PUBLISH_FERN_PREVIEWS || 'false' }}
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     # runs-on: linux-amd64-cpu8  # NVIDIA self-hosted runner
     timeout-minutes: 20
-    if: vars.PUBLISH_FERN_PREVIEWS == 'true'
+    if: vars.PUBLISH_FERN == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -109,8 +115,11 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
             TAG="${{ github.event.release.tag_name }}"
             IS_PRERELEASE="${{ github.event.release.prerelease }}"
-          elif [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+          elif [ "${GITHUB_EVENT_NAME}" = "push" ] && [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
+          elif [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            TAG=""
+            IS_RELEASE=false
           elif [ -n "${INPUT_TAG}" ]; then
             TAG="${INPUT_TAG}"
           else
@@ -120,24 +129,30 @@ jobs:
               exit 1
             fi
           fi
-          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
-            echo "::error::Tag '${TAG}' is not a valid semver tag (expected vMAJOR.MINOR.PATCH[-PRERELEASE])"
-            exit 1
-          fi
-          if ! git show-ref --verify --quiet "refs/tags/${TAG}"; then
-            echo "::error::Tag '${TAG}' does not exist in this repository"
-            exit 1
-          fi
-          # Pre-release detection: use the Release event flag when available,
-          # fall back to hyphen check for tag-push and dispatch triggers.
-          if [ "${IS_PRERELEASE}" = "true" ] || [[ "$TAG" == *-* ]]; then
-            IS_RELEASE=false
-          else
-            IS_RELEASE=true
+          if [ -n "$TAG" ]; then
+            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+              echo "::error::Tag '${TAG}' is not a valid semver tag (expected vMAJOR.MINOR.PATCH[-PRERELEASE])"
+              exit 1
+            fi
+            if ! git show-ref --verify --quiet "refs/tags/${TAG}"; then
+              echo "::error::Tag '${TAG}' does not exist in this repository"
+              exit 1
+            fi
+            # Pre-release detection: use the Release event flag when available,
+            # fall back to hyphen check for tag-push and dispatch triggers.
+            if [ "${IS_PRERELEASE}" = "true" ] || [[ "$TAG" == *-* ]]; then
+              IS_RELEASE=false
+            else
+              IS_RELEASE=true
+            fi
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
-          echo "Resolved target tag: $TAG (is_release=$IS_RELEASE)"
+          if [ -n "$TAG" ]; then
+            echo "Resolved target tag: $TAG (is_release=$IS_RELEASE)"
+          else
+            echo "Publishing current nightly docs from main"
+          fi
 
       - name: Register new version from tag
         if: steps.resolve.outputs.is_release == 'true'

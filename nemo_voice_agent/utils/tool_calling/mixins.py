@@ -16,7 +16,7 @@
 from loguru import logger
 from pipecat.adapters.schemas.direct_function import DirectFunction
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.openai.llm import OpenAILLMService
 
 
@@ -69,7 +69,7 @@ class ToolCallingMixin:
 def register_direct_tools_to_llm(
     *,
     llm: OpenAILLMService,
-    context: OpenAILLMContext,
+    context: LLMContext,
     tool_mixins: list[ToolCallingMixin] = [],
     tools: list[DirectFunction] = [],
     cancel_on_interruption: bool = True,

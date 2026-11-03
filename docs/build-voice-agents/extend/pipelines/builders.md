@@ -1,0 +1,205 @@
+{/*
+SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/}
+
+# The Builder API
+
+`nemo_voice_agent/pipecat/services/nemo/builders.py` holds one `build_*` function per pipeline stage.
+Each is a thin wrapper around a service constructor that reads the relevant block of the loaded
+`ConfigManager`, so a bot script does not repeat the same config plumbing. The builders are
+independent — import only the ones you need, and construct anything they do not cover inline.
+
+Two bots in this repo use them: `examples/generic_voice_agent/server/server.py` and
+`evaluation/bot_server.py`. Both call the same eleven builders in the same order.
+
+## Every Builder
+
+Each builder owns one runtime component and reads the corresponding configuration block.
+
+| Builder | Reads | Returns |
+| --- | --- | --- |
+| `build_audio_logger(config_manager)` | `transport.record_audio_data`, `transport.audio_log_dir` | `AudioLogger`, or `None` when recording is off. Session id is a timestamp. |
+| `build_vad_analyzer(config_manager)` | `vad.*` (using `ConfigManager.get_vad_params()`), `transport.audio_in_sample_rate` | `SileroVADAnalyzer`. Never `None`. |
+| `build_vad_processor(vad_analyzer)` | nothing — takes the analyzer, not the config | `VADProcessor` wrapping the analyzer, or `None` if you passed `None`. |
+| `build_ws_transport(config_manager, vad_analyzer, host, port)` | `transport.audio_in_sample_rate`, `transport.audio_out_sample_rate`, `transport.audio_out_10ms_chunks` | `SingleClientWebsocketServerTransport` with a Protobuf serializer and `session_timeout=None`. |
+| `build_stt(config_manager, audio_logger=None)` | the whole `stt` block | An `STTService` from `get_stt_service_from_config`. Never `None`. |
+| `build_diar(config_manager, audio_logger=None)` | `diar.enabled`, `diar.model`, `diar.threshold`, `diar.frame_len_in_secs`, and `stt.device` | `NemoDiarService`, or `None` when `diar.enabled` is false. |
+| `build_turn_taking(config_manager, audio_logger=None, *, use_diar=None, use_vad=True)` | `turn_taking.type`, `turn_taking.max_buffer_size`, `turn_taking.bot_stop_delay`, `turn_taking.backchannel_phrases_path`, `diar.enabled` | `NeMoTurnTakingService`, or `None` when `turn_taking.type` is not `nemo`. |
+| `build_tts(config_manager, audio_logger=None)` | the whole `tts` block | A `TTSService` from `get_tts_service_from_config`. Never `None`. |
+| `build_llm_text_processor(config_manager)` | `tts.use_text_aggregator`, plus `tts.extra_separator`, `tts.ignore_strings`, `tts.min_sentence_length`, `tts.use_legacy_eos_detection` | `LLMTextProcessor` holding the segmenting text aggregator, or `None` when `tts.use_text_aggregator` is false. |
+| `build_llm(config_manager)` | the whole `llm` block | An `LLMService` from `get_llm_service_from_config`. Never `None`. |
+| `build_context_and_aggregators(llm, config_manager, turn_taking=None)` | `llm.system_role`, `llm.system_prompt` (plus suffix), `llm.inject_dummy_user_message`, `llm.dummy_user_message`, `turn_taking.type`, `turn_taking.user_speech_timeout`, `turn_taking.user_turn_stop_timeout`, `llm.is_omni_model`, `stt.type` | A 4-tuple: `(context, user_aggregator, assistant_aggregator, original_messages)`. |
+
+Two helpers in the same module are not pipeline stages:
+
+| Helper | Reads | Returns |
+| --- | --- | --- |
+| `resolve_log_file_path(config_manager, default_name="bot_server.log")` | `server.log_file`, `server.log_level`, `server.create_new_log` | `(log_file, log_level, create_new_log)`, to pair with `setup_rotating_log` from `nemo_voice_agent.utils.misc`. |
+| `overwrite_existing_log(config_manager)` | `server.overwrite_existing_log` | `True` to delete a pre-existing log on startup, `False` to rename it. |
+
+Details worth knowing:
+
+- `build_ws_transport` accepts `vad_analyzer` but ignores it. Since Pipecat 1.0 the input transport no
+  longer runs VAD. The argument is kept only so existing call sites still work. Pass the analyzer to
+  `build_vad_processor` and place the result right after `transport.input()` instead.
+- `build_diar` takes the diarization device from `stt.device`, not from `diar.device`.
+- `build_diar` and `build_turn_taking` accept `audio_logger` for call-site symmetry. Only
+  `build_turn_taking` forwards it to the service. `build_stt` and `build_tts` forward it into their
+  `get_stt_service_from_config` / `get_tts_service_from_config` factory.
+- `build_turn_taking` is annotated as returning `NeMoTurnTakingService` but returns `None` when
+  `turn_taking.type` is `speech_timeout` — treat it as optional like the others. The type accepts only
+  `nemo` and `speech_timeout`, defaults to `nemo` when the key is absent, and replaces the removed
+  `turn_taking.enabled` boolean. `ConfigManager` warns and ignores `enabled` if a config still sets it.
+- `build_llm_text_processor` exists because Pipecat 1.0 dropped `TTSService(text_aggregator=...)`.
+  Pipecat silently ignores unknown constructor kwargs, so passing an aggregator to the TTS service
+  would fall back to plain sentence splitting with no error.
+
+## Optional Stages
+
+`build_audio_logger`, `build_diar`, `build_turn_taking`, and `build_llm_text_processor` return `None`
+to mean "omit this stage". `build_vad_processor` returns `None` only if you hand it `None`, and
+`build_vad_analyzer` always returns an analyzer — so VAD is never omitted on the shipped
+path. Assemble the pipeline behind `if x is not None` checks rather than leaving placeholders:
+
+```python
+pipeline_list = [ws_transport.input()]
+if vad_processor is not None:
+    pipeline_list.append(vad_processor)
+pipeline_list.extend([rtvi, stt])
+if diar is not None:
+    pipeline_list.append(diar)
+if turn_taking is not None:
+    pipeline_list.append(turn_taking)
+pipeline_list.extend([user_agg, llm])
+if llm_text_processor is not None:
+    pipeline_list.append(llm_text_processor)
+pipeline_list.extend([tts, ws_transport.output(), assistant_agg])
+```
+
+## Call Order
+
+Three dependencies constrain the order:
+
+1. `build_vad_analyzer` before `build_vad_processor` and `build_ws_transport`.
+2. `build_llm` before `build_context_and_aggregators`.
+3. `build_turn_taking` before `build_context_and_aggregators` — **and pass its result through**.
+
+The third dependency matters most. In Pipecat 1.0+, the pipeline permits exactly one component to emit
+`UserStartedSpeakingFrame` and `UserStoppedSpeakingFrame`. The `turn_taking` argument determines that
+component. Given a service, the builder selects `ExternalUserTurnStrategies` so
+`NeMoTurnTakingService` owns turn detection and the aggregator stays quiet. Passing `None` is
+indistinguishable from omitting the argument — `None` is the parameter's default — so in both cases
+the builder re-derives the answer from `turn_taking.type`. When that key is `speech_timeout` (the
+`*_nvidia.yaml` and `default_salm.yaml` configs) it builds `UserTurnStrategies` from `VADUserTurnStartStrategy` plus
+`SpeechTimeoutUserTurnStopStrategy` or its `SegmentedSTTUserTurnStopStrategy` subclass, so the aggregator
+drives the turn directly from VAD frames. When the key is `nemo` or absent (the shipped `default.yaml`), it
+still selects `ExternalUserTurnStrategies`. Nothing is then left in the pipeline to emit the user-turn frames.
+That fallback is correct for the stock builders but not for a bot that constructs its turn-taking service
+inline. Such a bot must pass the service explicitly.
+
+On the `speech_timeout` path, the builder passes `turn_taking.user_speech_timeout` to the stop strategy. It
+selects `SegmentedSTTUserTurnStopStrategy` from `nemo_voice_agent.pipecat.turns` when `stt.type` is
+`nemo_speechlm` and `wait_for_transcript` is `True`, and Pipecat's `SpeechTimeoutUserTurnStopStrategy`
+otherwise:
+
+```python
+segmented_stt = getattr(config_manager.server_config.stt, "type", None) == "nemo_speechlm"
+stop_strategy_class = (
+    SegmentedSTTUserTurnStopStrategy
+    if segmented_stt and wait_for_transcript
+    else SpeechTimeoutUserTurnStopStrategy
+)
+user_turn_strategies = UserTurnStrategies(
+    start=[VADUserTurnStartStrategy()],
+    stop=[
+        stop_strategy_class(
+            user_speech_timeout=config_manager.TURN_TAKING_USER_SPEECH_TIMEOUT,
+            wait_for_transcript=wait_for_transcript,
+        )
+    ],
+)
+```
+
+`NemoSpeechLMSTTService` transcribes each VAD segment after the segment ends, so a mid-utterance pause can
+leave the last segment's transcript pending when the turn would otherwise end. The subclass holds the turn
+until the service pushes an `STTSegmentDoneFrame` for every segment. It gives up on a transcription that has
+not returned 10 seconds after the latest VAD stop. The builder does not pass `pending_transcript_timeout`, so
+that 10-second default applies, and no configuration key changes it. Refer to
+[Multi-Segment Turns](../../../about/core-concepts/speech-pipeline/turn-taking.md#multi-segment-turns).
+
+`turn_taking.user_speech_timeout` defaults to 0.6 seconds. The strategy starts that timer when the VAD
+reports end of speech, so the value adds to `vad.stop_secs` instead of replacing it. Tune both keys together
+when you adjust end-of-turn latency.
+
+On both paths, the builder also passes `turn_taking.user_turn_stop_timeout` to the user aggregator as
+`LLMUserAggregatorParams(user_turn_stop_timeout=...)`. The key is unset by default, so the value is `None` and
+Pipecat's 5-second user-turn watchdog never fires. A user turn then ends only when its stop strategy fires.
+Refer to [User-Turn Watchdog](../../../about/core-concepts/speech-pipeline/turn-taking.md#user-turn-watchdog).
+
+`wait_for_transcript` is `False` when `llm.is_omni_model` is true and `True` otherwise. The builder applies it
+to the `speech_timeout` stop strategy above and to each stop strategy in `ExternalUserTurnStrategies`. An omni
+pipeline needs this setting because `UserAudioBuffer` consumes every transcript before the user aggregator.
+Without it, the stop strategy would wait for text that never arrives. For the same reason, the builder keeps
+Pipecat's strategy for an omni LLM, because the turn does not wait for any transcript. Refer to
+[Multimodal and Omni Models](../../../about/core-concepts/language-models/multimodal.md#how-the-omni-switch-changes-the-pipeline).
+
+`original_messages`, the fourth tuple element, is a fresh deep copy of the initial message list. Hand
+it to the reset and update-prompt RTVI handler factories. Refer to
+[RTVI Actions](../protocols/rtvi-actions.md).
+
+## Substituting Your Own Service
+
+Every builder returns a stock Pipecat base type, so swapping one out is a one-line change in the bot
+script. Replace the call, keep the object in the same position in `pipeline_list`, and the rest of
+the pipeline is unaffected.
+
+```python
+# Instead of: stt = build_stt(config_manager, audio_logger)
+from my_package.stt import MySTTService          # must subclass pipecat STTService
+
+stt = MySTTService(model="my-model", sample_rate=16000, audio_passthrough=True)
+```
+
+The contracts your replacement must honor:
+
+| Slot | Base Class to Subclass |
+| --- | --- |
+| STT | `pipecat.services.stt_service.STTService` (`NemoDiarService` also subclasses this) |
+| TTS | `pipecat.services.tts_service.TTSService` |
+| LLM | `pipecat.services.llm_service.LLMService`; `build_context_and_aggregators` is typed against `BaseOpenAILLMService` |
+| Turn taking, VAD, audio buffering | `pipecat.processors.frame_processor.FrameProcessor` |
+
+Two extra behaviors are duck-typed rather than enforced by the base classes:
+
+- **Reset.** The bot passes a `resettable` list to `create_reset_context_action`. The handler calls
+  `.reset()` on each entry that defines one and skips `None` entries, so a service without `reset()`
+  is not reset between scenarios.
+- **Tool calling.** A service only exposes tools if it mixes in `ToolCallingMixin` from
+  `nemo_voice_agent/utils/tool_calling/mixins.py` and is listed in the `tool_mixins` argument of
+  `register_direct_tools_to_llm`. Refer to [Custom Tools](../../tools/custom-tools.md).
+
+If your service needs its own config, add a block to the YAML and read it from
+`config_manager.server_config`. `ConfigManager` passes unknown keys through untouched, so you do not need to
+thread new arguments through the shipped builders. Refer to
+[Server Config](../../configure/server-config.md).
+
+## Next Steps
+
+Choose the next guide based on whether you need to replace an assembly or transform frames within it:
+
+- [Build a custom pipeline](custom-pipeline.md) — writing a bot script from scratch.
+- [Write a custom processor](custom-processor.md) — a new stage rather than a replacement one.
+- [How it works](../../../about/architecture.md) — where each stage sits in the frame flow.
