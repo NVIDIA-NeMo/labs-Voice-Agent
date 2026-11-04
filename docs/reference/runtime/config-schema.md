@@ -37,10 +37,10 @@ The server resolves a configuration in the following order before any service bu
 
 1. `ConfigManager` loads the top-level YAML (`SERVER_CONFIG_PATH`, else `server_configs/default.yaml`) and
    resolves all OmegaConf interpolation such as `${llm.temperature}`.
-2. For each of `stt`, `llm`, `tts` it picks a sub-config: the **basename** of that block's `model_config`
-   key, else the `yaml_id` from `model_registry.yaml` when `server.use_model_registry` is true.
-   Only the basename is used — the file is always loaded from
-   `<server_base_path>/server_configs/{stt,llm,tts}_configs/`.
+2. For each of `stt`, `llm`, `tts`, and `diar` (only when `diar.enabled` is true) it picks a sub-config: the
+   **basename** of that block's `model_config` key, else the `yaml_id` from `model_registry.yaml` when
+   `server.use_model_registry` is true. Only the basename is used — the file is always loaded from
+   `<server_base_path>/server_configs/{stt,llm,tts,diar}_configs/`.
 3. **The sub-config overwrites the top-level block**, key by key. Setting a key in `default.yaml` that the
    sub-config also sets has no effect. Overrides are logged at INFO.
 4. The server logs the fully resolved configuration at startup as `Server config: ...`. Use that entry to
@@ -146,14 +146,32 @@ For more detail, refer to [ASR](../../about/core-concepts/speech-pipeline/asr.md
 
 ## diar
 
-The `diar` block enables speaker diarization and sets its model and detection parameters.
+The `diar` block enables speaker diarization and sets its model, detection, and streaming parameters. The
+streaming keys are lengths in 80 ms model frames. `ConfigManager` reads each of them with a `null` fallback and
+passes it to `NeMoDiarInputParams`, and a `null` value keeps the `DiarizationConfig` default that the table
+lists.
 
 | Key | Type | Default | Consumed by |
 | --- | --- | --- | --- |
 | `enabled` | bool | required | `ConfigManager`, `build_diar` — returns `None` when false |
-| `model` | string | required when enabled | `NemoDiarService` |
+| `model` | string | required when enabled (shipped: `nvidia/Nemotron-3-Diarization`) | `NemoDiarService`; also the registry lookup key under `diar_models` |
+| `model_config` | path | none | `ConfigManager` — basename selects the file under `diar_configs/`; setting it short-circuits registry lookup |
 | `threshold` | float | required when enabled (shipped: `0.5`) | `NeMoDiarInputParams` — lower is more sensitive |
-| `frame_len_in_secs` | float | required when enabled (shipped: `0.08`) | `NeMoDiarInputParams` |
+| `frame_len_in_secs` | float | required when enabled (shipped: `0.08`) | `NeMoDiarInputParams`; must equal the model's encoder frame, or the service raises a `ValueError` at startup |
+| `spkcache_len` | int or null | `null` (188) | speaker cache length |
+| `fifo_len` | int or null | `null` (188) | first-in, first-out (FIFO) queue length |
+| `spkcache_update_period` | int or null | `null` (the checkpoint's value) | frames moved from the FIFO queue into the speaker cache per update |
+| `chunk_len` | int or null | `null` (sliding window) | `NemoDiarService` — a non-null value selects `NeMoChunkedStreamingDiarService` |
+| `chunk_right_context` | int or null | `null` (7) | look-ahead frames per chunk; chunked streaming only |
+
+The shipped `default.yaml` sets none of the streaming keys. With `server.use_model_registry: true`, the
+`diar_models` registry section maps its `nvidia/Nemotron-3-Diarization` model to
+`diar_configs/nemotron_3_diarization.yaml`, which sets `spkcache_len: 264`, `fifo_len: 264`,
+`spkcache_update_period: 222`, `chunk_len: 3`, and `chunk_right_context: 1`. The shipped server therefore runs
+chunked streaming. The registry maps `nvidia/diar_streaming_sortformer_4spk-v2.1` and
+`nvidia/diar_streaming_sortformer_4spk-v2` to `diar_configs/diar_streaming_sortformer_4spk.yaml`, which sets
+no keys, so those models use the defaults in this table. A diarization model that is missing from the registry
+logs a warning and uses the `diar` block as it is.
 
 `diar.type` and `diar.device` are present in the shipped configs but not read: `build_diar` reuses
 `stt.device` for the diarizer. For more detail, refer to
@@ -167,7 +185,7 @@ The `turn_taking` block selects the turn-detection strategy, then tunes the one 
 | --- | --- | --- | --- |
 | `type` | `nemo` \| `speech_timeout` | `nemo` | `ConfigManager` (asserted), `build_turn_taking` — returns `None` for `speech_timeout` |
 | `backchannel_phrases_path` | path, list, or null | required for `nemo` | `NeMoTurnTakingService`; a relative path is tried against the CWD then the server base dir, and a missing file raises |
-| `max_buffer_size` | int | required for `nemo` (shipped: `2`) | word count above which a non-backchannel utterance interrupts immediately |
+| `max_buffer_size` | int | required for `nemo` (shipped: `2`) | completed-word count at which an utterance interrupts the bot before `<EOU>`, regardless of backchannel matching; a speaker tag is not counted |
 | `bot_stop_delay` | float | required for `nemo` (shipped: `0.5`) | seconds of server and client audio slack before bot-stop is honored |
 | `user_speech_timeout` | float | `0.6` | `build_context_and_aggregators` — silence `SpeechTimeoutUserTurnStopStrategy` waits on top of `vad.stop_secs`; applies to `speech_timeout` only |
 | `user_turn_stop_timeout` | float or null | `null` (watchdog off) | `build_context_and_aggregators` — `LLMUserAggregatorParams.user_turn_stop_timeout`; `null` or `0` disables Pipecat's watchdog; applies to both types |

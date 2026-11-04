@@ -62,7 +62,7 @@ try:
 
 except ModuleNotFoundError as e:
     logger.error(f"Exception: {e}")
-    logger.error('In order to use NVIDIA NeMo STT, you need to `pip install "nemo_toolkit[all]"`.')
+    logger.error("In order to use NVIDIA NeMo STT, install the pinned NeMo build with `bash install.sh` or `uv sync`.")
     raise Exception(f"Missing module: {e}")
 
 

@@ -150,6 +150,7 @@ def test_streaming_diarization_model_returns_speaker_probabilities_from_cache():
             _pcm_silence(service.feature_bufferer.chunk_size_in_secs), stream_id="functional-diar"
         )
 
+        assert service.max_num_speakers == 4
         assert diar_result.shape == (service.chunk_size, service.max_num_speakers)
         assert np.isfinite(diar_result).all()
     finally:

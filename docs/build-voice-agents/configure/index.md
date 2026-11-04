@@ -18,9 +18,9 @@ limitations under the License.
 # Configuration Model
 
 NeMo Labs Voice Agent is configured by YAML. One top-level server config selects the models and pipeline
-behavior. The speech-to-text (STT), large language model (LLM), and text-to-speech (TTS) components can also
-load a per-model sub-config. `ConfigManager` (`nemo_voice_agent/utils/config_manager.py`) merges these files
-before the example server builds any pipeline stage.
+behavior. The speech-to-text (STT), speaker diarization, large language model (LLM), and text-to-speech (TTS)
+components can also load a per-model sub-config. `ConfigManager` (`nemo_voice_agent/utils/config_manager.py`)
+merges these files before the example server builds any pipeline stage.
 
 ## Where the Files Live
 
@@ -33,6 +33,7 @@ examples/generic_voice_agent/server/
     ├── default.yaml             # the shipped top-level config
     ├── default_nvidia.yaml      # top-level config for hosted NIM endpoints
     ├── stt_configs/             # per-ASR-model sub-configs
+    ├── diar_configs/            # per-diarization-model streaming settings
     ├── llm_configs/             # per-LLM sub-configs
     └── tts_configs/             # per-TTS-model sub-configs
 ```
@@ -55,15 +56,16 @@ SERVER_CONFIG_PATH=server_configs/default_nvidia.yaml python server.py
 | Layer | What It Sets | How It Is Selected |
 | --- | --- | --- |
 | 1. Top-level config | Every block: `server`, `transport`, `vad`, `stt`, `diar`, `turn_taking`, `llm`, `tts` | `SERVER_CONFIG_PATH`, else `server_configs/default.yaml` |
-| 2. Component sub-config | Keys inside one of `stt` / `llm` / `tts` only | That block's `model_config:` field |
+| 2. Component sub-config | Keys inside one of `stt` / `diar` / `llm` / `tts` only | That block's `model_config:` field |
 | 3. Model registry | Supplies the sub-config filename when `model_config:` is absent | `server.use_model_registry: true` (the default) plus a matching `model:` id |
 
 Layers 2 and 3 are alternatives, not additions: `model_config:` short-circuits the registry lookup entirely.
 
 ### The Sub-Config Wins
 
-For STT, LLM, and TTS, the merge loop copies **every** sub-config key over the corresponding key in the
-top-level block. The sub-config overrides the top-level file.
+For STT, diarization, LLM, and TTS, the merge loop copies **every** sub-config key over the corresponding key
+in the top-level block. The sub-config overrides the top-level file. The diarization sub-config is merged only
+when `diar.enabled` is true.
 
 The shipped default demonstrates it. `default.yaml` declares `llm.type: auto`, but
 `llm_configs/nemotron_3.5_lightning.yaml` (selected by `llm.model_config:`) declares `type: vllm`, so the effective
@@ -149,7 +151,7 @@ reads one block of the merged config:
 | `transport` | — | `build_ws_transport`, `build_audio_logger` |
 | `vad` | — | `build_vad_analyzer` (Silero `VADParams`) |
 | `stt` | `stt_configs/` | `build_stt` |
-| `diar` | — | `build_diar`; returns `None` when `diar.enabled` is false |
+| `diar` | `diar_configs/` | `build_diar`; returns `None` when `diar.enabled` is false |
 | `turn_taking` | — | `build_turn_taking`; `turn_taking.type` selects `nemo` or `speech_timeout`, and returns `None` for `speech_timeout` |
 | `llm` | `llm_configs/` | `build_llm`; `llm.type` selects `auto`, `hf`, `vllm`, or `nvidia` |
 | `tts` | `tts_configs/` | `build_tts` and `build_llm_text_processor` |
@@ -165,12 +167,13 @@ vLLM can load the model and falls back to the Hugging Face backend if not. Refer
 
 ## Inspecting the Merged Result
 
-The startup log is the source of truth. `ConfigManager` emits `Final STT config:`, `Final LLM config:`, and
-`Final TTS config:` lines after each merge. It also emits one `... is overridden from ... by ...` line per
-replaced key. The example server then logs the fully resolved config as `Server config:`. Check those lines whenever a
-setting appears to be ignored — the override log names the file that won. In these log lines, any non-empty value of
-`api_key` or of a key that ends in `_api_key` appears as `<redacted>`, including inside an overridden mapping.
-An `--api-key` value inside `llm.vllm_server_params` also appears as `<redacted>`.
+The startup log is the source of truth. `ConfigManager` emits `Final STT config:`, `Final diarization config:`,
+`Final LLM config:`, and `Final TTS config:` lines after each merge. The diarization line appears only when
+diarization is enabled and a sub-config was merged. It also emits one `... is overridden from ... by ...` line per
+replaced key. The example server then logs the fully resolved config as `Server config:`. Check those lines
+whenever a setting appears to be ignored — the override log names the file that won. In these log lines, any
+non-empty value of `api_key` or of a key that ends in `_api_key` appears as `<redacted>`, including inside an
+overridden mapping. An `--api-key` value inside `llm.vllm_server_params` also appears as `<redacted>`.
 
 ## Gotchas
 

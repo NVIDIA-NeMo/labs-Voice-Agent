@@ -15,7 +15,7 @@ No API keys required to get started. Happy hacking~!
 - Offline, multilingual speech recognition with
   [Nemotron-3.5-Transcribe](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B) served through vLLM.
 - Low latency TTS for fast audio response generation.
-- Speaker diarization up to 4 speakers in different user turns.
+- Speaker diarization in different user turns: up to 8 speakers with Nemotron-3-Diarization (default), or 4 with Streaming Sortformer v2.1.
 - WebSocket server for easy deployment.
 - Tool calling for LLMs to use external tools and adjust its own behavior.
 - Voice-agent evaluation harness with deterministic + LLM-judged scoring, and 328 scenarios across 4
@@ -96,6 +96,10 @@ See [Evaluate](https://docs.nvidia.com/nemo/labs-voice-agent/evaluate-voice-agen
 
 ## 📅 Latest Updates
 
+- **2026-11-03** — Default speaker diarization model switched to
+  [Nemotron-3-Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization), which tells up to 8 speakers
+  apart. It needs a newer NeMo than PyPI ships, so NeMo is now pinned to a NeMo Speech commit: re-run
+  `bash install.sh` (or `uv sync`) in an existing checkout.
 - **2026-11-02** — Support for
   [NVIDIA-Nemotron-3.5-Transcribe-30B-A4B](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Transcribe-30B-A4B),
   an offline speech recognition model for 40 languages, through the new `stt.type: nemo_speechlm` backend

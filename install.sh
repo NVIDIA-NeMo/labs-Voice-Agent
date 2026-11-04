@@ -41,11 +41,12 @@ fi
 # - build-essential: C/C++ compilers for packages that build from source
 # - python3-dev: Python.h headers required by cdifflib and other C extensions
 #   (nemo-toolkit[tts] → cdifflib needs this to compile)
+# - git: nemo-toolkit is pinned to a NeMo Speech commit, which uv clones from GitHub
 if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update
-    sudo apt-get install -y npm nodejs build-essential python3-dev
+    sudo apt-get install -y npm nodejs build-essential python3-dev git
 else
-    echo "Warning: apt-get not found. Install npm, nodejs, a C/C++ toolchain, and Python.h headers manually."
+    echo "Warning: apt-get not found. Install npm, nodejs, git, a C/C++ toolchain, and Python.h headers manually."
 fi
 
 # --- 2. Install uv --------------------------------------------------------

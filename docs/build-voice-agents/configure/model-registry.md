@@ -20,7 +20,8 @@ limitations under the License.
 The model registry maps a model identifier to its sub-config YAML. You can switch models by editing
 `llm.model` instead of also updating `llm.model_config`. The registry is an optional convenience layer over
 the sub-config merge described in [Server Config](server-config.md). The shipped NeMo Labs Voice Agent config
-does not use it for any component.
+uses it only for diarization: `default.yaml` sets no `diar.model_config`, so the registry selects the
+diarization model's sub-config.
 
 ## Where It Lives
 
@@ -28,7 +29,7 @@ does not use it for any component.
 **server base path** — the directory containing the server script. For the example server that is
 `examples/generic_voice_agent/server/model_registry.yaml`. The path is not configurable from YAML.
 
-The file has three top-level sections, one per component:
+The file has four top-level sections, one per component:
 
 ```yaml
 llm_models:
@@ -44,15 +45,20 @@ stt_models:
   "stt_en_fastconformer_hybrid_large_streaming_80ms":
     yaml_id: "nemo_cache_aware_streaming.yaml"
     type: "nemo"
+
+diar_models:
+  "nvidia/Nemotron-3-Diarization":
+    yaml_id: "nemotron_3_diarization.yaml"
 ```
 
 `yaml_id` is a bare filename. It is resolved against the sibling directory for that component —
-`server_configs/llm_configs/`, `server_configs/tts_configs/`, or `server_configs/stt_configs/`.
+`server_configs/llm_configs/`, `server_configs/tts_configs/`, `server_configs/stt_configs/`, or
+`server_configs/diar_configs/`.
 
 ## Resolution Order
 
-For each large language model (LLM), text-to-speech (TTS), and speech-to-text (STT) component,
-`ConfigManager` selects a sub-config in this order:
+For each large language model (LLM), text-to-speech (TTS), and speech-to-text (STT) component, and for the
+diarization component when `diar.enabled` is true, `ConfigManager` selects a sub-config in this order:
 
 | Step | Condition | Result |
 | --- | --- | --- |
@@ -70,8 +76,12 @@ Two path-handling details affect resolution:
   value is discarded, and the file is looked up in the component's `*_configs/` directory. Therefore,
   `model_config: "./server_configs/llm_configs/qwen3-8B.yaml"` and `model_config: "qwen3-8B.yaml"`
   behave identically, and you cannot point `model_config` at a file outside that directory.
-- **STT keys strip a `.nemo` path.** If `stt.model` ends in `.nemo`, the lookup key is the basename
-  without the extension. A local checkpoint path can therefore still match a registry entry.
+- **STT and diarization keys strip a `.nemo` path.** If `stt.model` or `diar.model` ends in `.nemo`, the
+  lookup key is the basename without the extension. A local checkpoint path can therefore still match a
+  registry entry.
+- **Diarization also matches the repository name.** A `diar.model` value matches a `diar_models` entry by its
+  full ID or by the part after the slash. For example, `/models/Nemotron-3-Diarization.nemo` matches
+  `nvidia/Nemotron-3-Diarization`.
 
 Whatever sub-config gets loaded, its keys **override** the top-level block — not the other way round.
 For that precedence rule, refer to [Server Config](server-config.md).
@@ -134,11 +144,17 @@ registry entry too — it is reached through `model_config` rather than the regi
 | LLM | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` | Yes — but `model_config` in `default.yaml` bypasses the lookup |
 | STT | `nvidia/parakeet_realtime_eou_120m-v1` | No |
 | TTS | `kokoro` | No — the registry key is `hexgrad/Kokoro-82M` |
+| Diarization | `nvidia/Nemotron-3-Diarization` | Yes — resolved through the registry, because `default.yaml` sets no `diar.model_config` |
 
-All three work because `default.yaml` sets an explicit `model_config` for each. Config files with no
-registry entry include `nemotron_nano_v3.yaml`, `nemotron_nano_v3_think.yaml`, `nemotron_nano_v3_omni.yaml`,
-`nemotron_nano_v3_omni_think.yaml`, and `tts_configs/magpie_tts_multilingual_357m.yaml` — reach them with
-`model_config`.
+The STT, LLM, and TTS components work because `default.yaml` sets an explicit `model_config` for each. The
+diarization entry resolves to `diar_configs/nemotron_3_diarization.yaml`, which supplies the model's
+chunked-streaming settings. Change `diar.model` to `nvidia/diar_streaming_sortformer_4spk-v2.1`, and the
+registry selects `diar_streaming_sortformer_4spk.yaml`, which sets no keys, so the service uses the sliding
+window. Refer to [Diarization](../../about/core-concepts/speech-pipeline/diarization.md#model-streaming-settings).
+
+Config files with no registry entry include `nemotron_nano_v3.yaml`, `nemotron_nano_v3_think.yaml`,
+`nemotron_nano_v3_omni.yaml`, `nemotron_nano_v3_omni_think.yaml`, and
+`tts_configs/magpie_tts_multilingual_357m.yaml` — reach them with `model_config`.
 
 `server_configs/default_nvidia.yaml` leaves `use_model_registry: true` but sets no `model_config`
 anywhere. Its hosted model IDs miss the registry, so every component falls to step 4 and uses only the
@@ -165,6 +181,10 @@ llm_models:
 Confirm the resolution in the log — `ConfigManager` writes a `Loading LLM config from: ...` line, plus
 one line per key it overrode, before the pipeline starts.
 
+A diarization model follows the same pattern. Put its streaming settings in
+`server_configs/diar_configs/my-diarizer.yaml`, add the model under `diar_models`, and set `diar.model`. The
+log then shows a `Final diarization config:` line with the merged values.
+
 ## Turning the Registry Off
 
 Set `server.use_model_registry: false` and give every component an explicit `model_config` (or a
@@ -176,8 +196,9 @@ missing or unreadable registry file, `ConfigManager` logs an error and falls bac
 then raises a `ConfigAttributeError` on the first component that reaches step 2. The first error is
 `Missing key stt_models` because `_initialize_config_parameters` configures STT before LLM and TTS. The error
 is `Missing key llm_models` if only the STT block has an explicit `model_config`. A component with an explicit
-`model_config` bypasses the lookup, which can make the failure appear inconsistent. The `evaluation/`
-directory has no registry file, so those configs disable it.
+`model_config` bypasses the lookup, which can make the failure appear inconsistent. The diarization lookup
+never raises this error: with no `diar_models` section, it logs a not-in-registry warning instead. The
+`evaluation/` directory has no registry file, so those configs disable it.
 
 ## Related Pages
 

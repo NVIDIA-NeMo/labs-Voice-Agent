@@ -19,18 +19,23 @@ import asyncio
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from pipecat.frames.frames import ErrorFrame, TranscriptionFrame
 from pipecat.transcriptions.language import Language
 
 from nemo_voice_agent.pipecat.frames.frames import DiarResultFrame
-from nemo_voice_agent.pipecat.services.nemo.diar import NemoDiarService
+from nemo_voice_agent.pipecat.services.nemo.diar import NemoDiarService, _DiarJob
 
 
 def _diar():
     service = NemoDiarService.__new__(NemoDiarService)
     service._params = SimpleNamespace(threshold=0.5, buffer_size=2, language=Language.EN_US)
     service._current_speaker_id = None
+    service._segment_id = None
+    service._use_vad = True
+    service._model_reset_pending = False
     service._audio_buffer = []
+    service._model = None
     service._vad_user_speaking = True
     service._enabled = True
     service._queue = asyncio.Queue()
@@ -51,21 +56,24 @@ def _diar():
 def test_diar_dominant_speaker_result_error_buffer_and_reset():
     service = _diar()
     assert service.can_generate_metrics() is True
-    assert service._get_dominant_speaker_id(np.zeros((2, 2))) is None
-    assert service._get_dominant_speaker_id(np.array([[0.9, 0.1], [0.8, 0.2]])) == 0
-    assert service._get_dominant_speaker_id(np.array([[0.9, 0.1], [0.1, 0.9], [0.1, 0.8]])) == 1
+    assert service._get_speaker_evidence(np.zeros((2, 2))) is None
+    assert service._get_speaker_evidence(np.array([[0.9, 0.1], [0.8, 0.2]])) == 0
+    assert service._get_speaker_evidence(np.array([[0.9, 0.1], [0.1, 0.9], [0.1, 0.8]])) == 1
     asyncio.run(service._handle_diarization_result(np.array([[0.9, 0.1]])))
     assert isinstance(service.frames[-1], DiarResultFrame)
     asyncio.run(service._handle_diarization_result(None))
-    service._get_dominant_speaker_id = lambda value: (_ for _ in ()).throw(RuntimeError("bad diar"))
+    service._get_speaker_evidence = lambda value: (_ for _ in ()).throw(RuntimeError("bad diar"))
     asyncio.run(service._handle_diarization_result(np.ones((1, 1))))
     assert isinstance(service.frames[-1], ErrorFrame)
     assert asyncio.run(_collect(service.run_stt(b"a"))) == [None]
     assert asyncio.run(_collect(service.run_stt(b"b"))) == [None]
-    assert asyncio.run(service._queue.get()) == b"ab"
-    service._model = SimpleNamespace(reset_state=lambda: None)
+    assert asyncio.run(service._queue.get()) == _DiarJob(None, b"ab")
+    service._model = SimpleNamespace(
+        reset_state=lambda: pytest.fail("reset() must leave the model reset to the worker")
+    )
     service.reset()
     assert service._audio_buffer == [] and service._vad_user_speaking is False
+    assert service._model_reset_pending is True
 
 
 async def _collect(generator):

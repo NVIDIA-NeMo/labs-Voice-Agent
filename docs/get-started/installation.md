@@ -56,7 +56,7 @@ Run the equivalent commands directly when you need to inspect or adapt each inst
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y npm nodejs build-essential python3-dev
+sudo apt-get install -y npm nodejs build-essential python3-dev git
 
 # Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -78,11 +78,12 @@ The installation script prepares the operating system, Python environment, and r
 1. **Refuses to run inside a non-`base` conda environment.** If `CONDA_DEFAULT_ENV` is set to anything other than
    `base`, the script prints an error and exits 1. Conda's GCC combined with system Python headers breaks
    C extensions that compile from source, so run `conda deactivate` first.
-2. **Installs operating system packages** with `sudo apt-get install -y npm nodejs build-essential python3-dev`.
+2. **Installs operating system packages** with `sudo apt-get install -y npm nodejs build-essential python3-dev git`.
 3. **Installs `uv`** from `https://astral.sh/uv/install.sh` if it is not already on `PATH`. The installer
    places it in `~/.local/bin`.
 4. **Runs `uv sync`**, which reads `pyproject.toml` plus `uv.lock` and creates `.venv/` in the current
-   directory.
+   directory. It installs NeMo from a pinned commit of the NeMo Speech GitHub repository, so this step needs
+   the `git` command and access to `github.com`.
 5. **Prefetches two Natural Language Toolkit (NLTK) corpora** to avoid a network download during a live
    text-to-speech (TTS) session.
 
@@ -94,6 +95,7 @@ The operating system packages support dependency compilation and the browser cli
 | --- | --- |
 | `build-essential`, `python3-dev` | Some dependencies ship only source distributions and compile during installation. `cdifflib`, a transitive dependency of `nemo-toolkit[tts]`, requires a C/C++ toolchain and `Python.h`. |
 | `npm`, `nodejs` | Build and serve the Vite browser client in `examples/generic_voice_agent/client/`. Not needed for a headless or evaluation-only install. |
+| `git` | `uv sync` clones the pinned NeMo Speech commit from GitHub. |
 
 ### The NLTK Prefetch
 
@@ -106,6 +108,28 @@ uv run python -c "import nltk; nltk.download('cmudict'); nltk.download('averaged
 ```
 
 If you skip this step, a manual installation downloads the corpora during the first TTS use.
+
+### Update an Existing Environment
+
+Run `bash install.sh` or `uv sync` again after you pull a change to `pyproject.toml` or `uv.lock`. The
+environment does not update itself when you start the server with `python` from an activated `.venv`.
+`uv run` syncs the environment before it runs a command.
+
+Syncing matters most for NeMo. `pyproject.toml` installs `nemo-toolkit[asr,tts]` from a pinned commit of the
+[NeMo Speech repository](https://github.com/NVIDIA-NeMo/Speech), because no PyPI release of NeMo can load
+`nvidia/Nemotron-3-Diarization`, the shipped default diarization model, yet. Earlier versions of this project
+installed `nemo-toolkit>=2.7.3` from PyPI, and an environment created with them keeps NeMo 2.7.3 until you
+sync it. With NeMo 2.7.3, the server fails at startup with the default configuration. The pinned dependency
+set also adds `peft`, which the NeMo text-to-speech package needs at import time.
+
+Verify the installed NeMo version:
+
+```bash
+uv run python -c "import nemo; print(nemo.__version__)"
+```
+
+For the current pin, the command prints `3.1.0+e5d79d5a4`. For the error that an outdated environment
+produces, refer to [Troubleshooting](../troubleshooting/index.md).
 
 ## Additional Setup
 
@@ -129,6 +153,12 @@ Verify the selected build:
 ```bash
 uv run python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
+
+`override-dependencies` under `[tool.uv]` also pins `torch==2.11.0`. The NeMo Speech Git dependency carries
+its own `torch` sources, which resolve Linux `torch` to a CPU-only wheel unless one of its CUDA extras is
+enabled. The override replaces those sources, so `torch` keeps resolving with its CUDA runtime wheels. Keep the
+override when you edit the dependency settings. Because the override also hides vLLM's exact `torch` pin,
+`pyproject.toml` caps `vllm` below 0.27 so that the resolver cannot pair a newer vLLM with `torch` 2.11.0.
 
 The wheels carry the CUDA runtime but no CUDA compiler, which is all the prebuilt PyTorch and vLLM builds
 need. Compilation becomes a problem only when something builds a CUDA extension from source later, such as

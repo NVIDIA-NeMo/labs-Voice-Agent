@@ -165,6 +165,32 @@ HTTP on a non-loopback host.
 `chrome://flags/#unsafely-treat-insecure-origin-as-secure` and restart the browser. Alternatively, serve the
 client over HTTPS.
 
+## Error locating target nemo.collections.asr.modules.TransformerEncoder appears at startup
+
+**Cause:** The server loads `nvidia/Nemotron-3-Diarization` in a Python environment that has a NeMo version
+older than the build that `pyproject.toml` pins. This model is the shipped default, so the default
+configuration triggers the error. NeMo 2.7.3, the earlier pin, does not export the encoder class that the
+checkpoint names, so the model fails to load with the following error:
+
+```
+hydra.errors.InstantiationException: Error locating target 'nemo.collections.asr.modules.TransformerEncoder', set env var HYDRA_FULL_ERROR=1 to see chained exception.
+```
+
+This happens when you update the repository but not the environment. `uv run` syncs the environment before it
+runs a command, but `python server.py` in an activated `.venv` does not.
+
+**Resolution:** Run `bash install.sh` or `uv sync` at the repository root. Then confirm the NeMo version:
+
+```bash
+uv run python -c "import nemo; print(nemo.__version__)"
+```
+
+For the current pin, the command prints `3.1.0+e5d79d5a4`. Do not install `nemo-toolkit` from PyPI instead,
+because NeMo 3.0.0 cannot load this checkpoint either. Until you can update the environment, set `diar.model`
+to `nvidia/diar_streaming_sortformer_4spk-v2.1`, which loads with either NeMo version, or set
+`diar.enabled: false`. For more information, refer to
+[Diarization](../about/core-concepts/speech-pipeline/diarization.md#switch-to-a-four-speaker-model).
+
 ## Evaluation bot cannot find server_configs/agent.yaml
 
 **Cause:** When an evaluation bot starts, `SERVER_CONFIG_PATH` is relative to the current working directory.
@@ -311,11 +337,30 @@ instead of `null`.
 ## Speaker labels flip between turns or remain the same for every turn
 
 **Cause:** Diarization can struggle when voices are similar or accents are underrepresented in its training
-data.
+data. The model also caps the number of speakers. The shipped `nvidia/Nemotron-3-Diarization` tells up to
+eight speakers apart, and the `nvidia/diar_streaming_sortformer_4spk-v2.1` alternative tells only four apart.
 
 **Resolution:** Lower `diar.threshold` to raise sensitivity, or disable diarization with
-`diar.enabled: false`. For more information, refer to
+`diar.enabled: false`. If you switched to a four-speaker model and more than four people speak, set
+`diar.model` back to `nvidia/Nemotron-3-Diarization`. For more information, refer to
 [Diarization](../about/core-concepts/speech-pipeline/diarization.md).
+
+## Speaker tags are missing from some transcripts
+
+**Cause:** `NeMoTurnTakingService` tags a transcript only from speaker evidence in the same VAD segment. When
+no evidence has arrived by the time the transcript is emitted, the transcript stays untagged. This happens
+after a very short utterance, or when diarization inference runs slower than real time, for example on a CPU.
+Slow inference can also give a later transcript in the same VAD segment the previous speaker's tag.
+
+**Resolution:** Run diarization on a GPU. The diarizer runs on the `stt.device` device and ignores
+`diar.device`, so set `stt.device` to a CUDA device. Lowering `diar.threshold` also lets more chunks count as
+speaker evidence.
+
+To confirm the cause, search `bot_server.log` for `Speaker tag`. The turn-taking service logs one such line at
+the `DEBUG` level for each final transcript. The line shows the chosen speaker and the vote count for each
+speaker, for example `Speaker tag None from votes {}` for an untagged transcript. Each second of speech yields
+up to about 12.5 votes, so counts far below that rate mean that inference is not keeping up. For the tagging
+rules, refer to [Diarization](../about/core-concepts/speech-pipeline/diarization.md).
 
 ## Spelled-out confirmation codes are transcribed wrongly
 

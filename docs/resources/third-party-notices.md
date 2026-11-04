@@ -41,10 +41,12 @@ lines. A copyright check runs on every pull request and fails without it. Refer 
 
 ## Redistributed Third-Party Code and Data
 
-`THIRD_PARTY_NOTICES.md` covers only upstream material whose **source or data is copied into this
-repository**. Regular runtime dependencies, including Pipecat, NeMo, PyTorch, vLLM, and the rest of the
-`pyproject.toml` dependency tree, are installed from PyPI. They retain their own licenses, which are not
-reproduced in that file. The repository redistributes the following sources:
+`THIRD_PARTY_NOTICES.md` covers only upstream material whose **source or data is copied into this repository**.
+Regular runtime dependencies, including Pipecat, NeMo, PyTorch, vLLM, and the rest of the `pyproject.toml`
+dependency tree, are downloaded during installation. Most come from PyPI, but NeMo (`nemo-toolkit`) comes from a
+pinned commit of the [NeMo Speech repository](https://github.com/NVIDIA-NeMo/Speech) on GitHub. These dependencies
+retain their own licenses, which are not reproduced in that file. The repository redistributes the following
+sources:
 
 | Upstream Project | Owner | Pinned Version | License | Redistributed As |
 | --- | --- | --- | --- | --- |

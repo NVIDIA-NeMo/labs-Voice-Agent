@@ -36,6 +36,16 @@ def voice_agent_server_base_path():
     return voice_agent_root_path
 
 
+def _server_config_with_diar(server_base_path, tmp_path, **diar_overrides):
+    """Write a copy of the shipped default.yaml whose ``diar`` block carries ``diar_overrides``."""
+    config = OmegaConf.load(os.path.join(server_base_path, "server_configs", "default.yaml"))
+    for key, value in diar_overrides.items():
+        config.diar[key] = value
+    config_path = tmp_path / "server_config.yaml"
+    OmegaConf.save(config, config_path)
+    return str(config_path)
+
+
 class TestDefaultConfigs:
     """Test suite for ConfigManager class."""
 
@@ -93,6 +103,63 @@ class TestDefaultConfigs:
         assert hasattr(config_manager, "DIAR_MODEL") and isinstance(config_manager.DIAR_MODEL, str)
         assert hasattr(config_manager, "USE_DIAR") and isinstance(config_manager.USE_DIAR, bool)
         assert isinstance(config_manager.diar_params, NeMoDiarInputParams)
+
+    @pytest.mark.unit
+    def test_configure_diarization_default_is_nemotron_chunked(self, voice_agent_server_base_path):
+        """The shipped default, Nemotron-3-Diarization, runs chunked streaming with its registry settings."""
+        config_manager = ConfigManager(voice_agent_server_base_path)
+        params = config_manager.diar_params
+
+        assert config_manager.DIAR_MODEL == "nvidia/Nemotron-3-Diarization"
+        assert (params.chunk_len, params.chunk_right_context) == (3, 1)
+        assert (params.spkcache_len, params.fifo_len, params.spkcache_update_period) == (264, 264, 222)
+
+    @pytest.mark.unit
+    def test_configure_diarization_keeps_sortformer_v2_settings(self, voice_agent_server_base_path, tmp_path):
+        """Sortformer v2.1 sets no streaming overrides: its sliding-window path is unchanged."""
+        config_path = _server_config_with_diar(
+            voice_agent_server_base_path, tmp_path, model="nvidia/diar_streaming_sortformer_4spk-v2.1"
+        )
+        params = ConfigManager(voice_agent_server_base_path, server_config_path=config_path).diar_params
+
+        assert (params.chunk_len, params.chunk_right_context) == (None, None)
+        assert (params.spkcache_len, params.fifo_len, params.spkcache_update_period) == (None, None, None)
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize("model", ["nvidia/Nemotron-3-Diarization", "/models/Nemotron-3-Diarization.nemo"])
+    def test_configure_diarization_applies_the_registry_model_config(
+        self, voice_agent_server_base_path, tmp_path, model
+    ):
+        """Nemotron-3-Diarization picks up its chunked-streaming settings from diar_configs/ through the registry."""
+        config_path = _server_config_with_diar(voice_agent_server_base_path, tmp_path, model=model)
+        params = ConfigManager(voice_agent_server_base_path, server_config_path=config_path).diar_params
+
+        assert (params.chunk_len, params.chunk_right_context) == (3, 1)
+        assert (params.spkcache_len, params.fifo_len, params.spkcache_update_period) == (264, 264, 222)
+        assert params.threshold == 0.5  # keys the model YAML does not set keep the server config's value
+
+    @pytest.mark.unit
+    def test_configure_diarization_explicit_model_config(self, voice_agent_server_base_path, tmp_path):
+        config_path = _server_config_with_diar(
+            voice_agent_server_base_path,
+            tmp_path,
+            model="/models/my-finetuned-diarizer.nemo",
+            model_config="./server_configs/diar_configs/nemotron_3_diarization.yaml",
+        )
+        params = ConfigManager(voice_agent_server_base_path, server_config_path=config_path).diar_params
+
+        assert (params.chunk_len, params.fifo_len) == (3, 264)
+
+    @pytest.mark.unit
+    def test_configure_diarization_unregistered_model_uses_the_server_config(
+        self, voice_agent_server_base_path, tmp_path
+    ):
+        config_path = _server_config_with_diar(
+            voice_agent_server_base_path, tmp_path, model="someone/other-diarizer", chunk_len=6, chunk_right_context=2
+        )
+        params = ConfigManager(voice_agent_server_base_path, server_config_path=config_path).diar_params
+
+        assert (params.chunk_len, params.chunk_right_context, params.fifo_len) == (6, 2, None)
 
     @pytest.mark.unit
     def test_configure_turn_taking(self, voice_agent_server_base_path):

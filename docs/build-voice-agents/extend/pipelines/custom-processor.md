@@ -81,7 +81,7 @@ Pick the position by the frame type you need to see. Frame classes come from
 | --- | --- | --- |
 | After `ws_transport.input()` | `InputAudioRawFrame` | Resampling, gain control, noise suppression |
 | Between `stt` and `user_agg` | `TranscriptionFrame`, `InterimTranscriptionFrame`, and, with `stt.type: nemo_speechlm`, `STTSegmentDoneFrame` (from `nemo_voice_agent.pipecat.frames.frames`). Forward it, because `SegmentedSTTUserTurnStopStrategy` waits for it before it ends the user turn. | ASR error correction, PII redaction, language routing |
-| After `diar` | `DiarResultFrame` (from `nemo_voice_agent.pipecat.frames.frames`) | Rewriting or filtering speaker labels |
+| After `diar` | `DiarResultFrame` (from `nemo_voice_agent.pipecat.frames.frames`), one for each 80 ms frame of audio in which a speaker is heard. Keep its `segment_id`, because `NeMoTurnTakingService` uses it to drop evidence from an ended VAD segment. A frame with `segment_id=None` always applies to the current utterance. | Rewriting or filtering per-chunk speaker evidence |
 | Between `user_agg` and `llm` | `LLMRunFrame` and everything from upstream | Context shaping, retrieval, or memory injection |
 | Between `llm` and `llm_text_processor` | `LLMTextFrame` (streaming token chunks) | Token-level filtering; text can be split mid-word |
 | Between `llm_text_processor` and `tts` | `AggregatedTextFrame` (whole sentences) | Markdown stripping, profanity filter, pronunciation rewrites |

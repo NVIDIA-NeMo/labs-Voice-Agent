@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional, Union
@@ -72,8 +73,11 @@ class NeMoTurnTakingService(FrameProcessor):
         self.bot_stop_delay = bot_stop_delay
         self.can_create_user_frames = can_create_user_frames
         # internal data
-        self._current_speaker_id = None
-        self._prev_speaker_id = None
+        # Diarization state. The speaker tag is picked when an utterance is emitted, from evidence for that
+        # utterance only, and is never stored in the text buffer.
+        self._segment_id = None  # id of the VADUserStartedSpeakingFrame that opened the current VAD segment
+        self._speaker_votes = []  # DiarResultFrame speakers since the last emitted utterance, oldest first
+        self._segment_speaker_id = None  # latest speaker heard in the current VAD segment
         self._bot_stop_time = None
         self._bot_speaking = False
         self._vad_user_speaking = False
@@ -133,8 +137,8 @@ class NeMoTurnTakingService(FrameProcessor):
         """
         Reset the turn-taking service.
         """
-        self._current_speaker_id = None
-        self._prev_speaker_id = None
+        self._segment_id = None
+        self._clear_speaker_state()
         self._bot_stop_time = None
         self._bot_speaking = False
         self._vad_user_speaking = False
@@ -206,7 +210,6 @@ class NeMoTurnTakingService(FrameProcessor):
                 self._bot_speaking = False
                 logger.debug("Setting _bot_speaking to False")
         elif isinstance(frame, DiarResultFrame):
-            logger.debug("DiarResultFrame received")
             await self._handle_diar_result(frame, direction)
         else:
             await self.push_frame(frame, direction)
@@ -255,7 +258,7 @@ class NeMoTurnTakingService(FrameProcessor):
                 else:
                     await self._handle_completed_text(completed_text, direction)
                     await self._handle_user_interruption(UserStoppedSpeakingFrame())
-                self._user_speaking_buffer = ""
+                self._clear_utterance()
                 self._have_sent_user_started_speaking = False  # user is done speaking, so we reset the flag
             elif has_eob and self._bot_speaking:
                 logger.debug(f"<EOB> detected while bot is speaking: `{self._user_speaking_buffer}`")
@@ -268,7 +271,7 @@ class NeMoTurnTakingService(FrameProcessor):
                         }
                     else:
                         self._audio_logger.staged_metadata["is_backchannel"] = True
-                self._user_speaking_buffer = ""
+                self._clear_utterance()
                 self._have_sent_user_started_speaking = False  # user is done speaking, so we reset the flag
             else:
                 # if bot is not speaking, the backchannel string is not considered a backchannel phrase
@@ -306,7 +309,7 @@ class NeMoTurnTakingService(FrameProcessor):
                 logger.debug(f"Backchannel detected while bot is speaking: `{text_segment}`")
                 # push the backchannel string upstream, not downstream
                 curr_text = str(self._user_speaking_buffer + text_segment)
-                self._user_speaking_buffer = ""
+                self._clear_utterance()
                 if self._audio_logger:
                     if self._audio_logger.staged_metadata is None:
                         self._audio_logger.staged_metadata = {
@@ -331,12 +334,17 @@ class NeMoTurnTakingService(FrameProcessor):
                 self._user_speaking_buffer += text_segment
                 if self.is_backchannel(self._user_speaking_buffer):
                     logger.debug(f"Backchannel detected: `{self._user_speaking_buffer}`")
-                    self._user_speaking_buffer = ""
+                    self._clear_utterance()
                     self._have_sent_user_started_speaking = False
                     return
                 logger.debug(f"Appending `{text_segment}` to user speaking buffer: `{self._user_speaking_buffer}`")
 
     async def _handle_completed_text(self, completed_text: str, direction: FrameDirection, is_final: bool = True):
+        # Pick the tag before any await, while the evidence still matches the text being emitted.
+        speaker_id = self._utterance_speaker_id() if self.use_diar else None
+        if self.use_diar and is_final:
+            logger.debug(f"Speaker tag {speaker_id} from votes {dict(Counter(self._speaker_votes))}")
+
         if not self._have_sent_user_started_speaking:
             # if we haven't sent the user started speaking frame, we send it now
             # so that the bot can be interrupted and be ready to respond to the new user turn
@@ -346,9 +354,8 @@ class NeMoTurnTakingService(FrameProcessor):
         completed_text = completed_text.strip()
         completed_text = completed_text.replace(self.eou_string, "").replace(self.eob_string, "")
 
-        if self.use_diar and not completed_text.startswith("<speaker_") and self._prev_speaker_id is not None:
-            # Add the previous speaker tag to the beginning of the text
-            completed_text = f"<speaker_{self._prev_speaker_id}> {completed_text}"
+        if speaker_id is not None:
+            completed_text = f"<speaker_{speaker_id}> {completed_text}"
 
         frame_type = TranscriptionFrame if is_final else InterimTranscriptionFrame
         text_frame = frame_type(
@@ -361,11 +368,32 @@ class NeMoTurnTakingService(FrameProcessor):
         logger.debug(f"Pushing text frame: {text_frame}")
         await self.push_frame(text_frame, direction)
 
-    def _contains_only_speaker_tags(self, text: str) -> bool:
+    def _clear_utterance(self):
+        """Drop the buffered text together with the speaker evidence collected for it."""
+        self._user_speaking_buffer = ""
+        self._speaker_votes = []
+
+    def _clear_speaker_state(self):
+        """Forget all speaker evidence. Called when a VAD segment starts or ends, and on reset."""
+        self._speaker_votes = []
+        self._segment_speaker_id = None
+
+    def _utterance_speaker_id(self) -> Optional[int]:
+        """Return the speaker tag for the utterance in the buffer, or ``None`` to leave it untagged.
+
+        The tag is the speaker with the most votes since the last emitted utterance, so the few votes of a barge-in
+        heard before the previous speaker's ``<EOU>`` arrives do not relabel that speaker's text. Ties go to the most
+        recent vote. With no votes (for example a same-speaker continuation after an ``<EOU>``, which the
+        diarization service has already reported), the tag is the latest speaker heard in this VAD segment.
+        A speaker from an earlier VAD segment is never used.
         """
-        Check if the text contains only speaker tags.
-        """
-        return text.strip().startswith("<speaker_") and text.strip().endswith(">")
+        if not self._speaker_votes:
+            return self._segment_speaker_id
+        counts = Counter(self._speaker_votes)
+        top = max(counts.values())
+        for speaker_id in reversed(self._speaker_votes):
+            if counts[speaker_id] == top:
+                return speaker_id
 
     async def _handle_vad_user_started_speaking(self, frame: VADUserStartedSpeakingFrame, direction: FrameDirection):
         """
@@ -375,6 +403,10 @@ class NeMoTurnTakingService(FrameProcessor):
         so that the bot can be interrupted and be ready to respond to the new user turn
         """
         self._vad_user_speaking = True
+        # A new VAD segment starts with no speaker evidence. Text already buffered (STT can transcribe the start of
+        # an utterance before VAD fires) stays, and is tagged from this segment's evidence.
+        self._segment_id = frame.id
+        self._clear_speaker_state()
         logger.debug("NeMoTurnTakingService: VADUserStartedSpeakingFrame")
         await self.push_frame(frame, direction)
         if not self.backchannel_phrases and not self._have_sent_user_started_speaking:
@@ -395,42 +427,43 @@ class NeMoTurnTakingService(FrameProcessor):
         logger.debug("NeMoTurnTakingService: VADUserStoppedSpeakingFrame")
         await self.push_frame(frame, direction)
 
-        # if user buffer only contains speaker tags, we don't push the completed text frame
-        if self._contains_only_speaker_tags(self._user_speaking_buffer):
-            logger.debug(f"User buffer only contains speaker tags: `{self._user_speaking_buffer}`, ignoring")
-            return
-
-        is_backchannel = self.is_backchannel(self._user_speaking_buffer)
-        if not self._user_speaking_buffer:
-            return
-        if not self._bot_speaking or not is_backchannel:
-            logger.debug(f"Bot talking: {self._bot_speaking}, backchannel: {is_backchannel}")
-            logger.debug(f"Pushing completed text frame for VAD user stopped speaking: {self._user_speaking_buffer}")
-            await self._handle_completed_text(self._user_speaking_buffer, direction)
-            self._user_speaking_buffer = ""
-            if self._have_sent_user_started_speaking:
-                await self._handle_user_interruption(UserStoppedSpeakingFrame())
-                self._have_sent_user_started_speaking = False
-        elif is_backchannel:
-            logger.debug(f"Backchannel detected: `{self._user_speaking_buffer}`")
-            if self._audio_logger:
-                self._audio_logger.save_user_audio(is_backchannel=True)
+        try:
+            is_backchannel = self.is_backchannel(self._user_speaking_buffer)
+            if not self._user_speaking_buffer:
+                return
+            if not self._bot_speaking or not is_backchannel:
+                logger.debug(f"Bot talking: {self._bot_speaking}, backchannel: {is_backchannel}")
                 logger.debug(
-                    f"[TurnTakingService] Saved backchannel audio (VAD stopped): {self._user_speaking_buffer}"
+                    f"Pushing completed text frame for VAD user stopped speaking: {self._user_speaking_buffer}"
                 )
+                await self._handle_completed_text(self._user_speaking_buffer, direction)
+                self._clear_utterance()
+                if self._have_sent_user_started_speaking:
+                    await self._handle_user_interruption(UserStoppedSpeakingFrame())
+                    self._have_sent_user_started_speaking = False
+            elif is_backchannel:
+                logger.debug(f"Backchannel detected: `{self._user_speaking_buffer}`")
+                if self._audio_logger:
+                    self._audio_logger.save_user_audio(is_backchannel=True)
+                    logger.debug(
+                        f"[TurnTakingService] Saved backchannel audio (VAD stopped): {self._user_speaking_buffer}"
+                    )
 
-            await self.push_frame(
-                TranscriptionFrame(
-                    text=f"({self._user_speaking_buffer})",
-                    user_id="",
-                    timestamp=time_now_iso8601(),
-                    language=self.language if self.language else Language.EN_US,
-                    result={"text": f"Backchannel detected: {self._user_speaking_buffer}"},
-                ),
-                direction=FrameDirection.UPSTREAM,
-            )
-            self._user_speaking_buffer = ""
-            self._have_sent_user_started_speaking = False
+                await self.push_frame(
+                    TranscriptionFrame(
+                        text=f"({self._user_speaking_buffer})",
+                        user_id="",
+                        timestamp=time_now_iso8601(),
+                        language=self.language if self.language else Language.EN_US,
+                        result={"text": f"Backchannel detected: {self._user_speaking_buffer}"},
+                    ),
+                    direction=FrameDirection.UPSTREAM,
+                )
+                self._clear_utterance()
+                self._have_sent_user_started_speaking = False
+        finally:
+            # The VAD segment is over: its speaker evidence must not tag anything the user says next.
+            self._clear_speaker_state()
 
     async def _handle_user_interruption(self, frame: Frame):
         # Adapted from BaseInputTransport._handle_user_interruption
@@ -456,23 +489,28 @@ class NeMoTurnTakingService(FrameProcessor):
         else:
             logger.debug(f"Unknown frame type for _handle_user_interruption: {type(frame)}")
 
+    def _is_stale_diar_result(self, frame: DiarResultFrame) -> bool:
+        """Whether ``frame`` describes audio from a VAD segment that has already ended.
+
+        VAD frames are SystemFrames, so pipecat can process a VAD stop or start here before a ``DiarResultFrame``
+        that the diarization service pushed earlier. Comparing segment ids keeps that evidence away from the next
+        utterance. Frames without a ``segment_id`` are not VAD-scoped and always apply.
+        """
+        if frame.segment_id is None:
+            return False
+        return not self._vad_user_speaking or frame.segment_id != self._segment_id
+
     async def _handle_diar_result(self, frame: DiarResultFrame, direction: FrameDirection):
         if not self.use_diar:
-            logger.debug("Diarization is disabled, skipping")
+            return
+        if self._is_stale_diar_result(frame):
+            logger.debug(
+                f"Dropping DiarResultFrame for speaker {frame.diar_result} from ended VAD segment {frame.segment_id}"
+            )
             return
 
-        new_speaker_id = frame.diar_result  # speaker id of the dominant speaker
-
-        # logger.debug(f"Dominant speaker ID: {dominant_speaker_id}")
-        self._prev_speaker_id = self._current_speaker_id
-        last_speaker_id = self._current_speaker_id
-
-        if not self._user_speaking_buffer.startswith("<speaker_"):
-            # add speaker tag <speaker_{speaker_id}> to the beginning of the current utterance
-            self._user_speaking_buffer = f"<speaker_{new_speaker_id}> {self._user_speaking_buffer}"
-        elif last_speaker_id != new_speaker_id:
-            # change the speaker tag to the dominant speaker id
-            self._user_speaking_buffer = self._user_speaking_buffer[len("<speaker_0>") :]
-            self._user_speaking_buffer = f"<speaker_{new_speaker_id}> {self._user_speaking_buffer}"
-        logger.debug(f"Speaker changed from {last_speaker_id} to {new_speaker_id}")
-        self._current_speaker_id = new_speaker_id
+        speaker_id = frame.diar_result
+        if speaker_id != self._segment_speaker_id:
+            logger.debug(f"Speaker changed from {self._segment_speaker_id} to {speaker_id}")
+        self._speaker_votes.append(speaker_id)
+        self._segment_speaker_id = speaker_id

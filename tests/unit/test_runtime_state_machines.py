@@ -41,6 +41,7 @@ from pipecat.transports.websocket.server import (
     SingleClientWebsocketServerTransport,
 )
 
+from nemo_voice_agent.pipecat.frames.frames import DiarResultFrame
 from nemo_voice_agent.pipecat.services.common import UserAudioBuffer
 from nemo_voice_agent.pipecat.services.nemo.stt import NeMoSTTInputParams, NemoSTTService
 from nemo_voice_agent.pipecat.services.nemo.tts import BaseNemoTTSService
@@ -253,16 +254,21 @@ def test_turn_taking_backchannel_while_bot_speaking_goes_upstream():
     assert service._user_speaking_buffer == ""
 
 
-def test_turn_taking_vad_stop_ignores_speaker_tag_only_buffer():
-    """VAD stop does not emit a transcript when the buffer only contains a speaker tag."""
+def test_turn_taking_vad_stop_with_speaker_evidence_but_no_text_emits_nothing():
+    """VAD stop emits no transcript for speaker evidence without text, and forgets that evidence."""
     service = NeMoTurnTakingService(use_diar=True)
     pushed = _capture_pushes(service)
-    service._user_speaking_buffer = "<speaker_1>"
+    start = VADUserStartedSpeakingFrame()
+    _drive(service._handle_vad_user_started_speaking(start, FrameDirection.DOWNSTREAM))
+    _drive(service._handle_diar_result(DiarResultFrame(1, segment_id=start.id), FrameDirection.DOWNSTREAM))
+    pushed.clear()
 
     _drive(service._handle_vad_user_stopped_speaking(SimpleNamespace(), FrameDirection.DOWNSTREAM))
 
     assert len(pushed) == 1
     assert pushed[0][0].__class__ is SimpleNamespace
+    assert service._user_speaking_buffer == ""
+    assert service._speaker_votes == [] and service._segment_speaker_id is None
 
 
 def test_base_nemo_tts_think_token_filtering_tracks_multi_chunk_thoughts():
