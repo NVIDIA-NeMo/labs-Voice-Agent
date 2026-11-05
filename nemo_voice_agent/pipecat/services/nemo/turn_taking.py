@@ -198,6 +198,7 @@ class NeMoTurnTakingService(FrameProcessor):
         elif isinstance(frame, BotStartedSpeakingFrame):
             logger.debug("BotStartedSpeakingFrame received")
             self._bot_speaking = True
+            self._bot_stop_time = None  # a new sentence started; cancel the pending stop
             # Capture the actual start time when audio starts playing
             # This is more accurate than capturing during TTS generation
             if self._audio_logger:
