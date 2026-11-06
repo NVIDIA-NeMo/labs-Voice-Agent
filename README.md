@@ -37,7 +37,8 @@ vllm serve nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4 \
     --trust-remote-code --tensor-parallel-size 1 --enable-prefix-caching \
     --max-num-seqs 1 --gpu-memory-utilization 0.8 \
     --enable-auto-tool-choice --tool-call-parser qwen3_coder \
-    --reasoning-parser nemotron_v3
+    --reasoning-parser nemotron_v3 \
+    --reasoning-config '{"reasoning_start_str": "<think>", "reasoning_end_str": "\nI have to finalize the answer now.</think>"}'
 
 # terminal 1:
 cd examples/generic_voice_agent/server && python server.py    
