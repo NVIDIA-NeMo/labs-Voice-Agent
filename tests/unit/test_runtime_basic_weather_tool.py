@@ -16,9 +16,54 @@
 """Unit tests for runtime basic direct tools that normally call external services."""
 
 import asyncio
+import copy
 from types import SimpleNamespace
 
+import python_weather
+
 from nemo_voice_agent.utils.tool_calling import basic_tools
+
+
+# A wttr.in ``?format=j1`` response, trimmed to the fields python_weather reads.
+# Weather code 149 is smoky haze, which python_weather only knows from 2.2.3 on.
+_WTTR_SMOKY_HAZE = {
+    "current_condition": [
+        {
+            "FeelsLikeC": "27",
+            "FeelsLikeF": "81",
+            "cloudcover": "50",
+            "humidity": "74",
+            "observation_time": "09:12 AM",
+            "precipInches": "0.0",
+            "precipMM": "0.0",
+            "pressure": "1013",
+            "pressureInches": "30",
+            "temp_C": "25",
+            "temp_F": "77",
+            "uvIndex": "5",
+            "visibility": "6",
+            "visibilityMiles": "3",
+            "weatherCode": "149",
+            "weatherDesc": [{"value": "Smoky haze"}],
+            "winddir16Point": "ENE",
+            "winddirDegree": "70",
+            "windspeedKmph": "11",
+            "windspeedMiles": "7",
+        }
+    ],
+    "nearest_area": [
+        {
+            "areaName": [{"value": "Taipei"}],
+            "country": [{"value": "Taiwan"}],
+            "latitude": "25.039",
+            "longitude": "121.525",
+            "population": "7871900",
+            "region": [{"value": "T'ai-pei"}],
+        }
+    ],
+    "request": [{"query": "Taipei, Taiwan", "type": "City"}],
+    "weather": [],
+}
 
 
 class _FakeLLM:
@@ -95,6 +140,30 @@ def test_tool_get_city_weather_returns_forecast_and_pushes_progress_frames(monke
             "uv_index": "3",
         }
     ]
+
+
+class _WttrWeatherClient(_FakeWeatherClient):
+    """Fake client that parses a wttr.in payload with python_weather's own Forecast, as the real client does."""
+
+    async def get(self, city_name):
+        """Parse the smoky haze payload."""
+        return python_weather.Forecast(
+            copy.deepcopy(_WTTR_SMOKY_HAZE), python_weather.METRIC, python_weather.Locale.ENGLISH
+        )
+
+
+def test_tool_get_city_weather_parses_smoky_haze(monkeypatch):
+    """Weather code 149 is parsed instead of failing with "149 is not a valid Kind"."""
+    monkeypatch.setattr(basic_tools.python_weather, "Client", _WttrWeatherClient)
+    params = _Params()
+
+    asyncio.run(basic_tools.tool_get_city_weather(params, "Taipei"))
+
+    assert len(params.results) == 1
+    result = params.results[0]
+    assert "error" not in result
+    assert result["description"] == "Smoky haze"
+    assert result["temperature"] == "25 degrees Celsius"
 
 
 def test_tool_get_city_weather_reports_timeout(monkeypatch):
