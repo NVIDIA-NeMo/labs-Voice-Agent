@@ -23,6 +23,7 @@ while the bot is still talking and backchannels from then on interrupt the bot.
 import asyncio
 from types import SimpleNamespace
 
+import pytest
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
@@ -47,7 +48,8 @@ def _service(monkeypatch, **kwargs):
     monkeypatch.setattr(turn_taking_module, "time", SimpleNamespace(time=lambda: clock.now))
     kwargs.setdefault("backchannel_phrases", ["mmhmm"])
     kwargs.setdefault("max_buffer_size", 100)  # no interim frames
-    service = NeMoTurnTakingService(bot_stop_delay=0.5, **kwargs)
+    kwargs.setdefault("bot_stop_delay", 0.5)
+    service = NeMoTurnTakingService(**kwargs)
     service.pushed = []
 
     async def push(frame, direction=None):
@@ -106,3 +108,32 @@ def test_backchannel_in_second_sentence_does_not_interrupt(monkeypatch):
         (frame.text, direction) for frame, direction in service.pushed if isinstance(frame, TranscriptionFrame)
     ]
     assert transcripts == [("(mmhmm)", FrameDirection.UPSTREAM)]
+
+
+@pytest.mark.parametrize("bot_stop_delay", [None, 0.0])
+def test_no_bot_stop_delay_stops_bot_right_away(monkeypatch, bot_stop_delay):
+    """``bot_stop_delay: null`` means no delay, like ``0``. It used to raise ``TypeError`` on every later frame."""
+    service, clock = _service(monkeypatch, bot_stop_delay=bot_stop_delay)
+    _process(service, BotStartedSpeakingFrame())
+    clock.now += 1.2
+    _process(service, BotStoppedSpeakingFrame())
+
+    assert service._bot_speaking is False
+
+    clock.now += 0.1
+    _process(service, TextFrame("next frame"))
+
+    assert service._bot_speaking is False
+    assert [frame.text for frame, _ in service.pushed] == ["next frame"]
+
+
+@pytest.mark.parametrize("bot_stop_delay", [None, 0.0])
+def test_no_bot_stop_delay_keeps_bot_speaking_across_sentence_boundary(monkeypatch, bot_stop_delay):
+    service, clock = _service(monkeypatch, bot_stop_delay=bot_stop_delay)
+    _process(service, BotStartedSpeakingFrame())
+    clock.now += 1.2
+    _sentence_boundary(service)
+    clock.now += 0.6
+    _process(service, TextFrame("any frame"))
+
+    assert service._bot_speaking is True

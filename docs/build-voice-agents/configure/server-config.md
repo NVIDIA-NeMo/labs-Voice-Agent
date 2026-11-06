@@ -161,7 +161,7 @@ LLM, it also waits until every VAD segment of the turn is transcribed. Refer to
 | `type` | `nemo` for the `NeMoTurnTakingService`, or `speech_timeout` for Pipecat's VAD-driven strategies. Optional; omit to keep `nemo`. Any other value raises. |
 | `backchannel_phrases_path` | For `nemo`. Path to a YAML list (the server ships `backchannel_phrases.yaml`), an inline list of phrases, or `null` to let any speech interrupt. A relative path is tried against the working directory, then the server directory, and raises `FileNotFoundError` naming both if neither exists. |
 | `max_buffer_size` | For `nemo`. Word count above which speech interrupts the bot immediately, regardless of backchannel matching. |
-| `bot_stop_delay` | For `nemo`. Seconds of slack between server-side and client-side audio end. |
+| `bot_stop_delay` | For `nemo`. Seconds of slack between server-side and client-side audio end. `0` or `null` treats the bot as stopped as soon as `BotStoppedSpeakingFrame` arrives. |
 | `user_speech_timeout` | For `speech_timeout`. Seconds the stop strategy waits after the VAD reports silence, on top of `vad.stop_secs`. Defaults to 0.6. |
 | `user_turn_stop_timeout` | For both types. Seconds without speech or transcripts before Pipecat's watchdog ends an open user turn early. Defaults to `null`, which keeps the watchdog off, and `0` also turns it off. Refer to [User-Turn Watchdog](../../about/core-concepts/speech-pipeline/turn-taking.md#user-turn-watchdog). |
 
