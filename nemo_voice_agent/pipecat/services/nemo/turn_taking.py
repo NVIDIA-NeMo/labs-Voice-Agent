@@ -54,7 +54,7 @@ class NeMoTurnTakingService(FrameProcessor):
         use_vad: bool = True,
         use_diar: bool = False,
         max_buffer_size: int = 2,
-        bot_stop_delay: float = 0.5,
+        bot_stop_delay: Optional[float] = 0.5,
         audio_logger: Optional[AudioLogger] = None,
         can_create_user_frames: bool = True,
         **kwargs,
@@ -70,7 +70,8 @@ class NeMoTurnTakingService(FrameProcessor):
 
         self.backchannel_phrases = self._load_backchannel_phrases(backchannel_phrases)
         self.backchannel_phrases_nopc = set([self.clean_text(phrase) for phrase in self.backchannel_phrases])
-        self.bot_stop_delay = bot_stop_delay
+        # None means no delay, like 0: the bot counts as stopped as soon as BotStoppedSpeakingFrame arrives
+        self.bot_stop_delay = 0.0 if bot_stop_delay is None else bot_stop_delay
         self.can_create_user_frames = can_create_user_frames
         # internal data
         # Diarization state. The speaker tag is picked when an utterance is emitted, from evidence for that
@@ -206,8 +207,8 @@ class NeMoTurnTakingService(FrameProcessor):
         elif isinstance(frame, BotStoppedSpeakingFrame):
             logger.debug("BotStoppedSpeakingFrame received")
             self._bot_stop_time = time.time()
-            if self.bot_stop_delay is None or self.bot_stop_delay <= 0:
-                # only set the flag if the delay is not set or is 0
+            if self.bot_stop_delay <= 0:
+                # no delay: consider the bot stopped right away
                 self._bot_speaking = False
                 logger.debug("Setting _bot_speaking to False")
         elif isinstance(frame, DiarResultFrame):

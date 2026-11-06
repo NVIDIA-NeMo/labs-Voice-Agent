@@ -98,7 +98,7 @@ The following settings control turn finalization, backchannel filtering, and res
 | `turn_taking.type` | `nemo` when the key is absent | `nemo` or `speech_timeout`. Refer to Turn-Taking Modes. |
 | `turn_taking.backchannel_phrases_path` | `"./backchannel_phrases.yaml"` | YAML file path, inline list, or `null`. Refer to Backchannel Suppression. |
 | `turn_taking.max_buffer_size` | `2` | Number of completed words that can accumulate mid-utterance before the bot is interrupted and an interim transcript is pushed downstream. Lower interrupts sooner. A speaker tag does not count as a word. |
-| `turn_taking.bot_stop_delay` | `0.5` | Seconds to keep treating the bot as "still speaking" after `BotStoppedSpeakingFrame`, covering audio still buffered on the client. `0` flips the flag immediately. |
+| `turn_taking.bot_stop_delay` | `0.5` | Seconds to keep treating the bot as "still speaking" after `BotStoppedSpeakingFrame`, covering audio still buffered on the client. `0` or `null` flips the flag immediately. |
 | `turn_taking.user_speech_timeout` | `0.6` | Seconds that `SpeechTimeoutUserTurnStopStrategy` waits after the VAD reports the end of speech, on top of `vad.stop_secs`. `ConfigManager` reads it for either type, but only `type: speech_timeout` applies it. |
 | `turn_taking.user_turn_stop_timeout` | `null` (off) | Seconds without speech or transcript activity before Pipecat's watchdog ends an open user turn early. `null` or `0` disables the watchdog. Applies to both types. Refer to User-Turn Watchdog. |
 
