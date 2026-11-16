@@ -373,8 +373,10 @@ because those domains spell confirmation codes, flight numbers, and order IDs on
 prompt. Compare the user simulator's intended text in `bot_logs_user/llm_context.json` against the agent-side
 transcript in `bot_logs_agent/llm_context.json`. A difference between the two is a voice-pipeline accuracy
 issue rather than a user-simulator prompt-following failure. Keep the voice-readability rule in both prompts so
-that identifiers are always spelled out, and normalize the case of spelled-out identifiers in tool lookups. For
-more information, refer to [eva_airline](../evaluate/domain-guides/eva-airline.md) and
+that identifiers are always spelled out. In tools, fold spelled-out identifiers to the fixture's case before
+the lookup, so that stored values and recorded actions also use the canonical spelling. For more information,
+refer to [eva_airline](../evaluate/domain-guides/eva-airline.md),
+[tau2_airline](../evaluate/domain-guides/tau2-airline.md#database-seeding-and-key-casing), and
 [Evaluation results](../evaluate/run-evaluations/results.md).
 
 ## Startup reports OSError: [Errno 98] Address already in use

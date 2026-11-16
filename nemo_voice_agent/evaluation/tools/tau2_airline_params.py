@@ -50,7 +50,41 @@ Convention:
 from enum import StrEnum
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError
+
+
+# =============================================================================
+# Identifier canonicalization (tool arguments only)
+# =============================================================================
+#
+# db.json keys user ids in lowercase ("sophia_silva_7557") and reservation ids and
+# flight numbers in uppercase ("ZFA04Y", "HAT001"). Speech recognition renders a
+# spelled id in any case ("SOPHIA_SILVA_7557", "hat001"), and the agent passes it on
+# verbatim. Folding the argument to the fixture's case at the parameter boundary
+# makes every tool behave exactly as if the agent had passed the canonical id: the
+# lookup succeeds, and what a write stores, compares and records is the canonical
+# spelling. Folding only the lookup is not enough: a write that stored the raw
+# variant (``book_reservation`` saving ``user_id="SOPHIA_SILVA_7557"``) leaves a DB
+# whose hash differs from the gold replay, so a correct booking fails
+# ``db_state_match``. Gold replay goes through the same models, and gold arguments
+# are already canonical, so expected DBs are unchanged. The data models below keep
+# plain ``str``: they describe db.json, which is canonical by construction.
+
+
+def _fold_id(upper: bool):
+    def fold(value: Any) -> Any:
+        # Non-strings pass through untouched; the ``str`` type check validates them as before.
+        if not isinstance(value, str):
+            return value
+        value = value.strip()
+        return value.upper() if upper else value.lower()
+
+    return fold
+
+
+UserId = Annotated[str, BeforeValidator(_fold_id(upper=False))]
+ReservationId = Annotated[str, BeforeValidator(_fold_id(upper=True))]
+FlightNumber = Annotated[str, BeforeValidator(_fold_id(upper=True))]
 
 
 # =============================================================================
@@ -260,7 +294,7 @@ class FlightInfo(BaseModel):
     """One element of the ``flights`` argument to book_reservation /
     update_reservation_flights — just a flight-number + date pair."""
 
-    flight_number: str = Field(description="Flight number, such as 'HAT001'.")
+    flight_number: FlightNumber = Field(description="Flight number, such as 'HAT001'.")
     date: str = Field(description="The date for the flight in the format 'YYYY-MM-DD', such as '2024-05-01'.")
 
 
@@ -327,11 +361,11 @@ class _ToolParamsBase(BaseModel):
 
 
 class GetUserDetailsParams(_ToolParamsBase):
-    user_id: str = Field(description="The user ID, such as 'sara_doe_496'.")
+    user_id: UserId = Field(description="The user ID, such as 'sara_doe_496'.")
 
 
 class GetReservationDetailsParams(_ToolParamsBase):
-    reservation_id: str = Field(description="The reservation ID, such as '8JX2WO'.")
+    reservation_id: ReservationId = Field(description="The reservation ID, such as '8JX2WO'.")
 
 
 class ListAllAirportsParams(_ToolParamsBase):
@@ -353,7 +387,7 @@ class SearchOnestopFlightParams(_ToolParamsBase):
 
 
 class GetFlightStatusParams(_ToolParamsBase):
-    flight_number: str = Field(description="The flight number.")
+    flight_number: FlightNumber = Field(description="The flight number.")
     date: str = Field(description="The date of the flight.")
 
 
@@ -361,7 +395,7 @@ class GetFlightStatusParams(_ToolParamsBase):
 
 
 class BookReservationParams(_ToolParamsBase):
-    user_id: str = Field(description="The ID of the user to book the reservation such as 'sara_doe_496'.")
+    user_id: UserId = Field(description="The ID of the user to book the reservation such as 'sara_doe_496'.")
     origin: str = Field(description="The IATA code for the origin city such as 'SFO'.")
     destination: str = Field(description="The IATA code for the destination city such as 'JFK'.")
     flight_type: FlightType = Field(description="The type of flight such as 'one_way' or 'round_trip'.")
@@ -377,16 +411,16 @@ class BookReservationParams(_ToolParamsBase):
 
 
 class CancelReservationParams(_ToolParamsBase):
-    reservation_id: str = Field(description="The reservation ID, such as 'ZFA04Y'.")
+    reservation_id: ReservationId = Field(description="The reservation ID, such as 'ZFA04Y'.")
 
 
 class SendCertificateParams(_ToolParamsBase):
-    user_id: str = Field(description="The ID of the user to book the reservation, such as 'sara_doe_496'.")
+    user_id: UserId = Field(description="The ID of the user to book the reservation, such as 'sara_doe_496'.")
     amount: int = Field(description="The amount of the certificate to send.")
 
 
 class UpdateReservationBaggagesParams(_ToolParamsBase):
-    reservation_id: str = Field(description="The reservation ID, such as 'ZFA04Y'")
+    reservation_id: ReservationId = Field(description="The reservation ID, such as 'ZFA04Y'")
     total_baggages: int = Field(description="The updated total number of baggage items included in the reservation.")
     nonfree_baggages: int = Field(
         description="The updated number of non-free baggage items included in the reservation."
@@ -400,7 +434,7 @@ class UpdateReservationBaggagesParams(_ToolParamsBase):
 
 
 class UpdateReservationFlightsParams(_ToolParamsBase):
-    reservation_id: str = Field(description="The reservation ID, such as 'ZFA04Y'.")
+    reservation_id: ReservationId = Field(description="The reservation ID, such as 'ZFA04Y'.")
     cabin: CabinClass = Field(description="The cabin class of the reservation")
     flights: List[FlightInfo] = Field(
         description=(
@@ -417,7 +451,7 @@ class UpdateReservationFlightsParams(_ToolParamsBase):
 
 
 class UpdateReservationPassengersParams(_ToolParamsBase):
-    reservation_id: str = Field(description="The reservation ID, such as 'ZFA04Y'.")
+    reservation_id: ReservationId = Field(description="The reservation ID, such as 'ZFA04Y'.")
     passengers: List[Passenger] = Field(description="An array of objects containing details about each passenger.")
 
 

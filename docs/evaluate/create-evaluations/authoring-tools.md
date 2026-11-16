@@ -135,9 +135,11 @@ class CancelOrderTool(WriteScenarioTool):
         return ["order_id"]
 
     async def _execute(self, order_id: str = "") -> Dict[str, Any]:
-        # Normalize case: voice ASR of a spelled-out id is inconsistent.
+        # Voice ASR of a spelled-out id is inconsistent. Fold it to the fixture's case once,
+        # so the lookup, the write, and the action record all use the canonical id.
+        order_id = (order_id or "").strip().upper()
         orders = (self.state.get("db") or {}).get("orders") or {}
-        order = orders.get((order_id or "").upper())
+        order = orders.get(order_id)
         if order is None:
             return {"status": "error", "error_type": "not_found", "message": f"Order {order_id} not found"}
         order["status"] = "cancelled"
@@ -157,6 +159,11 @@ A read-only tool has the same shape with `StandardSchemaTool` as the base, no `A
 against. A mismatch logs a warning rather than raising, so check the bot log when an action fails to
 score. The record's `name` field is the upstream method name used for action-list comparison and is
 independent of the class name.
+
+Fold a spelled-out identifier to the fixture's case one time, before the tool uses it. A fold inside the lookup
+alone lets a write succeed while it stores or records the raw spelling, so the end-state DB or the recorded
+actions can stop matching the gold replay. The `tau2_airline` tools fold in their Pydantic argument types. For details, refer to
+[tau2_airline](../domain-guides/tau2-airline.md#database-seeding-and-key-casing).
 
 Add the side-import to `nemo_voice_agent/evaluation/tools/__init__.py` so the decorator runs at import
 time, then check the registration:

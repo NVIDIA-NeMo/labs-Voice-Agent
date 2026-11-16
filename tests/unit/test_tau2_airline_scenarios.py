@@ -28,6 +28,10 @@ Both are local policy decisions rather than upstream data, so they need
 regression cover that a re-import of the upstream fixture cannot silently undo.
 """
 
+import copy
+
+import pytest
+
 import nemo_voice_agent.evaluation.scenarios.data.tau2_airline  # noqa: F401  (side-import for @register_eval_scenario)
 from nemo_voice_agent.evaluation.db_hash import get_dict_hash
 from nemo_voice_agent.evaluation.scenarios import ALL_EVAL_SCENARIOS
@@ -35,6 +39,13 @@ from nemo_voice_agent.evaluation.scenarios.classes import SuccessSignal
 from nemo_voice_agent.evaluation.scenarios.data.tau2_airline.base import (
     ADOPTED_NL_ASSERTIONS,
     GOLD_ACTION_DROPS,
+)
+from nemo_voice_agent.evaluation.tools.tau2_airline_params import (
+    CancelReservationParams,
+    GetFlightStatusParams,
+    GetReservationDetailsParams,
+    GetUserDetailsParams,
+    SendCertificateParams,
 )
 
 
@@ -265,3 +276,86 @@ def test_adopted_assertions_never_read_upstream_field():
             assert inst.nl_assertions is None, key
         else:
             assert inst.nl_assertions == list(ADOPTED_NL_ASSERTIONS[inst.tau2_id]), key
+
+
+# ---------------------------------------------------------------------------
+# Identifier casing from speech recognition
+# ---------------------------------------------------------------------------
+
+
+def _miscase(args):
+    """Gold arguments as speech recognition may render them.
+
+    db.json keys user ids in lowercase and reservation ids / flight numbers in
+    uppercase; flip each to the other case.
+    """
+    out = copy.deepcopy(args)
+    if "user_id" in out:
+        out["user_id"] = out["user_id"].upper()
+    if "reservation_id" in out:
+        out["reservation_id"] = out["reservation_id"].lower()
+    for flight in out.get("flights") or []:
+        flight["flight_number"] = flight["flight_number"].lower()
+    return out
+
+
+def test_miscased_ids_replay_to_the_gold_db():
+    """Writes given mis-cased ids leave exactly the gold DB and gold action records.
+
+    Regression: ``book_reservation`` stored the raw ``user_id`` ("SOPHIA_SILVA_7557")
+    and the raw flight numbers, and ``update_reservation_flights`` compared and
+    stored raw flight numbers (re-pricing an unchanged lowercase leg). The lookups
+    folded case, so the writes succeeded, but the DB hash no longer matched the
+    gold replay and a correct conversation failed ``db_state_match``.
+    """
+    checked, tools_hit = set(), set()
+    for key in _airline_scenario_keys():
+        inst = ALL_EVAL_SCENARIOS[key]()
+        actions = (inst.tau2_task.get("evaluation_criteria") or {}).get("actions") or []
+        writes = [a.get("arguments") or {} for a in actions if a["name"] in WRITE_ACTIONS]
+        if all(_miscase(args) == args for args in writes):
+            continue
+        state = {"actions": [], "db": copy.deepcopy(inst.db)}
+        tools = inst._build_tool_map(state)
+        for action in actions:
+            args = action.get("arguments") or {}
+            if action["name"] in WRITE_ACTIONS and _miscase(args) != args:
+                args = _miscase(args)
+                tools_hit.add(action["name"])
+            tools[action["name"]].invoke(**args)
+        assert get_dict_hash(state["db"]) == get_dict_hash(inst.expected_scenario_db), key
+        recorded = [(r["name"], r["arguments"]) for r in state["actions"]]
+        gold = [(r["name"], r["arguments"]) for r in inst.reference_answer["actions"]]
+        assert recorded == gold, key
+        checked.add(key)
+    assert len(checked) >= 25, f"only {len(checked)} airline tasks exercised a mis-cased id"
+    # send_certificate takes a user_id but no gold task calls it; it is covered below.
+    assert tools_hit == WRITE_ACTIONS - {"send_certificate"}, tools_hit
+    # Tasks 21 and 30 keep an unchanged leg whose stored price differs from today's fare, so they catch the
+    # update_reservation_flights re-pricing of a mis-cased unchanged leg.
+    assert {"tau2_airline__21", "tau2_airline__30"} <= checked
+
+
+def test_send_certificate_records_the_canonical_user_id():
+    inst = ALL_EVAL_SCENARIOS["tau2_airline__8"]()
+    state = {"actions": [], "db": copy.deepcopy(inst.db)}
+    before = set(state["db"]["users"]["sophia_silva_7557"]["payment_methods"])
+    result = inst._build_tool_map(state)["send_certificate"].invoke(user_id=" SOPHIA_SILVA_7557 ", amount=100)
+    assert result["status"] == "success", result
+    assert state["actions"][0]["arguments"]["user_id"] == "sophia_silva_7557"
+    added = set(state["db"]["users"]["sophia_silva_7557"]["payment_methods"]) - before
+    assert len(added) == 1
+
+
+@pytest.mark.parametrize(
+    ("model", "kwargs", "field", "expected"),
+    [
+        (GetUserDetailsParams, {"user_id": " Sara_Doe_496 "}, "user_id", "sara_doe_496"),
+        (GetReservationDetailsParams, {"reservation_id": " zfa04y "}, "reservation_id", "ZFA04Y"),
+        (GetFlightStatusParams, {"flight_number": " hat001 ", "date": "2024-05-15"}, "flight_number", "HAT001"),
+        (CancelReservationParams, {"reservation_id": "zfa04y"}, "reservation_id", "ZFA04Y"),
+        (SendCertificateParams, {"user_id": "SARA_DOE_496", "amount": 50}, "user_id", "sara_doe_496"),
+    ],
+)
+def test_id_argument_types_fold_case_and_whitespace(model, kwargs, field, expected):
+    assert getattr(model.model_validate(kwargs), field) == expected
