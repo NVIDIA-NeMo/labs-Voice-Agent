@@ -94,6 +94,32 @@ LLM-visible function name, the `name` field of the recorded action, and the gold
 The two surfaces have disjoint names, so `_build_tool_map` merges them into one map without
 collisions.
 
+## Phone Number Normalization on Lookup
+
+Every phone number in the agent DB uses the dashed form `555-123-4567`, and `get_customer_by_phone` compares
+strings exactly. Automatic speech recognition (ASR) and the agent often render a spoken number in another
+form, for example, `5551232002` or `(555) 123-2002`. The tool's argument model rewrites those forms to the
+dashed form before the lookup runs.
+
+`GetCustomerByPhoneParams.phone_number` uses the `PhoneNumber` type from
+`nemo_voice_agent/evaluation/tools/tau2_telecom_params.py`. Its validator, `to_dashed_us_phone`, ignores
+formatting characters and counts the ASCII digits; an integer argument is read as its decimal string. The
+following table shows how the validator treats each kind of input.
+
+| Input | Example | Value Passed to the Lookup |
+|---|---|---|
+| 10 digits with any separators | `5551232002`, `555 123 2002`, `(555) 123-2002`, `555.123.2002` | `555-123-2002` |
+| 11 digits that start with the country code `1` | `+1 555 123 2002`, `15551232002` | `555-123-2002` |
+| Any other number of digits | `555123200`, `55512320021` | Unchanged |
+| A value that contains a letter, such as an extension | `555-123-20O2`, `555-123-2002 x12` | Unchanged |
+| A `+` with a country code other than `1` | `+55 512 320 02` | Unchanged |
+| Digits outside ASCII `0`-`9` | Full-width `５５５１２３２００２` | Unchanged |
+
+An unchanged value matches no record, so the tool returns a `tool_error` result instead of guessing. The
+lookup matches the customer's primary contact number or the number of any line on the account. Normalization
+applies only to the tool argument. The DB keeps its stored form, and `get_customer_by_phone` is a read tool
+that records no action, so the DB hash is unaffected.
+
 ## Policy Variants
 
 Upstream registers telecom twice, one time per technical-support policy prose style. This repository mirrors that

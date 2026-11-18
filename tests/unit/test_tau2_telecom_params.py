@@ -31,6 +31,7 @@ cleanly if a re-import accidentally regresses the defaults-materialization
 step.
 """
 
+import copy
 import json
 from pathlib import Path
 
@@ -46,6 +47,7 @@ from nemo_voice_agent.evaluation.tools.tau2_telecom_params import (
     TelecomDB,
     TelecomUserDB,
     UserSurroundings,
+    to_dashed_us_phone,
 )
 
 
@@ -177,3 +179,61 @@ def test_network_technology_enum_values_match_upstream():
     assert NetworkTechnology.TWO_G.value == "2G"
     assert NetworkTechnology.FIVE_G.value == "5G"
     assert NetworkTechnology.NONE.value == "none"
+
+
+# ---------------------------------------------------------------------------
+# Phone numbers as speech recognition renders them
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        ("555-123-2002", "555-123-2002"),
+        ("5551232002", "555-123-2002"),
+        ("555 123 2002", "555-123-2002"),
+        ("(555) 123-2002", "555-123-2002"),
+        ("555.123.2002", "555-123-2002"),
+        (" 555-123-2002 ", "555-123-2002"),
+        ("+1 555 123 2002", "555-123-2002"),
+        ("15551232002", "555-123-2002"),
+        # Not a 10-digit US number: left unchanged so the lookup fails loudly.
+        ("555123200", "555123200"),
+        ("55512320021", "55512320021"),
+        ("555-123-20O2", "555-123-20O2"),
+        ("555-123-2002 x12", "555-123-2002 x12"),
+        ("+55 512 320 02", "+55 512 320 02"),
+        (
+            "\uff15\uff15\uff15\uff11\uff12\uff13\uff12\uff10\uff10\uff12",
+            "\uff15\uff15\uff15\uff11\uff12\uff13\uff12\uff10\uff10\uff12",
+        ),
+        (5551232002, "555-123-2002"),
+        ("", ""),
+    ],
+)
+def test_to_dashed_us_phone(given, expected):
+    assert to_dashed_us_phone(given) == expected
+
+
+def test_get_customer_by_phone_accepts_undashed_numbers():
+    """Regression: the lookup compared strings exactly, so "5551232002" missed 555-123-2002.
+
+    In a live voice evaluation the agent searched for the caller's number without the
+    dashes in most telecom calls where it never found the account.
+    """
+    import nemo_voice_agent.evaluation.scenarios.data.tau2_telecom  # noqa: F401  (registers scenarios)
+    from nemo_voice_agent.evaluation.scenarios import ALL_EVAL_SCENARIOS
+
+    name = next(n for n in sorted(ALL_EVAL_SCENARIOS) if n.startswith("tau2_telecom__"))
+    scenario = ALL_EVAL_SCENARIOS[name]()
+    state = {"actions": [], "db": copy.deepcopy(scenario.db)}
+    tool = scenario._build_tool_map(state)["get_customer_by_phone"]
+    for spoken in ("5551232002", "555 123 2002", "(555) 123-2002", "+1 555 123 2002"):
+        result = tool.invoke(phone_number=spoken)
+        assert result.get("customer_id") == "C1001", (spoken, result)
+    # A line number (not the customer's primary contact) also resolves.
+    result = tool.invoke(phone_number="5551232003")
+    assert result.get("customer_id") == "C1001", result
+    result = tool.invoke(phone_number="555123200")
+    assert result.get("status") == "error", result
+    assert state["actions"] == []  # a read never records an action
