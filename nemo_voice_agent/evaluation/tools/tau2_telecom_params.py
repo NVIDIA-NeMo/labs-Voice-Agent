@@ -54,9 +54,45 @@ from __future__ import annotations
 
 import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+
+def to_dashed_us_phone(value: Any) -> Any:
+    """Rewrite a 10-digit US phone number in the fixture's ``555-123-4567`` form.
+
+    db.json stores every phone number with dashes, and the lookups compare
+    strings exactly. Speech recognition and the agent render the same number in
+    other ways ("5551232002", "555 123 2002", "(555) 123-2002", "+1 555 123 2002"),
+    and a dropped spoken "dash" is common, so ``get_customer_by_phone`` used to
+    fail on the right number. Separators are ignored: a value with exactly 10 ASCII
+    digits, or 11 starting with the US country code 1, is rewritten. Anything else
+    is returned unchanged so the lookup still fails loudly: a digit missing or
+    extra, a letter (including an extension such as "x12"), a non-ASCII digit, or a
+    "+" followed by any country code other than 1. Upstream tau2-bench's current
+    main likewise matches phone numbers on their digits.
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = str(value)
+    if not isinstance(value, str):
+        return value
+    if any(ch.isalpha() for ch in value):
+        return value
+    if any((ch.isdigit() or ch.isnumeric()) and ch not in "0123456789" for ch in value):
+        return value
+    digits = "".join(ch for ch in value if ch in "0123456789")
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    elif "+" in value:
+        return value
+    if len(digits) != 10:
+        return value
+    return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+
+
+# Tool-argument type for phone numbers: folded to the dashed form before any lookup.
+PhoneNumber = Annotated[str, BeforeValidator(to_dashed_us_phone)]
 
 
 class BaseModelNoExtra(BaseModel):
@@ -672,7 +708,7 @@ class GrantAppPermissionParams(BaseModelNoExtra):
 class GetCustomerByPhoneParams(BaseModelNoExtra):
     """Find a customer record by their primary or line phone number."""
 
-    phone_number: str
+    phone_number: PhoneNumber
 
 
 class GetCustomerByIdParams(BaseModelNoExtra):
@@ -787,6 +823,9 @@ def validation_error_response(exc: Any) -> dict:
 __all__ = [
     # base helper
     "BaseModelNoExtra",
+    # phone-number argument normalization
+    "PhoneNumber",
+    "to_dashed_us_phone",
     # agent-side enums
     "DeviceType",
     "LineStatus",
