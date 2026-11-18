@@ -343,14 +343,34 @@ DB itself because the airline database exceeds Pipecat's WebSocket frame limit. 
 `db/flights.json`, `db/users.json`, and `db/reservations.json`. `load_db_artifact` probes `<name>.json` and
 then the `<name>/` directory. Both layouts produce an identical in-memory dictionary, so hashes are unchanged.
 
-Automatic speech recognition (ASR) after letter-by-letter spelling returns inconsistent case, so the
-lookup helpers normalize:
+Automatic speech recognition (ASR) returns spelled-out identifiers in inconsistent case, for example
+`SOPHIA_SILVA_7557` or `hat001`. The tool-argument types in
+`nemo_voice_agent/evaluation/tools/tau2_airline_params.py` strip surrounding whitespace and fold each
+identifier to the fixture's case before the tool runs. Every lookup, stored record, comparison, and recorded
+action argument therefore uses the canonical spelling.
 
-| Key | Casing in the Fixture | Helper |
-| --- | --- | --- |
-| `reservation_id` | Uppercase (`XEHM4B`) | `_get_reservation_dict` uppercases |
-| `flight_number` | Uppercase (`HAT001`) | `_get_flight_dict` uppercases |
-| `user_id` | Lowercase (`daiki_muller_1116`) | `_get_user_dict` lowercases |
+The following table lists the folded identifiers and the tools that accept them.
+
+| Key | Casing in the Fixture | Argument Type | Tools |
+| --- | --- | --- | --- |
+| `reservation_id` | Uppercase (`XEHM4B`) | `ReservationId` uppercases | `get_reservation_details`, `cancel_reservation`, and the three `update_reservation_*` tools |
+| `flight_number` | Uppercase (`HAT001`) | `FlightNumber` uppercases | `get_flight_status` and each `flights` entry of `book_reservation` and `update_reservation_flights` |
+| `user_id` | Lowercase (`daiki_muller_1116`) | `UserId` lowercases | `get_user_details`, `book_reservation`, and `send_certificate` |
+
+Other string arguments, such as airport codes and `payment_id`, pass through unchanged.
+
+The fold runs on the arguments, not only in the lookup, because a write must also store and compare the
+canonical spelling. With a lookup-only fold, `book_reservation` succeeds but saves `SOPHIA_SILVA_7557` as the
+new reservation's `user_id`. Likewise, `update_reservation_flights` fails to match a mis-cased unchanged leg
+and re-prices it at the current fare. Either way, the end-state hash differs from the gold replay, and a
+correct conversation fails `DB_STATE_MATCH`.
+
+Gold replay validates its arguments through the same types. The gold arguments are already canonical, so the
+fold never alters `expected_scenario_db` or `reference_answer`. The `_get_user_dict`,
+`_get_reservation_dict`, and `_get_flight_dict` helpers in `tau2_airline_tools.py` also fold case, which
+keeps them safe for any caller that bypasses the argument types.
+`tests/unit/test_tau2_airline_scenarios.py::test_miscased_ids_replay_to_the_gold_db` replays the gold writes
+with mis-cased identifiers and asserts that the DB and the recorded actions still match the gold replay.
 
 Replay determinism also relies on three upstream behaviors reproduced verbatim. The `created_at` clock is
 frozen at `2024-05-15T15:00:00`. New reservation IDs are allocated from `HATHAT`, `HATHAU`, and `HATHAV` in
