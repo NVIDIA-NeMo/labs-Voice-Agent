@@ -59,7 +59,8 @@ dependencies = [
     "uvicorn",
     "websockets",
     # Utilities
-    "python_weather",
+    # 2.2.3 added wttr.in weather code 149 (smoky haze); older versions raise on it.
+    "python_weather>=2.2.3",
     "python-dotenv",
     "loguru",
     "opentelemetry-exporter-otlp-proto-grpc",
